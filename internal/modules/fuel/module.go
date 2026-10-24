@@ -1,0 +1,9 @@
+package fuel
+
+import m "household/internal/module"
+
+var Module = m.Descriptor{ID: "fuel", Title: "Tankbuch", Short: "Tanken", Icon: "fuel", Order: 20, DefaultEnabled: true, Entities: []m.Entity{
+	{ID: "vehicles", Title: "Fahrzeuge", Primary: "name", Fields: []m.Field{m.Text("name", "Fahrzeug", true), m.Text("registration", "Kennzeichen", false), m.Select("fuel_type", "Kraftstoff", "diesel", "petrol", "lpg", "cng"), m.Long("notes", "Notizen")}},
+	{ID: "odometer_series", Title: "Kilometerstandsreihen", Primary: "reason", Fields: []m.Field{m.Ref("vehicle_id", "Fahrzeug", "fuel/vehicles", true), m.Date("started_on", "Beginn", true), m.Date("ended_on", "Ende", false), m.Qty("initial_reading", "Anfangsstand", true, false), m.Text("reason", "Bezeichnung / Wechselgrund", true)}},
+	{ID: "fillups", Title: "Tankvorgänge", Primary: "station", Fields: []m.Field{m.Ref("vehicle_id", "Fahrzeug", "fuel/vehicles", true), m.Ref("odometer_series_id", "Kilometerstandsreihe", "fuel/odometer_series", true), m.Date("occurred_on", "Datum", true), m.Select("fuel_type", "Kraftstoff", "diesel", "petrol", "lpg", "cng"), m.Qty("odometer", "Kilometerstand", true, false), m.Qty("quantity", "Menge in l / kg", true, true), m.Money("total_minor", "Gesamtpreis in €", true), m.Qty("unit_price", "Preis pro Einheit", false, true), m.Text("station", "Tankstelle", false), m.Bool("full_tank", "Vollgetankt"), m.Bool("previous_fill_missing", "Vorherige Tankung fehlt"), m.Long("notes", "Notizen")}},
+}}

@@ -1,0 +1,14 @@
+{
+  "name": "household-browser-checks",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Development-only browser tests; no Node runtime or frontend build required in production",
+  "license": "MIT",
+  "scripts": {
+    "test:browser": "node scripts/browser-check.cjs"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "4.14.0",
+    "playwright": "1.62.1"
+  }
+}

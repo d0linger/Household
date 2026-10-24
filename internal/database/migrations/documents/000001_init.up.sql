@@ -1,0 +1,4 @@
+BEGIN;
+CREATE TABLE documents.documents(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),household_id uuid NOT NULL REFERENCES core.households(id),title text NOT NULL CHECK(length(title) BETWEEN 1 AND 200),category text NOT NULL DEFAULT '',issuer text NOT NULL DEFAULT '',valid_from date,valid_until date,warranty_until date,remind_days integer NOT NULL DEFAULT 30 CHECK(remind_days BETWEEN 0 AND 366),notes text NOT NULL DEFAULT '',archived_at timestamptz,created_by uuid NOT NULL REFERENCES core.users(id),created_at timestamptz NOT NULL DEFAULT now(),updated_at timestamptz NOT NULL DEFAULT now(),version bigint NOT NULL DEFAULT 1,UNIQUE(household_id,id),CHECK(valid_from IS NULL OR valid_until IS NULL OR valid_until>=valid_from));
+GRANT USAGE ON SCHEMA documents TO household_app; GRANT SELECT,INSERT,UPDATE,DELETE ON ALL TABLES IN SCHEMA documents TO household_app;
+COMMIT;

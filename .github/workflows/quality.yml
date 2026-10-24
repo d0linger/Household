@@ -1,0 +1,89 @@
+name: Go quality and security
+on:
+  push:
+    branches: [main,dev]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: quality-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  GOLint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with: {go-version-file: go.mod, cache: true}
+      - run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0
+      - run: golangci-lint run ./...
+      - run: test -z "$(gofmt -l cmd internal)"
+  GOSec:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with: {go-version-file: go.mod, cache: true}
+      - run: go install github.com/securego/gosec/v2/cmd/gosec@v2.30.0
+      - run: gosec -quiet -fmt=sarif -out=gosec.sarif ./...
+      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        if: always()
+        with: {name: gosec-report, path: gosec.sarif, retention-days: 14}
+  GOVul:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with: {go-version-file: go.mod, cache: true}
+      - run: go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
+      - run: govulncheck ./...
+  GODep:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with: {fetch-depth: 0}
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with: {go-version-file: go.mod, cache: true}
+      - run: go mod download && go mod verify
+      - run: go mod tidy && git diff --exit-code -- go.mod go.sum
+      - run: go run ./cmd/dependency-check > dependency-report.md
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with: {node-version: '24'}
+      - name: Verify migration manifest and immutable history
+        env:
+          MIGRATION_BASE: ${{ github.event.pull_request.base.sha }}
+        run: node scripts/check-migrations.cjs
+      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        with: {name: dependency-review, path: dependency-report.md, retention-days: 14}
+  Tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:18-alpine@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873
+        env: {POSTGRES_DB: household_test, POSTGRES_PASSWORD: ci-database-only}
+        ports: ['5432:5432']
+        options: --health-cmd="pg_isready -U postgres -d household_test" --health-interval=3s --health-timeout=3s --health-retries=15
+    env:
+      HOUSEHOLD_TEST_OWNER_URL: postgres://household_owner:ci-owner-only@localhost:5432/household_test?sslmode=disable
+      HOUSEHOLD_TEST_APP_URL: postgres://household_app:ci-app-only@localhost:5432/household_test?sslmode=disable
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with: {go-version-file: go.mod, cache: true}
+      - name: Initialize isolated roles
+        env: {PGPASSWORD: ci-database-only}
+        run: |
+          psql -h localhost -U postgres -d household_test -v ON_ERROR_STOP=1 <<'SQL'
+          CREATE ROLE household_owner LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE PASSWORD 'ci-owner-only';
+          CREATE ROLE household_app LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE PASSWORD 'ci-app-only';
+          ALTER DATABASE household_test OWNER TO household_owner;
+          REVOKE CREATE ON SCHEMA public FROM PUBLIC;
+          SQL
+      - run: go test -race -tags=integration ./... -count=1 -timeout=3m
+      - run: go test ./internal/value -run=^$ -fuzz=FuzzMinor -fuzztime=10s

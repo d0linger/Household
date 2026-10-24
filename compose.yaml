@@ -1,0 +1,79 @@
+name: household
+x-app: &app
+  image: household:local
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  tmpfs: ['/tmp:rw,noexec,nosuid,size=64m']
+  mem_limit: 512m
+  pids_limit: 100
+  init: true
+  environment: &environment
+    HOUSEHOLD_ENV: ${HOUSEHOLD_ENV:-production}
+    HOUSEHOLD_ORIGIN: ${HOUSEHOLD_ORIGIN:?Set a canonical origin}
+    HOUSEHOLD_LISTEN: :8080
+    HOUSEHOLD_DATABASE_URL_FILE: /run/secrets/app_database_url
+    HOUSEHOLD_CSRF_SECRET_FILE: /run/secrets/csrf_secret
+    HOUSEHOLD_ENCRYPTION_KEY_FILE: /run/secrets/encryption_key
+    HOUSEHOLD_RATE_SECRET_FILE: /run/secrets/rate_secret
+    HOUSEHOLD_ADMIN_PASSWORD_FILE: /run/secrets/bootstrap_password
+    HOUSEHOLD_ADMIN_USERNAME: ${HOUSEHOLD_ADMIN_USERNAME:-admin}
+    HOUSEHOLD_NAME: ${HOUSEHOLD_NAME:-Mein Haushalt}
+    HOUSEHOLD_UPLOAD_DIR: /data/uploads
+    HOUSEHOLD_TRUSTED_PROXIES: ${HOUSEHOLD_TRUSTED_PROXIES:-}
+    GOMEMLIMIT: 400MiB
+  secrets: [app_database_url,csrf_secret,encryption_key,rate_secret,bootstrap_password]
+  networks: [database,frontend]
+  logging: {driver: json-file, options: {max-size: 10m, max-file: '3'}}
+services:
+  db:
+    image: postgres:18-alpine@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: household
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+      POSTGRES_INITDB_ARGS: --auth-host=scram-sha-256 --data-checksums
+    secrets: [postgres_password,owner_password,app_password]
+    volumes: [postgres:/var/lib/postgresql,./deploy/postgres/init.sh:/docker-entrypoint-initdb.d/10-household.sh:ro]
+    networks: [database]
+    healthcheck: {test: [CMD-SHELL, pg_isready -U postgres -d household], interval: 5s, timeout: 3s, retries: 15}
+    shm_size: 128m
+    mem_limit: 512m
+    security_opt: [no-new-privileges:true]
+    logging: {driver: json-file, options: {max-size: 10m, max-file: '3'}}
+  migrate:
+    <<: *app
+    command: [migrate]
+    environment:
+      <<: *environment
+      HOUSEHOLD_DATABASE_URL_FILE: /run/secrets/owner_database_url
+    secrets: [owner_database_url,csrf_secret,encryption_key,rate_secret,bootstrap_password]
+    depends_on: {db: {condition: service_healthy}}
+    networks: [database]
+    healthcheck: {disable: true}
+    restart: 'no'
+  app:
+    <<: *app
+    build: {context: ., target: runtime}
+    restart: unless-stopped
+    ports: ['127.0.0.1:${HOUSEHOLD_PORT:-8100}:8080']
+    volumes: [uploads:/data/uploads]
+    depends_on: {db: {condition: service_healthy},migrate: {condition: service_completed_successfully}}
+    stop_grace_period: 20s
+networks:
+  database: {internal: true}
+  frontend: {}
+volumes:
+  postgres: {}
+  uploads: {}
+secrets:
+  postgres_password: {file: .local/secrets/postgres_password}
+  owner_password: {file: .local/secrets/owner_password}
+  app_password: {file: .local/secrets/app_password}
+  app_database_url: {file: .local/secrets/app_database_url}
+  owner_database_url: {file: .local/secrets/owner_database_url}
+  csrf_secret: {file: .local/secrets/csrf_secret}
+  encryption_key: {file: .local/secrets/encryption_key}
+  rate_secret: {file: .local/secrets/rate_secret}
+  bootstrap_password: {file: .local/secrets/bootstrap_password}

@@ -1,0 +1,15 @@
+.git
+.env*
+!.env.example
+.cache
+.local
+outputs
+node_modules
+uploads
+backups
+bin
+coverage*
+test-results
+playwright-report
+.impeccable
+*.log

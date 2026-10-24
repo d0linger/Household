@@ -1,0 +1,21 @@
+{
+  "chores/000001_init.up.sql": "aedf6a38e715267b097f021249179d512520c141af44e7f5ea306e172a381fc7",
+  "core/000001_init.down.sql": "1a2d2c5683ce585c7ca0f3f5faf4cbba4bbd9a5c1a79507c32f6be52f3e27806",
+  "core/000001_init.up.sql": "b9ca23a701804d8d3725661b1d317d58c1d42a67d0a56d70b8a9be78d020b672",
+  "core/000002_files.down.sql": "57807a8237d409dd26572422350adf53c1e66058e58d3dd6381ecee0a373b6a7",
+  "core/000002_files.up.sql": "25ede05f82c1eb7f5ab332b7b5ff23d276588681c5ab8cc0c890d945c0b13119",
+  "core/000003_search_alerts.down.sql": "57807a8237d409dd26572422350adf53c1e66058e58d3dd6381ecee0a373b6a7",
+  "core/000003_search_alerts.up.sql": "fc81370163021452ca19163991aa2ee2572172665ad75f9bd045120c14f87793",
+  "core/000004_action_generations.down.sql": "bae53d21a9a6d63df4aaa2f932d91c24d24ab48edc2960b283ef4c214a4815f5",
+  "core/000004_action_generations.up.sql": "d275c9774b9d4ae6adafd85c30ad4438c28326eb09a646407a252926a1f22fb5",
+  "documents/000001_init.up.sql": "6a33d06f5655f4c7968cb4cdd29a4ae7720a7e7e4b43ef7fdc944932e2cc9c3f",
+  "expenses/000001_init.up.sql": "4e9d54248e716f8d95109299ee3bb9606d674d16f8d597ab8a934e4530c8019e",
+  "expenses/000002_integrity.down.sql": "bfce30e078d29f61e0d5b7134479e57abc68c396fb1afffef0b63b51f403a763",
+  "expenses/000002_integrity.up.sql": "0b0be40dd4bf2fbdcb1079d3145323170bed4fe66ebeff3b64ce5c52fae8b2c3",
+  "fuel/000001_init.up.sql": "9b63c9cfe8fe05bd3d839566ccf586240a3d4d3730cc5555fccc0bb29f99817e",
+  "mealplan/000001_init.up.sql": "f6e35e44c2f1f8f37b1b903d31e115d83329cea4daabf9fadf19ec8226db2ba5",
+  "meters/000001_init.up.sql": "65b60eb5ac1d873f5b2b38c99e76823d6dcb694dcac405814bec018699b89213",
+  "pantry/000001_init.up.sql": "1e3ff3206f8aa0d7e004a328754d9abcd3983c818fca4f7baedc83b42eaa79c5",
+  "recipes/000001_init.up.sql": "24d68a5070f402d2fa56ef7d9e5fde395a72648e66125f61c7294b63f8eb77e5",
+  "shopping/000001_init.up.sql": "b036a1b5b8ad4ad612642626e54e2dd505c7aee7ed7da7d841349408bc2baa45"
+}

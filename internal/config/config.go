@@ -1,0 +1,118 @@
+// Package config reads and validates deployment configuration without logging secrets.
+package config
+
+import (
+	"errors"
+	"fmt"
+	"net"
+	"net/url"
+	"os"
+	"strconv"
+	"strings"
+	"time"
+)
+
+type Config struct {
+	Listen          string
+	Origin          string
+	DatabaseURL     string
+	CSRFSecret      string
+	EncryptionKey   string
+	RateSecret      string
+	AdminUsername   string
+	AdminPassword   string
+	HouseholdName   string
+	UploadDir       string
+	Production      bool
+	TrustedProxies  []*net.IPNet
+	MaxConnections  int32
+	SessionIdle     time.Duration
+	SessionAbsolute time.Duration
+	UploadQuota     int64
+	OCRCommand      string
+	OCREnabled      bool
+	MetricsToken    string
+}
+
+func secret(name string) (string, error) {
+	v, path := os.Getenv(name), os.Getenv(name+"_FILE")
+	if v != "" && path != "" {
+		return "", fmt.Errorf("both %s and file are configured", name)
+	}
+	if path != "" {
+		// security: secret-file paths come solely from deployment configuration.
+		b, err := os.ReadFile(path) // #nosec G304 G703 -- trusted operator secret path
+		if err != nil {
+			return "", fmt.Errorf("read %s secret file: %w", name, err)
+		}
+		v = strings.TrimSpace(string(b))
+	}
+	return v, nil
+}
+
+func Load() (Config, error) {
+	mode := env("HOUSEHOLD_ENV", "production")
+	if mode != "production" && mode != "development" {
+		return Config{}, errors.New("HOUSEHOLD_ENV must be production or development")
+	}
+	c := Config{Listen: env("HOUSEHOLD_LISTEN", ":8080"), Origin: env("HOUSEHOLD_ORIGIN", "http://localhost:8100"), AdminUsername: env("HOUSEHOLD_ADMIN_USERNAME", "admin"), HouseholdName: env("HOUSEHOLD_NAME", "Mein Haushalt"), UploadDir: env("HOUSEHOLD_UPLOAD_DIR", ".local/uploads"), Production: env("HOUSEHOLD_ENV", "production") == "production", MaxConnections: 10, SessionIdle: 24 * time.Hour, SessionAbsolute: 30 * 24 * time.Hour, UploadQuota: 2 << 30, OCRCommand: os.Getenv("HOUSEHOLD_OCR_COMMAND")}
+	var err error
+	if raw := os.Getenv("HOUSEHOLD_OCR_ENABLED"); raw != "" {
+		c.OCREnabled, err = strconv.ParseBool(raw)
+		if err != nil {
+			return Config{}, errors.New("invalid OCR setting")
+		}
+	}
+	for name, target := range map[string]*string{"HOUSEHOLD_DATABASE_URL": &c.DatabaseURL, "HOUSEHOLD_CSRF_SECRET": &c.CSRFSecret, "HOUSEHOLD_ENCRYPTION_KEY": &c.EncryptionKey, "HOUSEHOLD_RATE_SECRET": &c.RateSecret, "HOUSEHOLD_ADMIN_PASSWORD": &c.AdminPassword, "HOUSEHOLD_METRICS_TOKEN": &c.MetricsToken} {
+		*target, err = secret(name)
+		if err != nil {
+			return Config{}, err
+		}
+	}
+	u, err := url.Parse(c.Origin)
+	if err != nil || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || strings.Trim(u.Path, "/") != "" {
+		return Config{}, errors.New("invalid household origin")
+	}
+	if c.Production && u.Scheme != "https" {
+		return Config{}, errors.New("production origin requires https")
+	}
+	if !c.Production && u.Scheme != "http" && u.Scheme != "https" {
+		return Config{}, errors.New("unsupported origin scheme")
+	}
+	if c.DatabaseURL == "" {
+		return Config{}, errors.New("database URL is required")
+	}
+	for name, key := range map[string]string{"CSRF": c.CSRFSecret, "encryption": c.EncryptionKey, "rate": c.RateSecret} {
+		if len(key) < 32 || strings.Contains(strings.ToLower(key), "change-me") {
+			return Config{}, fmt.Errorf("%s secret must contain at least 32 non-placeholder characters", name)
+		}
+	}
+	if c.CSRFSecret == c.EncryptionKey || c.CSRFSecret == c.RateSecret || c.EncryptionKey == c.RateSecret {
+		return Config{}, errors.New("security secrets must be independent")
+	}
+	if raw := os.Getenv("HOUSEHOLD_DB_MAX_CONNECTIONS"); raw != "" {
+		n, e := strconv.Atoi(raw)
+		if e != nil || n < 2 || n > 100 {
+			return Config{}, errors.New("invalid database connection limit")
+		}
+		c.MaxConnections = int32(n) // #nosec G109 -- explicitly bounded to 2..100 above
+	}
+	for _, raw := range strings.Split(os.Getenv("HOUSEHOLD_TRUSTED_PROXIES"), ",") {
+		if strings.TrimSpace(raw) == "" {
+			continue
+		}
+		_, network, e := net.ParseCIDR(strings.TrimSpace(raw))
+		if e != nil {
+			return Config{}, errors.New("invalid trusted proxy network")
+		}
+		c.TrustedProxies = append(c.TrustedProxies, network)
+	}
+	return c, nil
+}
+
+func env(name, fallback string) string {
+	if v := os.Getenv(name); v != "" {
+		return v
+	}
+	return fallback
+}

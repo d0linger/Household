@@ -1,0 +1,50 @@
+services:
+  backup:
+    image: household-backup:local
+    build: {context: ., dockerfile: deploy/backup/Dockerfile}
+    command: [backup-loop]
+    restart: unless-stopped
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    init: true
+    pids_limit: 100
+    mem_limit: 512m
+    tmpfs: ['/tmp:rw,noexec,nosuid,size=128m']
+    environment:
+      HOUSEHOLD_ENV: ${HOUSEHOLD_ENV:-production}
+      HOUSEHOLD_ORIGIN: ${HOUSEHOLD_ORIGIN:?Set a canonical origin}
+      HOUSEHOLD_DATABASE_URL_FILE: /run/secrets/owner_database_url
+      HOUSEHOLD_CSRF_SECRET_FILE: /run/secrets/csrf_secret
+      HOUSEHOLD_ENCRYPTION_KEY_FILE: /run/secrets/encryption_key
+      HOUSEHOLD_RATE_SECRET_FILE: /run/secrets/rate_secret
+      HOUSEHOLD_UPLOAD_DIR: /data/uploads
+      HOUSEHOLD_RESTORE_DATABASE_URL_FILE: /run/secrets/restore_database_url
+      HOUSEHOLD_BACKUP_WORK: /work
+      RESTIC_REPOSITORY: /repository
+      RESTIC_PASSWORD_FILE: /run/secrets/restic_password
+      RESTIC_CACHE_DIR: /tmp/restic-cache
+      GOMEMLIMIT: 400MiB
+    secrets: [owner_database_url,restore_database_url,csrf_secret,encryption_key,rate_secret,restic_password]
+    volumes: [uploads:/data/uploads:ro,backup_work:/work,backup_repository:/repository]
+    networks: [database]
+    depends_on: {app: {condition: service_healthy}}
+    logging: {driver: json-file, options: {max-size: 10m, max-file: '3'}}
+  restore-db:
+    profiles: [recovery]
+    image: postgres:18-alpine@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873
+    environment:
+      POSTGRES_DB: household_restore
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+      POSTGRES_INITDB_ARGS: --auth-host=scram-sha-256 --data-checksums
+    secrets: [postgres_password,owner_password,app_password]
+    volumes: [./deploy/postgres/init.sh:/docker-entrypoint-initdb.d/10-household.sh:ro]
+    tmpfs: ['/var/lib/postgresql:rw,size=512m']
+    networks: [database]
+    healthcheck: {test: [CMD-SHELL, pg_isready -U postgres -d household_restore], interval: 2s, timeout: 3s, retries: 20}
+secrets:
+  restic_password: {file: .local/secrets/restic_password}
+  restore_database_url: {file: .local/secrets/restore_database_url}
+volumes:
+  backup_work: {}
+  backup_repository: {}

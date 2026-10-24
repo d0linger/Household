@@ -1,0 +1,59 @@
+name: Browser and accessibility
+on: [pull_request,workflow_dispatch]
+permissions: {contents: read}
+jobs:
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:18-alpine@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873
+        env: {POSTGRES_DB: household_test, POSTGRES_PASSWORD: ci-database-only}
+        ports: ['5432:5432']
+        options: --health-cmd="pg_isready -U postgres -d household_test" --health-interval=3s --health-timeout=3s --health-retries=15
+    env:
+      HOUSEHOLD_TEST_OWNER_URL: postgres://household_owner:ci-owner-only@localhost:5432/household_test?sslmode=disable
+      HOUSEHOLD_TEST_APP_URL: postgres://household_app:ci-app-only@localhost:5432/household_test?sslmode=disable
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with: {go-version-file: go.mod, cache: true}
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with: {node-version: '24', cache: npm}
+      - name: Initialize isolated roles
+        env: {PGPASSWORD: ci-database-only}
+        run: |
+          psql -h localhost -U postgres -d household_test -v ON_ERROR_STOP=1 <<'SQL'
+          CREATE ROLE household_owner LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE PASSWORD 'ci-owner-only';
+          CREATE ROLE household_app LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE PASSWORD 'ci-app-only';
+          ALTER DATABASE household_test OWNER TO household_owner;
+          REVOKE CREATE ON SCHEMA public FROM PUBLIC;
+          SQL
+      - run: go test -tags=integration ./internal/web -count=1 -timeout=3m
+      - run: npm ci --ignore-scripts && npx playwright install --with-deps chromium
+      - name: Run synthetic review server and browser suite
+        env:
+          HOUSEHOLD_ENV: development
+          HOUSEHOLD_ORIGIN: http://localhost:8101
+          HOUSEHOLD_LISTEN: 127.0.0.1:8101
+          HOUSEHOLD_DATABASE_URL: postgres://household_app:ci-app-only@localhost:5432/household_test?sslmode=disable
+          HOUSEHOLD_CSRF_SECRET: ci-csrf-only-012345678901234567890123456789
+          HOUSEHOLD_ENCRYPTION_KEY: ci-encryption-only-012345678901234567890123
+          HOUSEHOLD_RATE_SECRET: ci-rate-only-012345678901234567890123456789
+          HOUSEHOLD_ADMIN_USERNAME: bootstrap
+          HOUSEHOLD_ADMIN_PASSWORD: Bootstrap testing 1234
+          HOUSEHOLD_UPLOAD_DIR: .local/ci-uploads
+        run: |
+          go build -o bin/household ./cmd/household
+          mkdir -p outputs/runtime-review
+          ./bin/household serve > outputs/runtime-review/server.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true' EXIT
+          for attempt in $(seq 1 60); do
+            if curl --fail --silent http://localhost:8101/health/ready >/dev/null; then break; fi
+            sleep 1
+          done
+          npm run test:browser
+      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        if: always()
+        with: {name: browser-evidence, path: outputs/runtime-review, retention-days: 14}
