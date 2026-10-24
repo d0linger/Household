@@ -27,5 +27,7 @@
   "pantry/000002_stock_projection.up.sql": "466ac5e7803fc5d55ebb46426ed8bb3520344551ce8d566951e760c93d2fd66d",
   "core/000009_pantry_projection.up.sql": "a94c66ee6784ee2f1216aadebcbecb55b95b8364359491f7190a61fb16d3f9d5",
   "core/000010_shopping_checkout.up.sql": "6abd25182b46e202151f47aea31a6c61de2e2955655b42c3096798d50d1b9880",
-  "shopping/000004_checkout.up.sql": "5877578c9f26ded254f43889c013e3308438a61a036a6e5b0d7e4b482a112a20"
+  "shopping/000004_checkout.up.sql": "5877578c9f26ded254f43889c013e3308438a61a036a6e5b0d7e4b482a112a20",
+  "core/000011_recipe_versions.up.sql": "b69a83fca84a48810ce7c1a502e162dfca54edf3ffd220902560bbfdacc002f6",
+  "recipes/000002_versions.up.sql": "b8a47a5826268b1a9f0ac061a70f23df27b13c714657c74dd6cb4864f700f25d"
 }

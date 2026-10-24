@@ -158,6 +158,13 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("POST /notifications/{id}/read", s.require(s.readNotification))
 	mux.Handle("POST /notifications/{id}/dismiss", s.require(s.dismissNotification))
 	mux.Handle("GET /api/v1/core/bootstrap", s.require(s.bootstrap))
+	mux.Handle("GET /m/recipes/new", s.require(s.recipeWorkspacePage))
+	mux.Handle("GET /m/recipes/recipes/{id}/workspace", s.require(s.recipeWorkspacePage))
+	mux.Handle("POST /api/v1/recipes/workspace", s.require(s.recipeWorkspace))
+	mux.Handle("GET /api/v1/recipes/{id}/workspace", s.require(s.recipeWorkspace))
+	mux.Handle("POST /api/v1/recipes/{id}/workspace", s.require(s.recipeWorkspace))
+	mux.Handle("GET /api/v1/recipes/{id}/versions", s.require(s.recipeVersions))
+	mux.Handle("GET /api/v1/recipes/{id}/versions/{version}", s.require(s.recipeVersions))
 	mux.Handle("GET /api/v1/core/search", s.require(s.searchAPI))
 	mux.Handle("GET /api/v1/core/references/{module}/{entity}", s.require(s.referencesAPI))
 	mux.Handle("GET /api/v1/core/reference-options/{module}/{entity}", s.require(s.referenceOptions))
@@ -437,6 +444,8 @@ func (s *Server) fail(w http.ResponseWriter, r *http.Request, err error) {
 		status, message = 404, "Nicht gefunden"
 	case errors.Is(err, store.ErrConflict):
 		status, message = 409, store.ErrConflict.Error()
+	case errors.As(err, &pgerr) && (pgerr.Code == "55P03" || pgerr.Code == "40P01"):
+		status, message = 409, "Gleichzeitige Änderung; bitte aktuelle Werte laden und prüfen"
 	case errors.Is(err, store.ErrForbidden):
 		status, message = 403, "Keine Berechtigung"
 	case errors.Is(err, auth.ErrLimited):

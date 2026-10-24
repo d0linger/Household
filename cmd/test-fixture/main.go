@@ -58,5 +58,11 @@ func prepare() error {
 	if err != nil {
 		return err
 	}
-	return app.Auth.RecoverPassword(ctx, "bootstrap", cfg.AdminPassword, true)
+	if err = app.Auth.RecoverPassword(ctx, "bootstrap", cfg.AdminPassword, true); err != nil {
+		return err
+	}
+	// This guarded test-only database is reused between browser runs. Keep their
+	// authentication budgets independent without weakening application limits.
+	_, err = pool.Exec(ctx, "TRUNCATE core.rate_limit_buckets")
+	return err
 }

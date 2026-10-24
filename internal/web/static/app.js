@@ -262,7 +262,10 @@
       }
     }catch(error){box.textContent=error.message;}
   });
-  $('#logout-form')?.addEventListener('submit',async event=>{event.preventDefault();try{await clearQueue();localStorage.removeItem('household-offline-owner');}catch{}event.target.submit();});
+  // Explicit recipe drafts share logout/account isolation with the offline queue.
+  function clearRecipeDrafts(all=false){try{for(const key of Object.keys(localStorage)){if(!key.startsWith('household-recipe-draft:'))continue;let draft;try{draft=JSON.parse(localStorage.getItem(key));}catch{}if(all||!draft||(user&&(draft.owner!==user||draft.household!==document.body.dataset.household))||!Number.isFinite(draft.expires)||draft.expires<=Date.now())localStorage.removeItem(key);}}catch{}}
+  clearRecipeDrafts();
+  $('#logout-form')?.addEventListener('submit',async event=>{event.preventDefault();clearRecipeDrafts(true);try{await clearQueue();localStorage.removeItem('household-offline-owner');}catch{}event.target.submit();});
   if(user){try{const owner=localStorage.getItem('household-offline-owner');if(owner&&owner!==user){clearQueue().catch(()=>{});localStorage.removeItem('household-offline-owner');}}catch{}}
   if($('#queue-count'))queueOp('readonly',store=>store.count()).then(count=>$('#queue-count').textContent=count?`${count} Änderungen warten auf Prüfung nach der Anmeldung.`:'').catch(()=>{});
   const attachmentList=$('[data-attachments]');

@@ -1,6 +1,6 @@
 # Checkliste: 180 genehmigte Verbesserungen
 
-Stand: 2026-10-24. Auftrag: alle 180 Vorschläge aus dem Modulvergleich implementieren und gründlich testen.
+Stand: 2026-10-25. Auftrag: alle 180 Vorschläge aus dem Modulvergleich implementieren und gründlich testen.
 
 ## Status und Abnahme
 
@@ -27,7 +27,7 @@ Ein Schema, eine Schaltfläche oder ein Mock allein schließt keinen Punkt ab. B
 
 ## Fortschritt
 
-180 Punkte: **20 verifiziert, 0 implementiert, 0 in Arbeit, 160 offen**. Dieser Zähler wird mit jedem abgeschlossenen Arbeitspaket abgeglichen.
+180 Punkte: **23 verifiziert, 0 implementiert, 0 in Arbeit, 157 offen**. Dieser Zähler wird mit jedem abgeschlossenen Arbeitspaket abgeglichen.
 
 ## Einkaufen
 
@@ -83,14 +83,14 @@ Ein Schema, eine Schaltfläche oder ein Mock allein schließt keinen Punkt ab. B
 
 | ID | Verbesserung | Abnahmekriterium | Status | Nachweis |
 |---|---|---|---|---|
-| RE01 | Rezepteditor | Grunddaten, Zutaten und Schritte gemeinsam mit Entwurf und Feldfehlern bearbeiten. | Offen | — |
+| RE01 | Rezepteditor | Grunddaten, Zutaten und Schritte gemeinsam mit Entwurf und Feldfehlern bearbeiten. | Verifiziert | Native Gesamtsuite + fokussierte Korrekturprüfung, Linux-Race, Upgrade/Restore; 37 Rezept-Browserchecks/4 axe, Gesamtkette333; RW01 unabhängig abgenommen |
 | RE02 | Kochmodus | Aktuellen Schritt, abgehakte Zutaten, Fortschritt und optional Wake Lock anbieten. | Offen | — |
 | RE03 | Portionen im Kochmodus | Mengen exakt skalieren, ohne das Originalrezept zu ändern. | Offen | — |
 | RE04 | Dauerhafte Küchentimer | Mehrere beschriftete Timer über Navigation und Neuladen hinweg wiederherstellen. | Offen | — |
 | RE05 | Rezeptfilter | Dauer, Tags, Zutaten und letzte Zubereitung kombinieren und Ansichten speichern. | Offen | — |
 | RE06 | Geprüfter Rezeptimport | Strukturierte Dateien und Schema.org-Rezepte vor Übernahme prüfen. | Offen | — |
 | RE07 | Zutatenkatalog | Aliase normalisieren und Vorratsprodukte ausdrücklich zuordnen. | Offen | — |
-| RE08 | Versionen und Varianten | Rezeptstände und abgeleitete Varianten unabhängig vom Audit erhalten. | Offen | — |
+| RE08 | Versionen und Varianten | Rezeptstände und abgeleitete Varianten unabhängig vom Audit erhalten. | Verifiziert | Native Gesamtsuite + fokussierte Korrekturprüfung, Linux-Race, Upgrade/Restore; 37 Rezept-Browserchecks/4 axe, Gesamtkette333; RW01 unabhängig abgenommen |
 | RE09 | Zutatenersatz | Austauschregeln mit Mengenhinweisen anzeigen und manuell wählen. | Offen | — |
 | RE10 | Kochhistorie | Tatsächliche Portionen, Bewertung und Notizen einer Zubereitung speichern. | Offen | — |
 | RE11 | Vorratsabgleich | Verfügbare Mengen, Fehlmengen und unbekannte Zuordnungen getrennt anzeigen. | Offen | — |
@@ -98,7 +98,7 @@ Ein Schema, eine Schaltfläche oder ein Mock allein schließt keinen Punkt ab. B
 | RE13 | Portionskosten | Geschätzte Kosten mit Preisalter, Quellen und fehlenden Preisen anzeigen. | Offen | — |
 | RE14 | Nährwerte und Allergene | Strukturierte Angaben mit Quelle und Vollständigkeit; unbekannt bleibt unbekannt. | Offen | — |
 | RE15 | Portabler Austausch | Household-JSON und ausgewählte Tandoor-, Mealie- und Paprika-Profile dokumentiert unterstützen. | Offen | — |
-| RE16 | Gebündelte Rezeptdaten | Details mit begrenzten Abfragen statt einer Abfrage pro Zutat laden. | Offen | — |
+| RE16 | Gebündelte Rezeptdaten | Details mit begrenzten Abfragen statt einer Abfrage pro Zutat laden. | Verifiziert | Native Gesamtsuite + fokussierte Korrekturprüfung, Linux-Race, Upgrade/Restore; 37 Rezept-Browserchecks/4 axe, Gesamtkette333; RW01 unabhängig abgenommen |
 | RE17 | Offline-Rezepte | Ausgewählte Rezepte mit begrenzten Bildern ausdrücklich lokal speichern und löschen. | Offen | — |
 | RE18 | Kücheneinheiten | TL/EL umrechnen; Masse/Volumen nur mit bekannter zutatenbezogener Dichte. | Offen | — |
 | RE19 | Sicherer URL-Import | SSRF, Weiterleitungen, Größen und HTML begrenzen; Importarbeit isolieren. | Offen | — |

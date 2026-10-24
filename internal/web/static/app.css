@@ -23,3 +23,21 @@
 .pantry-product .section-heading h3 a{font-size:inherit}
 
 .checkout-summary-row{padding:1rem 0;border-bottom:1px solid var(--line);overflow-wrap:anywhere}.checkout-summary-row h3{margin:0 0 .5rem}#checkout-plan p,#checkout-lines p,#checkout-result p{overflow-wrap:anywhere}#checkout-refresh{margin-bottom:1rem}
+/* The recipe workspace uses the same labelled forms and quiet row dividers. */
+.recipe-section { margin-block: 1.25rem; }
+.recipe-section h2 { margin-top: 0; }
+.recipe-rows { padding: 0; list-style: none; }
+.recipe-rows > li { padding-block: 1rem; border-bottom: 1px solid var(--line); }
+.recipe-rows > li:last-child { border-bottom: 0; }
+.recipe-row-heading { display: flex; flex-wrap: wrap; gap: .5rem; justify-content: space-between; align-items: center; }
+.recipe-row-heading h3 { margin: 0; }
+.recipe-row-controls { display: flex; flex-wrap: wrap; gap: .4rem; }
+.recipe-save { padding-block: 1rem; }
+.recipe-history-list { padding-inline-start: 1.5rem; }
+.recipe-history-list li { padding-block: .5rem; }
+.recipe-history-list button { text-align: left; }
+.recipe-field-error { color: var(--danger); display: block; }
+#recipe-workspace [aria-invalid="true"] { border-color: var(--danger); }
+#recipe-history-content { max-width: 75ch; white-space: pre-wrap; overflow-wrap: anywhere; }
+#recipe-tags li { display: flex; align-items: center; gap: .5rem; padding-block: .25rem; }
+@media(max-width:600px) { .recipe-row-controls { width: 100%; } .recipe-row-heading { gap: .75rem; } }

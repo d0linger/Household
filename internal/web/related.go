@@ -10,6 +10,15 @@ import (
 )
 
 func (s *Server) related(r *http.Request, m module.Descriptor, e module.Entity, rid string) ([]Related, error) {
+	if m.ID == "recipes" && e.ID == "recipes" {
+		bundle, err := s.Store.Recipe(r.Context(), identity(r), rid)
+		if err != nil {
+			return nil, err
+		}
+		ingredients, _ := m.Entity("ingredients")
+		steps, _ := m.Entity("steps")
+		return []Related{{Entity: ingredients, Field: "recipe_id", Records: bundle.Ingredients}, {Entity: steps, Field: "recipe_id", Records: bundle.Steps}}, nil
+	}
 	groups := []Related{}
 	for _, child := range m.Entities {
 		for _, field := range child.Fields {

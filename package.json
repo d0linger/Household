@@ -5,9 +5,9 @@
   "description": "Development-only browser tests; no Node runtime or frontend build required in production",
   "license": "MIT",
   "scripts": {
-    "test": "node --test scripts/quality-tools.test.cjs scripts/shopping-input.test.cjs scripts/shopping-checkout.test.cjs",
+    "test": "node --test scripts/quality-tools.test.cjs scripts/shopping-input.test.cjs scripts/shopping-checkout.test.cjs scripts/recipe-workspace.test.cjs",
     "test:workflow": "node scripts/check-workflows.cjs",
-    "test:browser": "node scripts/browser-check.cjs && node scripts/browser-a11y-check.cjs && node scripts/browser-audit-check.cjs && node scripts/browser-expansion-check.cjs && node scripts/browser-shopping-catalog-check.cjs && node scripts/browser-shopping-reuse-check.cjs && node scripts/browser-shopping-merge-check.cjs && node scripts/browser-pantry-check.cjs && node scripts/browser-shopping-checkout-check.cjs"
+    "test:browser": "node scripts/browser-check.cjs && node scripts/browser-a11y-check.cjs && node scripts/browser-audit-check.cjs && node scripts/browser-expansion-check.cjs && node scripts/browser-shopping-catalog-check.cjs && node scripts/browser-shopping-reuse-check.cjs && node scripts/browser-shopping-merge-check.cjs && node scripts/browser-pantry-check.cjs && node scripts/browser-shopping-checkout-check.cjs && node scripts/browser-recipe-workspace-check.cjs"
   },
   "devDependencies": {
     "@axe-core/playwright": "4.14.0",

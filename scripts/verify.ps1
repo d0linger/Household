@@ -15,7 +15,7 @@ try {
     if($LASTEXITCODE -ne 0){throw 'Coverage report failed'}
     go mod verify
     if($LASTEXITCODE -ne 0){throw 'Module verification failed'}
-    node --test scripts/quality-tools.test.cjs scripts/shopping-input.test.cjs scripts/shopping-checkout.test.cjs
+    node --test scripts/quality-tools.test.cjs scripts/shopping-input.test.cjs scripts/shopping-checkout.test.cjs scripts/recipe-workspace.test.cjs
     if($LASTEXITCODE -ne 0){throw 'Quality tool tests failed'}
     node scripts/check-workflows.cjs
     if($LASTEXITCODE -ne 0){throw 'Workflow policy failed'}

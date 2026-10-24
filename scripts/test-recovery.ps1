@@ -47,6 +47,7 @@ try {
       if($LASTEXITCODE -ne 0){throw 'Fixture migrations failed'}
       $taskHousehold=[guid]::NewGuid().ToString();$taskUser=[guid]::NewGuid().ToString();$taskList=[guid]::NewGuid().ToString();$taskItem=[guid]::NewGuid().ToString();$taskAttachment=[guid]::NewGuid().ToString()
       $taskProduct=[guid]::NewGuid().ToString();$taskLocation=[guid]::NewGuid().ToString();$taskLot=[guid]::NewGuid().ToString()
+      $taskRecipe=[guid]::NewGuid().ToString()
       $taskOriginal=[guid]::NewGuid().ToString();$taskPreview=[guid]::NewGuid().ToString()
       # A tiny valid PNG is sufficient to exercise binary integrity and private-file metadata.
       $taskPng=[Convert]::FromBase64String('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jN1sAAAAASUVORK5CYII=')
@@ -70,6 +71,8 @@ INSERT INTO pantry.stock_movements(household_id,lot_id,quantity_delta,reason,cre
 INSERT INTO core.attachments(id,household_id,module_id,module_generation,resource_type,resource_id,storage_key,original_name,media_type,size_bytes,sha256,uploaded_by) VALUES('$taskAttachment','$taskHousehold','shopping',1,'items','$taskItem','$taskOriginal','fixture.png','image/png',$($taskPng.Length),decode('$taskHash','hex'),'$taskUser');
 INSERT INTO core.attachment_derivatives(attachment_id,variant,storage_key,media_type,width,height,size_bytes,sha256) VALUES('$taskAttachment','preview','$taskPreview','image/png',1,1,$($taskPng.Length),decode('$taskHash','hex'));
 INSERT INTO shopping.checkouts(household_id,list_id,request_hash,item_count,snapshot,created_by) VALUES('$taskHousehold','$taskList',decode(repeat('cd',32),'hex'),1,jsonb_build_object('restored_completion','once-only','quantity','9007199254.740992'),'$taskUser');
+INSERT INTO recipes.recipes(id,household_id,title,base_servings,created_by) VALUES('$taskRecipe','$taskHousehold','Recovery recipe',2.500001,'$taskUser');
+INSERT INTO recipes.ingredients(household_id,recipe_id,name,quantity,unit_code,created_by) VALUES('$taskHousehold','$taskRecipe','Exact ingredient',9007199254.740993,'g','$taskUser');
 COMMIT;
 "@
       $taskSQL | docker compose -f compose.yaml -f compose.backup.yaml exec -T restore-db psql -U postgres -d household_fixture -v ON_ERROR_STOP=1
@@ -90,9 +93,15 @@ COMMIT;
       if($LASTEXITCODE -ne 0 -or $taskStock -ne '9007199254.740992|2'){throw 'Restored stock projection was lost or counted twice'}
       $taskCheckout=docker compose -f compose.yaml -f compose.backup.yaml exec -T restore-db psql -U postgres -d household_restore -Atc "SELECT (snapshot->>'restored_completion')||'|'||(snapshot->>'quantity')||'|'||item_count::text FROM shopping.checkouts WHERE list_id='$taskList'"
       if($LASTEXITCODE -ne 0 -or $taskCheckout -ne 'once-only|9007199254.740992|1'){throw 'Restored durable completion differs'}
+      $taskRecipeBefore=docker compose -f compose.yaml -f compose.backup.yaml exec -T restore-db psql -U postgres -d household_restore -Atc "SELECT count(*)::text||'|'||min(snapshot->'ingredients'->0->>'quantity') FROM recipes.versions WHERE recipe_id='$taskRecipe'"
+      if($LASTEXITCODE -ne 0 -or $taskRecipeBefore -ne '1|9007199254.740993'){throw 'Restored recipe version lost exact history'}
+      docker compose -f compose.yaml -f compose.backup.yaml exec -T restore-db psql -U postgres -d household_restore -v ON_ERROR_STOP=1 -c "BEGIN; SET ROLE household_owner; UPDATE recipes.recipes SET title='After restore',version=version+1 WHERE id='$taskRecipe'; UPDATE recipes.ingredients SET quantity=9007199254.740992 WHERE recipe_id='$taskRecipe'; COMMIT;"
+      if($LASTEXITCODE -ne 0){throw 'Recipe edit after restore failed'}
+      $taskRecipeAfter=docker compose -f compose.yaml -f compose.backup.yaml exec -T restore-db psql -U postgres -d household_restore -Atc "SELECT count(*)::text||'|'||max(snapshot->'ingredients'->0->>'quantity') FILTER(WHERE revision=1)||'|'||max(snapshot->'ingredients'->0->>'quantity') FILTER(WHERE revision=2) FROM recipes.versions WHERE recipe_id='$taskRecipe'"
+      if($LASTEXITCODE -ne 0 -or $taskRecipeAfter -ne '2|9007199254.740993|9007199254.740992'){throw 'Recipe history after restore was overwritten or not appended once'}
       $taskRestoreTimer.Stop()
       $taskRehearsalTimer.Stop()
-      [ordered]@{passed=$true;source='disposable household_fixture';target='disposable household_restore';snapshot=$taskSnapshot;domainValue=$taskRestored;stockProjection=$taskStock;durableCompletion=$taskCheckout;hashedFiles=2;includesOriginalAndPreview=$true;backupSeconds=[Math]::Round($taskBackupTimer.Elapsed.TotalSeconds,2);restoreAndVerifySeconds=[Math]::Round($taskRestoreTimer.Elapsed.TotalSeconds,2);rehearsalSeconds=[Math]::Round($taskRehearsalTimer.Elapsed.TotalSeconds,2);scope='Small synthetic local fixture; not acceptance of a production RTO/RPO';verifiedAt=[DateTime]::UtcNow.ToString('o')} | ConvertTo-Json | Set-Content outputs/recovery-review/report.json
+      [ordered]@{passed=$true;source='disposable household_fixture';target='disposable household_restore';snapshot=$taskSnapshot;domainValue=$taskRestored;stockProjection=$taskStock;durableCompletion=$taskCheckout;recipeVersionsAfterEdit=$taskRecipeAfter;hashedFiles=2;includesOriginalAndPreview=$true;backupSeconds=[Math]::Round($taskBackupTimer.Elapsed.TotalSeconds,2);restoreAndVerifySeconds=[Math]::Round($taskRestoreTimer.Elapsed.TotalSeconds,2);rehearsalSeconds=[Math]::Round($taskRehearsalTimer.Elapsed.TotalSeconds,2);scope='Small synthetic local fixture; not acceptance of a production RTO/RPO';verifiedAt=[DateTime]::UtcNow.ToString('o')} | ConvertTo-Json | Set-Content outputs/recovery-review/report.json
       Get-Content outputs/recovery-review/report.json
     } finally {
       docker compose -f compose.yaml -f compose.backup.yaml exec -T restore-db dropdb -U postgres household_fixture

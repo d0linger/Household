@@ -1,0 +1,32 @@
+{{define "recipe-workspace"}}
+<section id="recipe-workspace" data-id="{{.Record.id}}" data-generation="{{with index .States "recipes"}}{{.Generation}}{{end}}" data-writable="{{.User.CanWrite}}">
+ <a class="back-link" href="/m/recipes/recipes">Zur Rezeptübersicht</a>
+ <div class="page-heading"><div><h1 id="recipe-heading">{{if .Record.title}}{{.Record.title}}{{else}}Neues Rezept{{end}}</h1><p class="muted">Zutaten und Zubereitung an einem Ort.</p></div></div>
+ <p id="recipe-status" role="status">Rezept wird geladen …</p>
+ <div id="recipe-errors" class="notice error" role="alert" tabindex="-1" hidden></div>
+ <section id="recipe-conflict" class="panel" aria-labelledby="recipe-conflict-heading" hidden><h2 id="recipe-conflict-heading">Rezept inzwischen geändert</h2><p>Dein Entwurf bleibt erhalten. Lade den aktuellen Stand für den Vergleich. Übernimm anschließend bewusst den aktuellen Stand oder deinen vollständigen Entwurf.</p><button type="button" id="recipe-compare">Aktuellen Stand vergleichen</button><div id="recipe-comparison" hidden><pre id="recipe-differences" class="source-text"></pre><div class="actions"><button type="button" id="recipe-use-current">Aktuellen Stand übernehmen</button><button type="button" id="recipe-keep-draft">Meinen Entwurf auf diesem Stand weiterbearbeiten</button></div></div></section>
+ <section id="recipe-local-draft" class="notice" hidden><p>Auf diesem Gerät ist ein ausdrücklich gespeicherter Entwurf vorhanden.</p><div class="actions"><button type="button" id="recipe-load-draft">Geräteentwurf prüfen</button><button type="button" id="recipe-delete-draft">Geräteentwurf löschen</button></div></section>
+ <form id="recipe-form" novalidate hidden>
+ <fieldset {{if not .User.CanWrite}}disabled{{end}}>
+ <section class="panel recipe-section"><h2>Grunddaten</h2><div class="form-grid">
+ <label>Rezeptname<input name="title" data-path="recipe.title" maxlength="200" required></label>
+ <label>Portionen<input name="base_servings" data-path="recipe.base_servings" inputmode="decimal" required></label>
+ <label>Vorbereitung · Minuten<input name="prep_minutes" data-path="recipe.prep_minutes" type="number" min="0" max="1000000000"></label>
+ <label>Kochzeit · Minuten<input name="cook_minutes" data-path="recipe.cook_minutes" type="number" min="0" max="1000000000"></label>
+ <label class="full">Kurzbeschreibung<textarea name="summary" data-path="recipe.summary" rows="2" maxlength="20000"></textarea></label>
+ <label class="full">Quelle<input name="source_note" data-path="recipe.source_note" maxlength="300"></label>
+ <label class="full">Notizen<textarea name="notes" data-path="recipe.notes" rows="2" maxlength="20000"></textarea></label>
+ </div></section>
+ <section class="panel recipe-section" aria-labelledby="recipe-ingredients-heading"><h2 id="recipe-ingredients-heading">Zutaten</h2><p class="fine">Menge leer lassen, wenn sie unbekannt ist. Abschnitte wie „Teig“ halten Zutaten zusammen.</p><ol id="recipe-ingredients" class="recipe-rows"></ol><button type="button" id="recipe-add-ingredient">Zutat ergänzen</button></section>
+ <section class="panel recipe-section" aria-labelledby="recipe-steps-heading"><h2 id="recipe-steps-heading">Zubereitung</h2><ol id="recipe-steps" class="recipe-rows"></ol><button type="button" id="recipe-add-step">Schritt ergänzen</button></section>
+ <section class="panel recipe-section"><h2>Tags</h2><label>Tag suchen<select id="recipe-tag-choice" data-reference="recipes/tags"><option value="">Bitte auswählen</option></select></label><button type="button" id="recipe-add-tag">Tag zuordnen</button><ul id="recipe-tags"></ul><a href="/m/recipes/tags" target="_blank" rel="noopener">Tags in neuem Tab verwalten</a></section>
+ </fieldset>
+ {{if .User.CanWrite}}<div class="recipe-save"><p id="recipe-unsaved" class="fine">Änderungen werden erst gemeinsam gespeichert.</p><div class="actions"><button class="primary" id="recipe-save">Rezept gemeinsam speichern</button><button type="button" id="recipe-save-draft">Entwurf auf diesem Gerät speichern</button></div><p class="fine">Geräteentwürfe werden nur auf ausdrücklichen Wunsch für höchstens 24 Stunden gespeichert, sind an dein Konto und den Modulstand gebunden und werden beim Abmelden gelöscht. Keine automatische Offline-Übernahme.</p></div>{{end}}
+ </form>
+ <section id="recipe-history" class="panel recipe-section" hidden><h2>Rezeptstände und Varianten</h2><p>Jeder bestätigte Änderungsvorgang erhält einen vollständigen Stand. Frühere Inhalte bleiben unverändert.</p><ol id="recipe-version-list" class="recipe-history-list"></ol><button type="button" id="recipe-more-versions" hidden>Ältere Stände laden</button>
+ <section id="recipe-history-preview" hidden tabindex="-1"><h3 id="recipe-history-title"></h3><div id="recipe-history-content"></div>{{if .User.CanWrite}}<div class="actions"><button type="button" id="recipe-restore-version">Diesen Stand als Entwurf übernehmen</button><button type="button" id="recipe-variant">Unabhängige Variante vorbereiten</button></div><p class="fine">Vor dem Speichern kannst du alles prüfen. Dateien werden nicht kopiert; der bisherige Stand bleibt erhalten.</p>{{end}}</section></section>
+ {{if .Record.id}}<a class="button subtle" href="/m/recipes/recipes/{{.Record.id}}">Dateien, Einkauf und einzelne Datensätze</a>{{end}}
+ <dialog id="recipe-switch-dialog" aria-labelledby="recipe-switch-title" aria-describedby="recipe-switch-description"><h2 id="recipe-switch-title">Ungespeicherten Entwurf ersetzen?</h2><p id="recipe-switch-description"></p><p>Deine derzeitigen Eingaben bleiben beim Abbrechen erhalten. Ersetzen verwirft sie nur in diesem Formular; es speichert nichts auf dem Server oder Gerät.</p><div class="actions"><button type="button" id="recipe-switch-cancel">Meinen Entwurf behalten</button><button type="button" id="recipe-switch-confirm">Entwurf ausdrücklich ersetzen</button></div></dialog>
+</section>
+<script nonce="{{.Nonce}}" src="{{index .Asset "recipe-workspace.js"}}" defer></script>
+{{end}}
