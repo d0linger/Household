@@ -159,6 +159,7 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /api/v1/core/reference-options/{module}/{entity}/{id}", s.require(s.referenceOptions))
 	mux.Handle("GET /api/v1/shopping/lists/{id}/items", s.require(s.shoppingItems))
 	mux.Handle("GET /api/v1/shopping/items/{id}", s.require(s.shoppingItem))
+	mux.Handle("GET /api/v1/shopping/items/{id}/merge-preview", s.require(s.shoppingMergePreview))
 	mux.Handle("POST /api/v1/core/preferences", s.require(s.preferences))
 	mux.Handle("GET /m/{module}/{entity}", s.require(s.modulePage))
 	mux.Handle("GET /m/{module}/reports", s.require(s.reportPage))

@@ -172,12 +172,20 @@ func (s *Store) List(ctx context.Context, id auth.Identity, m module.Descriptor,
 	where := ""
 	order := "created_at DESC,id DESC"
 	if m.ID == "shopping" && e.ID == "lists" {
-		where = " AND archived_at IS NULL"
+		where = " AND archived_at IS NULL AND NOT is_template"
+		if query == "is:template" {
+			where = " AND archived_at IS NULL AND is_template"
+			query = ""
+		}
 		if query == "is:archived" {
 			where = " AND archived_at IS NOT NULL"
 			query = ""
 		}
 		order = "sort_order,name,id"
+	}
+	if m.ID == "shopping" && e.ID == "products" && query == "is:favorite" {
+		where = " AND favorite"
+		query = ""
 	}
 	if m.ID == "shopping" && e.ID == "items" {
 		where = " AND EXISTS(SELECT 1 FROM shopping.lists l WHERE l.id=t.list_id AND l.household_id=t.household_id AND l.archived_at IS NULL)"

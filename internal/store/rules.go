@@ -22,6 +22,16 @@ func (s *Store) validateDomain(ctx context.Context, tx pgx.Tx, id auth.Identity,
 		return r
 	}
 	switch mid + "/" + entity {
+	case "shopping/lists":
+		if rid != "" && data["is_template"] == true {
+			var active bool
+			if err := tx.QueryRow(ctx, "SELECT coalesce(shopper_until>now(),false) FROM shopping.lists WHERE household_id=$1 AND id=$2", id.HouseholdID, rid).Scan(&active); err != nil {
+				return err
+			}
+			if active {
+				return bad("Aktiven Einkaufsstatus freigeben, bevor die Liste zur Vorlage wird")
+			}
+		}
 	case "shopping/items":
 		var archived bool
 		if err := tx.QueryRow(ctx, "SELECT archived_at IS NOT NULL FROM shopping.lists WHERE household_id=$1 AND id=$2 FOR SHARE", id.HouseholdID, data["list_id"]).Scan(&archived); err != nil {

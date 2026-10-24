@@ -89,6 +89,10 @@ func (s *Store) Action(ctx context.Context, id auth.Identity, m module.Descripto
 		data[k] = val
 	}
 	switch m.ID + "/" + e.ID + "/" + action {
+	case "shopping/items/merge":
+		raw, err = s.mergeShoppingItems(ctx, tx, id, record, data)
+	case "shopping/lists/clone":
+		raw, err = s.copyShoppingList(ctx, tx, id, record, data, in.Generation)
 	case "shopping/lists/activity":
 		raw, err = claimShoppingList(ctx, tx, id, record, data)
 	case "shopping/lists/archive":
@@ -99,11 +103,11 @@ func (s *Store) Action(ctx context.Context, id auth.Identity, m module.Descripto
 		err = tx.QueryRow(ctx, "UPDATE shopping.lists t SET archived_at=CASE WHEN $3 THEN now() END,shopper_id=NULL,shopper_until=NULL,updated_at=now(),version=version+1 WHERE household_id=$1 AND id=$2 RETURNING to_jsonb(t)", id.HouseholdID, rid, archived).Scan(&raw)
 	case "shopping/items/check":
 		var open bool
-		if err = tx.QueryRow(ctx, "SELECT archived_at IS NULL FROM shopping.lists WHERE household_id=$1 AND id=$2 FOR SHARE", id.HouseholdID, record["list_id"]).Scan(&open); err != nil {
+		if err = tx.QueryRow(ctx, "SELECT archived_at IS NULL AND NOT is_template FROM shopping.lists WHERE household_id=$1 AND id=$2 FOR SHARE", id.HouseholdID, record["list_id"]).Scan(&open); err != nil {
 			return nil, err
 		}
 		if !open {
-			return nil, Invalid{"Einkaufsliste ist archiviert"}
+			return nil, Invalid{"Archivierte Liste oder Vorlage zuerst als neue Einkaufsliste kopieren"}
 		}
 		checked, ok := data["checked"].(bool)
 		if !ok {
@@ -321,7 +325,7 @@ func (s *Store) recipeToShopping(ctx context.Context, tx pgx.Tx, id auth.Identit
 		return Invalid{"Einkaufsliste auswählen"}
 	}
 	var open bool
-	if err = tx.QueryRow(ctx, "SELECT archived_at IS NULL FROM shopping.lists WHERE household_id=$1 AND id=$2 FOR UPDATE", id.HouseholdID, listID).Scan(&open); err != nil {
+	if err = tx.QueryRow(ctx, "SELECT archived_at IS NULL AND NOT is_template FROM shopping.lists WHERE household_id=$1 AND id=$2 FOR UPDATE", id.HouseholdID, listID).Scan(&open); err != nil {
 		return err
 	}
 	if !open {

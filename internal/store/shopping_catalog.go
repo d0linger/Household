@@ -81,6 +81,9 @@ func validateShoppingProduct(ctx context.Context, tx pgx.Tx, id auth.Identity, r
 }
 
 func claimShoppingList(ctx context.Context, tx pgx.Tx, id auth.Identity, list Record, data Record) ([]byte, error) {
+	if list["is_template"] == true {
+		return nil, Invalid{"Vorlage zuerst als neue Einkaufsliste kopieren"}
+	}
 	if list["archived_at"] != nil {
 		return nil, Invalid{"Archivierte Liste zuerst wieder öffnen"}
 	}

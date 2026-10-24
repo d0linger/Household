@@ -40,6 +40,11 @@ func (s *Server) referenceOptions(w http.ResponseWriter, r *http.Request) {
 	s.Store.Gate.RLock()
 	defer s.Store.Gate.RUnlock()
 	mid, entity := r.PathValue("module"), r.PathValue("entity")
+	favorites := r.URL.Query().Get("favorites") == "1"
+	if favorites && (mid != "shopping" || entity != "products") {
+		s.fail(w, r, store.Invalid{Message: "Favoriten sind nur für Einkaufsprodukte verfügbar"})
+		return
+	}
 	selectedID := r.PathValue("id")
 	var selected any
 	if selectedID != "" {
@@ -72,15 +77,18 @@ func (s *Server) referenceOptions(w http.ResponseWriter, r *http.Request) {
 		generation = st.Generation
 		if mid == "shopping" && entity == "products" {
 			label = "t.name||CASE WHEN t.brand<>'' THEN ' · '||t.brand ELSE '' END||' · '||trim_scale(t.pack_quantity)::text||' '||CASE WHEN t.pack_unit='piece' THEN 'Stück' ELSE t.pack_unit END"
+			if favorites {
+				condition = " AND t.favorite"
+			}
 		}
 		if mid == "shopping" && entity == "lists" {
-			condition = " AND t.archived_at IS NULL"
+			condition = " AND t.archived_at IS NULL AND ($5::uuid IS NOT NULL OR NOT t.is_template)"
 		}
 		if mid == "shopping" && entity == "items" {
 			condition = " AND EXISTS(SELECT 1 FROM shopping.lists l WHERE l.household_id=t.household_id AND l.id=t.list_id AND l.archived_at IS NULL)"
 		}
 	}
-	scopeBytes, err := json.Marshal([]any{identity(r).HouseholdID, identity(r).UserID, mid, entity, generation, query, selectedID})
+	scopeBytes, err := json.Marshal([]any{identity(r).HouseholdID, identity(r).UserID, mid, entity, generation, query, selectedID, favorites})
 	if err != nil {
 		s.fail(w, r, err)
 		return

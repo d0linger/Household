@@ -19,7 +19,7 @@ func (s *Store) pantryToShopping(ctx context.Context, tx pgx.Tx, id auth.Identit
 		return Invalid{"Einkaufsliste auswählen"}
 	}
 	var open bool
-	if err = tx.QueryRow(ctx, "SELECT archived_at IS NULL FROM shopping.lists WHERE household_id=$1 AND id=$2 FOR UPDATE", id.HouseholdID, list).Scan(&open); err != nil {
+	if err = tx.QueryRow(ctx, "SELECT archived_at IS NULL AND NOT is_template FROM shopping.lists WHERE household_id=$1 AND id=$2 FOR UPDATE", id.HouseholdID, list).Scan(&open); err != nil {
 		return err
 	}
 	if !open {

@@ -55,7 +55,7 @@
         const article=node('article',undefined,'record-row');article.dataset.shoppingItem=row.id;
         const check=node('button',row.checked_at?'✓':'', 'check-button'+(row.checked_at?' checked':''));
         check.type='button';check.dataset.shoppingCheck=row.id;check.setAttribute('aria-label',(row.checked_at?'Wieder öffnen: ':'Erledigen: ')+row.name);check.setAttribute('aria-pressed',String(Boolean(row.checked_at)));
-        check.disabled=!canWrite||Boolean(page.list.archived_at)||row.availability==='unavailable'&&!row.checked_at;
+        check.disabled=!canWrite||Boolean(page.list.archived_at)||Boolean(page.list.is_template)||row.availability==='unavailable'&&!row.checked_at;
         check.addEventListener('click',()=>void toggle(row,!row.checked_at));
         const text=node('div',undefined,'record-main'+(row.checked_at?' completed':''));
         const link=node('a',row.name);link.href='/m/shopping/items/'+row.id;link.dataset.shoppingLink=row.id;text.append(link);
@@ -71,6 +71,7 @@
       }
     }
     groups(open,container);
+    updateMergeChoices(open);
     if(done.length){const completed=node('details',undefined,'shopping-completed');completed.open=completedOpen;const summary=node('summary',done.length+' erledigt auf dieser Seite');summary.setAttribute('data-shopping-summary','');completed.append(summary);completed.addEventListener('toggle',()=>{if(completed.isConnected)completedOpen=completed.open;});groups(done,completed);container.append(completed);}
     if(!ordered.length)container.append(node('p',filter.value.trim()?'Keine passenden Artikel. Suche ändern oder leeren.':'Noch keine Artikel. Füge deinen ersten Artikel hinzu.','muted'));
     $('#shopping-progress').textContent=page.completed+' von '+page.total+' Artikeln erledigt';
@@ -85,6 +86,46 @@
     $('#shopping-shopper').hidden=!context.shopper_name;
     if($('#shopping-claim')){$('#shopping-claim').disabled=Boolean(context.shopper_name)&&!context.shopper_self;$('#shopping-claim').textContent=context.shopper_self?'Verlängern':'Ich kaufe jetzt ein';$('#shopping-claim').setAttribute('aria-label',context.shopper_self?'Einkaufsstatus um 30 Minuten verlängern':'Ich kaufe jetzt ein · 30 Minuten');$('#shopping-release').hidden=!context.shopper_name||!context.shopper_self&&board.dataset.isAdmin!=='true';}
     restorePosition(position);
+  }
+  function updateMergeChoices(rows) {
+    if(!$('#shopping-merge'))return;
+    for(const selector of ['#shopping-merge-keep','#shopping-merge-remove']){
+      const select=$(selector),chosen=select.value;select.replaceChildren(new Option('Artikel auswählen',''));
+      for(const row of rows)select.add(new Option(row.name+' · '+quantity(row.quantity)+' '+unit(row.unit_code)+(row.product?' · '+variant(row.product):' · Freier Artikel'),row.id));
+      select.value=chosen;
+      if(chosen&&!select.value)$('#shopping-merge-comparison').hidden=true;
+    }
+  }
+  if($('#shopping-merge')){
+    const keep=$('#shopping-merge-keep'),remove=$('#shopping-merge-remove'),comparison=$('#shopping-merge-comparison'),status=$('#shopping-merge-status'),review=$('#shopping-merge-review');
+    let selectionRevision=0;
+    for(const select of [keep,remove])select.addEventListener('change',()=>{++selectionRevision;comparison.hidden=true;status.textContent='';});
+    review.addEventListener('click',async()=>{
+      if(busy)return;
+      if(!keep.value||!remove.value||keep.value===remove.value){status.textContent='Zwei unterschiedliche offene Artikel auswählen.';keep.focus();return;}
+      const snapshot=++selectionRevision,selectedKeep=keep.value,selectedRemove=remove.value;
+      review.disabled=true;status.textContent='Aktuelle Positionen werden verglichen …';comparison.hidden=true;
+      try{
+        const response=await fetch('/api/v1/shopping/items/'+selectedKeep+'/merge-preview?other='+selectedRemove,{headers:{Accept:'application/json'}}),result=await response.json();
+        if(!response.ok)throw Error(result.error||'Vergleich konnte nicht geladen werden.');
+        if(snapshot!==selectionRevision||keep.value!==selectedKeep||remove.value!==selectedRemove)return;
+        const a=result.keep,b=result.other;comparison.replaceChildren(node('h3','Vor dem Zusammenführen prüfen'),node('p','Je Feld: Position behalten → Position dazugeben.'));
+        const fields=[['name','Artikel',v=>v],['quantity','Menge',v=>quantity(v)],['unit_code','Einheit',v=>unit(v)],['product','Produktvariante',variant],['replacement','Ersatz',variant],['availability','Verfügbarkeit',v=>({available:'Verfügbar',unavailable:'Nicht verfügbar',substituted:'Ersatz gewählt'})[v]],['assignee_name','Zuständig',v=>v],['group_name','Gruppe',v=>v],['note','Notiz',v=>v]];
+        for(const [field,label,format]of fields)comparison.append(node('p',label+': '+(format(a[field])||'Keine Angabe')+' → '+(format(b[field])||'Keine Angabe')));
+        comparison.append(node('p',result.compatible?'Ergebnis: '+quantity(result.quantity)+' '+unit(a.unit_code)+' in „'+a.name+'“. Die zweite Position wird entfernt; Änderungen bleiben im Protokoll nachvollziehbar.':result.reason));
+        const cancel=node('button','Auswahl ändern');cancel.type='button';cancel.addEventListener('click',()=>{++selectionRevision;comparison.hidden=true;keep.focus();});comparison.append(cancel);
+        if(result.compatible){const confirm=node('button','Geprüft zusammenführen','primary');confirm.type='button';comparison.append(confirm);const key=crypto.randomUUID();
+          confirm.addEventListener('click',async()=>{
+            if(busy)return;busy=true;confirm.disabled=true;review.disabled=true;keep.disabled=true;remove.disabled=true;cancel.disabled=true;
+            controller?.abort();++revision;loading=false;
+            try{await mutate('/api/v1/m/shopping/items/'+a.id+'/actions/merge',{other_id:b.id,other_version:b.version},a.version,key);comparison.hidden=true;busy=false;await load(true);status.textContent='Artikel zusammengeführt.';}
+            catch(error){status.textContent=error.message+' Ergebnis prüfen: Liste aktualisieren und Positionen erneut vergleichen.';comparison.hidden=true;}
+            finally{busy=false;confirm.disabled=false;review.disabled=false;keep.disabled=false;remove.disabled=false;cancel.disabled=false;if(document.activeElement===confirm||document.activeElement===document.body)review.focus();schedule();}
+          });
+        }else{comparison.append(node('p','Unterschiede in den Artikeldetails prüfen, anschließend erneut vergleichen.'));for(const row of [a,b]){const link=node('a','Details: '+row.name);link.href='/m/shopping/items/'+row.id;comparison.append(link,node('br'));}}
+        comparison.hidden=false;status.textContent='';comparison.focus();
+      }catch(error){status.textContent=error.message;}finally{review.disabled=false;}
+    });
   }
   function schedule() {clearTimeout(poll);poll=setTimeout(async()=>{if(!document.hidden&&navigator.onLine&&!busy&&!loading)await load(false,true);schedule();},delay);}
   async function load(reset=false,quiet=false) {
@@ -144,6 +185,21 @@
   }
   if(form){
     const input=form.elements.name,preview=$('#shopping-parse');let suggestion=null,pending=null;
+    $('#shopping-use-favorite').addEventListener('click',async()=>{
+      if(busy)return;
+      const selected=$('#shopping-favorite'),productSelect=form.elements.product_id,button=$('#shopping-use-favorite');
+      if(!selected.value||selected.dataset.referenceState!=='ready'||productSelect.dataset.referenceState!=='ready'){announce('Favorit auswählen und die Produktauswahl vollständig laden.');selected.focus();return;}
+      const before=JSON.stringify(Object.fromEntries(new FormData(form))),id=selected.value;button.disabled=true;
+      try{
+        const response=await fetch('/api/v1/m/shopping/products/'+id,{headers:{Accept:'application/json'}});
+        if(!response.ok)throw Error('Favorit ist nicht mehr verfügbar. Auswahl aktualisieren.');
+        const product=await response.json();
+        if(JSON.stringify(Object.fromEntries(new FormData(form)))!==before||selected.value!==id){announce('Dein Entwurf wurde inzwischen geändert. Favorit bei Bedarf erneut übernehmen.');return;}
+        if(![...productSelect.options].some(option=>option.value===id)){const option=node('option',selected.selectedOptions[0].textContent);option.value=id;productSelect.append(option);}
+        productSelect.value=id;input.value=product.name;form.elements.quantity.value='1';form.elements.unit_code.value='piece';preview.hidden=true;$('#shopping-details').open=true;
+        announce('Favorit als Entwurf mit einer Packung übernommen. Menge und Details vor dem Hinzufügen prüfen.');input.focus();
+      }catch(error){announce(error.message);}finally{button.disabled=false;}
+    });
     input.addEventListener('input',()=>{suggestion=globalThis.HouseholdShoppingInput.parseShoppingInput(input.value);preview.hidden=!suggestion;if(suggestion)preview.querySelector('p').textContent='Erkannt: '+suggestion.name+' · '+quantity(suggestion.quantity)+' '+unit(suggestion.unit_code)+'. Vor dem Hinzufügen prüfen.';});
     $('#shopping-apply-parse').addEventListener('click',()=>{if(!suggestion)return;input.value=suggestion.name;form.elements.quantity.value=quantity(suggestion.quantity);form.elements.unit_code.value=suggestion.unit_code;$('#shopping-details').open=true;preview.hidden=true;form.elements.quantity.focus();});
     form.addEventListener('submit',async event=>{

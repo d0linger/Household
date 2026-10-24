@@ -27,7 +27,7 @@ Ein Schema, eine Schaltfläche oder ein Mock allein schließt keinen Punkt ab. B
 
 ## Fortschritt
 
-180 Punkte: **11 verifiziert, 0 implementiert, 0 in Arbeit, 169 offen**. Dieser Zähler wird mit jedem abgeschlossenen Arbeitspaket abgeglichen.
+180 Punkte: **13 verifiziert, 0 implementiert, 0 in Arbeit, 167 offen**. Dieser Zähler wird mit jedem abgeschlossenen Arbeitspaket abgeglichen.
 
 ## Einkaufen
 
@@ -38,8 +38,8 @@ Ein Schema, eine Schaltfläche oder ein Mock allein schließt keinen Punkt ab. B
 | SH03 | Geschäftsreihenfolge | Geschäftsprofile mit eigener Gang- und Gruppenreihenfolge auswählen. | Verifiziert | Native Gesamtregression + fokussierte Linux-Race; 27 Katalog-Browserchecks / 2 axe; Security und K01-Abnahme bestanden |
 | SH04 | Produktvarianten | Marke, Packung und Bild auf Einkaufspositionen verständlich darstellen. | Verifiziert | Native Gesamtregression + fokussierte Linux-Race; 27 Katalog-Browserchecks / 2 axe; Security und K01-Abnahme bestanden |
 | SH05 | Mengenerkennung | Eingaben wie 2×500 g Nudeln lokal erkennen und vor Speicherung bearbeitbar bestätigen. | Verifiziert | Native + Linux-Race; 33 Expansion-Browserchecks / 2 axe; unabhängige F01–F04-Abnahme bestanden |
-| SH06 | Favoriten und Vorlagen | Favoriten und wiederverwendbare Listen erzeugen unabhängige neue Positionen. | Offen | — |
-| SH07 | Kontrolliertes Zusammenführen | Identische Produkte und kompatible Mengen zusammenführen; unklare Varianten zur Prüfung zeigen. | Offen | — |
+| SH06 | Favoriten und Vorlagen | Favoriten und wiederverwendbare Listen erzeugen unabhängige neue Positionen. | Verifiziert | PostgreSQL-Grenztests, bestückte Migration + Linux-Race bestanden; 17 Browserchecks/4 axe; R01 unabhängig abgenommen |
+| SH07 | Kontrolliertes Zusammenführen | Identische Produkte und kompatible Mengen zusammenführen; unklare Varianten zur Prüfung zeigen. | Verifiziert | Exakte Unit-Tests; PostgreSQL-Gesamtsuite + fokussierte Linux-Race; 13 Browserchecks/2 axe; unabhängige Abnahme bestanden |
 | SH08 | Ersatz und nicht verfügbar | Verfügbarkeit und Ersatzbezug nachvollziehbar speichern und bearbeiten. | Verifiziert | Native Gesamtregression + fokussierte Linux-Race; 27 Katalog-Browserchecks / 2 axe; Security und K01-Abnahme bestanden |
 | SH09 | Einkaufszuständigkeit | Personen zuweisen und zeitlich begrenzten Einkaufsstatus anzeigen. | Verifiziert | Native Gesamtregression + fokussierte Linux-Race; 27 Katalog-Browserchecks / 2 axe; Security und K01-Abnahme bestanden |
 | SH10 | Warenkorbschätzung | Datierte Geschäftspreise verwenden; unbekannte Preise getrennt ausweisen. | Verifiziert | Native Gesamtregression + fokussierte Linux-Race; 27 Katalog-Browserchecks / 2 axe; Security und K01-Abnahme bestanden |
@@ -255,6 +255,10 @@ Ein Schema, eine Schaltfläche oder ein Mock allein schließt keinen Punkt ab. B
 | MP20 | Gebündelte Wochendaten | Autorisierte Wochenansicht mit Versionen, verzögerten Bildern und gezielten Updates laden. | Offen | — |
 
 ## Prüfprotokoll dieser Erweiterung
+
+- SH06/SH07 abgeschlossen: Favoriten/Vorlagen mit 17 Browserchecks und vier sauberen axe-Scans; Zusammenführen mit 13 Checks und zwei sauberen axe-Scans. R01 (Filterlinks) sowie Vorschau-Blocker und Fokusfehler korrigiert und gezielt erneut geprüft; unabhängige Abnahmen bestanden. Frühere gescrollte Merge-Screenshots wurden durch Aufnahmen vom Dokumentanfang ersetzt.
+- Vollständige native Integration dieses Pakets bestanden: 63,3 % kombinierte interne Abdeckung (2982/4708). Linux-Race Shopping/Reference bei SH06: 159,266 s; zusätzliche Merge-Race nach SH07: 27,889 s. Aktuelle Verify-Prüfung: 14,7 % Unitabdeckung (716/4878), 28 Node-Tests, 25 Migrationsprüfsummen. Linter und Gosec (49 Dateien/8295 Zeilen) ohne Befund. Bestehende Einkaufs-Expansion erneut mit 33 Checks/zwei axe bestanden. Kein vollständiger abschließender Browser-Kettenlauf behauptet.
+
 
 - Aktuelle Abnahme: erste sechs Punkte mit 33 Expansion-Browserchecks und unabhängig aufgelösten F01–F04; Katalog mit 27 Checks, zwei sauberen axe-Scans und aufgelöstem K01. Der aktive Einkaufsstatus steht nun vor Artikeln; Langnamensdarstellung und erste sichtbare Check-Aktion bei 390×844 sind geprüft. Weitere Browserkomponenten: 103 allgemein, 38 Dialog/Fehler, 15 Audit. Die Komponenten wurden nach gezielten Korrekturen einzeln wiederholt, keine abschließende komplette Kette behauptet.
 - Fokussierte Linux-Race-Prüfung `TestShopping|TestReference` bestanden (Webpaket 112,216 s). Der frühere vollständige Race-Lauf des ersten Pakets bleibt separate Evidenz. Die fünf Katalogpunkte und die ersten sechs Verbesserungen sind verifiziert; das sind **11 von 180**, keine Gesamtfreigabe.

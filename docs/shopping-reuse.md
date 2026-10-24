@@ -12,10 +12,10 @@ This is the next ordinary extension of the existing shopping surface. It address
 
 ## Consolidation contract
 
-- The user explicitly chooses two open items from the same working list. The surviving item is named before confirmation. Candidate differences are shown; no name-only automatic merge occurs.
+- The user explicitly chooses two open items from the same working list. The surviving item is named before confirmation. Candidate differences and the exact resulting amount are shown from an authorized, non-binding server preview; no name-only automatic merge occurs. Known attachment/link and closed-list blockers already disable confirmation. The transaction repeats all checks against current state.
 - Both items must have the same explicit original product, replacement and availability. Quantities must exist and refer to compatible content dimensions; pack counts are converted using the immutable pack identity. Free-text items and conflicting assignments or notes require manual review instead of silent loss.
 - The merged quantity uses exact rational conversion and the surviving unit. Results that cannot be represented at six decimal places, exceed the database bound or become non-positive fail unchanged.
-- Both reviewed versions are checked under deterministic row locks. The survivor is updated and the other item removed atomically. Audit retains the before/after changes, search projections follow the result, and any attached file or resource link blocks removal until separately reviewed.
+- Both reviewed versions are checked under row locks. The action locks the survivor first; subsequent item, list and product locks use NOWAIT so opposing selections fail with a retryable conflict rather than wait in opposite order. The survivor is updated and the other item removed atomically. Audit retains the before/after changes, search projections follow the result, and any attached file or resource link blocks removal until separately reviewed.
 - The list must remain open and non-template. Retry with the same idempotency key cannot double the amount. A concurrent check, quantity edit or moved item returns a conflict.
 
 ## Acceptance

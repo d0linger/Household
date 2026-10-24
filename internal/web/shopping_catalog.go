@@ -46,17 +46,24 @@ const shoppingBoardQuery = `SELECT to_jsonb(t)||jsonb_build_object('quantity',t.
 func (s *Server) shoppingItem(w http.ResponseWriter, r *http.Request) {
 	s.Store.Gate.RLock()
 	defer s.Store.Gate.RUnlock()
-	state, enabled := s.Store.State("shopping")
-	if !enabled {
-		s.fail(w, r, store.ErrNotFound)
-		return
-	}
-	m, _ := s.Store.Module("shopping")
-	e, _ := m.Entity("items")
-	item, err := s.Store.Get(r.Context(), identity(r), m, e, r.PathValue("id"))
+	item, err := s.shoppingItemRecord(r, r.PathValue("id"))
 	if err != nil {
 		s.fail(w, r, err)
 		return
+	}
+	writeJSON(w, http.StatusOK, item)
+}
+
+func (s *Server) shoppingItemRecord(r *http.Request, rid string) (store.Record, error) {
+	state, enabled := s.Store.State("shopping")
+	if !enabled {
+		return nil, store.ErrNotFound
+	}
+	m, _ := s.Store.Module("shopping")
+	e, _ := m.Entity("items")
+	item, err := s.Store.Get(r.Context(), identity(r), m, e, rid)
+	if err != nil {
+		return nil, err
 	}
 	var raw []byte
 	var created time.Time
@@ -67,15 +74,52 @@ func (s *Server) shoppingItem(w http.ResponseWriter, r *http.Request) {
 		err = store.ErrNotFound
 	}
 	if err != nil {
-		s.fail(w, r, err)
-		return
+		return nil, err
 	}
-	item, err = store.DecodeRecord(raw)
+	return store.DecodeRecord(raw)
+}
+
+func (s *Server) shoppingMergePreview(w http.ResponseWriter, r *http.Request) {
+	s.Store.Gate.RLock()
+	defer s.Store.Gate.RUnlock()
+	a, err := s.shoppingItemRecord(r, r.PathValue("id"))
 	if err != nil {
 		s.fail(w, r, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, item)
+	b, err := s.shoppingItemRecord(r, r.URL.Query().Get("other"))
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	p, _ := a["product"].(map[string]any)
+	if replacement, ok := a["replacement"].(map[string]any); ok {
+		p = replacement
+	}
+	amount, err := store.PreviewShoppingMerge(a, b, store.String(p["quantity"]), store.String(p["unit"]))
+	result := store.Record{"keep": a, "other": b, "quantity": amount, "compatible": err == nil}
+	if err != nil {
+		result["reason"] = err.Error()
+	} else {
+		var working, linked bool
+		err = s.Pool.QueryRow(r.Context(), `SELECT l.archived_at IS NULL AND NOT l.is_template,
+ EXISTS(SELECT 1 FROM core.attachments WHERE household_id=$1 AND module_id='shopping' AND resource_type='items' AND resource_id=$3)
+ OR EXISTS(SELECT 1 FROM core.resource_links WHERE household_id=$1 AND ((source_module='shopping' AND source_type='items' AND source_id=$3) OR (target_module='shopping' AND target_type='items' AND target_id=$3)))
+ FROM shopping.lists l WHERE l.household_id=$1 AND l.id=$2`, identity(r).HouseholdID, a["list_id"], b["id"]).Scan(&working, &linked)
+		if err != nil {
+			s.fail(w, r, err)
+			return
+		}
+		if !working {
+			result["compatible"] = false
+			result["reason"] = "Nur Artikel einer offenen Einkaufsliste zusammenführen"
+		}
+		if linked {
+			result["compatible"] = false
+			result["reason"] = "Der zweite Artikel hat Dateien oder Verknüpfungen. Diese vor dem Zusammenführen gesondert prüfen"
+		}
+	}
+	writeJSON(w, http.StatusOK, result)
 }
 
 func (s *Server) shoppingContext(r *http.Request, list store.Record) (store.Record, error) {

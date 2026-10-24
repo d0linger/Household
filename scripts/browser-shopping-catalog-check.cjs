@@ -143,7 +143,7 @@ const must = (value, name) => {if (!value) throw Error(name); report.checks.push
     must((await page.locator('#shopping-estimate').innerText()).includes('6,48 €'),'Estimate uses the selected substitute pack and price');
     const quick=page.locator('#shopping-quick-add');
     if(await page.locator('#shopping-entry').getAttribute('open')===null)await page.locator('#shopping-entry>summary').click();
-    await quick.locator('details>summary').click();
+    await quick.locator('#shopping-details>summary').click();
     await quick.locator('[name=product_id][data-reference-state=ready]').waitFor();
     await quick.locator('[name=product_id]').selectOption(fixture.product.id);
     await quick.locator('[name=name]').fill('Auswahl bleibt erhalten');

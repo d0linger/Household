@@ -74,6 +74,7 @@
       search.disabled = true; find.disabled = true; next.disabled = true; status.textContent = 'Auswahl wird geladen …';
       try {
         const params = new URLSearchParams({q:currentQuery,cursor});
+        if(select.dataset.favorites==='1')params.set('favorites','1');
         const response = await fetch('/api/v1/core/reference-options/' + select.dataset.reference + '?' + params, {headers:{Accept:'application/json'}});
         if (!response.ok) throw new Error('reference request failed');
         const page = await response.json(), rows = page.records;
@@ -200,7 +201,7 @@
     if(!entity)throw new Error('Dieser Bereich ist nicht mehr verfügbar.');
     const read=async url=>{if(!cache.has(url))cache.set(url,fetch(url,{headers:{Accept:'application/json'}}).then(async response=>{if(!response.ok)throw new Error('Eine Zuordnung ist nicht mehr verfügbar. Bitte neu öffnen und erfassen.');return response.json();}));return cache.get(url);};
     const current=rid?await read('/api/v1/m/'+mid+'/'+entityID+'/'+rid):{};
-    const operations={check:entry.body.data.checked?'Artikel erledigen':'Artikel wieder öffnen',archive:entry.body.data.archived===true||entry.body.data.archived==='true'?'Liste archivieren':'Liste wieder öffnen',post:'Ausgabe verbindlich buchen',reverse:'Ausgleich erstellen',complete:'Aufgabe erledigen',expense:'Tankung als Ausgabe übernehmen',recipe:'Rezept verknüpfen',tags:'Tags zuordnen',transfer:'Bestand umlagern',shopping:mid==='pantry'?'Vorrat zum Einkauf ergänzen':'Zutaten zur Einkaufsliste übernehmen'};
+    const operations={clone:'Neue Einkaufsliste aus Vorlage erstellen',check:entry.body.data.checked?'Artikel erledigen':'Artikel wieder öffnen',archive:entry.body.data.archived===true||entry.body.data.archived==='true'?'Liste archivieren':'Liste wieder öffnen',post:'Ausgabe verbindlich buchen',reverse:'Ausgleich erstellen',complete:'Aufgabe erledigen',expense:'Tankung als Ausgabe übernehmen',recipe:'Rezept verknüpfen',tags:'Tags zuordnen',transfer:'Bestand umlagern',shopping:mid==='pantry'?'Vorrat zum Einkauf ergänzen':'Zutaten zur Einkaufsliste übernehmen'};
     const title=document.createElement('h3');title.textContent=mod.title+' · '+(operations[action]||(entry.method==='PATCH'?'Eintrag ändern':'Eintrag anlegen'));
     const name=document.createElement('p');name.textContent=current[entity.primary]||entry.body.data[entity.primary]||entity.title;
     article.append(title,name);
