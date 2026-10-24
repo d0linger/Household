@@ -2,6 +2,8 @@
 
 Date: 2026-10-24. Baseline: local `dev` commit `993604f`. This pass implements the approved review and audit-trail request. It updates only Household; no sibling application, remote service or public target was modified. The three specialized reviews covered mutation inventory, audit architecture and privacy/security. The local Docker installation is updated; publication is outside this delivery.
 
+Implementation commit: `361cb5f` on local `dev` (51 files). The staged Gitleaks scan passed; direct comparison against all 11 local secret files found no secret values in the patch. Private/generated paths remained excluded. This final evidence update is recorded separately in local history. No push occurred and no remote is configured.
+
 ## Findings and delivered changes
 
 | Finding / gap | Change and evidence |

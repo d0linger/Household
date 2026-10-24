@@ -26,7 +26,7 @@ The following pass supersedes earlier validation for files it changes. Fresh nat
 | A05 | Precision, reference and report correctness | Verified | Exact related amount, selected parent beyond 100, report at-limit/overflow (100/10000) native regressions passed |
 | A06 | Dialog / validation / relationship loading UX | Verified | 38 checks and three clean dialog axe scans; 422/409 input retention and focus; failed required/multiple references block unsafe writes, retry preserves existing tags |
 | A07 | Fresh complete QA and Docker recovery | Verified locally | Unit/integration/race passed (15.2% unit / 61.3% combined); scanners, 149 checks across three browser components, eight axe scans, updated Docker image, OCI evidence and encrypted recovery passed; full npm chain not rerun after test-only animation fix |
-| A08 | Before/after visuals, documentation and local commit | In progress | Actual comparison passed six view/width checks and keyboard interaction; final reports complete, temporary test services stopped; staged secret exclusion and dev commit being completed |
+| A08 | Before/after visuals, documentation and local commit | Verified | Actual comparison passed six view/width checks and keyboard interaction; reports complete, temporary test services stopped; staged Gitleaks clean and 11 actual local secret files absent from diff. Implementation committed locally as 361cb5f on dev; no push |
 
 This is the central working checklist requested by the user. It is updated after meaningful changes and checks. **Open** means not completed; **In progress** includes implementation awaiting a fresh check; **Verified** requires an executed check; **Blocked** identifies an actual external prerequisite. Earlier passing results do not certify later edits.
 
