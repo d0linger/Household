@@ -47,8 +47,8 @@ const must=(condition,message)=>{if(!condition)throw Error(message);report.check
   await Promise.all([page.waitForURL(/action=DELETE/),page.getByRole('button',{name:'Filtern',exact:true}).click()]);
   must(new URL(page.url()).searchParams.get('module')==='shopping','Native filter form preserves chosen module');
   await page.goto(base+'/settings/audit?request=00000000-0000-4000-8000-000000000000');must(await page.getByRole('heading',{name:'Keine passenden Einträge'}).count()===1,'Empty filter result offers recovery');
-  await page.route('**/api/v1/m/pantry/reports/summary',route=>route.fulfill({status:422,contentType:'application/json',body:JSON.stringify({error:'Testgrenze: Bericht zu groß.'})}));
-  await page.goto(base+'/m/pantry/reports');await page.getByText('Testgrenze: Bericht zu groß.',{exact:true}).waitFor();must(true,'Report overflow explanation reaches the interface as text');
+  await page.route('**/api/v1/m/fuel/reports/summary',route=>route.fulfill({status:422,contentType:'application/json',body:JSON.stringify({error:'Testgrenze: Bericht zu groß.'})}));
+  await page.goto(base+'/m/fuel/reports');await page.getByText('Testgrenze: Bericht zu groß.',{exact:true}).waitFor();must(true,'Report overflow explanation reaches the interface as text');
   must(report.errors.length===0,'No JavaScript errors');must(report.externalRequests.length===0,'No external requests');
   report.passed=true;
  }catch(error){report.passed=false;report.failure=String(error);throw error;}

@@ -54,6 +54,10 @@ func (s *Server) related(r *http.Request, m module.Descriptor, e module.Entity, 
 	return groups, nil
 }
 func (s *Server) reportPage(w http.ResponseWriter, r *http.Request) {
+	if r.PathValue("module") == "pantry" {
+		s.pantryPage(w, r)
+		return
+	}
 	s.Store.Gate.RLock()
 	defer s.Store.Gate.RUnlock()
 	m, ok := s.Store.Module(r.PathValue("module"))

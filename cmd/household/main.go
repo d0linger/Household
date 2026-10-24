@@ -67,6 +67,18 @@ func run(log *slog.Logger) error {
 	}
 	defer pool.Close()
 	switch command {
+	case "pantry-check", "pantry-rebuild":
+		checkCtx, cancel := context.WithTimeout(ctx, 5*time.Minute)
+		defer cancel()
+		drift, err := maintenance.PantryProjection(checkCtx, pool, command == "pantry-rebuild")
+		if err != nil {
+			return err
+		}
+		log.Info("stock projection checked", "mismatched_lots", drift, "rebuilt", command == "pantry-rebuild")
+		if drift != 0 {
+			return errors.New("stock projection differs from journal; operator review required")
+		}
+		return nil
 	case "backup":
 		backupCtx, cancel := context.WithTimeout(ctx, 30*time.Minute)
 		defer cancel()

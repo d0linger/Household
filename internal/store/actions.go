@@ -249,10 +249,10 @@ func (s *Store) Action(ctx context.Context, id auth.Identity, m module.Descripto
 			return nil, err
 		}
 		var balance string
-		if err = tx.QueryRow(ctx, "SELECT coalesce(sum(quantity_delta),0)::text FROM pantry.stock_movements WHERE household_id=$1 AND lot_id=$2", id.HouseholdID, record["lot_id"]).Scan(&balance); err != nil {
+		if err = tx.QueryRow(ctx, "SELECT coalesce((SELECT quantity FROM pantry.lot_balances WHERE household_id=$1 AND lot_id=$2),0)::text", id.HouseholdID, record["lot_id"]).Scan(&balance); err != nil {
 			return nil, err
 		}
-		stock, _ := value.Decimal(balance)
+		stock, _ := stockDecimal(balance)
 		original, _ := value.Decimal(String(record["quantity_delta"]))
 		if stock == nil || original == nil || new(big.Rat).Sub(stock, original).Sign() < 0 {
 			return nil, Invalid{"Korrektur würde negativen Bestand erzeugen"}
@@ -473,10 +473,10 @@ func (s *Store) transferStock(ctx context.Context, tx pgx.Tx, id auth.Identity, 
 		return Invalid{"positive Menge erforderlich"}
 	}
 	var balance string
-	if err = tx.QueryRow(ctx, "SELECT coalesce(sum(quantity_delta),0)::text FROM pantry.stock_movements WHERE household_id=$1 AND lot_id=$2", id.HouseholdID, lot["id"]).Scan(&balance); err != nil {
+	if err = tx.QueryRow(ctx, "SELECT coalesce((SELECT quantity FROM pantry.lot_balances WHERE household_id=$1 AND lot_id=$2),0)::text", id.HouseholdID, lot["id"]).Scan(&balance); err != nil {
 		return err
 	}
-	stock, err := value.Decimal(balance)
+	stock, err := stockDecimal(balance)
 	if err != nil || quantity.Cmp(stock) > 0 {
 		return Invalid{"Bestand reicht für die Umlagerung nicht aus"}
 	}

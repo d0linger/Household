@@ -761,6 +761,10 @@ func (s *Server) requestPurge(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) report(w http.ResponseWriter, r *http.Request) {
+	if r.PathValue("module") == "pantry" {
+		s.pantryStock(w, r)
+		return
+	}
 	s.Store.Gate.RLock()
 	defer s.Store.Gate.RUnlock()
 	m, ok := s.Store.Module(r.PathValue("module"))
@@ -796,32 +800,6 @@ func (s *Server) report(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		result["months"] = months
-	case "pantry":
-		rows, err := s.Pool.Query(r.Context(), "SELECT p.id,p.name,p.unit_code,coalesce(sum(m.quantity_delta),0)::text,p.low_stock_threshold::text FROM pantry.products p LEFT JOIN pantry.lots l ON l.product_id=p.id AND l.household_id=p.household_id LEFT JOIN pantry.stock_movements m ON m.lot_id=l.id AND m.household_id=l.household_id WHERE p.household_id=$1 GROUP BY p.id ORDER BY p.name,p.id LIMIT $2", identity(r).HouseholdID, store.ReportProductLimit+1)
-		if err != nil {
-			s.fail(w, r, err)
-			return
-		}
-		defer rows.Close()
-		products := []store.Record{}
-		for rows.Next() {
-			if len(products) == store.ReportProductLimit {
-				s.fail(w, r, store.Invalid{Message: "Diese Auswertung unterstützt höchstens 100 Vorratsprodukte. Es werden keine unvollständigen Ergebnisse angezeigt; für den vollständigen Datenbestand die Betreiber-Sicherung verwenden."})
-				return
-			}
-			var id, name, unit, stock string
-			var threshold *string
-			if err = rows.Scan(&id, &name, &unit, &stock, &threshold); err != nil {
-				s.fail(w, r, err)
-				return
-			}
-			products = append(products, store.Record{"id": id, "name": name, "unit": unit, "stock": stock, "minimum": threshold})
-		}
-		if err = rows.Err(); err != nil {
-			s.fail(w, r, err)
-			return
-		}
-		result["products"] = products
 	case "meters":
 		readings, err := s.Store.MeterConsumption(r.Context(), identity(r))
 		if err != nil {

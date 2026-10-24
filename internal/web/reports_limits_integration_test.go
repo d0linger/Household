@@ -12,22 +12,6 @@ import (
 	"household/internal/value"
 )
 
-func TestPantryReportLimit(t *testing.T) {
-	f := newIntegrationFixture(t)
-	seed := func(first, last int) {
-		t.Helper()
-		_, err := f.owner.Exec(f.ctx, `INSERT INTO pantry.products(household_id,name,unit_code,created_by)
-			SELECT $1,'Report fixture '||n,'piece',$2 FROM generate_series($3::integer,$4::integer) n`, f.identity.HouseholdID, f.identity.UserID, first, last)
-		if err != nil {
-			t.Fatal(err)
-		}
-	}
-	seed(1, store.ReportProductLimit)
-	assertReportCount(t, f, "pantry", "products", store.ReportProductLimit)
-	seed(store.ReportProductLimit+1, store.ReportProductLimit+1)
-	assertReportOverflow(t, f, "pantry", "100 Vorratsprodukte", "products")
-}
-
 func TestFuelReportLimit(t *testing.T) {
 	f := newIntegrationFixture(t)
 	vehicle, series := value.UUID(), value.UUID()

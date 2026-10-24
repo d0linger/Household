@@ -120,6 +120,13 @@ func Ready(ctx context.Context, pool *pgxpool.Pool) error {
 	if !audited {
 		return errors.New("incomplete audit trigger contract")
 	}
+	var projected bool
+	if err := pool.QueryRow(ctx, "SELECT pantry.projection_ready()").Scan(&projected); err != nil {
+		return fmt.Errorf("inspect stock projection contract: %w", err)
+	}
+	if !projected {
+		return errors.New("incomplete stock projection contract")
+	}
 	return nil
 }
 

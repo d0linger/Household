@@ -424,6 +424,11 @@ func VerifyRestore(ctx context.Context, pool *pgxpool.Pool, cfg config.Config, s
 	if err = database.Ready(ctx, restored); err != nil {
 		return err
 	}
+	if drift, checkErr := PantryProjection(ctx, restored, false); checkErr != nil {
+		return checkErr
+	} else if drift != 0 {
+		return errors.New("restored stock projection differs from journal")
+	}
 	// Verify every metadata-referenced attachment against the restored bytes.
 	uploadPath, err := restoreUploadPath(dir, manifest.UploadPath)
 	if err != nil {

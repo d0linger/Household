@@ -27,7 +27,7 @@ Ein Schema, eine Schaltfläche oder ein Mock allein schließt keinen Punkt ab. B
 
 ## Fortschritt
 
-180 Punkte: **13 verifiziert, 0 implementiert, 0 in Arbeit, 167 offen**. Dieser Zähler wird mit jedem abgeschlossenen Arbeitspaket abgeglichen.
+180 Punkte: **17 verifiziert, 0 implementiert, 0 in Arbeit, 163 offen**. Dieser Zähler wird mit jedem abgeschlossenen Arbeitspaket abgeglichen.
 
 ## Einkaufen
 
@@ -108,7 +108,7 @@ Ein Schema, eine Schaltfläche oder ein Mock allein schließt keinen Punkt ab. B
 
 | ID | Verbesserung | Abnahmekriterium | Status | Nachweis |
 |---|---|---|---|---|
-| PA01 | Produktübersicht | Gesamtbestand, Orte und nächstes Datum anzeigen; Chargen aufklappen. | Offen | — |
+| PA01 | Produktübersicht | Gesamtbestand, Orte und nächstes Datum anzeigen; Chargen aufklappen. | Verifiziert | PostgreSQL/Migration/Restore + Linux-Race; Pantry 18 Browserchecks/3 axe; unabhängige DB- und UI-Abnahme bestanden |
 | PA02 | Zuerst verbrauchen | Datumsart, Öffnung und Restmenge für erklärbare Priorisierung verwenden. | Offen | — |
 | PA03 | Schnellverbrauch | Packung, Hälfte oder eigene Menge buchen; Rücknahme als Gegenbewegung. | Offen | — |
 | PA04 | Einlagerungsassistent | Mehrere Produkte mit Menge, Ort und Datum erfassen und Fortschritt bewahren. | Offen | — |
@@ -123,11 +123,11 @@ Ein Schema, eine Schaltfläche oder ein Mock allein schließt keinen Punkt ab. B
 | PA13 | Open Food Facts | Optionalen Adapter mit Quellenangabe und lokalem Cache bereitstellen. | Offen | — |
 | PA14 | Abfallanalyse | Gründe und optional geschätzte Kosten der Verluste auswerten. | Offen | — |
 | PA15 | Rezeptvorschläge | Vorhandene und bald fällige Zutaten transparent gewichtet berücksichtigen. | Offen | — |
-| PA16 | Große Bestandslisten | Gefilterte Paginierung und exakte Gesamtsummen ohne 100-Produkte-Grenze anbieten. | Offen | — |
-| PA17 | Bestandsprojektion | Transaktionale Salden pflegen und gegen das Bewegungsjournal prüfen. | Offen | — |
+| PA16 | Große Bestandslisten | Gefilterte Paginierung und exakte Gesamtsummen ohne 100-Produkte-Grenze anbieten. | Verifiziert | PostgreSQL/Migration/Restore + Linux-Race; Pantry 18 Browserchecks/3 axe; unabhängige DB- und UI-Abnahme bestanden |
+| PA17 | Bestandsprojektion | Transaktionale Salden pflegen und gegen das Bewegungsjournal prüfen. | Verifiziert | PostgreSQL/Migration/Restore + Linux-Race; Pantry 18 Browserchecks/3 axe; unabhängige DB- und UI-Abnahme bestanden |
 | PA18 | Verbrauchskonflikte | Verbleibende Menge nach gleichzeitiger Buchung zeigen; kein blindes Wiederholen. | Offen | — |
 | PA19 | Offline-Scans | Scans als lokale Entwürfe prüfen; Offline-Daten sind keine Bestandsautorität. | Offen | — |
-| PA20 | Historischer Bestand | Bestand zum Stichtag aus Bewegungen rekonstruieren und Korrekturzeitpunkte zeigen. | Offen | — |
+| PA20 | Historischer Bestand | Bestand zum Stichtag aus Bewegungen rekonstruieren und Korrekturzeitpunkte zeigen. | Verifiziert | PostgreSQL/Migration/Restore + Linux-Race; Pantry 18 Browserchecks/3 axe; unabhängige DB- und UI-Abnahme bestanden |
 
 ## Finanzen
 
@@ -255,6 +255,11 @@ Ein Schema, eine Schaltfläche oder ein Mock allein schließt keinen Punkt ab. B
 | MP20 | Gebündelte Wochendaten | Autorisierte Wochenansicht mit Versionen, verzögerten Bildern und gezielten Updates laden. | Offen | — |
 
 ## Prüfprotokoll dieser Erweiterung
+
+- Vorratsgrundlage PA01/PA16/PA17/PA20 abgeschlossen: exakte Saldenprojektion, Produkt- und Chargenpagination, vollständige gefilterte Einheitensummen und historische Tagesgrenzen mit späteren Korrekturzeitpunkten. Vollständige native Integration: 63,8 % (3103/4862), Web 316,636 s; Linux-Race Vorrat 71,601 s; abschließende Zeitpunktergänzung gezielt mit 7,256 s erneut geprüft. Bestückte Docker-Sicherung/Wiederherstellung bestätigte exakte Salden und zwei Dateihashes.
+- Vollständige Browserkette dieses Stands bestanden: 103 allgemein, 38 Dialog/Fehler, 15 Audit, 33 Expansion, 27 Katalog, 17 Wiederverwendung, 13 Zusammenführen und 18 Vorrat — 264 Checks. Vorrat: drei saubere axe-Scans und drei aktuelle Screenshots. Erster Kettenlauf stoppte am veralteten Pantry-Berichtsstub; nach der API-Anpassung prüft dieser den weiter begrenzten Tankbericht. Der neue Vorratsfehlerpfad wird separat geprüft. Schriftgröße und Alt-Chargenlink korrigiert und unabhängig abgenommen.
+- Abschließende Verify-Prüfung: 14,5 % Unitabdeckung (730/5041), 28 Node-Tests, 27 Migrationsprüfsummen; Linter ohne Befund; Gosec 52 Dateien/8618 Zeilen ohne Findings oder Go-Fehler. Die 17 verifizierten Punkte sind weiterhin keine Gesamtfreigabe der 180 Verbesserungen.
+
 
 - SH06/SH07 abgeschlossen: Favoriten/Vorlagen mit 17 Browserchecks und vier sauberen axe-Scans; Zusammenführen mit 13 Checks und zwei sauberen axe-Scans. R01 (Filterlinks) sowie Vorschau-Blocker und Fokusfehler korrigiert und gezielt erneut geprüft; unabhängige Abnahmen bestanden. Frühere gescrollte Merge-Screenshots wurden durch Aufnahmen vom Dokumentanfang ersetzt.
 - Vollständige native Integration dieses Pakets bestanden: 63,3 % kombinierte interne Abdeckung (2982/4708). Linux-Race Shopping/Reference bei SH06: 159,266 s; zusätzliche Merge-Race nach SH07: 27,889 s. Aktuelle Verify-Prüfung: 14,7 % Unitabdeckung (716/4878), 28 Node-Tests, 25 Migrationsprüfsummen. Linter und Gosec (49 Dateien/8295 Zeilen) ohne Befund. Bestehende Einkaufs-Expansion erneut mit 33 Checks/zwei axe bestanden. Kein vollständiger abschließender Browser-Kettenlauf behauptet.

@@ -108,7 +108,7 @@ func (s *Store) validateDomain(ctx context.Context, tx pgx.Tx, id auth.Identity,
 		if err != nil {
 			return err
 		}
-		if err = tx.QueryRow(ctx, "SELECT coalesce(sum(quantity_delta),0)::text FROM pantry.stock_movements WHERE household_id=$1 AND lot_id=$2", id.HouseholdID, data["lot_id"]).Scan(&current); err != nil {
+		if err = tx.QueryRow(ctx, "SELECT coalesce((SELECT quantity FROM pantry.lot_balances WHERE household_id=$1 AND lot_id=$2),0)::text", id.HouseholdID, data["lot_id"]).Scan(&current); err != nil {
 			return err
 		}
 		delta := quantity("quantity_delta")
@@ -119,7 +119,7 @@ func (s *Store) validateDomain(ctx context.Context, tx pgx.Tx, id auth.Identity,
 		if reason == "receive" && delta.Sign() < 0 || (reason == "consume" || reason == "waste") && delta.Sign() > 0 {
 			return bad("Vorzeichen passt nicht zur Bestandsbewegung")
 		}
-		stock, parseErr := value.Decimal(current)
+		stock, parseErr := stockDecimal(current)
 		if parseErr != nil {
 			return Invalid{"Bestand überschreitet den zulässigen Wertebereich"}
 		}

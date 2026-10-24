@@ -1,3 +1,4 @@
+param([string]$BackupImage='household-backup:local')
 $ErrorActionPreference='Stop'
 $taskRoot=Split-Path -Parent $PSScriptRoot
 Push-Location $taskRoot
@@ -37,7 +38,7 @@ try {
     }
     $taskDockerArguments+=@('--mount',"type=bind,source=$taskUploads,target=/data/uploads,readonly",
       '--mount',"type=volume,source=$taskRepoVolume,target=/repository",
-      '--mount',"type=volume,source=$taskWorkVolume,target=/work",'household-backup:local')
+      '--mount',"type=volume,source=$taskWorkVolume,target=/work",$BackupImage)
     docker compose -f compose.yaml -f compose.backup.yaml exec -T restore-db createdb -U postgres -O household_owner household_fixture
     if($LASTEXITCODE -ne 0){throw 'Fixture database already exists or could not be created; refusing to overwrite it'}
     try {
@@ -45,6 +46,7 @@ try {
       & docker @taskDockerArguments migrate
       if($LASTEXITCODE -ne 0){throw 'Fixture migrations failed'}
       $taskHousehold=[guid]::NewGuid().ToString();$taskUser=[guid]::NewGuid().ToString();$taskList=[guid]::NewGuid().ToString();$taskItem=[guid]::NewGuid().ToString();$taskAttachment=[guid]::NewGuid().ToString()
+      $taskProduct=[guid]::NewGuid().ToString();$taskLocation=[guid]::NewGuid().ToString();$taskLot=[guid]::NewGuid().ToString()
       $taskOriginal=[guid]::NewGuid().ToString();$taskPreview=[guid]::NewGuid().ToString()
       # A tiny valid PNG is sufficient to exercise binary integrity and private-file metadata.
       $taskPng=[Convert]::FromBase64String('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jN1sAAAAASUVORK5CYII=')
@@ -61,6 +63,10 @@ INSERT INTO core.module_installations(module_id,schema_name,last_seen_build) VAL
 INSERT INTO core.module_states(household_id,module_id,state) VALUES('$taskHousehold','shopping','enabled');
 INSERT INTO shopping.lists(id,household_id,name,created_by) VALUES('$taskList','$taskHousehold','Recovery verification','$taskUser');
 INSERT INTO shopping.items(id,household_id,list_id,name,quantity,unit_code,created_by) VALUES('$taskItem','$taskHousehold','$taskList','Synthetic rice',2.5,'kg','$taskUser');
+INSERT INTO pantry.products(id,household_id,name,unit_code,created_by) VALUES('$taskProduct','$taskHousehold','Recovery stock','kg','$taskUser');
+INSERT INTO pantry.locations(id,household_id,name,created_by) VALUES('$taskLocation','$taskHousehold','Recovery shelf','$taskUser');
+INSERT INTO pantry.lots(id,household_id,product_id,location_id,received_on,created_by) VALUES('$taskLot','$taskHousehold','$taskProduct','$taskLocation','2026-01-01','$taskUser');
+INSERT INTO pantry.stock_movements(household_id,lot_id,quantity_delta,reason,created_by) VALUES('$taskHousehold','$taskLot',9007199254.740993,'receive','$taskUser'),('$taskHousehold','$taskLot',-0.000001,'consume','$taskUser');
 INSERT INTO core.attachments(id,household_id,module_id,module_generation,resource_type,resource_id,storage_key,original_name,media_type,size_bytes,sha256,uploaded_by) VALUES('$taskAttachment','$taskHousehold','shopping',1,'items','$taskItem','$taskOriginal','fixture.png','image/png',$($taskPng.Length),decode('$taskHash','hex'),'$taskUser');
 INSERT INTO core.attachment_derivatives(attachment_id,variant,storage_key,media_type,width,height,size_bytes,sha256) VALUES('$taskAttachment','preview','$taskPreview','image/png',1,1,$($taskPng.Length),decode('$taskHash','hex'));
 COMMIT;
@@ -79,6 +85,8 @@ COMMIT;
       if($LASTEXITCODE -ne 0){throw 'Fixture restore or binary hash verification failed'}
       $taskRestored=docker compose -f compose.yaml -f compose.backup.yaml exec -T restore-db psql -U postgres -d household_restore -Atc "SELECT name||'|'||quantity::text||'|'||unit_code FROM shopping.items WHERE id='$taskItem'"
       if($LASTEXITCODE -ne 0 -or $taskRestored -ne 'Synthetic rice|2.500000|kg'){throw 'Restored domain values differ'}
+      $taskStock=docker compose -f compose.yaml -f compose.backup.yaml exec -T restore-db psql -U postgres -d household_restore -Atc "SELECT quantity::text||'|'||movement_count FROM pantry.lot_balances WHERE lot_id='$taskLot'"
+      if($LASTEXITCODE -ne 0 -or $taskStock -ne '9007199254.740992|2'){throw 'Restored stock projection was lost or counted twice'}
       $taskRestoreTimer.Stop()
       $taskRehearsalTimer.Stop()
       [ordered]@{passed=$true;source='disposable household_fixture';target='disposable household_restore';snapshot=$taskSnapshot;domainValue=$taskRestored;hashedFiles=2;includesOriginalAndPreview=$true;backupSeconds=[Math]::Round($taskBackupTimer.Elapsed.TotalSeconds,2);restoreAndVerifySeconds=[Math]::Round($taskRestoreTimer.Elapsed.TotalSeconds,2);rehearsalSeconds=[Math]::Round($taskRehearsalTimer.Elapsed.TotalSeconds,2);scope='Small synthetic local fixture; not acceptance of a production RTO/RPO';verifiedAt=[DateTime]::UtcNow.ToString('o')} | ConvertTo-Json | Set-Content outputs/recovery-review/report.json

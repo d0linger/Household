@@ -9,9 +9,6 @@ import (
 	"household/internal/value"
 )
 
-// ReportProductLimit bounds the aggregate pantry overview.
-const ReportProductLimit = 100
-
 // ReportHistoryLimit bounds chronological consumption calculations. Queries read
 // one additional row so exceeding the bound cannot silently produce a partial report.
 const ReportHistoryLimit = 10000

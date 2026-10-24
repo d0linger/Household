@@ -116,7 +116,12 @@ func New(ctx context.Context, pool *pgxpool.Pool, cfg config.Config, mods []modu
 		sum := sha256.Sum256(b)
 		s.assets[entry.Name()] = "/assets/" + hex.EncodeToString(sum[:6]) + "/" + entry.Name()
 	}
-	s.templates, err = template.New("household").Funcs(template.FuncMap{"text": store.String, "qty": formatQuantity, "choice": formatChoice, "prev": func(v any) int64 { return store.Int(v) - 1 }, "next": func(v any) int64 { return store.Int(v) + 1 }, "integer": store.Int, "money": formatMoney, "formValue": formValue, "isTrue": func(v any) bool { b, _ := v.(bool); return b }, "selected": func(a, b any) bool { return store.String(a) == store.String(b) }, "enabled": func(states map[string]store.State, id string) bool { return states[id].State == "enabled" }, "moduleURL": func(m module.Descriptor) string { return "/m/" + m.ID + "/" + m.Entities[0].ID }, "dict": dict, "icon": func(asset map[string]string, name string) string { return asset["icons.svg"] + "#" + name }}).ParseFS(files, "templates/*.html")
+	s.templates, err = template.New("household").Funcs(template.FuncMap{"text": store.String, "qty": formatQuantity, "choice": formatChoice, "prev": func(v any) int64 { return store.Int(v) - 1 }, "next": func(v any) int64 { return store.Int(v) + 1 }, "integer": store.Int, "money": formatMoney, "formValue": formValue, "isTrue": func(v any) bool { b, _ := v.(bool); return b }, "selected": func(a, b any) bool { return store.String(a) == store.String(b) }, "enabled": func(states map[string]store.State, id string) bool { return states[id].State == "enabled" }, "moduleURL": func(m module.Descriptor) string {
+		if m.ID == "pantry" {
+			return "/m/pantry/stock"
+		}
+		return "/m/" + m.ID + "/" + m.Entities[0].ID
+	}, "dict": dict, "icon": func(asset map[string]string, name string) string { return asset["icons.svg"] + "#" + name }}).ParseFS(files, "templates/*.html")
 	return s, err
 }
 
@@ -160,6 +165,9 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /api/v1/shopping/lists/{id}/items", s.require(s.shoppingItems))
 	mux.Handle("GET /api/v1/shopping/items/{id}", s.require(s.shoppingItem))
 	mux.Handle("GET /api/v1/shopping/items/{id}/merge-preview", s.require(s.shoppingMergePreview))
+	mux.Handle("GET /m/pantry/stock", s.require(s.pantryPage))
+	mux.Handle("GET /api/v1/pantry/stock", s.require(s.pantryStock))
+	mux.Handle("GET /api/v1/pantry/products/{id}/lots", s.require(s.pantryLots))
 	mux.Handle("POST /api/v1/core/preferences", s.require(s.preferences))
 	mux.Handle("GET /m/{module}/{entity}", s.require(s.modulePage))
 	mux.Handle("GET /m/{module}/reports", s.require(s.reportPage))

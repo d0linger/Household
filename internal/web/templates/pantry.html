@@ -1,0 +1,12 @@
+{{define "pantry"}}
+<div class="page-heading"><div><p class="eyebrow">WAS ZU HAUSE IST</p><h1>Vorratsbestand</h1><p class="muted">Produkte, Lagerorte und Chargen im Überblick.</p></div><a class="button" href="/m/pantry/stock_movements">Bestand buchen</a></div>
+<nav class="entity-tabs" aria-label="Bereiche"><a href="/m/pantry/stock" class="current" aria-current="page">Bestand</a>{{range .Module.Entities}}<a href="/m/pantry/{{.ID}}">{{.Title}}</a>{{end}}</nav>
+<section class="panel pantry-board" id="pantry-board" aria-label="Vorratsübersicht">
+<form id="pantry-filter" class="audit-filters"><label>Produkt suchen<input type="search" name="q" maxlength="300" placeholder="Name des Produkts"></label><label>Bestand am Tagesende<input type="date" name="at" min="1900-01-01"><small>Leer lassen für den aktuellen Bestand.</small></label><button class="primary">Anzeigen</button></form>
+<p id="pantry-status" role="status">Bestand wird geladen …</p>
+<div id="pantry-summary"></div><p id="pantry-history-note" class="fine" hidden>Historische Mengen folgen dem gespeicherten Buchungszeitpunkt in der Haushaltszeitzone. Spätere Korrekturen werden getrennt genannt. Namen, Orte und Datumsangaben zeigen den heutigen beschreibenden Stand. Zeitversetzt gespeicherte Buchungen können einen älteren Stichtag ergänzen.</p>
+<div id="pantry-products" tabindex="-1" aria-label="Produktbestände"></div>
+<div class="actions"><button type="button" id="pantry-previous" hidden>Vorherige Produkte</button><button type="button" id="pantry-next" hidden>Weitere Produkte</button><button type="button" id="pantry-refresh">Aktualisieren</button></div>
+<noscript><p>Die Bestandsübersicht benötigt lokales JavaScript. Produkte und Buchungen sind über die Bereiche oben erreichbar.</p></noscript>
+</section><script nonce="{{.Nonce}}" src="{{index .Asset "pantry.js"}}" defer></script>
+{{end}}

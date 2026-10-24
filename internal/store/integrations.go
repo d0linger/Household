@@ -33,10 +33,10 @@ func (s *Store) pantryToShopping(ctx context.Context, tx pgx.Tx, id auth.Identit
 		return Invalid{"Produkt steht bereits offen auf dieser Liste"}
 	}
 	var balance string
-	if err = tx.QueryRow(ctx, "SELECT coalesce(sum(sm.quantity_delta),0)::text FROM pantry.lots l JOIN pantry.stock_movements sm ON sm.household_id=l.household_id AND sm.lot_id=l.id WHERE l.household_id=$1 AND l.product_id=$2", id.HouseholdID, product["id"]).Scan(&balance); err != nil {
+	if err = tx.QueryRow(ctx, "SELECT coalesce(sum(b.quantity),0)::text FROM pantry.lots l JOIN pantry.lot_balances b ON b.household_id=l.household_id AND b.lot_id=l.id WHERE l.household_id=$1 AND l.product_id=$2", id.HouseholdID, product["id"]).Scan(&balance); err != nil {
 		return err
 	}
-	stock, err := value.Decimal(balance)
+	stock, err := stockDecimal(balance)
 	if err != nil {
 		return err
 	}
