@@ -5,8 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/netip"
 	"net/url"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -33,6 +35,9 @@ type Config struct {
 	OCREnabled      bool
 	MetricsToken    string
 }
+
+var hostnameLabel = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$`)
+var numericHostLabel = regexp.MustCompile(`^(?:[0-9]+|0x[0-9a-f]*)$`)
 
 func secret(name string) (string, error) {
 	v, path := os.Getenv(name), os.Getenv(name+"_FILE")
@@ -69,21 +74,15 @@ func Load() (Config, error) {
 			return Config{}, err
 		}
 	}
-	u, err := url.Parse(c.Origin)
-	if err != nil || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || strings.Trim(u.Path, "/") != "" {
-		return Config{}, errors.New("invalid household origin")
-	}
-	if c.Production && u.Scheme != "https" {
-		return Config{}, errors.New("production origin requires https")
-	}
-	if !c.Production && u.Scheme != "http" && u.Scheme != "https" {
-		return Config{}, errors.New("unsupported origin scheme")
+	c.Origin, err = normalizeOrigin(c.Origin, c.Production)
+	if err != nil {
+		return Config{}, err
 	}
 	if c.DatabaseURL == "" {
 		return Config{}, errors.New("database URL is required")
 	}
 	for name, key := range map[string]string{"CSRF": c.CSRFSecret, "encryption": c.EncryptionKey, "rate": c.RateSecret} {
-		if len(key) < 32 || strings.Contains(strings.ToLower(key), "change-me") {
+		if len(strings.TrimSpace(key)) < 32 || strings.Contains(strings.ToLower(key), "change-me") {
 			return Config{}, fmt.Errorf("%s secret must contain at least 32 non-placeholder characters", name)
 		}
 	}
@@ -108,6 +107,66 @@ func Load() (Config, error) {
 		c.TrustedProxies = append(c.TrustedProxies, network)
 	}
 	return c, nil
+}
+
+func normalizeOrigin(raw string, production bool) (string, error) {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return "", errors.New("invalid household origin")
+	}
+	invalidPath := u.Path != "" && u.Path != "/"
+	hasURLSuffix := u.ForceQuery || u.RawQuery != "" || strings.Contains(raw, "#")
+	if u.Hostname() == "" || u.User != nil || invalidPath || hasURLSuffix {
+		return "", errors.New("invalid household origin")
+	}
+	if production && u.Scheme != "https" {
+		return "", errors.New("production origin requires https")
+	}
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return "", errors.New("unsupported origin scheme")
+	}
+	host := strings.ToLower(u.Hostname())
+	if strings.ContainsAny(u.Host, "[]") {
+		address, err := netip.ParseAddr(host)
+		if err != nil || !address.Is6() || address.Zone() != "" {
+			return "", errors.New("invalid household origin host")
+		}
+		host = "[" + address.String() + "]"
+		if address.Is4In6() {
+			octets := address.As16()
+			high := uint16(octets[12])<<8 | uint16(octets[13])
+			low := uint16(octets[14])<<8 | uint16(octets[15])
+			host = fmt.Sprintf("[::ffff:%x:%x]", high, low)
+		}
+	} else if address, err := netip.ParseAddr(host); err != nil || !address.Is4() {
+		dnsName := strings.TrimSuffix(host, ".")
+		labels := strings.Split(dnsName, ".")
+		if len(dnsName) > 253 || numericHostLabel.MatchString(labels[len(labels)-1]) {
+			return "", errors.New("invalid household origin host")
+		}
+		for _, label := range labels {
+			if !hostnameLabel.MatchString(label) {
+				return "", errors.New("origin host must be a DNS name in ASCII or an IP address")
+			}
+		}
+	}
+	port := u.Port()
+	if strings.HasSuffix(u.Host, ":") {
+		return "", errors.New("invalid household origin port")
+	}
+	if port != "" {
+		n, err := strconv.Atoi(port)
+		if err != nil || n < 1 || n > 65535 {
+			return "", errors.New("invalid household origin port")
+		}
+		isDefaultPort := (u.Scheme == "http" && n == 80) || (u.Scheme == "https" && n == 443)
+		if !isDefaultPort {
+			host += ":" + strconv.Itoa(n)
+		}
+	}
+	// Browser Origin headers omit a root slash and default ports. Keep the
+	// configured origin in that same form for the exact CSRF origin comparison.
+	return u.Scheme + "://" + host, nil
 }
 
 func env(name, fallback string) string {

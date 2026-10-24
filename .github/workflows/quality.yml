@@ -18,7 +18,7 @@ jobs:
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
         with: {go-version-file: go.mod, cache: true}
       - run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0
-      - run: golangci-lint run ./...
+      - run: golangci-lint run --build-tags=integration,testtools ./...
       - run: test -z "$(gofmt -l cmd internal)"
   GOSec:
     runs-on: ubuntu-latest
@@ -28,10 +28,10 @@ jobs:
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
         with: {go-version-file: go.mod, cache: true}
       - run: go install github.com/securego/gosec/v2/cmd/gosec@v2.30.0
-      - run: gosec -quiet -fmt=sarif -out=gosec.sarif ./...
+      - run: gosec -fmt=sarif -out=gosec.sarif ./...
       - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
         if: always()
-        with: {name: gosec-report, path: gosec.sarif, retention-days: 14}
+        with: {name: gosec-report, path: gosec.sarif, retention-days: 14, if-no-files-found: error}
   GOVul:
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -62,7 +62,7 @@ jobs:
         with: {name: dependency-review, path: dependency-report.md, retention-days: 14}
   Tests:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
     services:
       postgres:
         image: postgres:18-alpine@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873
@@ -70,6 +70,7 @@ jobs:
         ports: ['5432:5432']
         options: --health-cmd="pg_isready -U postgres -d household_test" --health-interval=3s --health-timeout=3s --health-retries=15
     env:
+      HOUSEHOLD_REQUIRE_INTEGRATION: '1'
       HOUSEHOLD_TEST_OWNER_URL: postgres://household_owner:ci-owner-only@localhost:5432/household_test?sslmode=disable
       HOUSEHOLD_TEST_APP_URL: postgres://household_app:ci-app-only@localhost:5432/household_test?sslmode=disable
     steps:
@@ -85,5 +86,37 @@ jobs:
           ALTER DATABASE household_test OWNER TO household_owner;
           REVOKE CREATE ON SCHEMA public FROM PUBLIC;
           SQL
-      - run: go test -race -tags=integration ./... -count=1 -timeout=3m
-      - run: go test ./internal/value -run=^$ -fuzz=FuzzMinor -fuzztime=10s
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with: {node-version: '24'}
+      - run: go vet -tags=integration,testtools ./...
+      - name: Unit and isolated integration tests with race detection
+        run: |
+          mkdir -p outputs/qa
+          set -o pipefail
+          go test -race -p 1 -tags=integration -shuffle=on -coverpkg=./internal/... -covermode=atomic -coverprofile=outputs/qa/coverage.out ./... -count=1 -timeout=15m -json | tee outputs/qa/tests.jsonl
+      - name: Enforce observed integration coverage floor
+        run: node scripts/check-coverage.cjs outputs/qa/coverage.out 55 outputs/qa/coverage.json
+      - name: Fuzz exact money parsing
+        run: go test ./internal/value -run=^$ -fuzz=FuzzMinor -fuzztime=15s -parallel=2
+      - name: Fuzz exact decimal parsing
+        run: go test ./internal/value -run=^$ -fuzz=FuzzDecimal -fuzztime=15s -parallel=2
+      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        if: always()
+        with: {name: go-test-evidence, path: outputs/qa, retention-days: 14}
+  WorkflowAndSecrets:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with: {fetch-depth: 0, persist-credentials: false}
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with: {go-version-file: go.mod, cache: true}
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with: {node-version: '24'}
+      - run: npm ci --ignore-scripts
+      - run: node --test scripts/quality-tools.test.cjs
+      - run: node scripts/check-workflows.cjs
+      - run: go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
+      - run: actionlint
+      - run: go install github.com/zricethezav/gitleaks/v8@v8.30.1
+      - run: gitleaks git --redact --no-banner --log-opts=--all

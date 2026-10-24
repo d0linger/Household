@@ -12,6 +12,10 @@ Encrypted restic backups include database, upload integrity manifest and securit
 
 The complete plan is in [master-plan.md](master-plan.md). Current executed checks, remaining work and reviewer dispositions are in [implementation.md](implementation.md); that live ledger is authoritative over any earlier design-prototype checkmark.
 
+## QA follow-up
+
+The follow-up fixes origin/input validation, bounded command output, maintenance connection/restore safeguards, exhausted OCR jobs, orphan scanning beyond 10,000 files and shopping keyboard focus after reload. Independent test fixtures, required PostgreSQL checks, race/fuzz coverage, workflow/secret validation and actual OCI/SBOM inspection now guard these behaviors. Windows and Linux integration runs, 96 browser checks and a fresh encrypted recovery rehearsal passed. See [the review report](qa-review.md) for measured coverage, workload observations and remaining acceptance limits.
+
 ## Deployment limits
 
 - One household and one app replica per installation.

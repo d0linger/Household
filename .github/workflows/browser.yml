@@ -1,6 +1,13 @@
 name: Browser and accessibility
-on: [pull_request,workflow_dispatch]
+on:
+  pull_request:
+  push:
+    branches: [main,dev]
+  workflow_dispatch:
 permissions: {contents: read}
+concurrency:
+  group: browser-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   browser:
     runs-on: ubuntu-latest
@@ -29,8 +36,9 @@ jobs:
           ALTER DATABASE household_test OWNER TO household_owner;
           REVOKE CREATE ON SCHEMA public FROM PUBLIC;
           SQL
-      - run: go test -tags=integration ./internal/web -count=1 -timeout=3m
+      - run: go build -o bin/household ./cmd/household
       - run: npm ci --ignore-scripts && npx playwright install --with-deps chromium
+      - run: npm audit --audit-level=high
       - name: Run synthetic review server and browser suite
         env:
           HOUSEHOLD_ENV: development
@@ -44,7 +52,7 @@ jobs:
           HOUSEHOLD_ADMIN_PASSWORD: Bootstrap testing 1234
           HOUSEHOLD_UPLOAD_DIR: .local/ci-uploads
         run: |
-          go build -o bin/household ./cmd/household
+          HOUSEHOLD_DATABASE_URL="$HOUSEHOLD_TEST_OWNER_URL" go run -tags=testtools ./cmd/test-fixture
           mkdir -p outputs/runtime-review
           ./bin/household serve > outputs/runtime-review/server.log 2>&1 &
           server_pid=$!
@@ -53,6 +61,7 @@ jobs:
             if curl --fail --silent http://localhost:8101/health/ready >/dev/null; then break; fi
             sleep 1
           done
+          curl --fail --silent http://localhost:8101/health/ready >/dev/null
           npm run test:browser
       - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
         if: always()

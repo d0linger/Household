@@ -22,12 +22,17 @@ jobs:
           outputs: type=oci,dest=/tmp/household.oci.tar
           provenance: mode=max
           sbom: true
-      - name: Inspect candidate identity
-        run: docker buildx imagetools inspect --raw docker.io/library/alpine:3.24 > /tmp/base-image-manifest.json
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with: {node-version: '24'}
+      - name: Verify exported Household image and attestations
+        run: |
+          mkdir -p /tmp/household-oci
+          tar -xf /tmp/household.oci.tar -C /tmp/household-oci
+          node scripts/check-oci.cjs /tmp/household-oci /tmp/household-candidate.json
       - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
         with:
           name: household-container-candidate
           path: |
             /tmp/household.oci.tar
-            /tmp/base-image-manifest.json
+            /tmp/household-candidate.json
           retention-days: 7

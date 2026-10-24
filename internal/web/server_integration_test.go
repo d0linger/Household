@@ -4,7 +4,6 @@ package web
 
 import (
 	"bytes"
-	"context"
 	"crypto/sha256"
 	"encoding/json"
 	"errors"
@@ -15,82 +14,28 @@ import (
 	"log/slog"
 	"mime/multipart"
 	"net/http"
-	"net/http/httptest"
-	"net/url"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"household/internal/auth"
-	"household/internal/config"
-	"household/internal/database"
 	"household/internal/maintenance"
-	"household/internal/modules"
 	"household/internal/store"
 	"household/internal/value"
 	"household/internal/worker"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/pquerna/otp/totp"
-	"golang.org/x/crypto/bcrypt"
 )
 
 func TestApplicationContract(t *testing.T) {
-	ownerURL, appURL := os.Getenv("HOUSEHOLD_TEST_OWNER_URL"), os.Getenv("HOUSEHOLD_TEST_APP_URL")
-	if ownerURL == "" || appURL == "" {
-		t.Skip("isolated PostgreSQL test URLs required")
-	}
-	for _, raw := range []string{ownerURL, appURL} {
-		parsed, err := url.Parse(raw)
-		if err != nil || parsed.Path != "/household_test" {
-			t.Fatal("refusing integration tests outside household_test database")
-		}
-	}
-	ctx := context.Background()
-	if err := database.Migrate(ctx, ownerURL); err != nil {
-		t.Fatal(err)
-	}
-	if err := database.Migrate(ctx, ownerURL); err != nil {
-		t.Fatalf("repeat migration: %v", err)
-	}
-	pool, err := database.Open(ctx, appURL, 10)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer pool.Close()
-	owner, err := database.Open(ctx, ownerURL, 3)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer owner.Close()
-	cfg := config.Config{DatabaseURL: appURL, Origin: "http://localhost:8100", CSRFSecret: auth.RandomToken(), EncryptionKey: auth.RandomToken(), RateSecret: auth.RandomToken(), AdminUsername: "bootstrap", AdminPassword: "Bootstrap testing 1234", HouseholdName: "Integration", SessionIdle: 24 * time.Hour, SessionAbsolute: 30 * 24 * time.Hour, UploadDir: t.TempDir(), UploadQuota: 2 << 30}
-	app, err := New(ctx, pool, cfg, modules.Registry(), slog.New(slog.NewTextHandler(os.Stdout, nil)))
-	if err != nil {
-		t.Fatal(err)
-	}
-	username := "test_" + strings.ReplaceAll(value.UUID(), "-", "")
-	hash, err := bcrypt.GenerateFromPassword([]byte("Integration test 1234"), 12)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var uid, hid string
-	err = owner.QueryRow(ctx, "SELECT id FROM core.households").Scan(&hid)
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = owner.QueryRow(ctx, "INSERT INTO core.users(username,display_name,password_hash,must_change_password) VALUES($1,'Integration',$2,false) RETURNING id", username, string(hash)).Scan(&uid)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err = owner.Exec(ctx, "INSERT INTO core.memberships(household_id,user_id,role) VALUES($1,$2,'admin')", hid, uid); err != nil {
-		t.Fatal(err)
-	}
-	token, id, err := app.Auth.Login(ctx, username, "Integration test 1234", "", "127.0.0.1", "Integration")
-	if err != nil {
-		t.Fatal(err)
-	}
+	fixture := newIntegrationFixture(t)
+	ctx, pool, owner, app := fixture.ctx, fixture.pool, fixture.owner, fixture.app
+	cfg, token, id, server := app.Cfg, fixture.token, fixture.identity, fixture.server
+	uid, hid, username := id.UserID, id.HouseholdID, id.Username
+	var err error
 	defer func() {
 		_, _ = owner.Exec(ctx, "DELETE FROM core.capture_jobs WHERE source_attachment_id IN(SELECT id FROM core.attachments WHERE uploaded_by=$1)", uid)
 		_, _ = owner.Exec(ctx, "DELETE FROM core.attachments WHERE uploaded_by=$1", uid)
@@ -103,9 +48,6 @@ func TestApplicationContract(t *testing.T) {
 			}
 		}
 	}
-	server := httptest.NewServer(app.Handler())
-	defer server.Close()
-	app.Cfg.Origin = server.URL
 	type result struct {
 		status int
 		record store.Record
@@ -118,26 +60,30 @@ func TestApplicationContract(t *testing.T) {
 		if body != nil {
 			raw, err = json.Marshal(body)
 			if err != nil {
-				t.Fatal(err)
+				t.Errorf("encode request: %v", err)
+				return result{}
 			}
 		}
-		request, err := http.NewRequest(method, server.URL+path, bytes.NewReader(raw))
+		request, err := http.NewRequestWithContext(ctx, method, server.URL+path, bytes.NewReader(raw))
 		if err != nil {
-			t.Fatal(err)
+			t.Errorf("create request: %v", err)
+			return result{}
 		}
 		request.AddCookie(&http.Cookie{Name: app.cookieName(), Value: token})
 		request.Header.Set("Accept", "application/json")
 		request.Header.Set("Content-Type", "application/json")
 		request.Header.Set("X-CSRF-Token", app.Auth.CSRF(token, "session"))
 		request.Header.Set("Idempotency-Key", key)
-		response, err := http.DefaultClient.Do(request)
+		response, err := fixture.client.Do(request)
 		if err != nil {
-			t.Fatal(err)
+			t.Errorf("send request: %v", err)
+			return result{}
 		}
-		defer response.Body.Close()
+		defer func() { _ = response.Body.Close() }()
 		data, err := io.ReadAll(response.Body)
 		if err != nil {
-			t.Fatal(err)
+			t.Errorf("read response: %v", err)
+			return result{}
 		}
 		record := store.Record{}
 		decoder := json.NewDecoder(bytes.NewReader(data))
@@ -238,11 +184,12 @@ func TestApplicationContract(t *testing.T) {
 	close(statuses)
 	accepted, rejected := 0, 0
 	for status := range statuses {
-		if status == 200 {
+		switch status {
+		case 200:
 			accepted++
-		} else if status == 422 {
+		case 422:
 			rejected++
-		} else {
+		default:
 			t.Fatalf("concurrent stock status %d", status)
 		}
 	}
@@ -318,8 +265,28 @@ func TestApplicationContract(t *testing.T) {
 	if bytes.Equal(tokenBytes, []byte(token)) || len(tokenBytes) != 32 {
 		t.Fatal("raw session token stored")
 	}
-	if _, err = pool.Exec(ctx, "UPDATE core.audit_log SET action='tamper' WHERE actor_user_id=$1", uid); err == nil {
-		t.Fatal("runtime may mutate audit log")
+	for _, permission := range []struct{ name, statement string }{
+		{"create_schema", "CREATE SCHEMA forbidden_runtime_fixture"},
+		{"create_core_table", "CREATE TABLE core.forbidden_runtime_fixture(id integer)"},
+		{"create_public_table", "CREATE TABLE public.forbidden_runtime_fixture(id integer)"},
+		{"truncate_users", "TRUNCATE core.users CASCADE"},
+		{"update_audit", "UPDATE core.audit_log SET action='tamper'"},
+		{"delete_audit", "DELETE FROM core.audit_log"},
+		{"update_backup", "UPDATE core.backup_runs SET state='complete'"},
+		{"delete_backup", "DELETE FROM core.backup_runs"},
+	} {
+		t.Run("runtime_privilege/"+permission.name, func(t *testing.T) {
+			transaction, beginErr := pool.Begin(ctx)
+			if beginErr != nil {
+				t.Fatal(beginErr)
+			}
+			defer func() { _ = transaction.Rollback(ctx) }()
+			_, denied := transaction.Exec(ctx, permission.statement)
+			var postgresError *pgconn.PgError
+			if !errors.As(denied, &postgresError) || postgresError.Code != "42501" {
+				t.Fatalf("operation must be denied by PostgreSQL permissions, got %v", denied)
+			}
+		})
 	}
 	// Regression: a posted allocation cannot be moved to a draft parent.
 	draft := create("expenses", "entries", store.Record{"occurred_on": "2026-01-02", "description": "Draft", "amount_minor": "12,50"})
@@ -374,14 +341,13 @@ func TestApplicationContract(t *testing.T) {
 	if err = multipartWriter.Close(); err != nil {
 		t.Fatal(err)
 	}
-	request, err := http.NewRequest("POST", server.URL+"/api/v1/m/documents/documents/"+store.String(document["id"])+"/attachments", &multipartBody)
+	request, err := http.NewRequestWithContext(ctx, "POST", server.URL+"/api/v1/m/documents/documents/"+store.String(document["id"])+"/attachments", &multipartBody)
 	if err != nil {
 		t.Fatal(err)
 	}
 	request.AddCookie(&http.Cookie{Name: app.cookieName(), Value: token})
 	request.Header.Set("Content-Type", multipartWriter.FormDataContentType())
-	client := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
-	uploadResponse, err := client.Do(request)
+	uploadResponse, err := fixture.client.Do(request)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -399,6 +365,7 @@ func TestApplicationContract(t *testing.T) {
 		t.Fatal(err)
 	}
 	background := &worker.Worker{Pool: pool, Log: slog.New(slog.NewTextHandler(io.Discard, nil)), Cfg: cfg}
+	t.Cleanup(func() { _ = background.Close() })
 	if err = background.Tick(ctx); err != nil {
 		t.Fatal(err)
 	}
@@ -559,13 +526,13 @@ func TestApplicationContract(t *testing.T) {
 	if err = owner.QueryRow(ctx, "SELECT encrypted_secret FROM core.totp_credentials WHERE user_id=$1", uid).Scan(&encrypted); err != nil || bytes.Contains(encrypted, []byte(secret)) {
 		t.Fatal("TOTP secret not encrypted")
 	}
-	if _, _, err = app.Auth.Login(ctx, username, "Integration test 1234", "", "127.0.0.1", "MFA test"); !errors.Is(err, auth.ErrCredentials) {
+	if _, _, err = app.Auth.Login(ctx, username, integrationPassword, "", "127.0.0.1", "MFA test"); !errors.Is(err, auth.ErrCredentials) {
 		t.Fatal("password-only MFA login accepted")
 	}
-	if _, _, err = app.Auth.Login(ctx, username, "Integration test 1234", recovery[0], "127.0.0.1", "MFA test"); err != nil {
+	if _, _, err = app.Auth.Login(ctx, username, integrationPassword, recovery[0], "127.0.0.1", "MFA test"); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err = app.Auth.Login(ctx, username, "Integration test 1234", recovery[0], "127.0.0.1", "MFA test"); !errors.Is(err, auth.ErrCredentials) {
+	if _, _, err = app.Auth.Login(ctx, username, integrationPassword, recovery[0], "127.0.0.1", "MFA test"); !errors.Is(err, auth.ErrCredentials) {
 		t.Fatal("recovery code replay accepted")
 	}
 	if err = app.Auth.RecoverPassword(ctx, username, "Runtime must not reset 1234"); err == nil {

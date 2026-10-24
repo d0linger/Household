@@ -128,6 +128,9 @@ func (e Entity) Normalize(input map[string]json.RawMessage, partial bool) (map[s
 				continue
 			}
 		}
+		if !utf8.Valid(raw) || !json.Valid(raw) {
+			return nil, fmt.Errorf("%s: ungültiger Wert", f.Label)
+		}
 		var decoded any
 		decoder := json.NewDecoder(strings.NewReader(string(raw)))
 		decoder.UseNumber()
@@ -153,7 +156,21 @@ func (e Entity) Normalize(input map[string]json.RawMessage, partial bool) (map[s
 			out[f.Name] = b
 			continue
 		}
-		s := strings.TrimSpace(fmt.Sprint(decoded))
+		var s string
+		switch v := decoded.(type) {
+		case string:
+			s = strings.TrimSpace(v)
+		case json.Number:
+			if f.Kind != "quantity" && f.Kind != "integer" && f.Kind != "money" {
+				return nil, fmt.Errorf("%s: Text erforderlich", f.Label)
+			}
+			s = v.String()
+		default:
+			return nil, fmt.Errorf("%s: ungültiger Wert", f.Label)
+		}
+		if strings.ContainsRune(s, '\x00') {
+			return nil, fmt.Errorf("%s: ungültiger Wert", f.Label)
+		}
 		if len(s) > 20000 || !utf8.ValidString(s) {
 			return nil, fmt.Errorf("%s: zu lang", f.Label)
 		}

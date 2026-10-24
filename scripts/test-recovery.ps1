@@ -41,6 +41,7 @@ try {
     docker compose -f compose.yaml -f compose.backup.yaml exec -T restore-db createdb -U postgres -O household_owner household_fixture
     if($LASTEXITCODE -ne 0){throw 'Fixture database already exists or could not be created; refusing to overwrite it'}
     try {
+      $taskRehearsalTimer=[Diagnostics.Stopwatch]::StartNew()
       & docker @taskDockerArguments migrate
       if($LASTEXITCODE -ne 0){throw 'Fixture migrations failed'}
       $taskHousehold=[guid]::NewGuid().ToString();$taskUser=[guid]::NewGuid().ToString();$taskList=[guid]::NewGuid().ToString();$taskItem=[guid]::NewGuid().ToString();$taskAttachment=[guid]::NewGuid().ToString()
@@ -66,16 +67,21 @@ COMMIT;
 "@
       $taskSQL | docker compose -f compose.yaml -f compose.backup.yaml exec -T restore-db psql -U postgres -d household_fixture -v ON_ERROR_STOP=1
       if($LASTEXITCODE -ne 0){throw 'Fixture insertion failed'}
+      $taskBackupTimer=[Diagnostics.Stopwatch]::StartNew()
       $taskBackupOutput=& docker @taskDockerArguments backup
       if($LASTEXITCODE -ne 0){throw 'Fixture encrypted backup failed'}
+      $taskBackupTimer.Stop()
       $taskEvent=$taskBackupOutput | Where-Object {$_ -match '"snapshot"'} | Select-Object -Last 1 | ConvertFrom-Json
       $taskSnapshot=$taskEvent.snapshot
       if($taskSnapshot -notmatch '^[0-9a-f]{64}$'){throw 'No exact snapshot ID returned'}
+      $taskRestoreTimer=[Diagnostics.Stopwatch]::StartNew()
       & docker @taskDockerArguments restore-check $taskSnapshot
       if($LASTEXITCODE -ne 0){throw 'Fixture restore or binary hash verification failed'}
       $taskRestored=docker compose -f compose.yaml -f compose.backup.yaml exec -T restore-db psql -U postgres -d household_restore -Atc "SELECT name||'|'||quantity::text||'|'||unit_code FROM shopping.items WHERE id='$taskItem'"
       if($LASTEXITCODE -ne 0 -or $taskRestored -ne 'Synthetic rice|2.500000|kg'){throw 'Restored domain values differ'}
-      [ordered]@{passed=$true;source='disposable household_fixture';target='disposable household_restore';snapshot=$taskSnapshot;domainValue=$taskRestored;hashedFiles=2;includesOriginalAndPreview=$true;verifiedAt=[DateTime]::UtcNow.ToString('o')} | ConvertTo-Json | Set-Content outputs/recovery-review/report.json
+      $taskRestoreTimer.Stop()
+      $taskRehearsalTimer.Stop()
+      [ordered]@{passed=$true;source='disposable household_fixture';target='disposable household_restore';snapshot=$taskSnapshot;domainValue=$taskRestored;hashedFiles=2;includesOriginalAndPreview=$true;backupSeconds=[Math]::Round($taskBackupTimer.Elapsed.TotalSeconds,2);restoreAndVerifySeconds=[Math]::Round($taskRestoreTimer.Elapsed.TotalSeconds,2);rehearsalSeconds=[Math]::Round($taskRehearsalTimer.Elapsed.TotalSeconds,2);scope='Small synthetic local fixture; not acceptance of a production RTO/RPO';verifiedAt=[DateTime]::UtcNow.ToString('o')} | ConvertTo-Json | Set-Content outputs/recovery-review/report.json
       Get-Content outputs/recovery-review/report.json
     } finally {
       docker compose -f compose.yaml -f compose.backup.yaml exec -T restore-db dropdb -U postgres household_fixture

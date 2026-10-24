@@ -77,18 +77,39 @@ func ProposeCapture(module, text string) store.Record {
 	return out
 }
 
-type cappedOutput struct{ bytes.Buffer }
+type cappedOutput struct{ buffer bytes.Buffer }
 
 func (b *cappedOutput) Write(p []byte) (int, error) {
-	if b.Len()+len(p) > 1<<20 {
+	if len(p) > 1<<20-b.buffer.Len() {
 		return 0, errors.New("OCR output too large")
 	}
-	return b.Buffer.Write(p)
+	return b.buffer.Write(p)
 }
+
+func (b *cappedOutput) String() string { return b.buffer.String() }
 func (w *Worker) capture(ctx context.Context, job, lease string) error {
 	if !w.Cfg.OCREnabled {
-		_, err := w.Pool.Exec(ctx, "UPDATE core.jobs SET state='paused',lease_until=NULL WHERE id=$1 AND lease_token=$2", job, lease)
-		return err
+		tx, err := w.Pool.Begin(ctx)
+		if err != nil {
+			return err
+		}
+		defer func() { _ = tx.Rollback(ctx) }()
+		if _, err = tx.Exec(ctx, "SELECT id FROM core.households FOR SHARE"); err != nil {
+			return err
+		}
+		tag, err := tx.Exec(ctx, `UPDATE core.jobs j SET state='paused',lease_until=NULL,lease_token=NULL
+			FROM core.module_states m WHERE j.id=$1 AND j.lease_token=$2 AND j.state='running' AND j.lease_until>now()
+			AND m.household_id=j.household_id AND m.module_id=j.module_id AND m.state='enabled' AND m.data_generation=j.module_generation`, job, lease)
+		if err != nil {
+			return err
+		}
+		if tag.RowsAffected() == 0 {
+			return nil
+		}
+		if err = reviewCaptures(ctx, tx, &job, "paused", "Lokale Texterkennung ist deaktiviert. Werte bitte manuell prüfen."); err != nil {
+			return err
+		}
+		return tx.Commit(ctx)
 	}
 	var capture, key, mid, hid string
 	var generation int64
@@ -149,7 +170,7 @@ func (w *Worker) capture(ctx context.Context, job, lease string) error {
 	if _, err = tx.Exec(ctx, "UPDATE core.capture_jobs SET extracted_values=$2,source_text=$3,confidence='{\"requires_review\":true}',state='review' WHERE id=$1 AND state='extracting'", capture, raw, text); err != nil {
 		return err
 	}
-	if _, err = tx.Exec(ctx, "UPDATE core.jobs SET state='done',finished_at=now(),lease_until=NULL WHERE id=$1 AND lease_token=$2", job, lease); err != nil {
+	if _, err = tx.Exec(ctx, "UPDATE core.jobs SET state='done',finished_at=now(),lease_until=NULL,lease_token=NULL WHERE id=$1 AND lease_token=$2", job, lease); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)
@@ -213,21 +234,9 @@ func (w *Worker) files(ctx context.Context) error {
 		return err
 	}
 	// A crash between file fsync and metadata commit can leave an unreferenced blob.
-	directory, err := root.Open(".")
+	entries, err := w.scan.next(root)
 	if err != nil {
 		return err
-	}
-	if w.scanOffset > 0 {
-		_, _ = directory.ReadDir(w.scanOffset)
-	}
-	entries, err := directory.ReadDir(200)
-	w.scanOffset += len(entries)
-	if err != nil || w.scanOffset > 10000 {
-		w.scanOffset = 0
-	}
-	_ = directory.Close()
-	if err != nil && len(entries) == 0 {
-		return nil
 	}
 	for _, entry := range entries {
 		if entry.IsDir() || !value.ValidUUID(entry.Name()) {

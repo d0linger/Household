@@ -16,16 +16,24 @@ import (
 )
 
 type Worker struct {
-	Pool       *pgxpool.Pool
-	Log        *slog.Logger
-	Cfg        config.Config
-	scanOffset int
+	Pool *pgxpool.Pool
+	Log  *slog.Logger
+	Cfg  config.Config
+	scan directoryScan
 }
 
 func (w *Worker) Run(ctx context.Context) {
+	defer func() {
+		if err := w.Close(); err != nil && w.Log != nil {
+			w.Log.Error("close background file scan", "error", err)
+		}
+	}()
 	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
 	for {
+		if ctx.Err() != nil {
+			return
+		}
 		if err := w.Tick(ctx); err != nil && !errors.Is(err, context.Canceled) {
 			w.Log.Error("background work failed", "error", err)
 		}
@@ -36,6 +44,11 @@ func (w *Worker) Run(ctx context.Context) {
 		}
 	}
 }
+
+// Close releases the current orphan-directory cursor. Run calls it on shutdown;
+// callers using Tick directly must call Close after their final cycle.
+func (w *Worker) Close() error { return w.scan.close() }
+
 func (w *Worker) Tick(ctx context.Context) error {
 	// Housekeeping is a real durable job; only its current lease holder may finish it.
 	if _, err := w.Pool.Exec(ctx, `INSERT INTO core.jobs(household_id,kind,dedupe_key) SELECT id,'housekeeping','housekeeping/'||to_char(now(),'YYYY-MM-DD-HH24-MI') FROM core.households ON CONFLICT(dedupe_key) DO NOTHING`); err != nil {
@@ -128,8 +141,9 @@ func (w *Worker) job(ctx context.Context) (jobErr error) {
 		if jobErr != nil {
 			retryCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 			defer cancel()
-			_, _ = w.Pool.Exec(retryCtx, "UPDATE core.jobs SET state=CASE WHEN attempts>=max_attempts THEN 'failed' ELSE 'pending' END,available_at=now()+make_interval(secs=>least(3600,30*power(2,attempts)::integer)),lease_until=NULL,last_error='local worker failed; inspect operator logs' WHERE id=$1 AND lease_token=$2 AND state='running'", id, lease)
-			_, _ = w.Pool.Exec(retryCtx, "UPDATE core.capture_jobs SET state='review',source_text='Texterkennung fehlgeschlagen. Werte bitte manuell prüfen.' WHERE id=(SELECT nullif(payload->>'capture_id','')::uuid FROM core.jobs WHERE id=$1 AND state='failed') AND state='extracting'", id)
+			if err := w.failJob(retryCtx, id, lease); err != nil {
+				w.Log.Error("record job failure", "job_id", id, "error", err)
+			}
 		}
 	}()
 	if kind == "capture_ocr" {
@@ -151,19 +165,63 @@ func (w *Worker) job(ctx context.Context) (jobErr error) {
 		return err
 	}
 	if kind != "housekeeping" {
-		_, err = tx.Exec(ctx, "UPDATE core.jobs SET state='failed',last_error='unsupported local job kind',finished_at=now() WHERE id=$1 AND lease_token=$2", id, lease)
+		_, err = tx.Exec(ctx, "UPDATE core.jobs SET state='failed',last_error='unsupported local job kind',finished_at=now(),lease_until=NULL,lease_token=NULL WHERE id=$1 AND lease_token=$2", id, lease)
 		if err != nil {
 			return err
 		}
 		return tx.Commit(ctx)
 	}
-	for _, query := range []string{"DELETE FROM core.rate_limit_buckets WHERE window_end<now()-interval '1 day'", "DELETE FROM core.sessions WHERE absolute_expires_at<now()-interval '7 days' OR revoked_at<now()-interval '7 days'", "DELETE FROM core.auth_challenges WHERE expires_at<now()-interval '1 day'", "DELETE FROM core.idempotency_records WHERE expires_at<now()", "DELETE FROM core.capture_jobs WHERE expires_at<now() AND state<>'confirmed'", "DELETE FROM core.import_batches WHERE created_at<now()-interval '30 days' AND state='preview'", "UPDATE core.jobs SET state='failed',finished_at=now(),last_error='lease retries exhausted' WHERE state='running' AND lease_until<now() AND attempts>=max_attempts"} {
+	for _, query := range []string{"DELETE FROM core.rate_limit_buckets WHERE window_end<now()-interval '1 day'", "DELETE FROM core.sessions WHERE absolute_expires_at<now()-interval '7 days' OR revoked_at<now()-interval '7 days'", "DELETE FROM core.auth_challenges WHERE expires_at<now()-interval '1 day'", "DELETE FROM core.idempotency_records WHERE expires_at<now()", "DELETE FROM core.capture_jobs WHERE expires_at<now() AND state<>'confirmed'", "DELETE FROM core.import_batches WHERE created_at<now()-interval '30 days' AND state='preview'", "UPDATE core.jobs SET state='failed',finished_at=now(),lease_until=NULL,lease_token=NULL,last_error='lease retries exhausted' WHERE state='running' AND lease_until<now() AND attempts>=max_attempts"} {
 		if _, err = tx.Exec(ctx, query); err != nil {
 			return fmt.Errorf("housekeeping: %w", err)
 		}
 	}
-	if _, err = tx.Exec(ctx, "UPDATE core.jobs SET state='done',finished_at=now(),lease_until=NULL WHERE id=$1 AND lease_token=$2", id, lease); err != nil {
+	if err = reviewCaptures(ctx, tx, nil, "failed", "Texterkennung fehlgeschlagen. Werte bitte manuell prüfen."); err != nil {
+		return err
+	}
+	if _, err = tx.Exec(ctx, "UPDATE core.jobs SET state='done',finished_at=now(),lease_until=NULL,lease_token=NULL WHERE id=$1 AND lease_token=$2", id, lease); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)
+}
+
+func (w *Worker) failJob(ctx context.Context, id, lease string) error {
+	tx, err := w.Pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if _, err = tx.Exec(ctx, "SELECT id FROM core.households FOR SHARE"); err != nil {
+		return err
+	}
+	tag, err := tx.Exec(ctx, `UPDATE core.jobs SET
+		state=CASE WHEN attempts>=max_attempts THEN 'failed' ELSE 'pending' END,
+		available_at=now()+make_interval(secs=>least(3600,30*power(2,least(attempts,7))::integer)),
+		finished_at=CASE WHEN attempts>=max_attempts THEN now() ELSE NULL END,
+		lease_until=NULL,lease_token=NULL,last_error='local worker failed; inspect operator logs'
+		WHERE id=$1 AND lease_token=$2 AND state='running'`, id, lease)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return nil
+	}
+	if err = reviewCaptures(ctx, tx, &id, "failed", "Texterkennung fehlgeschlagen. Werte bitte manuell prüfen."); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
+// The caller holds the household barrier, so pause/purge cannot invalidate the
+// generation or attachment between checking the job and exposing manual review.
+func reviewCaptures(ctx context.Context, tx pgx.Tx, jobID *string, state, message string) error {
+	_, err := tx.Exec(ctx, `UPDATE core.capture_jobs c SET state='review',source_text=$3
+		FROM core.jobs j,core.module_states m,core.attachments a
+		WHERE ($1::uuid IS NULL OR j.id=$1) AND j.kind='capture_ocr' AND j.state=$2
+		AND c.id::text=j.payload->>'capture_id' AND c.state='extracting'
+		AND c.household_id=j.household_id AND c.module_id=j.module_id AND c.module_generation=j.module_generation
+		AND m.household_id=c.household_id AND m.module_id=c.module_id AND m.state='enabled' AND m.data_generation=c.module_generation
+		AND a.id=c.source_attachment_id AND a.household_id=c.household_id AND a.module_id=c.module_id
+		AND a.module_generation=c.module_generation AND a.state='ready'`, jobID, state, message)
+	return err
 }

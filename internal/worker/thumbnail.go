@@ -116,7 +116,7 @@ func (w *Worker) thumbnail(ctx context.Context, job, lease string) error {
 	if err != nil {
 		return err
 	}
-	if _, err = tx.Exec(ctx, "UPDATE core.jobs SET state='done',finished_at=now(),lease_until=NULL WHERE id=$1 AND lease_token=$2", job, lease); err != nil {
+	if _, err = tx.Exec(ctx, "UPDATE core.jobs SET state='done',finished_at=now(),lease_until=NULL,lease_token=NULL WHERE id=$1 AND lease_token=$2", job, lease); err != nil {
 		return err
 	}
 	if err = tx.Commit(ctx); err != nil {

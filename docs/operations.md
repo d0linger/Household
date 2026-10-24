@@ -18,6 +18,8 @@ For production, use a valid HTTPS reverse proxy and the exact canonical origin/t
 
 Enable the separate helper with `compose.backup.yaml`. It has database-owner credentials, no HTTP port, read-only uploads access, an encrypted repository volume, and a private work volume. It requires the app to be healthy. The runtime app cannot mark backup verification successful.
 
+Maintenance accepts explicit `postgres://user:password@host:port/database` or `postgresql://` URIs. Percent-encode reserved characters. Allowed query parameters are `sslmode`, `sslrootcert`, `sslcert`, `sslkey`, and `connect_timeout`; repeated parameters and connection overrides such as `dbname`, `host` or `service` are rejected. Set `sslmode` explicitly: maintenance defaults to `require`, while pgx normally defaults to `prefer`. Generated Compose URLs specify `sslmode=disable` for the isolated Docker database network. Inherited `PG*` settings are cleared for operator tools so they cannot redirect the validated connection. The name `household_restore` is reserved for disposable verification and cannot be a backup source.
+
 ```sh
 docker compose -f compose.yaml -f compose.backup.yaml up -d --build backup
 docker compose -f compose.yaml -f compose.backup.yaml run --rm --no-deps backup backup
@@ -91,6 +93,8 @@ The executor independently checks requester status/admin role, request expiry, d
 Images/PDFs use opaque private filenames. Upload errors remove incomplete files; a crash can leave an unreferenced blob, which housekeeping removes after 24 hours. Deleted resources mark their files orphaned and queue cleanup after seven days. Confirmed module purge queues its file cleanup immediately. Cleanup and preview jobs use bounded batches and lease/generation checks; no network-facing path accepts arbitrary filesystem paths or executables.
 
 Jobs retry with exponential delay and a maximum attempt count. Unsupported/failed work is recorded; OCR failure returns the capture to manual review. Inspect `core.jobs` through owner tooling for operational failures. Do not edit domain history to "fix" a queue failure.
+
+Final expired OCR leases also return eligible captures to manual review. Retryable failures keep captures pending for the next attempt; disabling OCR returns them to manual entry. Generation, live-file and confirmed-capture checks prevent stale jobs from reviving invalid work. OCR/operator output caps apply to streaming copies as well as ordinary writes.
 
 ## Local quality workflow
 

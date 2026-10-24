@@ -97,15 +97,19 @@ The local backup volume protects against application errors; copy the encrypted 
 
 Secret settings accept either their plain environment form or `_FILE`, never both. Keep the encryption key with recoverable backups; replacing it without re-encrypting existing secrets breaks TOTP recovery.
 
+The origin is normalized to browser form (lowercase host, no trailing root slash or default port). Paths, queries, fragments and invalid ports are rejected; international DNS names use ASCII/punycode. Maintenance database URLs must explicitly specify user, host, port and database. Set `sslmode` explicitly so PostgreSQL tools and application connections use the intended TLS policy; see [maintenance connection rules](docs/operations.md#backups).
+
 ## Develop and verify
 
 Go **1.27.3** or newer is required. The Docker builders are pinned to an immutable Go image digest. Production assets are embedded with `embed.FS` and need no Node build step.
 
 ```powershell
 ./scripts/verify.ps1 -Integration
+# Linux container race detector, run sequentially after integration:
+./scripts/test-race.ps1
 ```
 
-The integration script starts a separate disposable PostgreSQL container on `127.0.0.1:55434` and refuses database names other than `household_test`. Browser checks use another app instance on port 8101, synthetic data, and Playwright/Chrome:
+The integration script starts a separate disposable PostgreSQL container on `127.0.0.1:55434`, validates both database roles and the actual database, and resets only compiled schemas in `household_test` before/after each fixture. `HOUSEHOLD_REQUIRE_INTEGRATION=1` prevents missing URLs silently skipping CI tests. Browser checks prepare their own data through the real API on port 8101. Run database and browser suites sequentially:
 
 ```powershell
 ./scripts/run-review-server.ps1
@@ -115,7 +119,11 @@ node ./scripts/browser-check.cjs
 
 Use the bundled Playwright runtime in this workstation, or install the pinned development dependencies in [package.json](package.json). The review server resets only the test database's `bootstrap` account. Never point it at a live household.
 
-CI defines **GOLint, GOSec, GOVul, GODep**, race/integration tests, browser checks, immutable action pins, and an OCI candidate with SBOM/provenance. It does not publish automatically. See [verification evidence](docs/implementation.md) for checks actually executed locally; workflow files alone are not evidence of a GitHub run.
+CI defines **GOLint, GOSec, GOVul, GODep**, race/integration tests, browser checks, workflow linting, immutable action-pin checks, and Gitleaks secret scanning. The exported Household OCI candidate is checked for blob integrity, non-root runtime configuration, populated SPDX SBOM and matching provenance subjects. These checks verify attached evidence, not a trusted signature. It does not publish automatically. See [the test guide](docs/testing.md) and [verification evidence](docs/implementation.md); workflow files alone are not evidence of a GitHub run.
+
+`npm test` exercises the quality-checking tools, including malformed coverage/OCI/workflow inputs. Set `HOUSEHOLD_LOAD_CHECK=1` when running the browser suite to include a bounded 1,000-row concurrent workload; results are written to `outputs/qa/load-report.json`. This local regression budget is separate from production capacity acceptance.
+
+The [2026-10-24 QA review](docs/qa-review.md) records the fixes and measured results: 96 browser checks, passing Windows integration and Linux race suites, 57.2% combined internal-package statement coverage and a fresh encrypted restore with file verification. CI enforces a 55% combined coverage floor; unit-only coverage uses a separate 14% floor. Broader release acceptance remains visible in the checklist.
 
 On Windows, `./scripts/test-recovery.ps1` rehearses an encrypted backup and restore with synthetic domain data, an original file and a preview in the disposable recovery service. It verifies exact values and file hashes, then cleans its test source and temporary repository volumes. It never uses the live database as the fixture source or restore target.
 
@@ -124,6 +132,7 @@ On Windows, `./scripts/test-recovery.ps1` rehearses an encrypted backup and rest
 ```text
 cmd/household       serve, migrate, healthcheck, recover, backup, restore-check, purge
 cmd/dependency-check  runtime dependency/license inventory
+cmd/test-fixture    synthetic review account, requires testtools build tag
 internal/auth      credentials, sessions, TOTP, durable limits
 internal/config    validated deployment configuration
 internal/database  pool, embedded migrations, schema readiness

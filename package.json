@@ -5,10 +5,13 @@
   "description": "Development-only browser tests; no Node runtime or frontend build required in production",
   "license": "MIT",
   "scripts": {
+    "test": "node --test scripts/quality-tools.test.cjs",
+    "test:workflow": "node scripts/check-workflows.cjs",
     "test:browser": "node scripts/browser-check.cjs"
   },
   "devDependencies": {
     "@axe-core/playwright": "4.14.0",
-    "playwright": "1.62.1"
+    "playwright": "1.62.1",
+    "yaml": "2.9.1"
   }
 }

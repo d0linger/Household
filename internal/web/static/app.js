@@ -6,6 +6,13 @@
   const user = document.body.dataset.user;
   const household = document.body.dataset.household;
   const csrf = () => $('meta[name="csrf-token"]')?.content || '';
+  function rememberShoppingFocus(url) {
+    try {sessionStorage.setItem('household-focus',JSON.stringify({user,household,url,path:location.pathname+location.search,until:Date.now()+15000}));} catch {}
+  }
+  try {
+    const focus=JSON.parse(sessionStorage.getItem('household-focus')||'null');sessionStorage.removeItem('household-focus');
+    if(focus&&focus.user===user&&focus.household===household&&focus.path===location.pathname+location.search&&focus.until>Date.now())all('[data-check]').find(button=>button.dataset.actionUrl===focus.url)?.focus();
+  } catch {}
   let deferredInstall, worker, pendingDelete;
   let toastTimer;
   function toast(message) {const box = $('#toast'); box.textContent = message; box.hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => box.hidden = true, 6000);}
@@ -63,7 +70,7 @@
   }));
   all('[data-check]').forEach(button => button.addEventListener('click',async () => {
     button.disabled = true;const body = {data:{checked:button.dataset.check === 'true'},version:Number(button.dataset.version),generation:Number(button.dataset.generation)};const key = crypto.randomUUID();
-    try {const result=await request(button.dataset.actionUrl,'POST',body,key);sessionStorage.setItem('household-undo',JSON.stringify({user,url:button.dataset.actionUrl,until:Date.now()+10000,body:{data:{checked:!body.data.checked},version:result.version,generation:body.generation}}));location.reload();}
+    try {const result=await request(button.dataset.actionUrl,'POST',body,key);try{sessionStorage.setItem('household-undo',JSON.stringify({user,url:button.dataset.actionUrl,until:Date.now()+10000,body:{data:{checked:!body.data.checked},version:result.version,generation:body.generation}}));}catch{}rememberShoppingFocus(button.dataset.actionUrl);location.reload();}
     catch(error){if(!error.status && !navigator.onLine){try{await queueMutation(button.dataset.actionUrl,'POST',body,key);}catch(e){toast(e.message);}}else toast(error.message);button.disabled=false;}
   }));
   all('[data-delete]').forEach(button => button.addEventListener('click',() => {pendingDelete=button;$('#confirm-dialog').showModal();}));
@@ -72,7 +79,7 @@
     try{await request(button.dataset.delete,'DELETE',{data:{},version:Number(button.dataset.version),generation:Number(button.dataset.generation)},crypto.randomUUID());location.assign(button.dataset.return);}
     catch(error){toast(error.message);$('#confirm-dialog').close();}finally{event.currentTarget.disabled=false;}
   });
-  try{const saved=JSON.parse(sessionStorage.getItem('household-undo')||'null');sessionStorage.removeItem('household-undo');if(saved&&saved.user===user&&saved.until>Date.now()&&/^\/api\/v1\/m\/shopping\/items\/[0-9a-f-]{36}\/actions\/check$/.test(saved.url)){toast('Artikel aktualisiert.');const undo=document.createElement('button');undo.textContent='Rückgängig';undo.addEventListener('click',async()=>{undo.disabled=true;try{await request(saved.url,'POST',saved.body,crypto.randomUUID());location.reload();}catch(error){toast(error.message);}});$('#toast').append(undo);setTimeout(()=>undo.remove(),saved.until-Date.now());}}catch{}
+  try{const saved=JSON.parse(sessionStorage.getItem('household-undo')||'null');sessionStorage.removeItem('household-undo');if(saved&&saved.user===user&&saved.until>Date.now()&&/^\/api\/v1\/m\/shopping\/items\/[0-9a-f-]{36}\/actions\/check$/.test(saved.url)){toast('Artikel aktualisiert.');const undo=document.createElement('button');undo.textContent='Rückgängig';undo.addEventListener('click',async()=>{undo.disabled=true;try{await request(saved.url,'POST',saved.body,crypto.randomUUID());rememberShoppingFocus(saved.url);location.reload();}catch(error){toast(error.message);}});$('#toast').append(undo);setTimeout(()=>undo.remove(),saved.until-Date.now());}}catch{}
   const preferences = $('#preferences');
   if(preferences){try{preferences.elements.theme.value=localStorage.getItem('household-theme')||'system';preferences.elements.offline.checked=localStorage.getItem('household-offline-owner')===user;}catch{}
     preferences.addEventListener('submit',async event=>{event.preventDefault();const theme=preferences.elements.theme.value,offline=preferences.elements.offline.checked;
