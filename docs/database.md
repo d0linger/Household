@@ -101,3 +101,9 @@ erDiagram
     entries ||--o{ entry_lines : allocates
     lots ||--o{ stock_movements : tracks
 ```
+
+## Reviewed purchase completion
+
+Shopping4 adds `shopping.checkouts`, an immutable durable record per household/list. It stores a 32-byte request hash, an item count from 1 to 500, a bounded JSON purchase snapshot (at most 4 MiB), the authenticated creator and creation time. The composite list foreign key preserves household ownership. Runtime SELECT/INSERT privileges plus `core.reject_mutation` prevent history rewriting; a unique household/list key prevents duplicate completion even after generic idempotency records expire. Core10 registers its audit policy, bringing readiness to 50 policies.
+
+The snapshot contains source positions and dated price provenance, explicit purchase/skip decisions, actual quantities and prices, authorized receipt identity, stock destination metadata and exact comparison totals. Stock identities are historical values plus core links, with no foreign key between optional shopping/pantry schemas. Pantry purge can remove current stock while the original purchase remains readable. All runtime checkout effects share one transaction; the destination balance projection is updated by the existing journal trigger.

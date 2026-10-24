@@ -45,6 +45,7 @@
   <details id="shopping-context"><summary id="shopping-context-title">Geschäft und Schätzung</summary><p id="shopping-store"></p><p id="shopping-estimate"></p>
     <p class="fine">Geschäft in den Listendetails wählen. Gruppen unter „Gangreihenfolge“, Produktbilder unter „Produkte“ und datierte Beobachtungen unter „Preise“ pflegen.</p>
   </details>
+  {{if not .Record.is_template}}<p><a class="button" href="/m/shopping/lists/{{.Record.id}}/checkout">Einkauf prüfen und Abschluss öffnen</a></p>{{end}}
   <noscript><p>Für die Schnellerfassung und den Einkaufsmodus JavaScript aktivieren. Artikel lassen sich auch über den Bereich „Artikel“ bearbeiten.</p><a href="/m/shopping/items">Artikel öffnen</a></noscript>
 </section>
 {{end}}

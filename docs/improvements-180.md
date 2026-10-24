@@ -27,7 +27,7 @@ Ein Schema, eine Schaltfläche oder ein Mock allein schließt keinen Punkt ab. B
 
 ## Fortschritt
 
-180 Punkte: **17 verifiziert, 0 implementiert, 0 in Arbeit, 163 offen**. Dieser Zähler wird mit jedem abgeschlossenen Arbeitspaket abgeglichen.
+180 Punkte: **20 verifiziert, 0 implementiert, 0 in Arbeit, 160 offen**. Dieser Zähler wird mit jedem abgeschlossenen Arbeitspaket abgeglichen.
 
 ## Einkaufen
 
@@ -43,8 +43,8 @@ Ein Schema, eine Schaltfläche oder ein Mock allein schließt keinen Punkt ab. B
 | SH08 | Ersatz und nicht verfügbar | Verfügbarkeit und Ersatzbezug nachvollziehbar speichern und bearbeiten. | Verifiziert | Native Gesamtregression + fokussierte Linux-Race; 27 Katalog-Browserchecks / 2 axe; Security und K01-Abnahme bestanden |
 | SH09 | Einkaufszuständigkeit | Personen zuweisen und zeitlich begrenzten Einkaufsstatus anzeigen. | Verifiziert | Native Gesamtregression + fokussierte Linux-Race; 27 Katalog-Browserchecks / 2 axe; Security und K01-Abnahme bestanden |
 | SH10 | Warenkorbschätzung | Datierte Geschäftspreise verwenden; unbekannte Preise getrennt ausweisen. | Verifiziert | Native Gesamtregression + fokussierte Linux-Race; 27 Katalog-Browserchecks / 2 axe; Security und K01-Abnahme bestanden |
-| SH11 | Einkauf einlagern | Gekaufte Artikel mit Produkt, Menge, Ort und Datum geprüft in den Vorrat übernehmen. | Offen | — |
-| SH12 | Belegabgleich | Abgeschlossenen Einkauf mit Beleg verknüpfen und Plan/Ist-Abweichungen prüfen. | Offen | — |
+| SH11 | Einkauf einlagern | Gekaufte Artikel mit Produkt, Menge, Ort und Datum geprüft in den Vorrat übernehmen. | Verifiziert | Native Gesamtsuite, fokussierte Linux-Race, bestückter Upgrade/Restore; 32 Checkout-Browserchecks/4 axe, Gesamtkette 296; C01–C03 unabhängig abgenommen |
+| SH12 | Belegabgleich | Abgeschlossenen Einkauf mit Beleg verknüpfen und Plan/Ist-Abweichungen prüfen. | Verifiziert | Native Gesamtsuite, fokussierte Linux-Race, bestückter Upgrade/Restore; 32 Checkout-Browserchecks/4 axe, Gesamtkette 296; C01–C03 unabhängig abgenommen |
 | SH13 | Barcode-Erfassung | Kamera oder Scanner nutzen; lokale Zuordnung zuerst, externe Suche nur optional. | Offen | — |
 | SH14 | Nachkaufvorschläge | Lokale Kaufabstände erklären und Vorschläge manuell übernehmen. | Offen | — |
 | SH15 | Listenbenachrichtigungen | Abonnements, gebündelte Hinweise und optional konfigurierten Web Push bereitstellen. | Offen | — |
@@ -52,7 +52,7 @@ Ein Schema, eine Schaltfläche oder ein Mock allein schließt keinen Punkt ab. B
 | SH17 | Offline-Leselisten | Ausgewählte Listen ausdrücklich pro Gerät freigeben; Eigentümer, Ablauf und Abmeldung beachten. | Offen | — |
 | SH18 | Konfliktprüfung | Eigene und aktuelle Werte verständlich vergleichen und bewusst erneut speichern. | Verifiziert | Native + Linux-Race; 33 Expansion-Browserchecks / 2 axe; unabhängige F01–F04-Abnahme bestanden |
 | SH19 | Suchbare Auswahl | Referenzen jenseits von 100 Einträgen mit Suche und stabiler Cursor-Paginierung auswählen. | Verifiziert | Native + Linux-Race; 33 Expansion-Browserchecks / 2 axe; unabhängige F01–F04-Abnahme bestanden |
-| SH20 | Atomarer Abschluss | Einkauf, Bestand und Belege mit wiederholbarer Operation ohne Doppelbuchung abschließen. | Offen | — |
+| SH20 | Atomarer Abschluss | Einkauf, Bestand und Belege mit wiederholbarer Operation ohne Doppelbuchung abschließen. | Verifiziert | Native Gesamtsuite, fokussierte Linux-Race, bestückter Upgrade/Restore; 32 Checkout-Browserchecks/4 axe, Gesamtkette 296; C01–C03 unabhängig abgenommen |
 
 ## Fahrzeuge und Tanken
 

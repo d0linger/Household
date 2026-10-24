@@ -32,7 +32,7 @@ func TestAuditTrailContract(t *testing.T) {
 			FROM pg_tables t LEFT JOIN core.audit_policies p ON p.schema_name=t.schemaname AND p.table_name=t.tablename
 			WHERE t.schemaname=ANY($1::text[]) AND t.tablename NOT IN('schema_migrations','fuel_types')
 			AND NOT(t.schemaname='pantry' AND t.tablename='lot_balances')`, []string{"shopping", "fuel", "recipes", "pantry", "expenses", "chores", "meters", "documents", "mealplan"}).Scan(&missing, &domainTables)
-		if err != nil || missing != 0 || domainTables != 30 {
+		if err != nil || missing != 0 || domainTables != 31 {
 			t.Fatalf("domain coverage: missing=%d tables=%d error=%v", missing, domainTables, err)
 		}
 		var ready bool

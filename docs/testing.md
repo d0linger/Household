@@ -45,3 +45,9 @@ The local Treckrr and Parkrr repositories were inspected read-only. Adapted patt
 Primary specifications used for the artifact/workflow checks: [Docker attestation storage](https://docs.docker.com/build/metadata/attestations/attestation-storage/), [Docker build attestations](https://docs.docker.com/build/metadata/attestations/), and [GitHub secure workflow use](https://docs.github.com/en/actions/reference/security/secure-use).
 
 The pantry browser component is now the eighth component of `npm run test:browser`. Its own output lives in ignored `outputs/pantry-review`. Pantry projection integration tests cover exact aggregates beyond the single-input range, populated upgrade, independent product/lot pages, timezone boundaries, later corrections, privilege denial, rollback, concurrent consumption and writer/rebuild lock ordering. The recovery fixture includes populated stock and rejects a restored double count; its executed result must be recorded separately.
+
+## Reviewed checkout regression
+
+The ninth browser component, scripts/browser-shopping-checkout-check.cjs, creates its own shopping and pantry records plus a real uploaded receipt on the isolated 8101 server. It exercises precise quantities, storage/skip decisions, explicit receipt differences, stale source review and an emptied list from editor and confirmation. Its captures and axe reports are stored under outputs/checkout-review. scripts/shopping-checkout.test.cjs checks exact browser arithmetic and unknown-price semantics; both verify.ps1 and the quality workflow execute it.
+
+The recovery fixture also preserves a minimal immutable shopping completion and its exact quantity string. It tests persisted completion metadata, not a full authenticated checkout replay after restoring production data.

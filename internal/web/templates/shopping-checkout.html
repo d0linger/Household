@@ -1,0 +1,42 @@
+{{define "shopping-checkout"}}
+<script nonce="{{.Nonce}}" src="{{index .Asset "shopping-checkout.js"}}" defer></script>
+<div id="checkout" data-list="{{.Record.id}}" data-generation="{{with index .States "shopping"}}{{.Generation}}{{end}}" data-pantry-generation="{{with index .States "pantry"}}{{.Generation}}{{end}}" data-pantry-enabled="{{enabled .States "pantry"}}" data-can-write="{{.User.CanWrite}}">
+<div class="page-heading"><div><p class="eyebrow">GEPRÜFTER EINKAUF</p><h1>{{.Record.name}}</h1></div><a class="button" href="/m/shopping/lists/{{.Record.id}}">Zur Liste</a></div>
+<p>Prüfe tatsächliche Mengen, Lagerziele und Preise. Erst die abschließende Bestätigung speichert den Einkauf und archiviert die Liste.</p>
+<p id="checkout-message" class="notice" role="status" tabindex="-1">Vergleich wird geladen …</p>
+<button type="button" id="checkout-refresh">Aktuellen Vergleich laden · Entwurf behalten</button>
+<section class="panel" id="checkout-changes" hidden aria-label="Änderungen seit der letzten Prüfung"><h2>Seit deiner letzten Prüfung geändert</h2><div id="checkout-change-list"></div><p>Deine tatsächlichen Kaufangaben bleiben erhalten. Prüfe jede Position erneut gegen diesen aktuellen Plan.</p></section>
+<section class="panel" id="checkout-editor" hidden>
+ <p id="checkout-progress" role="status"></p><h2 id="checkout-name" tabindex="-1"></h2><div id="checkout-plan"></div>
+ <form id="checkout-line">
+  <label>Entscheidung<select name="decision" required><option value="">Bitte ausdrücklich wählen</option></select></label>
+  <div id="checkout-purchase" hidden><div class="form-grid">
+   <label>Tatsächlich gekauft · Menge<input name="quantity" inputmode="decimal" maxlength="30"></label>
+   <label>Tatsächliche Einheit<select name="unit"><option value="piece">Stück</option><option value="g">g</option><option value="kg">kg</option><option value="ml">ml</option><option value="l">l</option></select></label>
+   <label>Preis für diese ganze Position · EUR<input name="price" inputmode="decimal" maxlength="20" placeholder="Leer = unbekannt"></label>
+  </div><p class="fine">Die tatsächliche Menge zählt Inhalt oder einzelne Stücke. Packungsanzahl aus der Planung bei Bedarf in den Inhalt umrechnen. Unbekannte Preise nicht mit 0 ersetzen.</p></div>
+  <div id="checkout-stock" hidden><div class="form-grid">
+   <label>Vorratsprodukt<select name="product_id" data-reference="pantry/products"><option value="">Vorratsprodukt auswählen</option></select></label>
+   <label>Lagerort<select name="location_id" data-reference="pantry/locations"><option value="">Lagerort auswählen</option></select></label>
+   <label>Mindesthaltbar bis<input type="date" name="best_before"></label><label>Zu verbrauchen bis<input type="date" name="use_by"></label>
+  </div><p id="checkout-base" class="fine">Produkt und tatsächliche Menge prüfen. Die Basismenge wird vor dem Abschluss angezeigt.</p></div>
+  <p class="form-error" id="checkout-line-error" role="alert" tabindex="-1" hidden></p>
+  <div class="actions"><button type="button" id="checkout-back">Vorherige Position</button><button type="button" class="primary" id="checkout-next">Position prüfen und weiter</button></div>
+ </form>
+</section>
+<section class="panel" id="checkout-review" hidden tabindex="-1" aria-label="Abschluss prüfen">
+ <h2>Abschluss prüfen</h2><p>Die ursprüngliche Planung bleibt im Abschluss erhalten. Bestandskorrekturen erfolgen anschließend als Gegenbuchung im Vorrat. Ein neuer Einkauf braucht eine neue Liste.</p>
+ <div id="checkout-lines"></div>
+ <form id="checkout-confirm-form"><div class="form-grid">
+  <label>Eingekauft am<input type="date" name="received_on" required></label>
+  <label>Beleg dieser Liste<select name="receipt_id" required><option value="">Beleg oder „Kein Beleg“ auswählen</option><option value="none">Kein Beleg vorhanden</option></select></label>
+  <label>Gesamtsumme am Beleg · EUR<input name="receipt_total" inputmode="decimal" maxlength="20" placeholder="Leer = unbekannt"></label>
+ </div><p class="fine">Beleg bei Bedarf zuerst über „Dateien“ in den Listendetails hochladen und den Vergleich aktualisieren. Bis zu 100 zuletzt hochgeladene Dateien werden angeboten.</p>
+ <div id="checkout-totals" class="notice"></div>
+ <label class="check-label"><input type="checkbox" name="reviewed" required>Positionen, Lagerziele und etwaige Preisabweichungen geprüft</label>
+ <div class="actions"><button type="button" id="checkout-edit">Positionen erneut prüfen</button><button class="primary">Geprüften Einkauf abschließen</button></div></form>
+</section>
+<section class="panel" id="checkout-completed" hidden tabindex="-1"><h2>Einkauf abgeschlossen</h2><div id="checkout-result"></div></section>
+<noscript><p>Für den geführten Einkaufsabschluss JavaScript aktivieren.</p></noscript>
+</div>
+{{end}}

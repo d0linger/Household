@@ -75,5 +75,6 @@ jobs:
             outputs/reuse-review
             outputs/merge-review
             outputs/pantry-review
+            outputs/checkout-review
             outputs/qa/a11y-hardening.json
           retention-days: 14

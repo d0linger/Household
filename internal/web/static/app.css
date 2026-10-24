@@ -21,3 +21,5 @@
 #shopping-merge-comparison{overflow-wrap:anywhere}#shopping-merge-comparison button{margin:8px 8px 8px 0}
 .pantry-product{border-top:1px solid var(--line);padding:20px 0;overflow-wrap:anywhere}.pantry-product h3{margin:0;font-size:18px}.pantry-product h3 a{color:var(--ink)}.pantry-product p{margin:8px 0}.pantry-product .section-heading{flex-wrap:wrap}.pantry-product strong,.pantry-totals{font-variant-numeric:tabular-nums}.pantry-lots summary{cursor:pointer;min-height:44px;align-content:center}.pantry-lot{border-left:2px solid var(--line);padding:8px 16px;margin-bottom:12px}.pantry-lot p{font-size:13px}.pantry-board .actions{flex-wrap:wrap}
 .pantry-product .section-heading h3 a{font-size:inherit}
+
+.checkout-summary-row{padding:1rem 0;border-bottom:1px solid var(--line);overflow-wrap:anywhere}.checkout-summary-row h3{margin:0 0 .5rem}#checkout-plan p,#checkout-lines p,#checkout-result p{overflow-wrap:anywhere}#checkout-refresh{margin-bottom:1rem}

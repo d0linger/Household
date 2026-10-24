@@ -25,5 +25,7 @@
   "shopping/000003_reuse.up.sql": "65a7d20d3d235292810946622ef965cc2c6140936fdab9013915042509e0d279",
   "core/000008_shopping_merge_audit.up.sql": "9dc7e4975597aa660ac3c4c93f1835f2d12dfa9f31934d9bd780c797db8bd5d5",
   "pantry/000002_stock_projection.up.sql": "466ac5e7803fc5d55ebb46426ed8bb3520344551ce8d566951e760c93d2fd66d",
-  "core/000009_pantry_projection.up.sql": "a94c66ee6784ee2f1216aadebcbecb55b95b8364359491f7190a61fb16d3f9d5"
+  "core/000009_pantry_projection.up.sql": "a94c66ee6784ee2f1216aadebcbecb55b95b8364359491f7190a61fb16d3f9d5",
+  "core/000010_shopping_checkout.up.sql": "6abd25182b46e202151f47aea31a6c61de2e2955655b42c3096798d50d1b9880",
+  "shopping/000004_checkout.up.sql": "5877578c9f26ded254f43889c013e3308438a61a036a6e5b0d7e4b482a112a20"
 }

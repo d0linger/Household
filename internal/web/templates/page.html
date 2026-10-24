@@ -10,6 +10,7 @@
 {{else if or (eq .View "module") (eq .View "detail")}}{{template "module-page" .}}
 {{else if eq .View "pantry"}}{{template "pantry" .}}
 {{else if eq .View "report"}}{{template "report" .}}
+{{else if eq .View "shopping-checkout"}}{{template "shopping-checkout" .}}
 {{else if eq .View "settings"}}{{template "settings" .}}
 {{else if eq .View "security"}}{{template "security" .}}
 {{else if eq .View "users"}}{{template "users" .}}

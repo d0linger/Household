@@ -69,6 +69,7 @@ INSERT INTO pantry.lots(id,household_id,product_id,location_id,received_on,creat
 INSERT INTO pantry.stock_movements(household_id,lot_id,quantity_delta,reason,created_by) VALUES('$taskHousehold','$taskLot',9007199254.740993,'receive','$taskUser'),('$taskHousehold','$taskLot',-0.000001,'consume','$taskUser');
 INSERT INTO core.attachments(id,household_id,module_id,module_generation,resource_type,resource_id,storage_key,original_name,media_type,size_bytes,sha256,uploaded_by) VALUES('$taskAttachment','$taskHousehold','shopping',1,'items','$taskItem','$taskOriginal','fixture.png','image/png',$($taskPng.Length),decode('$taskHash','hex'),'$taskUser');
 INSERT INTO core.attachment_derivatives(attachment_id,variant,storage_key,media_type,width,height,size_bytes,sha256) VALUES('$taskAttachment','preview','$taskPreview','image/png',1,1,$($taskPng.Length),decode('$taskHash','hex'));
+INSERT INTO shopping.checkouts(household_id,list_id,request_hash,item_count,snapshot,created_by) VALUES('$taskHousehold','$taskList',decode(repeat('cd',32),'hex'),1,jsonb_build_object('restored_completion','once-only','quantity','9007199254.740992'),'$taskUser');
 COMMIT;
 "@
       $taskSQL | docker compose -f compose.yaml -f compose.backup.yaml exec -T restore-db psql -U postgres -d household_fixture -v ON_ERROR_STOP=1
@@ -87,9 +88,11 @@ COMMIT;
       if($LASTEXITCODE -ne 0 -or $taskRestored -ne 'Synthetic rice|2.500000|kg'){throw 'Restored domain values differ'}
       $taskStock=docker compose -f compose.yaml -f compose.backup.yaml exec -T restore-db psql -U postgres -d household_restore -Atc "SELECT quantity::text||'|'||movement_count FROM pantry.lot_balances WHERE lot_id='$taskLot'"
       if($LASTEXITCODE -ne 0 -or $taskStock -ne '9007199254.740992|2'){throw 'Restored stock projection was lost or counted twice'}
+      $taskCheckout=docker compose -f compose.yaml -f compose.backup.yaml exec -T restore-db psql -U postgres -d household_restore -Atc "SELECT (snapshot->>'restored_completion')||'|'||(snapshot->>'quantity')||'|'||item_count::text FROM shopping.checkouts WHERE list_id='$taskList'"
+      if($LASTEXITCODE -ne 0 -or $taskCheckout -ne 'once-only|9007199254.740992|1'){throw 'Restored durable completion differs'}
       $taskRestoreTimer.Stop()
       $taskRehearsalTimer.Stop()
-      [ordered]@{passed=$true;source='disposable household_fixture';target='disposable household_restore';snapshot=$taskSnapshot;domainValue=$taskRestored;hashedFiles=2;includesOriginalAndPreview=$true;backupSeconds=[Math]::Round($taskBackupTimer.Elapsed.TotalSeconds,2);restoreAndVerifySeconds=[Math]::Round($taskRestoreTimer.Elapsed.TotalSeconds,2);rehearsalSeconds=[Math]::Round($taskRehearsalTimer.Elapsed.TotalSeconds,2);scope='Small synthetic local fixture; not acceptance of a production RTO/RPO';verifiedAt=[DateTime]::UtcNow.ToString('o')} | ConvertTo-Json | Set-Content outputs/recovery-review/report.json
+      [ordered]@{passed=$true;source='disposable household_fixture';target='disposable household_restore';snapshot=$taskSnapshot;domainValue=$taskRestored;stockProjection=$taskStock;durableCompletion=$taskCheckout;hashedFiles=2;includesOriginalAndPreview=$true;backupSeconds=[Math]::Round($taskBackupTimer.Elapsed.TotalSeconds,2);restoreAndVerifySeconds=[Math]::Round($taskRestoreTimer.Elapsed.TotalSeconds,2);rehearsalSeconds=[Math]::Round($taskRehearsalTimer.Elapsed.TotalSeconds,2);scope='Small synthetic local fixture; not acceptance of a production RTO/RPO';verifiedAt=[DateTime]::UtcNow.ToString('o')} | ConvertTo-Json | Set-Content outputs/recovery-review/report.json
       Get-Content outputs/recovery-review/report.json
     } finally {
       docker compose -f compose.yaml -f compose.backup.yaml exec -T restore-db dropdb -U postgres household_fixture
