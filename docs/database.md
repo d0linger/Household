@@ -81,7 +81,7 @@ Quantities use `numeric(18,6)`; currency uses integer cents, never floating-poin
 
 ## Schema lifecycle and recovery
 
-The migration runner owns a dedicated advisory-lock connection, applies core first then module namespaces, rejects dirty/incompatible histories and embeds every SQL file. Readiness derives each expected version from the embedded migrations. No-op repeated migration and upgrades are integration-tested. Down files intentionally fail for destructive changes; recovery uses a verified backup or forward migration.
+The migration runner owns a dedicated advisory-lock connection, applies core first then module namespaces, rejects dirty/incompatible histories and embeds every SQL file. Readiness derives each expected version from the embedded migrations. Fresh installation, no-op repeated migration and migration of the existing local installation were exercised. A complete populated prior-release upgrade/rollback acceptance rehearsal is still open in docs/implementation.md. Down files intentionally fail for destructive changes; recovery uses a verified backup or forward migration.
 
 Foreign keys use composite household ownership where resources can reference each other. Module schemas do not depend directly on other domain schemas. Module purge therefore truncates its own allowlisted tables, cleans shared projections/links/jobs, and increments generation without deleting the migration namespace.
 

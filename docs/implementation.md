@@ -15,7 +15,7 @@ The 22-phase / 220-step plan was approved on 2026-10-24. This ledger records ver
 
 This is the central working checklist requested by the user. It is updated after meaningful changes and checks. **Open** means not completed; **In progress** includes implementation awaiting a fresh check; **Verified** requires an executed check; **Blocked** identifies an actual external prerequisite. Earlier passing results do not certify later edits.
 
-Local delivery: **20 items verified**. Public publication remains an operator decision (C21). Implementation commit: **3972cc9** on **dev**, kept local. The subsequent ledger commit records this result; no remote push occurred.
+Status clarification: **20 delivery workstreams have the evidence listed below; this does not mean all 220 individual plan steps are complete.** The working local candidate exists, but the additional release gates C22–C28 remain open, externally blocked or deferred. Implementation commit: **3972cc9** on **dev**, kept local. No remote push occurred.
 
 | ID | Work item | Status | Evidence / next acceptance check |
 |---|---|---|---|
@@ -40,6 +40,13 @@ Local delivery: **20 items verified**. Public publication remains an operator de
 | C19 | Operator docs, complete master plan and release notes | Verified | README, architecture/schema/security/operations, 220-step master plan, release notes, contributing/security guidance and final evidence ledger present |
 | C20 | Local development commit and secret exclusion check | Verified | Implementation commit 3972cc9 on dev, 121 project files; private/generated paths and actual secret values checked and excluded. No push; ledger update committed separately |
 | C21 | Public deployment / publication | Blocked | No public origin, hosting target or publication instruction supplied; local Docker delivery continues |
+| C22 | Representative performance/resource and recovery-target acceptance | Open | Functional/race checks passed; no recorded representative load/p95/resource benchmark or measured recovery result against agreed RTO/RPO targets. Plan steps 9, 200, 209 are not fully accepted |
+| C23 | Release upgrade rehearsal with populated prior-version data | Open | Fresh/repeated migrations and existing-installation migration ran; the full populated prior-release upgrade and rollback/forward-recovery acceptance scenario is not documented as completed. Plan steps 40, 216–218 need a consolidated release rehearsal |
+| C24 | Hosted CI and exported OCI/SBOM/provenance verification | Blocked | Workflows are configured and local source checks passed; no remote/GitHub Actions run or inspected CI-produced OCI/SBOM artifact exists. Plan step 206 remains only partially evidenced |
+| C25 | Complete accessibility and keyboard-flow acceptance | Open | Three axe scans and named contrast/target checks passed; shopping focus continuity after reload and complete keyboard/assistive-technology coverage remain unverified |
+| C26 | Off-host backup destination and host-loss recovery | Blocked | Encrypted local repository and isolated restoration passed; separate storage is not configured, so host-loss protection is not delivered |
+| C27 | Deferred optional integrations | Deferred | Web Push, local/cloud AI adapters and passkeys are not implemented in this candidate. Tesseract OCR is implemented as an optional Docker image; manual capture is the default |
+| C28 | Individual 220-step completion/evidence cross-reference | Open | The plan is exported, but the workstream checklist is not a completed per-step acceptance matrix. A 220/220 completion claim is unsupported |
 
 ## Current review findings
 
