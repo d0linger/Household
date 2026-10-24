@@ -18,6 +18,7 @@ import (
 	"strings"
 	"time"
 
+	"household/internal/audit"
 	"household/internal/config"
 	"household/internal/database"
 	"household/internal/value"
@@ -175,6 +176,7 @@ func newManifest(uploadDirectory string, created time.Time) (Manifest, error) {
 }
 
 func Backup(ctx context.Context, pool *pgxpool.Pool, cfg config.Config) (string, error) {
+	ctx = audit.WithRequest(audit.WithSystem(ctx, "operator"), value.UUID())
 	if _, err := maintenanceURL(cfg.DatabaseURL); err != nil {
 		return "", err
 	}
@@ -208,18 +210,18 @@ func Backup(ctx context.Context, pool *pgxpool.Pool, cfg config.Config) (string,
 	}
 	defer func() { _ = os.RemoveAll(dir) }() // #nosec G703 -- exact private directory returned by MkdirTemp; never an HTTP path
 	run := value.UUID()
-	if _, err = pool.Exec(ctx, "INSERT INTO core.backup_runs(id,state,application_version,repository_reference) VALUES($1,'running','0.1.0',$2)", run, os.Getenv("RESTIC_REPOSITORY")); err != nil {
+	if _, err = audit.Exec(ctx, pool, "INSERT INTO core.backup_runs(id,state,application_version,repository_reference) VALUES($1,'running','0.1.0',$2)", run, os.Getenv("RESTIC_REPOSITORY")); err != nil {
 		return "", err
 	}
 	finished := false
 	defer func() {
 		if !finished {
-			failureCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+			failureCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 3*time.Second)
 			defer cancel()
-			_, _ = pool.Exec(failureCtx, "UPDATE core.backup_runs SET state='failed',finished_at=now(),failure_reason='operator backup failed' WHERE id=$1", run)
+			_, _ = audit.Exec(failureCtx, pool, "UPDATE core.backup_runs SET state='failed',finished_at=now(),failure_reason='operator backup failed' WHERE id=$1", run)
 		}
 	}()
-	tx, err := pool.Begin(ctx)
+	tx, err := audit.Begin(ctx, pool)
 	if err != nil {
 		return "", err
 	}
@@ -288,13 +290,13 @@ func Backup(ctx context.Context, pool *pgxpool.Pool, cfg config.Config) (string,
 		return "", err
 	}
 	schemas, _ := json.Marshal(manifest.Schemas)
-	if _, err = pool.Exec(ctx, "UPDATE core.backup_runs SET state='complete',finished_at=now(),snapshot_reference=$2,schema_manifest=$3 WHERE id=$1", run, snapshot, schemas); err != nil {
+	if _, err = audit.Exec(ctx, pool, "UPDATE core.backup_runs SET state='complete',finished_at=now(),snapshot_reference=$2,schema_manifest=$3 WHERE id=$1", run, snapshot, schemas); err != nil {
 		return "", err
 	}
 	finished = true
 	// Invalidate eligibility before repository pruning, behind the same barrier as purge.
 	// A failed or interrupted retention run therefore cannot leave a deleted snapshot eligible.
-	retention, err := pool.Begin(ctx)
+	retention, err := audit.Begin(ctx, pool)
 	if err != nil {
 		return snapshot, err
 	}
@@ -326,7 +328,7 @@ func Backup(ctx context.Context, pool *pgxpool.Pool, cfg config.Config) (string,
 	for _, item := range snapshots {
 		ids = append(ids, item.ID)
 	}
-	if _, err = pool.Exec(ctx, "UPDATE core.backup_runs SET state=CASE WHEN snapshot_reference=ANY($2::text[]) THEN 'complete' ELSE 'expired' END WHERE repository_reference=$1 AND state='retention_pending'", os.Getenv("RESTIC_REPOSITORY"), ids); err != nil {
+	if _, err = audit.Exec(ctx, pool, "UPDATE core.backup_runs SET state=CASE WHEN snapshot_reference=ANY($2::text[]) THEN 'complete' ELSE 'expired' END WHERE repository_reference=$1 AND state='retention_pending'", os.Getenv("RESTIC_REPOSITORY"), ids); err != nil {
 		return snapshot, err
 	}
 	return snapshot, nil
@@ -353,6 +355,7 @@ func lockRepository(ctx context.Context, pool *pgxpool.Pool) (func(), error) {
 }
 
 func VerifyRestore(ctx context.Context, pool *pgxpool.Pool, cfg config.Config, snapshot, targetURL string) error {
+	ctx = audit.WithRequest(audit.WithSystem(ctx, "operator"), value.UUID())
 	if err := validateRestoreTarget(cfg.DatabaseURL, targetURL); err != nil {
 		return err
 	}
@@ -459,7 +462,7 @@ func VerifyRestore(ctx context.Context, pool *pgxpool.Pool, cfg config.Config, s
 	if count != len(manifest.Files) {
 		return errors.New("restored attachment metadata count mismatch")
 	}
-	_, err = pool.Exec(ctx, "UPDATE core.backup_runs SET verified_at=now() WHERE snapshot_reference=$1 AND state='complete'", snapshot)
+	_, err = audit.Exec(ctx, pool, "UPDATE core.backup_runs SET verified_at=now() WHERE snapshot_reference=$1 AND state='complete'", snapshot)
 	return err
 }
 

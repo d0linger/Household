@@ -310,10 +310,16 @@ func (s *Server) capturePage(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, store.ErrNotFound)
 		return
 	}
-	var mid, entity, aid, state, source string
+	var mid, entity, aid, state, source, sourceType, sourceID string
 	var generation int64
 	var raw []byte
-	err := s.Pool.QueryRow(r.Context(), "SELECT module_id,target_schema,source_attachment_id,state,module_generation,coalesce(extracted_values,'{}'),source_text FROM core.capture_jobs WHERE id=$1 AND household_id=$2 AND expires_at>now()", r.PathValue("id"), identity(r).HouseholdID).Scan(&mid, &entity, &aid, &state, &generation, &raw, &source)
+	err := s.Pool.QueryRow(r.Context(), `SELECT c.module_id,c.target_schema,c.source_attachment_id,c.state,c.module_generation,
+		coalesce(c.extracted_values,'{}'),c.source_text,a.resource_type,a.resource_id
+		FROM core.capture_jobs c JOIN core.attachments a ON a.id=c.source_attachment_id
+		AND a.household_id=c.household_id AND a.module_id=c.module_id AND a.module_generation=c.module_generation AND a.state='ready'
+		JOIN core.module_states m ON m.household_id=c.household_id AND m.module_id=c.module_id
+		AND m.state='enabled' AND m.data_generation=c.module_generation
+		WHERE c.id=$1 AND c.household_id=$2 AND c.expires_at>now()`, r.PathValue("id"), identity(r).HouseholdID).Scan(&mid, &entity, &aid, &state, &generation, &raw, &source, &sourceType, &sourceID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		s.fail(w, r, store.ErrNotFound)
 		return
@@ -327,6 +333,16 @@ func (s *Server) capturePage(w http.ResponseWriter, r *http.Request) {
 	e, exists := m.Entity(entity)
 	if !known || !enabled || !exists || st.Generation != generation {
 		s.fail(w, r, store.ErrNotFound)
+		return
+	}
+	sourceEntity, sourceExists := m.Entity(sourceType)
+	if !sourceExists {
+		s.fail(w, r, store.ErrNotFound)
+		return
+	}
+	// OCR content follows the same live source boundary as private downloads.
+	if _, err = s.Store.Get(r.Context(), identity(r), m, sourceEntity, sourceID); err != nil {
+		s.fail(w, r, err)
 		return
 	}
 	if state == "extracting" {
@@ -345,11 +361,11 @@ func (s *Server) capturePage(w http.ResponseWriter, r *http.Request) {
 	p.Module = m
 	p.Entity = e
 	p.Record = store.Record{}
-	if err = json.Unmarshal(raw, &p.Record); err != nil {
+	if p.Record, err = store.DecodeRecord(raw); err != nil {
 		s.fail(w, r, err)
 		return
 	}
-	p.References, err = s.references(r, e)
+	p.References, err = s.references(r, e, p.Record)
 	if err != nil {
 		s.fail(w, r, err)
 		return

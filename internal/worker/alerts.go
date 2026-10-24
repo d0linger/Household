@@ -5,11 +5,14 @@ import (
 	"errors"
 	"fmt"
 
+	"household/internal/audit"
+
 	"github.com/jackc/pgx/v5"
 )
 
 func (w *Worker) lowStock(ctx context.Context) error {
-	tx, err := w.Pool.Begin(ctx)
+	ctx = audit.WithSystem(ctx, "worker")
+	tx, err := audit.Begin(ctx, w.Pool)
 	if err != nil {
 		return err
 	}

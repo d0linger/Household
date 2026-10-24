@@ -93,6 +93,11 @@ func Migrate(ctx context.Context, dsn string) error {
 			return fmt.Errorf("close migration %s: %w", schema, e)
 		}
 	}
+	// Core migrates first; attach its audit contract only after all independent
+	// module tables exist. The separate migration role alone may install triggers.
+	if _, err = lock.Exec(ctx, "SELECT core.install_audit_triggers()"); err != nil {
+		return fmt.Errorf("install audit triggers: %w", err)
+	}
 	return nil
 }
 
@@ -107,6 +112,13 @@ func Ready(ctx context.Context, pool *pgxpool.Pool) error {
 		if dirty || version != ExpectedVersion(schema) {
 			return fmt.Errorf("incompatible schema %s", schema)
 		}
+	}
+	var audited bool
+	if err := pool.QueryRow(ctx, "SELECT core.audit_ready()").Scan(&audited); err != nil {
+		return fmt.Errorf("inspect audit contract: %w", err)
+	}
+	if !audited {
+		return errors.New("incomplete audit trigger contract")
 	}
 	return nil
 }

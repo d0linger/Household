@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"household/internal/audit"
 	"household/internal/auth"
 	"household/internal/value"
 
@@ -11,6 +12,7 @@ import (
 )
 
 func (s *Store) ConfirmCapture(ctx context.Context, id auth.Identity, captureID, requestID string, in Mutation) (string, string, string, error) {
+	ctx = audit.WithRequest(audit.WithActor(ctx, id.UserID, id.HouseholdID), requestID)
 	if !value.ValidUUID(captureID) {
 		return "", "", "", ErrNotFound
 	}

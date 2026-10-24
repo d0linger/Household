@@ -9,6 +9,13 @@ import (
 	"household/internal/value"
 )
 
+// ReportProductLimit bounds the aggregate pantry overview.
+const ReportProductLimit = 100
+
+// ReportHistoryLimit bounds chronological consumption calculations. Queries read
+// one additional row so exceeding the bound cannot silently produce a partial report.
+const ReportHistoryLimit = 10000
+
 // FuelConsumption joins partial fills only between two full fills in one series.
 // A missing fill resets the baseline. Different fuels never share a segment.
 func FuelConsumption(rows []Record) []Record {
@@ -64,7 +71,7 @@ func FuelConsumption(rows []Record) []Record {
 }
 
 func (s *Store) MeterConsumption(ctx context.Context, id auth.Identity) ([]Record, error) {
-	rows, err := s.Pool.Query(ctx, `SELECT r.device_id,m.name,m.unit_code,r.measured_at,r.value::text,d.initial_reading::text,d.installed_on,d.rollover_value::text,d.serial_number FROM meters.readings r JOIN meters.devices d ON d.household_id=r.household_id AND d.id=r.device_id JOIN meters.meters m ON m.household_id=d.household_id AND m.id=d.meter_id WHERE r.household_id=$1 ORDER BY r.device_id,r.measured_at LIMIT 10000`, id.HouseholdID)
+	rows, err := s.Pool.Query(ctx, `SELECT r.device_id,m.name,m.unit_code,r.measured_at,r.value::text,d.initial_reading::text,d.installed_on,d.rollover_value::text,d.serial_number FROM meters.readings r JOIN meters.devices d ON d.household_id=r.household_id AND d.id=r.device_id JOIN meters.meters m ON m.household_id=d.household_id AND m.id=d.meter_id WHERE r.household_id=$1 ORDER BY r.device_id,r.measured_at LIMIT $2`, id.HouseholdID, ReportHistoryLimit+1)
 	if err != nil {
 		return nil, err
 	}
@@ -74,6 +81,9 @@ func (s *Store) MeterConsumption(ctx context.Context, id auth.Identity) ([]Recor
 	var previous *big.Rat
 	var previousDate time.Time
 	for rows.Next() {
+		if len(result) == ReportHistoryLimit {
+			return nil, Invalid{Message: "Diese Auswertung unterstützt höchstens 10.000 Zählerstände. Es werden keine unvollständigen Ergebnisse angezeigt; für den vollständigen Datenbestand die Betreiber-Sicherung verwenden."}
+		}
 		var device, name, unit, current, initial, serial string
 		var at, installed time.Time
 		var rollover *string

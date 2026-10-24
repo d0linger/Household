@@ -90,6 +90,8 @@ The executor independently checks requester status/admin role, request expiry, d
 
 ## File and job maintenance
 
+Core5 records field-level history before module truncation. Purging source data does not erase audit history; administrator history can retain permitted names and values. No automatic audit retention deletion is configured. The owner must define any separate retention or archival policy, include encrypted historical backups in that policy, and preserve restore evidence. See [audit-trail.md](audit-trail.md) for the runtime/owner trust boundary.
+
 Images/PDFs use opaque private filenames. Upload errors remove incomplete files; a crash can leave an unreferenced blob, which housekeeping removes after 24 hours. Deleted resources mark their files orphaned and queue cleanup after seven days. Confirmed module purge queues its file cleanup immediately. Cleanup and preview jobs use bounded batches and lease/generation checks; no network-facing path accepts arbitrary filesystem paths or executables.
 
 Jobs retry with exponential delay and a maximum attempt count. Unsupported/failed work is recorded; OCR failure returns the capture to manual review. Inspect `core.jobs` through owner tooling for operational failures. Do not edit domain history to "fix" a queue failure.

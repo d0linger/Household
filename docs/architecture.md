@@ -8,6 +8,8 @@ Household is a modular monolith with one Go process, one PostgreSQL database, an
 
 Each module owns a PostgreSQL schema and migration history. The core owns users, permissions, sessions, activation state, idempotency, cross-module links, files, capture review, jobs, search, reminders, notifications, and audit. Cross-module references use `core.resource_links` and explicit integration actions rather than foreign keys between domain schemas.
 
+`internal/audit` binds authenticated user, household and server-generated request identity using transaction-local settings. Core5 owner-managed triggers record committed field changes centrally, including cascades, imports and maintenance truncation. Explicit semantic events cover authentication and terminal worker outcomes. The administrator viewer reads bounded household-scoped cursor pages. [Audit architecture](audit-trail.md) defines safe fields, exclusions and the trusted owner boundary.
+
 ```mermaid
 flowchart LR
     Browser[Mobile or desktop PWA] --> Proxy[HTTPS reverse proxy]

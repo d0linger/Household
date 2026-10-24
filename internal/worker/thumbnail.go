@@ -10,12 +10,14 @@ import (
 	"image/png"
 	"os"
 
+	"household/internal/audit"
 	"household/internal/value"
 
 	"github.com/jackc/pgx/v5"
 )
 
 func (w *Worker) thumbnail(ctx context.Context, job, lease string) error {
+	ctx = audit.WithSystem(ctx, "worker")
 	var aid, key, hid, mid string
 	var generation int64
 	err := w.Pool.QueryRow(ctx, "SELECT payload->>'attachment_id',payload->>'storage_key',household_id,module_id,module_generation FROM core.jobs WHERE id=$1 AND lease_token=$2", job, lease).Scan(&aid, &key, &hid, &mid, &generation)
@@ -95,7 +97,7 @@ func (w *Worker) thumbnail(ctx context.Context, job, lease string) error {
 	if err != nil {
 		return err
 	}
-	tx, err := w.Pool.Begin(ctx)
+	tx, err := audit.Begin(ctx, w.Pool)
 	if err != nil {
 		return err
 	}

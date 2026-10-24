@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"time"
 
+	"household/internal/audit"
 	"household/internal/config"
 	"household/internal/value"
 
@@ -50,8 +51,9 @@ func (w *Worker) Run(ctx context.Context) {
 func (w *Worker) Close() error { return w.scan.close() }
 
 func (w *Worker) Tick(ctx context.Context) error {
+	ctx = audit.WithRequest(audit.WithSystem(ctx, "worker"), value.UUID())
 	// Housekeeping is a real durable job; only its current lease holder may finish it.
-	if _, err := w.Pool.Exec(ctx, `INSERT INTO core.jobs(household_id,kind,dedupe_key) SELECT id,'housekeeping','housekeeping/'||to_char(now(),'YYYY-MM-DD-HH24-MI') FROM core.households ON CONFLICT(dedupe_key) DO NOTHING`); err != nil {
+	if _, err := audit.Exec(ctx, w.Pool, `INSERT INTO core.jobs(household_id,kind,dedupe_key) SELECT id,'housekeeping','housekeeping/'||to_char(now(),'YYYY-MM-DD-HH24-MI') FROM core.households ON CONFLICT(dedupe_key) DO NOTHING`); err != nil {
 		return err
 	}
 	if err := w.deliver(ctx); err != nil {
@@ -74,7 +76,8 @@ func (w *Worker) Tick(ctx context.Context) error {
 	return nil
 }
 func (w *Worker) deliver(ctx context.Context) error {
-	tx, err := w.Pool.Begin(ctx)
+	ctx = audit.WithSystem(ctx, "worker")
+	tx, err := audit.Begin(ctx, w.Pool)
 	if err != nil {
 		return err
 	}
@@ -124,10 +127,12 @@ func (w *Worker) deliver(ctx context.Context) error {
 	return tx.Commit(ctx)
 }
 func (w *Worker) outbox(ctx context.Context) error {
-	_, err := w.Pool.Exec(ctx, `INSERT INTO core.event_deliveries(event_id,consumer_id,state,delivered_at) SELECT e.id,'local-projections-v1','done',now() FROM core.outbox_events e JOIN core.module_states m ON m.household_id=e.household_id AND m.module_id=e.module_id AND m.state='enabled' AND m.data_generation=e.module_generation WHERE NOT EXISTS(SELECT 1 FROM core.event_deliveries d WHERE d.event_id=e.id AND d.consumer_id='local-projections-v1') ORDER BY e.created_at LIMIT 100 ON CONFLICT DO NOTHING`)
+	ctx = audit.WithSystem(ctx, "worker")
+	_, err := audit.Exec(ctx, w.Pool, `INSERT INTO core.event_deliveries(event_id,consumer_id,state,delivered_at) SELECT e.id,'local-projections-v1','done',now() FROM core.outbox_events e JOIN core.module_states m ON m.household_id=e.household_id AND m.module_id=e.module_id AND m.state='enabled' AND m.data_generation=e.module_generation WHERE NOT EXISTS(SELECT 1 FROM core.event_deliveries d WHERE d.event_id=e.id AND d.consumer_id='local-projections-v1') ORDER BY e.created_at LIMIT 100 ON CONFLICT DO NOTHING`)
 	return err
 }
 func (w *Worker) job(ctx context.Context) (jobErr error) {
+	ctx = audit.WithSystem(ctx, "worker")
 	lease := value.UUID()
 	var id, kind string
 	err := w.Pool.QueryRow(ctx, `WITH candidate AS(SELECT j.id FROM core.jobs j WHERE ((state='pending' AND available_at<=now()) OR (state='running' AND lease_until<now())) AND attempts<max_attempts AND (module_id IS NULL OR EXISTS(SELECT 1 FROM core.module_states m WHERE m.household_id=j.household_id AND m.module_id=j.module_id AND m.state='enabled' AND m.data_generation=j.module_generation)) ORDER BY available_at LIMIT 1 FOR UPDATE SKIP LOCKED) UPDATE core.jobs j SET state='running',lease_token=$1,lease_until=now()+interval '60 seconds',attempts=attempts+1 FROM candidate c WHERE j.id=c.id RETURNING j.id,j.kind`, lease).Scan(&id, &kind)
@@ -139,7 +144,7 @@ func (w *Worker) job(ctx context.Context) (jobErr error) {
 	}
 	defer func() {
 		if jobErr != nil {
-			retryCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+			retryCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 3*time.Second)
 			defer cancel()
 			if err := w.failJob(retryCtx, id, lease); err != nil {
 				w.Log.Error("record job failure", "job_id", id, "error", err)
@@ -152,7 +157,7 @@ func (w *Worker) job(ctx context.Context) (jobErr error) {
 	if kind == "thumbnail" {
 		return w.thumbnail(ctx, id, lease)
 	}
-	tx, err := w.Pool.Begin(ctx)
+	tx, err := audit.Begin(ctx, w.Pool)
 	if err != nil {
 		return err
 	}
@@ -169,12 +174,18 @@ func (w *Worker) job(ctx context.Context) (jobErr error) {
 		if err != nil {
 			return err
 		}
+		if err = recordJobFailure(ctx, tx, id, "worker_job_unsupported"); err != nil {
+			return err
+		}
 		return tx.Commit(ctx)
 	}
-	for _, query := range []string{"DELETE FROM core.rate_limit_buckets WHERE window_end<now()-interval '1 day'", "DELETE FROM core.sessions WHERE absolute_expires_at<now()-interval '7 days' OR revoked_at<now()-interval '7 days'", "DELETE FROM core.auth_challenges WHERE expires_at<now()-interval '1 day'", "DELETE FROM core.idempotency_records WHERE expires_at<now()", "DELETE FROM core.capture_jobs WHERE expires_at<now() AND state<>'confirmed'", "DELETE FROM core.import_batches WHERE created_at<now()-interval '30 days' AND state='preview'", "UPDATE core.jobs SET state='failed',finished_at=now(),lease_until=NULL,lease_token=NULL,last_error='lease retries exhausted' WHERE state='running' AND lease_until<now() AND attempts>=max_attempts"} {
+	for _, query := range []string{"DELETE FROM core.rate_limit_buckets WHERE window_end<now()-interval '1 day'", "DELETE FROM core.sessions WHERE absolute_expires_at<now()-interval '7 days' OR revoked_at<now()-interval '7 days'", "DELETE FROM core.auth_challenges WHERE expires_at<now()-interval '1 day'", "DELETE FROM core.idempotency_records WHERE expires_at<now()", "DELETE FROM core.capture_jobs WHERE expires_at<now() AND state<>'confirmed'", "DELETE FROM core.import_batches WHERE created_at<now()-interval '30 days' AND state='preview'"} {
 		if _, err = tx.Exec(ctx, query); err != nil {
 			return fmt.Errorf("housekeeping: %w", err)
 		}
+	}
+	if err = expireJobs(ctx, tx); err != nil {
+		return err
 	}
 	if err = reviewCaptures(ctx, tx, nil, "failed", "Texterkennung fehlgeschlagen. Werte bitte manuell prüfen."); err != nil {
 		return err
@@ -186,7 +197,8 @@ func (w *Worker) job(ctx context.Context) (jobErr error) {
 }
 
 func (w *Worker) failJob(ctx context.Context, id, lease string) error {
-	tx, err := w.Pool.Begin(ctx)
+	ctx = audit.WithSystem(ctx, "worker")
+	tx, err := audit.Begin(ctx, w.Pool)
 	if err != nil {
 		return err
 	}
@@ -206,10 +218,60 @@ func (w *Worker) failJob(ctx context.Context, id, lease string) error {
 	if tag.RowsAffected() == 0 {
 		return nil
 	}
+	if err = recordJobFailure(ctx, tx, id, "worker_job_failed"); err != nil {
+		return err
+	}
 	if err = reviewCaptures(ctx, tx, &id, "failed", "Texterkennung fehlgeschlagen. Werte bitte manuell prüfen."); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)
+}
+
+// Lease churn is operational state, but terminal job failures are retained as
+// security-safe semantic events in the transaction that marks them failed.
+func recordJobFailure(ctx context.Context, tx pgx.Tx, id, action string) error {
+	var household, module string
+	err := tx.QueryRow(ctx, "SELECT household_id,coalesce(module_id,'core') FROM core.jobs WHERE id=$1 AND state='failed'", id).Scan(&household, &module)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	ctx = audit.WithHousehold(ctx, household)
+	if err = audit.Bind(ctx, tx); err != nil {
+		return err
+	}
+	return audit.Event(ctx, tx, module, "jobs", id, action, nil)
+}
+
+func expireJobs(ctx context.Context, tx pgx.Tx) error {
+	rows, err := tx.Query(ctx, `UPDATE core.jobs SET state='failed',finished_at=now(),lease_until=NULL,lease_token=NULL,last_error='lease retries exhausted'
+		WHERE id IN (SELECT id FROM core.jobs WHERE state='running' AND lease_until<now() AND attempts>=max_attempts ORDER BY lease_until LIMIT 100 FOR UPDATE SKIP LOCKED)
+		RETURNING id`)
+	if err != nil {
+		return err
+	}
+	ids := make([]string, 0, 100)
+	for rows.Next() {
+		var id string
+		if err = rows.Scan(&id); err != nil {
+			rows.Close()
+			return err
+		}
+		ids = append(ids, id)
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return err
+	}
+	for _, id := range ids {
+		if err = recordJobFailure(ctx, tx, id, "worker_lease_exhausted"); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // The caller holds the household barrier, so pause/purge cannot invalidate the

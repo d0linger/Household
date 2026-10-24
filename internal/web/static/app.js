@@ -25,9 +25,62 @@
   all('[data-close]').forEach(button => button.addEventListener('click', () => button.closest('dialog').close()));
   all('[data-back]').forEach(button => button.addEventListener('click', () => history.length > 1 ? history.back() : location.assign('/')));
   all('[data-time]').forEach(input => {if (input.value && input.value.includes('Z')) {const d = new Date(input.value); if (!isNaN(d)) {d.setMinutes(d.getMinutes() - d.getTimezoneOffset()); input.value = d.toISOString().slice(0,16);}}});
-  all('[data-reference]').forEach(async select => {
-    try {const response = await fetch('/api/v1/core/references/' + select.dataset.reference, {headers:{Accept:'application/json'}}); if (!response.ok) {select.disabled = true; select.closest('form').querySelector('button[type=submit],button:not([type])')?.setAttribute('disabled',''); return;} for (const row of await response.json()) {const option = document.createElement('option'); option.value = row.id; option.textContent = row.label || row.id; select.append(option);}}
-    catch {select.disabled = true;}
+  const referenceButtons = new WeakMap();
+  function referenceSubmissionBlocked(form) {
+    // An unloaded multiple select would serialize as empty and erase its links.
+    return all('[data-reference][required],[data-reference][multiple]', form).some(select => select.dataset.referenceState !== 'ready');
+  }
+  function syncReferenceButtons(form) {
+    const blocked = referenceSubmissionBlocked(form) || form.dataset.submitting === 'true';
+    all('button[type=submit],button:not([type]),input[type=submit]', form).forEach(button => {
+      if (!referenceButtons.has(button)) referenceButtons.set(button, button.disabled);
+      button.disabled = blocked || referenceButtons.get(button);
+    });
+  }
+  all('[data-reference]').forEach((select, index) => {
+    const form = select.closest('form');
+    if (!form) return;
+    const initiallyDisabled = select.disabled;
+    const notice = document.createElement('p');
+    notice.className = 'form-error reference-error'; notice.id = 'reference-error-' + index;
+    notice.setAttribute('role', 'alert'); notice.tabIndex = -1; notice.hidden = true;
+    const message = document.createElement('span');
+    const retry = document.createElement('button'); retry.type = 'button'; retry.textContent = 'Erneut laden';
+    notice.append(message, document.createTextNode(' '), retry);
+    (select.closest('label') || select).after(notice);
+    select.setAttribute('aria-describedby', [select.getAttribute('aria-describedby'), notice.id].filter(Boolean).join(' '));
+    const label = select.labels?.[0]?.childNodes[0]?.textContent.trim() || 'Auswahl';
+    let loading = false;
+    async function loadReferences() {
+      if (loading) return;
+      loading = true; select.dataset.referenceState = 'loading'; select.disabled = true;
+      select.setAttribute('aria-busy', 'true'); retry.disabled = true; syncReferenceButtons(form);
+      try {
+        const response = await fetch('/api/v1/core/references/' + select.dataset.reference, {headers:{Accept:'application/json'}});
+        if (!response.ok) throw new Error('reference request failed');
+        const rows = await response.json();
+        if (!Array.isArray(rows)) throw new Error('invalid references');
+        const selected = new Set([...select.selectedOptions].map(option => option.value));
+        const fragment = document.createDocumentFragment();
+        for (const row of rows) {
+          const option = document.createElement('option'); option.value = row.id; option.textContent = row.label || row.id;
+          option.dataset.loadedReference = 'true'; if (selected.has(option.value)) option.selected = true;
+          fragment.append(option);
+        }
+        all('[data-loaded-reference]', select).forEach(option => option.remove());
+        const restoreFocus = document.activeElement === retry;
+        select.append(fragment); select.disabled = initiallyDisabled; select.dataset.referenceState = 'ready'; notice.hidden = true;
+        if (restoreFocus) select.focus();
+      } catch {
+        select.dataset.referenceState = 'error';
+        message.textContent = label + ' konnte nicht geladen werden. Prüfe die Verbindung und versuche es erneut. Deine Eingaben bleiben erhalten.';
+        notice.hidden = false;
+      } finally {
+        loading = false; retry.disabled = false; select.removeAttribute('aria-busy'); syncReferenceButtons(form);
+      }
+    }
+    retry.addEventListener('click', loadReferences);
+    void loadReferences();
   });
   const dbPromise = new Promise((resolve, reject) => {
     if (!('indexedDB' in window)) {reject(new Error('Lokaler Speicher nicht verfügbar'));return;}
@@ -58,15 +111,18 @@
   }
   function actionTargets(url){const match=url.match(/\/m\/([^/]+)\/([^/]+)\/[^/]+\/actions\/([^/]+)$/);if(!match)return [];return ({'recipes/recipes/shopping':['shopping'],'pantry/products/shopping':['shopping'],'fuel/fillups/expense':['expenses'],'mealplan/meals/recipe':['recipes'],'mealplan/plans/shopping':['recipes','shopping']})[match.slice(1).join('/')]||[];}
   all('[data-record-form]').forEach(form => form.addEventListener('submit', async event => {
-    event.preventDefault(); if (!form.reportValidity()) return;
-    const button = $('button:not([type=button])',form); const errorBox = $('.form-error',form); if (errorBox) errorBox.hidden = true;
+    event.preventDefault();
+    if (referenceSubmissionBlocked(form)) { const notice = $('.reference-error:not([hidden])', form); if (notice) notice.focus(); return; }
+    if (!form.reportValidity()) return;
+    const button = $('button:not([type=button])',form); const errorBox = $('.form-error:not(.reference-error)',form); if (errorBox) errorBox.hidden = true;
     const body = formBody(form);const key = form.elements.idempotency_key.value || crypto.randomUUID();const method = form.dataset.method || 'POST';
+    form.dataset.submitting = 'true';
     if (button) button.disabled = true;
     try {const result=await request(form.getAttribute('action'),method,body,key);if(result.url)location.assign(result.url);else location.reload();}
     catch(error) {
       if (!error.status && !navigator.onLine) {try {await queueMutation(form.getAttribute('action'),method,body,key);form.closest('dialog')?.close();}catch(queueError){toast(queueError.message);}}
       else {if(errorBox){errorBox.textContent=error.message;errorBox.hidden=false;errorBox.focus();}else toast(error.message);}
-    } finally {if(button) button.disabled=false;}
+    } finally {delete form.dataset.submitting; if(button) button.disabled=false; if ($('[data-reference]', form)) syncReferenceButtons(form);}
   }));
   all('[data-check]').forEach(button => button.addEventListener('click',async () => {
     button.disabled = true;const body = {data:{checked:button.dataset.check === 'true'},version:Number(button.dataset.version),generation:Number(button.dataset.generation)};const key = crypto.randomUUID();
@@ -165,7 +221,7 @@
   all('.ingredient-selection').forEach(group=>{const form=group.closest('form');const input=form.elements.servings;const update=()=>{const factor=Number(String(input.value).replace(',','.'))/Number(group.dataset.baseServings);all('.ingredient-choice',group).forEach(row=>{const label=$('[data-quantity]',row);if(!label?.dataset.quantity)return;const select=$('select',row);const from=label.dataset.unit,to=select?.value||from;const units={g:1,kg:1000,ml:1,l:1000,piece:1};const quantity=Number(label.dataset.quantity)*factor*(units[from]||1)/(units[to]||1);label.textContent=Number.isFinite(quantity)?new Intl.NumberFormat('de-AT',{maximumFractionDigits:6}).format(quantity)+' '+to:'Menge prüfen';});};input.addEventListener('input',update);group.addEventListener('change',update);update();});
   all('[data-timer]').forEach(button=>button.addEventListener('click',()=>{if(button.dataset.running)return;button.dataset.running='true';const until=Date.now()+Number(button.dataset.timer)*1000;const refresh=()=>{const seconds=Math.max(0,Math.ceil((until-Date.now())/1000));button.textContent=seconds?`${Math.floor(seconds/60)}:${String(seconds%60).padStart(2,'0')} verbleibend`:'Timer fertig · neu starten';if(!seconds){clearInterval(tick);delete button.dataset.running;toast('Koch-Timer ist abgelaufen.');}};const tick=setInterval(refresh,1000);refresh();}));
   const report=$('#report');
-  if(report)fetch(report.dataset.report,{headers:{Accept:'application/json'}}).then(async response=>{if(!response.ok)throw new Error('Auswertung konnte nicht geladen werden.');return response.json();}).then(data=>{
+  if(report)fetch(report.dataset.report,{headers:{Accept:'application/json'}}).then(async response=>{const data=await response.json();if(!response.ok)throw new Error(data.error||'Auswertung konnte nicht geladen werden.');return data;}).then(data=>{
     report.replaceChildren();
     const meterReport=report.dataset.report.includes('/meters/');
     const sections={months:{title:'Monatsausgaben',columns:['month','amount_minor']},products:{title:'Bestände',columns:['name','stock','unit','minimum']},fillups:{title:'Tankverlauf',columns:['vehicle_name','series_label','date','odometer','quantity','fuel_type','full','missing','total_minor']},consumption:{title:'Verbrauch',columns:meterReport?['name','device_label','from','to','consumption','unit','rollover_inferred']:['vehicle_name','series_label','from_date','to_date','distance','quantity','per_100km','unit']}};

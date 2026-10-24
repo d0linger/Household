@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"household/internal/audit"
 	"household/internal/auth"
 	"household/internal/module"
 	"household/internal/value"
@@ -13,6 +14,7 @@ import (
 
 // ConfirmImport commits every row together; retrying a confirmed batch is harmless.
 func (s *Store) ConfirmImport(ctx context.Context, id auth.Identity, m module.Descriptor, e module.Entity, batchID, requestID string, generation int64) error {
+	ctx = audit.WithRequest(audit.WithActor(ctx, id.UserID, id.HouseholdID), requestID)
 	if !value.ValidUUID(batchID) {
 		return ErrNotFound
 	}

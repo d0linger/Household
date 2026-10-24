@@ -13,6 +13,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"household/internal/audit"
 	"household/internal/auth"
 	"household/internal/module"
 	"household/internal/value"
@@ -116,6 +117,7 @@ func (s *Store) LoadStates(ctx context.Context) error {
 }
 
 func (s *Store) SetModule(ctx context.Context, id auth.Identity, mid string, enabled bool, version int64, requestID string) error {
+	ctx = audit.WithRequest(audit.WithActor(ctx, id.UserID, id.HouseholdID), requestID)
 	if id.Role != "admin" {
 		return ErrForbidden
 	}
@@ -124,7 +126,7 @@ func (s *Store) SetModule(ctx context.Context, id auth.Identity, mid string, ena
 	}
 	s.Gate.Lock()
 	defer s.Gate.Unlock()
-	tx, err := s.Pool.Begin(ctx)
+	tx, err := audit.Begin(ctx, s.Pool)
 	if err != nil {
 		return err
 	}
@@ -239,10 +241,11 @@ func (s *Store) Get(ctx context.Context, id auth.Identity, m module.Descriptor, 
 }
 
 func (s *Store) BeginMutation(ctx context.Context, id auth.Identity, mid string, generation int64) (pgx.Tx, error) {
+	ctx = audit.WithActor(ctx, id.UserID, id.HouseholdID)
 	if !id.CanWrite() {
 		return nil, ErrForbidden
 	}
-	tx, err := s.Pool.Begin(ctx)
+	tx, err := audit.Begin(ctx, s.Pool)
 	if err != nil {
 		return nil, err
 	}
@@ -281,6 +284,7 @@ func checkSession(ctx context.Context, tx pgx.Tx, id auth.Identity) error {
 }
 
 func (s *Store) Write(ctx context.Context, id auth.Identity, m module.Descriptor, e module.Entity, rid, key, requestID string, in Mutation) (Record, error) {
+	ctx = audit.WithRequest(audit.WithActor(ctx, id.UserID, id.HouseholdID), requestID)
 	creating := rid == ""
 	if !creating && (!value.ValidUUID(rid) || e.Immutable) {
 		return nil, ErrForbidden
@@ -436,6 +440,7 @@ func (s *Store) afterWrite(ctx context.Context, tx pgx.Tx, id auth.Identity, m m
 }
 
 func (s *Store) Delete(ctx context.Context, id auth.Identity, m module.Descriptor, e module.Entity, rid string, version, generation int64, requestID string) error {
+	ctx = audit.WithRequest(audit.WithActor(ctx, id.UserID, id.HouseholdID), requestID)
 	if e.Immutable {
 		return ErrForbidden
 	}
@@ -490,19 +495,21 @@ func (s *Store) cleanupOrphans(ctx context.Context, tx pgx.Tx, id auth.Identity,
 }
 
 func Audit(ctx context.Context, tx pgx.Tx, id auth.Identity, mid, entity, rid, action, requestID string) error {
-	if !value.ValidUUID(requestID) {
-		requestID = value.UUID()
-	}
-	_, err := tx.Exec(ctx, "INSERT INTO core.audit_log(household_id,actor_user_id,module_id,resource_type,resource_id,action,outcome,request_id) VALUES($1,$2,$3,$4,nullif($5,'')::uuid,$6,'success',$7)", id.HouseholdID, id.UserID, mid, entity, rid, action, requestID)
-	return err
+	ctx = audit.WithRequest(audit.WithActor(ctx, id.UserID, id.HouseholdID), requestID)
+	return audit.Event(ctx, tx, mid, entity, rid, action, nil)
 }
-func decode(raw []byte) (Record, error) {
+
+// DecodeRecord preserves PostgreSQL numeric values exactly for rendering and
+// further domain calculations rather than coercing them through float64.
+func DecodeRecord(raw []byte) (Record, error) {
 	out := Record{}
 	decoder := json.NewDecoder(bytes.NewReader(raw))
 	decoder.UseNumber()
 	err := decoder.Decode(&out)
 	return out, err
 }
+
+func decode(raw []byte) (Record, error) { return DecodeRecord(raw) }
 func String(v any) string {
 	if v == nil {
 		return ""

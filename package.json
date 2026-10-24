@@ -7,7 +7,7 @@
   "scripts": {
     "test": "node --test scripts/quality-tools.test.cjs",
     "test:workflow": "node scripts/check-workflows.cjs",
-    "test:browser": "node scripts/browser-check.cjs"
+    "test:browser": "node scripts/browser-check.cjs && node scripts/browser-a11y-check.cjs && node scripts/browser-audit-check.cjs"
   },
   "devDependencies": {
     "@axe-core/playwright": "4.14.0",

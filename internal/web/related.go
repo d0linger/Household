@@ -31,8 +31,13 @@ func (s *Server) related(r *http.Request, m module.Descriptor, e module.Entity, 
 			}
 			group := Related{Entity: child, Field: field.Name, Records: []store.Record{}}
 			for rows.Next() {
-				var record store.Record
-				if err = rows.Scan(&record); err != nil {
+				var raw []byte
+				if err = rows.Scan(&raw); err != nil {
+					rows.Close()
+					return nil, err
+				}
+				record, err := store.DecodeRecord(raw)
+				if err != nil {
 					rows.Close()
 					return nil, err
 				}

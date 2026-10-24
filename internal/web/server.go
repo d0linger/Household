@@ -22,6 +22,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"household/internal/audit"
 	"household/internal/auth"
 	"household/internal/config"
 	"household/internal/database"
@@ -142,6 +143,8 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("POST /settings/security/totp/enable", s.require(s.enableTOTP))
 	mux.Handle("POST /settings/security/sessions/{id}/revoke", s.require(s.revokeSession))
 	mux.Handle("GET /settings/users", s.require(s.usersPage))
+	mux.Handle("GET /settings/audit", s.require(s.auditPage))
+	mux.Handle("GET /api/v1/core/audit", s.require(s.auditAPI))
 	mux.Handle("POST /settings/users", s.require(s.createUser))
 	mux.Handle("POST /settings/users/{id}", s.require(s.updateUser))
 	mux.Handle("POST /settings/modules/{module}/purge", s.require(s.requestPurge))
@@ -198,13 +201,11 @@ func (s *Server) metrics(w http.ResponseWriter, r *http.Request) {
 func (s *Server) middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		started := time.Now()
-		requestID := r.Header.Get("X-Request-ID")
-		if !value.ValidUUID(requestID) {
-			requestID = value.UUID()
-		}
+		requestID := value.UUID()
 		nonce := auth.RandomToken()
 		ctx := context.WithValue(r.Context(), nonceKey, nonce)
 		ctx = context.WithValue(ctx, traceKey, requestID)
+		ctx = audit.WithRequest(ctx, requestID)
 		r = r.WithContext(ctx)
 		r.Body = http.MaxBytesReader(w, r.Body, 12<<20)
 		defer func() {
@@ -360,6 +361,7 @@ func (s *Server) require(next http.HandlerFunc) http.Handler {
 			s.setCookie(w, cookie.Value, id)
 		}
 		ctx := context.WithValue(r.Context(), identityKey, id)
+		ctx = audit.WithActor(ctx, id.UserID, id.HouseholdID)
 		ctx = context.WithValue(ctx, csrfKey, s.Auth.CSRF(cookie.Value, "session"))
 		r = r.WithContext(ctx)
 		if id.MustChange && r.URL.Path != "/change-password" && r.URL.Path != "/logout" {

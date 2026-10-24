@@ -18,7 +18,8 @@ The embedded [migration files](../internal/database/migrations) are the complete
 | `rate_limit_buckets` | Scope/HMAC subject/window primary key, durable counts and expiry index |
 | `totp_credentials` | One encrypted factor per user, key ID, accepted counter and enrollment state |
 | `recovery_codes` | Unique hashed code with single-use consumption time |
-| `audit_log` | Append-only event/actor/resource/action/outcome/request ID and limited JSON details |
+| `audit_log` | Runtime append-only events, actor kind/ID, database role, resource key/label, action/outcome/request ID, exact masked field diffs and limited metadata |
+| `audit_policies` | Owner-only explicit table/key/safe-column/label/ignored-column policy; unknown columns are masked |
 | `jobs` | Unique dedupe key, versioned payload, attempts/availability/state, lease token/expiry and terminal diagnostics |
 | `outbox_events` | Versioned module-generation event written with domain transaction; unique dedupe key |
 | `event_deliveries` | Event/consumer primary key for idempotent local delivery |
@@ -38,7 +39,7 @@ The embedded [migration files](../internal/database/migrations) are the complete
 | `import_rows` | Batch/row primary key, values/errors, state and resulting UUID |
 | `backup_runs` | Schema manifest, encrypted repository/snapshot references, outcome and independent restore verification time |
 
-Core migration 1 creates the foundation; migration 2 adds bounded capture source text, durable file tombstones and runtime backup-verification restrictions; migration 3 adds trusted `pg_trgm` and low-stock episode state; migration 4 binds action receipts to destination generations. The checksum manifest in deploy/migration-checksums.json is verified by scripts/check-migrations.cjs; pull-request CI also rejects edits/deletions of existing migration files.
+Core migration 1 creates the foundation; migration 2 adds bounded capture source text, durable file tombstones and runtime backup-verification restrictions; migration 3 adds trusted `pg_trgm` and low-stock episode state; migration 4 binds action receipts to destination generations; migration 5 adds generic protected field-level audit history. The runner installs triggers after all module schemas exist. Readiness rejects missing/disabled triggers and unclassified persistent tables. The 20-file checksum manifest in deploy/migration-checksums.json is verified by scripts/check-migrations.cjs; pull-request CI also rejects edits/deletions of existing migration files. See [audit-trail.md](audit-trail.md) for the schema and extension contract.
 
 ## Module schemas
 

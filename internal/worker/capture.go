@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"household/internal/audit"
 	"household/internal/store"
 	"household/internal/value"
 
@@ -88,8 +89,9 @@ func (b *cappedOutput) Write(p []byte) (int, error) {
 
 func (b *cappedOutput) String() string { return b.buffer.String() }
 func (w *Worker) capture(ctx context.Context, job, lease string) error {
+	ctx = audit.WithSystem(ctx, "worker")
 	if !w.Cfg.OCREnabled {
-		tx, err := w.Pool.Begin(ctx)
+		tx, err := audit.Begin(ctx, w.Pool)
 		if err != nil {
 			return err
 		}
@@ -151,7 +153,7 @@ func (w *Worker) capture(ctx context.Context, job, lease string) error {
 	if err != nil {
 		return err
 	}
-	tx, err := w.Pool.Begin(ctx)
+	tx, err := audit.Begin(ctx, w.Pool)
 	if err != nil {
 		return err
 	}
@@ -177,6 +179,7 @@ func (w *Worker) capture(ctx context.Context, job, lease string) error {
 }
 
 func (w *Worker) files(ctx context.Context) error {
+	ctx = audit.WithSystem(ctx, "worker")
 	if err := os.MkdirAll(w.Cfg.UploadDir, 0750); err != nil {
 		return err
 	}
@@ -185,7 +188,7 @@ func (w *Worker) files(ctx context.Context) error {
 		return err
 	}
 	defer func() { _ = root.Close() }()
-	tx, err := w.Pool.Begin(ctx)
+	tx, err := audit.Begin(ctx, w.Pool)
 	if err != nil {
 		return err
 	}

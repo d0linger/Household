@@ -1,0 +1,23 @@
+{{define "audit"}}
+<div class="page-heading"><div><p class="eyebrow">ÄNDERUNGEN NACHVOLLZIEHEN</p><h1>Änderungsprotokoll</h1><p class="muted">Wer hat was geändert? Die Historie deines Haushalts.</p></div></div>
+<nav class="entity-tabs" aria-label="Einstellungen"><a href="/settings">Module</a><a href="/settings/security">Sicherheit</a><a href="/settings/users">Benutzer</a><a class="current" aria-current="page" href="/settings/audit">Protokoll</a></nav>
+{{$data:=.Extra}}
+<form class="panel audit-filters" action="/settings/audit" method="get">
+  <label>Bereich<select name="module"><option value="">Alle Bereiche</option><option value="core" {{if eq $data.Filter.Module "core"}}selected{{end}}>Haushalt & Sicherheit</option>{{range .Modules}}<option value="{{.ID}}" {{if eq $data.Filter.Module .ID}}selected{{end}}>{{.Title}}</option>{{end}}</select></label>
+  <label>Aktion<select name="action"><option value="">Alle Aktionen</option><option value="CREATE" {{if eq $data.Filter.Action "CREATE"}}selected{{end}}>Angelegt</option><option value="UPDATE" {{if eq $data.Filter.Action "UPDATE"}}selected{{end}}>Geändert</option><option value="DELETE" {{if eq $data.Filter.Action "DELETE"}}selected{{end}}>Gelöscht</option><option value="login_success" {{if eq $data.Filter.Action "login_success"}}selected{{end}}>Anmeldung</option></select></label>
+  <div class="actions"><button class="primary">Filtern</button><a class="button" href="/settings/audit">Zurücksetzen</a></div>
+  <details class="audit-advanced"><summary>Nach Kennung filtern</summary><div class="form-grid"><label>Datensatz-ID<input name="resource" value="{{$data.Filter.Resource}}" maxlength="36" placeholder="UUID"></label><label>Vorgangs-ID<input name="request" value="{{$data.Filter.Request}}" maxlength="36" placeholder="UUID"></label></div></details>
+</form>
+<p class="fine">Nur für Administratoren · Neueste zuerst · Zeiten in UTC. Geschützte Felder zeigen eine Änderung, aber keinen Inhalt. Frühere Einträge enthalten gegebenenfalls keine Feldhistorie.</p>
+<section class="audit-list" aria-label="Protokolleinträge">
+{{range $data.Entries}}
+<article class="panel audit-entry">
+  <header class="audit-heading"><div><span class="badge">{{.ActionLabel}}</span><h2>{{if .Label}}{{.Label}}{{else}}{{.EntityLabel}}{{end}}</h2><p class="fine">{{.ModuleLabel}} · {{.EntityLabel}}</p></div><time datetime="{{.CreatedAt.Format "2006-01-02T15:04:05Z07:00"}}">{{.TimeLabel}}</time></header>
+  <p class="fine break">{{.ActorLabel}}{{if ne .Outcome "success"}} · Ergebnis: {{.Outcome}}{{end}}</p>
+  {{if .Fields}}<details class="audit-diff"><summary>{{len .Fields}} Feldänderungen ansehen</summary><div class="audit-diff-head" aria-hidden="true"><span>Feld</span><span>Vorher</span><span>Nachher</span></div>{{range .Fields}}<div class="audit-field"><h3>{{.Label}}</h3><div><small>Vorher</small><p>{{.Before}}</p></div><div><small>Nachher</small><p>{{.After}}</p></div></div>{{end}}</details>{{else}}<p class="fine">Ereignis ohne Feldänderungen.</p>{{end}}
+  <details class="audit-meta"><summary>Kennungen</summary><dl><dt>Datensatz</dt><dd>{{if .Resource}}{{.Resource}}{{else}}{{.KeyLabel}}{{end}}</dd><dt>Vorgang</dt><dd>{{.Request}}</dd><dt>Eintrag</dt><dd>{{.ID}}</dd></dl></details>
+</article>
+{{else}}<div class="panel empty"><h2>Keine passenden Einträge</h2><p>Ändere die Filter oder kehre zum vollständigen Protokoll zurück.</p><a class="button" href="/settings/audit">Alle Einträge anzeigen</a></div>{{end}}
+</section>
+{{if $data.NextURL}}<nav class="pagination" aria-label="Protokollseiten"><a class="button" href="{{$data.NextURL}}">Ältere Einträge</a></nav>{{end}}
+{{end}}

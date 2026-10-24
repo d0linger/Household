@@ -3,6 +3,7 @@ package maintenance
 import (
 	"context"
 	"errors"
+	"household/internal/audit"
 	"household/internal/modules"
 	"household/internal/value"
 
@@ -14,7 +15,8 @@ func Purge(ctx context.Context, pool *pgxpool.Pool, requestID string) error {
 	if !value.ValidUUID(requestID) {
 		return errors.New("purge requires the exact request UUID")
 	}
-	tx, err := pool.Begin(ctx)
+	ctx = audit.WithRequest(audit.WithSystem(ctx, "operator"), requestID)
+	tx, err := audit.Begin(ctx, pool)
 	if err != nil {
 		return err
 	}
@@ -36,6 +38,10 @@ func Purge(ctx context.Context, pool *pgxpool.Pool, requestID string) error {
 		return errors.New("purge request is expired, invalid, unverified, or module is active")
 	}
 	if err != nil {
+		return err
+	}
+	ctx = audit.WithHousehold(ctx, hid)
+	if err = audit.Bind(ctx, tx); err != nil {
 		return err
 	}
 	known := false
@@ -96,7 +102,7 @@ func Purge(ctx context.Context, pool *pgxpool.Pool, requestID string) error {
 	if _, err = tx.Exec(ctx, "UPDATE core.module_purge_requests SET state='completed',finished_at=now() WHERE id=$1", requestID); err != nil {
 		return err
 	}
-	if _, err = tx.Exec(ctx, "INSERT INTO core.audit_log(household_id,actor_user_id,module_id,action,outcome,request_id) VALUES($1,$2,$3,'module_purged','success',$4)", hid, actor, mid, value.UUID()); err != nil {
+	if err = audit.Event(ctx, tx, mid, "module", "", "module_purged", map[string]any{"requested_by": actor}); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)

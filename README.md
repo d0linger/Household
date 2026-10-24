@@ -49,13 +49,17 @@ Production is the default and rejects HTTP origins. Unknown environment names ar
 | Extensions | Recurring assigned chores, physical meter history and consumption, document deadlines, meal plans linked to recipes |
 | Shared services | Private image/PDF files, sanitized image previews, local capture review, authorized full-text/trigram search, notifications, durable jobs and outbox |
 | PWA | Install manifest/icons, versioned public asset cache, neutral offline screen, opt-in actor-bound offline drafts and explicit replay review |
-| Security | Bcrypt, hashed sessions, capped sliding expiry, HMAC CSRF, PostgreSQL rate limits, TOTP/recovery codes, recent-login checks, role management and append-only audit |
+| Security | Bcrypt, hashed sessions, capped sliding expiry, HMAC CSRF, PostgreSQL rate limits, TOTP/recovery codes, recent-login checks, role management and field-level audit history |
+
+Administrators open **Settings → Protokoll** to inspect changes, compare before/after fields, and filter by module, operation, resource or request. Core migration 5 installs transaction-bound audit triggers on 45 authoritative tables, including all 26 domain tables. Secret and private free-text fields are masked before storage; ordinary domain names/titles and exact numeric values are explicitly allowed. The runtime cannot insert or edit audit rows directly. [Audit architecture and privacy boundaries](docs/audit-trail.md) describe exclusions, owner privileges, legacy events and retention.
 
 Changes use optimistic versions and idempotency keys. Financial postings and stock movements are corrected through new entries. Pausing a module retains its data and returns 404 for its routes, files, search, and exports. Purge is a separate operator action requiring a recent admin request and verified backup.
 
 Cross-module actions bind both source and destination data generations. Purge requires a backup created after the current pause; retention reconciles expired snapshot references before they can be used for deletion approval. Migration checksums and append-only migration history are checked in CI.
 
 CSV import is limited to 500 rows and commits all rows together after confirmation. Exports are limited to 10,000 records, with formula neutralization for text fields. Imports create records; they do not silently update existing rows. Reference fields use UUIDs. Use the backup for a complete installation export.
+
+Pantry reports support up to 100 products; fuel and meter reports up to 10,000 source records. Larger reports return an explicit limit message instead of partial results. Editing retains a selected reference outside the first 100 choices; searchable reference pagination is a future improvement.
 
 ## Local OCR
 
@@ -114,7 +118,7 @@ The integration script starts a separate disposable PostgreSQL container on `127
 ```powershell
 ./scripts/run-review-server.ps1
 # In another terminal:
-node ./scripts/browser-check.cjs
+npm run test:browser
 ```
 
 Use the bundled Playwright runtime in this workstation, or install the pinned development dependencies in [package.json](package.json). The review server resets only the test database's `bootstrap` account. Never point it at a live household.
@@ -123,7 +127,7 @@ CI defines **GOLint, GOSec, GOVul, GODep**, race/integration tests, browser chec
 
 `npm test` exercises the quality-checking tools, including malformed coverage/OCI/workflow inputs. Set `HOUSEHOLD_LOAD_CHECK=1` when running the browser suite to include a bounded 1,000-row concurrent workload; results are written to `outputs/qa/load-report.json`. This local regression budget is separate from production capacity acceptance.
 
-The [2026-10-24 QA review](docs/qa-review.md) records the fixes and measured results: 96 browser checks, passing Windows integration and Linux race suites, 57.2% combined internal-package statement coverage and a fresh encrypted restore with file verification. CI enforces a 55% combined coverage floor; unit-only coverage uses a separate 14% floor. Broader release acceptance remains visible in the checklist.
+The latest [security, audit and usability review](docs/audit-review.md) records passing Windows integration and Linux race suites, 61.3% combined internal-package coverage, 149 checks across three browser suites, eight clean axe scans, and a fresh encrypted restore with file verification. Unit-only coverage is 15.2%; CI enforces separate 55% combined and 14% unit floors. The [earlier QA review](docs/qa-review.md) remains historical evidence. Broader release acceptance remains visible in the checklist.
 
 On Windows, `./scripts/test-recovery.ps1` rehearses an encrypted backup and restore with synthetic domain data, an original file and a preview in the disposable recovery service. It verifies exact values and file hashes, then cleans its test source and temporary repository volumes. It never uses the live database as the fixture source or restore target.
 
@@ -134,6 +138,7 @@ cmd/household       serve, migrate, healthcheck, recover, backup, restore-check,
 cmd/dependency-check  runtime dependency/license inventory
 cmd/test-fixture    synthetic review account, requires testtools build tag
 internal/auth      credentials, sessions, TOTP, durable limits
+internal/audit     transaction attribution and constrained audit events
 internal/config    validated deployment configuration
 internal/database  pool, embedded migrations, schema readiness
 internal/module    compiled descriptor/input contracts

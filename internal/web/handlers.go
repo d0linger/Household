@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"household/internal/audit"
 	"household/internal/auth"
 	"household/internal/module"
 	"household/internal/store"
@@ -123,7 +124,7 @@ func (s *Server) modulePage(w http.ResponseWriter, r *http.Request) {
 	p.Query = query
 	p.Record = prefill(r, e)
 	if identity(r).CanWrite() {
-		p.References, err = s.references(r, e)
+		p.References, err = s.references(r, e, p.Record)
 		if err != nil {
 			s.fail(w, r, err)
 			return
@@ -154,7 +155,7 @@ func (s *Server) detailPage(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, err)
 		return
 	}
-	p.References, err = s.references(r, e)
+	p.References, err = s.references(r, e, p.Record)
 	if err != nil {
 		s.fail(w, r, err)
 		return
@@ -302,7 +303,7 @@ func (s *Server) actionRecord(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, record)
 }
 
-func (s *Server) references(r *http.Request, e module.Entity) (map[string][]store.Record, error) {
+func (s *Server) references(r *http.Request, e module.Entity, selected store.Record) (map[string][]store.Record, error) {
 	out := map[string][]store.Record{}
 	for _, f := range e.Fields {
 		if f.Reference == "" {
@@ -350,6 +351,20 @@ func (s *Server) references(r *http.Request, e module.Entity) (map[string][]stor
 		records, err := s.Store.List(r.Context(), identity(r), m, target, "", 100, 0)
 		if err != nil {
 			return nil, err
+		}
+		// Editing a record must retain its parent even beyond the first page.
+		selectedID := store.String(selected[f.Name])
+		found := false
+		for _, record := range records {
+			found = found || store.String(record["id"]) == selectedID
+		}
+		if selectedID != "" && !found && value.ValidUUID(selectedID) {
+			record, getErr := s.Store.Get(r.Context(), identity(r), m, target, selectedID)
+			if getErr == nil {
+				records = append(records, record)
+			} else if !errors.Is(getErr, store.ErrNotFound) {
+				return nil, getErr
+			}
 		}
 		for _, record := range records {
 			label := store.String(record[target.Primary])
@@ -425,7 +440,7 @@ func (s *Server) revokeSession(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, store.ErrNotFound)
 		return
 	}
-	if _, err := s.Pool.Exec(r.Context(), "UPDATE core.sessions SET revoked_at=now() WHERE id=$1 AND user_id=$2", r.PathValue("id"), identity(r).UserID); err != nil {
+	if err := s.Auth.RevokeSession(r.Context(), identity(r), r.PathValue("id"), "session_revoked"); err != nil {
 		s.fail(w, r, err)
 		return
 	}
@@ -498,7 +513,7 @@ func (s *Server) createUser(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, err)
 		return
 	}
-	tx, err := s.Pool.Begin(r.Context())
+	tx, err := audit.Begin(r.Context(), s.Pool)
 	if err != nil {
 		s.fail(w, r, err)
 		return
@@ -538,7 +553,7 @@ func (s *Server) updateUser(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, store.Invalid{Message: "ungültige Rolle"})
 		return
 	}
-	tx, err := s.Pool.Begin(r.Context())
+	tx, err := audit.Begin(r.Context(), s.Pool)
 	if err != nil {
 		s.fail(w, r, err)
 		return
@@ -602,7 +617,7 @@ func (s *Server) preferences(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id := identity(r)
-	_, err := s.Pool.Exec(r.Context(), "INSERT INTO core.user_preferences(household_id,user_id,theme,offline_storage_enabled) VALUES($1,$2,$3,$4) ON CONFLICT(household_id,user_id) DO UPDATE SET theme=excluded.theme,offline_storage_enabled=excluded.offline_storage_enabled,updated_at=now()", id.HouseholdID, id.UserID, in.Theme, in.Offline)
+	_, err := audit.Exec(r.Context(), s.Pool, "INSERT INTO core.user_preferences(household_id,user_id,theme,offline_storage_enabled) VALUES($1,$2,$3,$4) ON CONFLICT(household_id,user_id) DO UPDATE SET theme=excluded.theme,offline_storage_enabled=excluded.offline_storage_enabled,updated_at=now()", id.HouseholdID, id.UserID, in.Theme, in.Offline)
 	if err != nil {
 		s.fail(w, r, err)
 		return
@@ -684,7 +699,7 @@ func (s *Server) readNotification(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, store.ErrNotFound)
 		return
 	}
-	_, err := s.Pool.Exec(r.Context(), "UPDATE core.notifications SET read_at=coalesce(read_at,now()) WHERE id=$1 AND user_id=$2", r.PathValue("id"), identity(r).UserID)
+	_, err := audit.Exec(r.Context(), s.Pool, "UPDATE core.notifications SET read_at=coalesce(read_at,now()) WHERE id=$1 AND user_id=$2", r.PathValue("id"), identity(r).UserID)
 	if err != nil {
 		s.fail(w, r, err)
 		return
@@ -712,7 +727,7 @@ func (s *Server) requestPurge(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, store.ErrConflict)
 		return
 	}
-	tx, err := s.Pool.Begin(r.Context())
+	tx, err := audit.Begin(r.Context(), s.Pool)
 	if err != nil {
 		s.fail(w, r, err)
 		return
@@ -773,7 +788,7 @@ func (s *Server) report(w http.ResponseWriter, r *http.Request) {
 		}
 		result["months"] = months
 	case "pantry":
-		rows, err := s.Pool.Query(r.Context(), "SELECT p.id,p.name,p.unit_code,coalesce(sum(m.quantity_delta),0)::text,p.low_stock_threshold::text FROM pantry.products p LEFT JOIN pantry.lots l ON l.product_id=p.id AND l.household_id=p.household_id LEFT JOIN pantry.stock_movements m ON m.lot_id=l.id AND m.household_id=l.household_id WHERE p.household_id=$1 GROUP BY p.id ORDER BY p.name LIMIT 100", identity(r).HouseholdID)
+		rows, err := s.Pool.Query(r.Context(), "SELECT p.id,p.name,p.unit_code,coalesce(sum(m.quantity_delta),0)::text,p.low_stock_threshold::text FROM pantry.products p LEFT JOIN pantry.lots l ON l.product_id=p.id AND l.household_id=p.household_id LEFT JOIN pantry.stock_movements m ON m.lot_id=l.id AND m.household_id=l.household_id WHERE p.household_id=$1 GROUP BY p.id ORDER BY p.name,p.id LIMIT $2", identity(r).HouseholdID, store.ReportProductLimit+1)
 		if err != nil {
 			s.fail(w, r, err)
 			return
@@ -781,6 +796,10 @@ func (s *Server) report(w http.ResponseWriter, r *http.Request) {
 		defer rows.Close()
 		products := []store.Record{}
 		for rows.Next() {
+			if len(products) == store.ReportProductLimit {
+				s.fail(w, r, store.Invalid{Message: "Diese Auswertung unterstützt höchstens 100 Vorratsprodukte. Es werden keine unvollständigen Ergebnisse angezeigt; für den vollständigen Datenbestand die Betreiber-Sicherung verwenden."})
+				return
+			}
 			var id, name, unit, stock string
 			var threshold *string
 			if err = rows.Scan(&id, &name, &unit, &stock, &threshold); err != nil {
@@ -802,7 +821,7 @@ func (s *Server) report(w http.ResponseWriter, r *http.Request) {
 		}
 		result["consumption"] = readings
 	case "fuel":
-		rows, err := s.Pool.Query(r.Context(), `SELECT f.id,f.vehicle_id,f.odometer_series_id,f.occurred_on,f.odometer::text,f.quantity::text,f.full_tank,f.previous_fill_missing,f.fuel_type,f.total_minor,v.name,s.reason,s.started_on FROM fuel.fillups f JOIN fuel.vehicles v ON v.household_id=f.household_id AND v.id=f.vehicle_id JOIN fuel.odometer_series s ON s.household_id=f.household_id AND s.id=f.odometer_series_id WHERE f.household_id=$1 ORDER BY f.vehicle_id,f.odometer_series_id,f.occurred_on,f.odometer,f.id LIMIT 10000`, identity(r).HouseholdID)
+		rows, err := s.Pool.Query(r.Context(), `SELECT f.id,f.vehicle_id,f.odometer_series_id,f.occurred_on,f.odometer::text,f.quantity::text,f.full_tank,f.previous_fill_missing,f.fuel_type,f.total_minor,v.name,s.reason,s.started_on FROM fuel.fillups f JOIN fuel.vehicles v ON v.household_id=f.household_id AND v.id=f.vehicle_id JOIN fuel.odometer_series s ON s.household_id=f.household_id AND s.id=f.odometer_series_id WHERE f.household_id=$1 ORDER BY f.vehicle_id,f.odometer_series_id,f.occurred_on,f.odometer,f.id LIMIT $2`, identity(r).HouseholdID, store.ReportHistoryLimit+1)
 		if err != nil {
 			s.fail(w, r, err)
 			return
@@ -810,6 +829,10 @@ func (s *Server) report(w http.ResponseWriter, r *http.Request) {
 		defer rows.Close()
 		list := []store.Record{}
 		for rows.Next() {
+			if len(list) == store.ReportHistoryLimit {
+				s.fail(w, r, store.Invalid{Message: "Diese Auswertung unterstützt höchstens 10.000 Tankvorgänge. Es werden keine unvollständigen Ergebnisse angezeigt; für den vollständigen Datenbestand die Betreiber-Sicherung verwenden."})
+				return
+			}
 			var rid, vehicle, series, odo, quantity, ft, vehicleName, reason string
 			var day, seriesStart time.Time
 			var full, missing bool

@@ -16,8 +16,8 @@ import (
 	"strings"
 	"time"
 
+	"household/internal/audit"
 	"household/internal/config"
-	"household/internal/value"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -87,7 +87,8 @@ func HashToken(raw string) []byte { h := sha256.Sum256([]byte(raw)); return h[:]
 func PasswordValid(password string) bool { return len([]rune(password)) >= 14 && len(password) <= 72 }
 
 func (s *Service) Bootstrap(ctx context.Context, modules []string, enabled map[string]bool) error {
-	tx, err := s.pool.Begin(ctx)
+	ctx = audit.WithSystem(ctx, "bootstrap")
+	tx, err := audit.Begin(ctx, s.pool)
 	if err != nil {
 		return fmt.Errorf("begin bootstrap: %w", err)
 	}
@@ -150,13 +151,22 @@ func (s *Service) Limit(ctx context.Context, scope, subject string, limit int, w
 	return nil
 }
 
-func (s *Service) Login(ctx context.Context, username, password, code, ip, ua string) (string, Identity, error) {
+func (s *Service) Login(ctx context.Context, username, password, code, ip, ua string) (token string, result Identity, loginErr error) {
 	if err := s.Limit(ctx, "login-network", ip, 100, 15*time.Minute); err != nil {
 		return "", Identity{}, err
 	}
 	if err := s.Limit(ctx, "login-account", strings.ToLower(username), 20, time.Hour); err != nil {
 		return "", Identity{}, err
 	}
+	// Only credential attempts admitted by both durable limits create an event.
+	// Submitted credentials, account names and network addresses never enter it.
+	defer func() {
+		if errors.Is(loginErr, ErrCredentials) {
+			if err := s.securityEvent(audit.WithSystem(ctx, "system"), "", "users", "login_failed", nil); err != nil {
+				loginErr = fmt.Errorf("record rejected login: %w", err)
+			}
+		}
+	}()
 	select {
 	case s.bcryptSlots <- struct{}{}:
 		defer func() { <-s.bcryptSlots }()
@@ -176,12 +186,20 @@ func (s *Service) Login(ctx context.Context, username, password, code, ip, ua st
 	if len(password) > 72 || bcrypt.CompareHashAndPassword([]byte(hash), []byte(password)) != nil || disabled != nil {
 		return "", Identity{}, ErrCredentials
 	}
-	tx, err := s.pool.Begin(ctx)
+	tx, err := audit.Begin(ctx, s.pool)
 	if err != nil {
 		return "", Identity{}, err
 	}
 	defer rollback(ctx, tx)
-	if _, err = tx.Exec(ctx, "SELECT h.id FROM core.households h JOIN core.memberships m ON m.household_id=h.id WHERE m.user_id=$1 FOR SHARE OF h", uid); err != nil {
+	var household string
+	if err = tx.QueryRow(ctx, "SELECT h.id FROM core.households h JOIN core.memberships m ON m.household_id=h.id WHERE m.user_id=$1 AND m.inactive_at IS NULL FOR SHARE OF h", uid).Scan(&household); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return "", Identity{}, ErrCredentials
+		}
+		return "", Identity{}, fmt.Errorf("load login household: %w", err)
+	}
+	ctx = audit.WithActor(ctx, uid, household)
+	if err = audit.Bind(ctx, tx); err != nil {
 		return "", Identity{}, err
 	}
 	var currentHash string
@@ -196,6 +214,9 @@ func (s *Service) Login(ctx context.Context, username, password, code, ip, ua st
 	}
 	raw, err := s.createSession(ctx, tx, uid, ip, ua)
 	if err != nil {
+		return "", Identity{}, err
+	}
+	if err = audit.Event(ctx, tx, "core", "users", uid, "login_success", nil); err != nil {
 		return "", Identity{}, err
 	}
 	if err = tx.Commit(ctx); err != nil {
@@ -262,11 +283,11 @@ func (s *Service) ValidCSRF(raw, kind, token string) bool {
 }
 
 func (s *Service) Logout(ctx context.Context, id Identity) error {
-	_, err := s.pool.Exec(ctx, "UPDATE core.sessions SET revoked_at=now() WHERE id=$1 AND user_id=$2", id.SessionID, id.UserID)
-	return err
+	return s.RevokeSession(ctx, id, id.SessionID, "logout")
 }
 
 func (s *Service) ChangePassword(ctx context.Context, id Identity, current, next string) error {
+	ctx = audit.WithActor(ctx, id.UserID, id.HouseholdID)
 	if err := s.Limit(ctx, "password-change", id.UserID, 10, time.Hour); err != nil {
 		return err
 	}
@@ -290,7 +311,7 @@ func (s *Service) ChangePassword(ctx context.Context, id Identity, current, next
 	if err != nil {
 		return fmt.Errorf("hash replacement password: %w", err)
 	}
-	tx, err := s.pool.Begin(ctx)
+	tx, err := audit.Begin(ctx, s.pool)
 	if err != nil {
 		return err
 	}
@@ -307,6 +328,9 @@ func (s *Service) ChangePassword(ctx context.Context, id Identity, current, next
 	}
 	_, err = tx.Exec(ctx, "UPDATE core.sessions SET revoked_at=now() WHERE user_id=$1", id.UserID)
 	if err != nil {
+		return err
+	}
+	if err = audit.Event(ctx, tx, "core", "users", id.UserID, "password_changed", nil); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)
@@ -327,6 +351,7 @@ func (s *Service) Open(data []byte) ([]byte, error) {
 }
 
 func (s *Service) SetupTOTP(ctx context.Context, id Identity) (string, string, error) {
+	ctx = audit.WithActor(ctx, id.UserID, id.HouseholdID)
 	if !id.Recent() {
 		return "", "", errors.New("für diese Aktion erneut anmelden")
 	}
@@ -334,7 +359,7 @@ func (s *Service) SetupTOTP(ctx context.Context, id Identity) (string, string, e
 	if err != nil {
 		return "", "", err
 	}
-	tx, err := s.pool.Begin(ctx)
+	tx, err := audit.Begin(ctx, s.pool)
 	if err != nil {
 		return "", "", err
 	}
@@ -349,6 +374,9 @@ func (s *Service) SetupTOTP(ctx context.Context, id Identity) (string, string, e
 	if tag.RowsAffected() != 1 {
 		return "", "", errors.New("zweiter Faktor ist bereits aktiv")
 	}
+	if err = audit.Event(ctx, tx, "core", "users", id.UserID, "totp_setup", nil); err != nil {
+		return "", "", err
+	}
 	if err = tx.Commit(ctx); err != nil {
 		return "", "", err
 	}
@@ -356,10 +384,11 @@ func (s *Service) SetupTOTP(ctx context.Context, id Identity) (string, string, e
 }
 
 func (s *Service) EnableTOTP(ctx context.Context, id Identity, code string) ([]string, error) {
+	ctx = audit.WithActor(ctx, id.UserID, id.HouseholdID)
 	if !id.Recent() {
 		return nil, errors.New("für diese Aktion erneut anmelden")
 	}
-	tx, err := s.pool.Begin(ctx)
+	tx, err := audit.Begin(ctx, s.pool)
 	if err != nil {
 		return nil, err
 	}
@@ -395,6 +424,9 @@ func (s *Service) EnableTOTP(ctx context.Context, id Identity, code string) ([]s
 		codes = append(codes, code)
 	}
 	if _, err = tx.Exec(ctx, "UPDATE core.sessions SET revoked_at=now() WHERE user_id=$1 AND id<>$2", id.UserID, id.SessionID); err != nil {
+		return nil, err
+	}
+	if err = audit.Event(ctx, tx, "core", "users", id.UserID, "totp_enabled", nil); err != nil {
 		return nil, err
 	}
 	if err = tx.Commit(ctx); err != nil {
@@ -441,6 +473,9 @@ func (s *Service) verifyFactor(ctx context.Context, tx pgx.Tx, user, code string
 		if errors.Is(err, pgx.ErrNoRows) {
 			return ErrCredentials
 		}
+		if err == nil {
+			err = audit.Event(ctx, tx, "core", "users", user, "recovery_code_used", nil)
+		}
 	}
 	if err != nil {
 		return err
@@ -486,6 +521,7 @@ func rollback(ctx context.Context, tx pgx.Tx) {
 }
 
 func (s *Service) RecoverPassword(ctx context.Context, username, password string, resetFactor ...bool) error {
+	ctx = audit.WithSystem(ctx, "operator")
 	var role string
 	if err := s.pool.QueryRow(ctx, "SELECT current_user").Scan(&role); err != nil {
 		return err
@@ -500,7 +536,7 @@ func (s *Service) RecoverPassword(ctx context.Context, username, password string
 	if err != nil {
 		return err
 	}
-	tx, err := s.pool.Begin(ctx)
+	tx, err := audit.Begin(ctx, s.pool)
 	if err != nil {
 		return err
 	}
@@ -525,7 +561,7 @@ func (s *Service) RecoverPassword(ctx context.Context, username, password string
 			return err
 		}
 	}
-	if _, err = tx.Exec(ctx, "INSERT INTO core.audit_log(actor_user_id,action,outcome,request_id,details) VALUES($1,'operator_password_recovery','success',$2,jsonb_build_object('mfa_reset',$3::boolean))", uid, value.UUID(), reset); err != nil {
+	if err = audit.Event(ctx, tx, "core", "users", uid, "operator_password_recovery", map[string]any{"mfa_reset": reset}); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)

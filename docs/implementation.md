@@ -13,6 +13,21 @@ The 22-phase / 220-step plan was approved on 2026-10-24. This ledger records ver
 
 ## Live checklist — 2026-10-24
 
+### Current AppSec / audit / UX pass
+
+The following pass supersedes earlier validation for files it changes. Fresh native, Linux race, browser-component, scanner, Docker and recovery checks passed. The historical Q-series records the previous candidate (993604f); current measured results are consolidated in [audit-review.md](audit-review.md).
+
+| ID | Work item | Status | Evidence / next acceptance check |
+|---|---|---|---|
+| A01 | Privacy and security review | Verified | Five stale-capture disclosure cases reproduced and now rejected; focused and complete native regression passed |
+| A02 | Generic atomic audit trail | Verified | Core 5, 45 policies, exact field diffs, masked secrets, runtime append-only permissions; complete native suite passed including populated core 4 upgrade |
+| A03 | Actor propagation and security events | Verified | User/request/worker/operator context, session/authentication/terminal worker events, concurrent pooled actor isolation passed in native integration |
+| A04 | Administrator audit viewer | Verified | Native authorization/pagination/legacy/masking checks and 15 browser checks with two clean axe scans passed |
+| A05 | Precision, reference and report correctness | Verified | Exact related amount, selected parent beyond 100, report at-limit/overflow (100/10000) native regressions passed |
+| A06 | Dialog / validation / relationship loading UX | Verified | 38 checks and three clean dialog axe scans; 422/409 input retention and focus; failed required/multiple references block unsafe writes, retry preserves existing tags |
+| A07 | Fresh complete QA and Docker recovery | Verified locally | Unit/integration/race passed (15.2% unit / 61.3% combined); scanners, 149 checks across three browser components, eight axe scans, updated Docker image, OCI evidence and encrypted recovery passed; full npm chain not rerun after test-only animation fix |
+| A08 | Before/after visuals, documentation and local commit | In progress | Actual comparison passed six view/width checks and keyboard interaction; final reports complete, temporary test services stopped; staged secret exclusion and dev commit being completed |
+
 This is the central working checklist requested by the user. It is updated after meaningful changes and checks. **Open** means not completed; **In progress** includes implementation awaiting a fresh check; **Verified** requires an executed check; **Blocked** identifies an actual external prerequisite. Earlier passing results do not certify later edits.
 
 Status clarification: **20 delivery workstreams have the evidence listed below; this does not mean all 220 individual plan steps are complete.** The working local candidate exists, but the additional release gates C22–C28 remain open, externally blocked or deferred. Initial implementation commit: **3972cc9** on **dev**; the QA follow-up is recorded separately in local history. No remote push occurred.
@@ -21,7 +36,7 @@ Status clarification: **20 delivery workstreams have the evidence listed below; 
 |---|---|---|---|
 | C01 | Approved scope and established design | Verified | Conversation; PRODUCT.md; DESIGN.md |
 | C02 | Interactive phase overview and 50 design examples | Verified | outputs/design-review/; prototype QA from the design review |
-| C03 | Go app, embedded assets, nine module schemas | Verified | Final native and Linux integration runs passed; core migration4, expenses migration2, other modules migration1; 19 migration checksums verified |
+| C03 | Go app, embedded assets, nine module schemas | Verified | Current native and Linux integration runs passed; core migration 5, expenses migration 2, other modules migration 1; 20 migration checksums verified |
 | C04 | Authentication, roles, sessions, CSRF, TOTP | Verified | Forced bootstrap workflow, reader restrictions, encrypted TOTP/one-use recovery, hashed sessions and revocation regressions passed; focused security follow-up complete |
 | C05 | Financial and stock consistency | Verified | Final PostgreSQL and Linux race runs passed concurrent consumption, allocation-parent immutability, posting/reversal, meter/fuel history and transfer checks |
 | C06 | Cross-module actions and offline generation binding | Verified | Final PostgreSQL regression rejects stale destination generation; destination checks precede idempotency replay; browser queue validates destinations |
@@ -29,21 +44,21 @@ Status clarification: **20 delivery workstreams have the evidence listed below; 
 | C08 | Capture replay and recipe/shopping edge cases | Verified | PostgreSQL regressions passed: zero-timer replay, foreign ingredient rejection, archived item rejection; meal recipe values read under lock |
 | C09 | Search, recurring tasks and transferred-lot reminders | Verified | PostgreSQL regressions assert search and reminder records for both new child records |
 | C10 | Docker Compose isolation and local app | Verified | Final app/database/backup services run; app on 127.0.0.1:8100, database has no published port |
-| C11 | Backup and isolated restore | Verified | Initial and final-schema live-installation restore succeeded; data-bearing result in C13; daily scheduler running |
+| C11 | Backup and isolated restore | Verified | Earlier live-installation restore succeeded at core 4; current core 5 data-bearing fixture result in C13; daily scheduler running |
 | C12 | Backup retention and purge eligibility | Verified | Independent follow-up resolved all findings; scheduler pruned 859a... and marked it expired; stale-backup purge regression passed |
-| C13 | Fresh encrypted backup / restore rehearsal | Verified | Live-installation snapshot restored at core migration4; separate data-bearing fixture restored exact 2.500000 kg value plus original/preview files (2 SHA-256 checks). outputs/recovery-review/report.json; scripts/test-recovery.ps1 |
-| C14 | Unit, integration and race checks | Verified | Fresh verify.ps1, native PostgreSQL suite and Linux race suite passed; combined internal coverage 57.2%, enforced floor 55%; unit-only 14.9%, floor 14% |
-| C15 | Lint, security, vulnerability and dependency checks | Verified | Zero lint issues including integration/testtools tags; GOSec 40 files / 6814 lines / zero findings; GOVul zero reachable/imported-package vulnerabilities; runtime license inventory, npm audit and module verification passed |
-| C16 | Docker app and OCR evidence | Verified | Current runtime sha256:2403bf288dbcfe88ecc4511efcac018d06fb186fd9a86c16d94c165b1681da82, 37,996,891 bytes; non-root/read-only/healthy; nine HTTP smoke checks passed. Earlier optional Tesseract image read synthetic German text; current worker failure/review paths have regressions |
-| C17 | Browser, offline, accessibility and responsive checks | Verified | 96-check pass, 11 screenshots, three clean axe scans, zero unexpected JS/CSP/external requests; shopping change/undo keyboard focus and offline draft deletion checked |
+| C13 | Fresh encrypted backup / restore rehearsal | Verified | New core 5 fixture restored exact 2.500000 kg plus original/preview files (2 SHA-256 checks); restore/verification 4.17 s. Live pre/post-upgrade snapshots created; earlier live core 4 restore remains historical evidence. outputs/recovery-review/report.json |
+| C14 | Unit, integration and race checks | Verified | Current verify.ps1, native PostgreSQL and Linux race suites passed; combined internal coverage 61.3%, floor 55%; unit-only 15.2%, floor 14% |
+| C15 | Lint, security, vulnerability and dependency checks | Verified | Zero tagged lint issues; GOSec 43 files / 7468 lines / zero findings; GOVul zero reachable/imported-package vulnerabilities with one unused module-only advisory; license inventory, npm audit and module verification passed |
+| C16 | Docker app and OCR evidence | Verified | Current runtime sha256:18d139d998f98649693fe718dea312696aae1a8032d1c1380ddbb25b20bd6378, 38,107,152 bytes; non-root/read-only/healthy; ready at core 5 with 45 audit policies. Earlier optional Tesseract image read synthetic German text; current worker failure/review paths have regressions |
+| C17 | Browser, offline, accessibility and responsive checks | Verified | Current components: 96 general + 38 dialog/error + 15 audit checks; 14 application screenshots; eight clean axe scans. No reported page errors; general/audit suites assert no external frontend requests. Full chain caveat in audit-review.md |
 | C18 | Independent visual finish review | Verified | Verdict pass: ship at scope of F01–F03, all resolved. Separate documentation pass complete; limitations and preserved drift in docs/design-review.md |
 | C19 | Operator docs, complete master plan and release notes | Verified | README, architecture/schema/security/operations, 220-step master plan, release notes, contributing/security guidance and final evidence ledger present |
 | C20 | Local development commit and secret exclusion check | Verified | Implementation commit 3972cc9 on dev, 121 project files; private/generated paths and actual secret values checked and excluded. No push; ledger update committed separately |
 | C21 | Public deployment / publication | Blocked | No public origin, hosting target or publication instruction supplied; local Docker delivery continues |
-| C22 | Representative performance/resource and recovery-target acceptance | Open | Local 1,000-row probe passed (read p95 77.3 ms / write p95 105 ms); small synthetic restore/verification took 4.77 s. Production resource/workload and agreed RTO/RPO acceptance remain open; plan steps 9, 200, 209 are not fully accepted |
-| C23 | Release upgrade rehearsal with populated prior-version data | Open | Fresh/repeated migrations and existing-installation migration ran; the full populated prior-release upgrade and rollback/forward-recovery acceptance scenario is not documented as completed. Plan steps 40, 216–218 need a consolidated release rehearsal |
-| C24 | Hosted CI and exported OCI/SBOM/provenance verification | Blocked | Actual local OCI export verified (11 blobs, 32-package SPDX SBOM, matching SLSA v1 subjects). Hosted Actions execution still needs a remote/push; plan step 206 remains partially evidenced |
-| C25 | Complete accessibility and keyboard-flow acceptance | Open | Three axe scans, named contrast/target checks and shopping change/undo keyboard focus passed; complete keyboard/assistive-technology coverage remains unverified |
+| C22 | Representative performance/resource and recovery-target acceptance | Open | Fresh local 1,000-row probe: read p95 81.1 ms / write p95 117.8 ms; small synthetic restore/verification 4.17 s. Production resource/workload and agreed RTO/RPO acceptance remain open; steps 9, 200, 209 not fully accepted |
+| C23 | Release upgrade rehearsal with populated prior-version data | Open | Actual populated core 4 schemas upgraded to core 5 twice with preserved domain/legacy data; current live migration succeeded. Complete prior-release rollback/forward-recovery acceptance remains open; steps 40, 216–218 need a consolidated release rehearsal |
+| C24 | Hosted CI and exported OCI/SBOM/provenance verification | Blocked | Current OCI export verified: 11 blobs, 32-package SPDX, SLSA v1. Four filesystem layers match runtime; Compose metadata makes config digests differ. Hosted Actions still needs a remote/push; step 206 partly evidenced |
+| C25 | Complete accessibility and keyboard-flow acceptance | Open | Eight clean axe scans, field contrast/targets, shopping keyboard continuity, dialog names, error focus and audit expansion passed; complete keyboard/assistive-technology coverage remains unverified |
 | C26 | Off-host backup destination and host-loss recovery | Blocked | Encrypted local repository and isolated restoration passed; separate storage is not configured, so host-loss protection is not delivered |
 | C27 | Deferred optional integrations | Deferred | Web Push, local/cloud AI adapters and passkeys are not implemented in this candidate. Tesseract OCR is implemented as an optional Docker image; manual capture is the default |
 | C28 | Individual 220-step completion/evidence cross-reference | Open | The plan is exported, but the workstream checklist is not a completed per-step acceptance matrix. A 220/220 completion claim is unsupported |

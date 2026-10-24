@@ -16,6 +16,12 @@ The complete plan is in [master-plan.md](master-plan.md). Current executed check
 
 The follow-up fixes origin/input validation, bounded command output, maintenance connection/restore safeguards, exhausted OCR jobs, orphan scanning beyond 10,000 files and shopping keyboard focus after reload. Independent test fixtures, required PostgreSQL checks, race/fuzz coverage, workflow/secret validation and actual OCI/SBOM inspection now guard these behaviors. Windows and Linux integration runs, 96 browser checks and a fresh encrypted recovery rehearsal passed. See [the review report](qa-review.md) for measured coverage, workload observations and remaining acceptance limits.
 
+## Security, audit and usability follow-up
+
+Core migration5 adds centralized field-level history for 45 tables, a household-scoped administrator viewer, explicit authentication/worker events, transaction-local identity and owner-controlled safe-field policies. Existing events remain identifiable as legacy records. Runtime writes cannot alter audit history; this does not protect against the database owner. Module purge now retains per-row audit evidence, including truncation.
+
+The pass closes stale capture visibility after source deletion, preserves exact related amounts and selected references outside the first page, and rejects oversized reports explicitly. Dialog names, validation-error focus and failed relationship loading/retry improve keyboard and assistive-technology use. Native integration and Linux race checks passed with 61.3% combined coverage; three browser components passed 149 checks and eight axe scans. The current Docker image and encrypted recovery rehearsal are verified locally. See [the final pass report](audit-review.md), [the security review](security-review-2026-10-24.md), [audit architecture](audit-trail.md) and [current evidence](implementation.md).
+
 ## Deployment limits
 
 - One household and one app replica per installation.
