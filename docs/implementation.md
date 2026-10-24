@@ -15,6 +15,8 @@ The 22-phase / 220-step plan was approved on 2026-10-24. This ledger records ver
 
 This is the central working checklist requested by the user. It is updated after meaningful changes and checks. **Open** means not completed; **In progress** includes implementation awaiting a fresh check; **Verified** requires an executed check; **Blocked** identifies an actual external prerequisite. Earlier passing results do not certify later edits.
 
+Local delivery: **20 items verified**. Public publication remains an operator decision (C21). Implementation commit: **3972cc9** on **dev**, kept local. The subsequent ledger commit records this result; no remote push occurred.
+
 | ID | Work item | Status | Evidence / next acceptance check |
 |---|---|---|---|
 | C01 | Approved scope and established design | Verified | Conversation; PRODUCT.md; DESIGN.md |
@@ -36,7 +38,7 @@ This is the central working checklist requested by the user. It is updated after
 | C17 | Browser, offline, accessibility and responsive checks | Verified | Final 90-check pass, 11 screenshots, 3 clean axe scans, 0 unexpected JS/CSP/external requests; named drafts, reports, targets and field contrast checked |
 | C18 | Independent visual finish review | Verified | Verdict pass: ship at scope of F01–F03, all resolved. Separate documentation pass complete; limitations and preserved drift in docs/design-review.md |
 | C19 | Operator docs, complete master plan and release notes | Verified | README, architecture/schema/security/operations, 220-step master plan, release notes, contributing/security guidance and final evidence ledger present |
-| C20 | Local development commit and secret exclusion check | In progress | 121 project files staged on dev; private/generated paths and actual secret values checked and excluded; local commit next, no push |
+| C20 | Local development commit and secret exclusion check | Verified | Implementation commit 3972cc9 on dev, 121 project files; private/generated paths and actual secret values checked and excluded. No push; ledger update committed separately |
 | C21 | Public deployment / publication | Blocked | No public origin, hosting target or publication instruction supplied; local Docker delivery continues |
 
 ## Current review findings
@@ -82,5 +84,6 @@ The first independent visual review returned **fix**. After one batch, its verdi
 - Security/auth and domain/concurrency reviewers report no remaining material issue within their focused follow-up scope; these are source reviews, separate from executed tests.
 - Data-bearing recovery rehearsal passed: synthetic rice 2.500000 kg, one original and one preview. Source/target were disposable databases on restore-db; fixture repository/work volumes and source database were cleaned up. No live household data was seeded.
 - Independent visual verdict scored all three requested corrections resolved; documentation verification preserved the incumbent design system and reported existing drift separately.
+- Final live snapshot 3b11eb621984fb749937344c3b19661c2fb3bb2893dc9769897f916830015ae6 restored successfully; outputs/docker-delivery.json records the image/runtime/verification identity. Disposable recovery, native review and test-database helpers stopped afterward; live app/database/daily backup remain running.
 
 No public release or GitHub Actions run is claimed. Remaining checks are kept visible until executed.
