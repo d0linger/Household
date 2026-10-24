@@ -1,0 +1,39 @@
+{{define "shopping-board"}}
+<script nonce="{{.Nonce}}" src="{{index .Asset "shopping-input.js"}}" defer></script><script nonce="{{.Nonce}}" src="{{index .Asset "shopping.js"}}" defer></script>
+<section class="panel shopping-board" data-shopping-list="{{.Record.id}}" data-generation="{{with index .States "shopping"}}{{.Generation}}{{end}}" data-can-write="{{.User.CanWrite}}" data-is-admin="{{eq .User.Role "admin"}}">
+  <div class="section-heading"><h2 id="shopping-list-title">{{.Record.name}}</h2><label class="check-label"><input type="checkbox" id="shopping-mode">Einkaufsmodus</label></div>
+  <p id="shopping-progress" role="status">Artikel werden geladen …</p>
+  <progress id="shopping-progress-bar" value="0" max="1" aria-label="Einkaufsfortschritt"></progress>
+  <div id="shopping-live-activity"><p id="shopping-shopper" role="status" hidden></p>
+    {{if and .User.CanWrite (not .Record.archived_at)}}<div class="shopping-activity"><button type="button" id="shopping-claim" aria-label="Ich kaufe jetzt ein · 30 Minuten">Ich kaufe jetzt ein</button><button type="button" id="shopping-release" aria-label="Einkaufsstatus freigeben" hidden>Freigeben</button></div>{{end}}
+  </div>
+  {{if and .User.CanWrite (not .Record.archived_at)}}
+  <details id="shopping-entry" open><summary>Artikel ergänzen</summary>
+  <form id="shopping-quick-add" action="/api/v1/m/shopping/items" method="post">
+    {{template "csrf" .}}<input type="hidden" name="list_id" value="{{.Record.id}}">
+    <div class="shopping-add-line"><label>Artikel hinzufügen<input name="name" maxlength="200" required autocomplete="off" placeholder="Zum Beispiel 2 × 500 g Nudeln"></label><button class="primary">Hinzufügen</button></div>
+    <div id="shopping-parse" hidden><p></p><button type="button" id="shopping-apply-parse">Erkennung übernehmen</button></div>
+    <details id="shopping-details"><summary>Menge, Gruppe und Notiz</summary><div class="form-grid">
+      <label>Menge<input name="quantity" inputmode="decimal"></label>
+      <label>Einheit<select name="unit_code"><option value="piece">Stück</option><option value="g">g</option><option value="kg">kg</option><option value="ml">ml</option><option value="l">l</option></select></label>
+      <label>Gruppe<input name="group_name" maxlength="300" placeholder="Zum Beispiel Gemüse"></label><label>Notiz<input name="note" maxlength="2000"></label>
+      <label>Produktvariante<select name="product_id" data-reference="shopping/products"><option value="">Freier Artikel</option></select></label>
+      <label>Zuständig<select name="assignee_id" data-reference="core/memberships"><option value="">Nicht zugewiesen</option></select></label>
+      <p class="fine full">Bei einer Produktvariante zählt „Stück“ deren Packungen. Andere Einheiten beziehen sich auf den Inhalt.</p>
+    </div></details>
+    <p class="form-error" role="alert" tabindex="-1" hidden></p>
+  </form>
+  </details>
+  {{end}}
+  <div class="shopping-controls"><details id="shopping-filter-panel" open><summary>Artikel suchen</summary><label>Artikel filtern<input id="shopping-filter" type="search" maxlength="100" placeholder="Name oder Gruppe"></label></details><button type="button" id="shopping-refresh">Aktualisieren</button></div>
+  <div id="shopping-message" role="status"></div>
+  <div id="shopping-conflict" class="notice" role="alert" tabindex="-1" hidden></div>
+  <div id="shopping-items"></div>
+  <button type="button" id="shopping-more" hidden>Weitere Artikel laden</button>
+  <p id="shopping-page-note" class="fine"></p>
+  <details id="shopping-context"><summary id="shopping-context-title">Geschäft und Schätzung</summary><p id="shopping-store"></p><p id="shopping-estimate"></p>
+    <p class="fine">Geschäft in den Listendetails wählen. Gruppen unter „Gangreihenfolge“, Produktbilder unter „Produkte“ und datierte Beobachtungen unter „Preise“ pflegen.</p>
+  </details>
+  <noscript><p>Für die Schnellerfassung und den Einkaufsmodus JavaScript aktivieren. Artikel lassen sich auch über den Bereich „Artikel“ bearbeiten.</p><a href="/m/shopping/items">Artikel öffnen</a></noscript>
+</section>
+{{end}}

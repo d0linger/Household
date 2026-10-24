@@ -241,6 +241,7 @@ func auditActionLabel(action string) string {
 		"password_changed": "Passwort geändert", "totp_setup": "Zweiter Faktor vorbereitet",
 		"totp_enabled": "Zweiter Faktor aktiviert", "recovery_code_used": "Wiederherstellungscode verwendet",
 		"session_revoked": "Sitzung beendet", "operator_password_recovery": "Konto durch Betreiber wiederhergestellt",
+		"activity": "Einkaufsstatus geändert",
 	}
 	if label, ok := labels[action]; ok {
 		return label

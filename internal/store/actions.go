@@ -89,12 +89,14 @@ func (s *Store) Action(ctx context.Context, id auth.Identity, m module.Descripto
 		data[k] = val
 	}
 	switch m.ID + "/" + e.ID + "/" + action {
+	case "shopping/lists/activity":
+		raw, err = claimShoppingList(ctx, tx, id, record, data)
 	case "shopping/lists/archive":
 		archived := data["archived"] == true || data["archived"] == "true"
 		if data["archived"] != true && data["archived"] != false && data["archived"] != "true" && data["archived"] != "false" {
 			return nil, Invalid{"Zielzustand erforderlich"}
 		}
-		err = tx.QueryRow(ctx, "UPDATE shopping.lists t SET archived_at=CASE WHEN $3 THEN now() END,updated_at=now(),version=version+1 WHERE household_id=$1 AND id=$2 RETURNING to_jsonb(t)", id.HouseholdID, rid, archived).Scan(&raw)
+		err = tx.QueryRow(ctx, "UPDATE shopping.lists t SET archived_at=CASE WHEN $3 THEN now() END,shopper_id=NULL,shopper_until=NULL,updated_at=now(),version=version+1 WHERE household_id=$1 AND id=$2 RETURNING to_jsonb(t)", id.HouseholdID, rid, archived).Scan(&raw)
 	case "shopping/items/check":
 		var open bool
 		if err = tx.QueryRow(ctx, "SELECT archived_at IS NULL FROM shopping.lists WHERE household_id=$1 AND id=$2 FOR SHARE", id.HouseholdID, record["list_id"]).Scan(&open); err != nil {
@@ -106,6 +108,9 @@ func (s *Store) Action(ctx context.Context, id auth.Identity, m module.Descripto
 		checked, ok := data["checked"].(bool)
 		if !ok {
 			return nil, Invalid{"Zielzustand erforderlich"}
+		}
+		if checked && String(record["availability"]) == "unavailable" {
+			return nil, Invalid{"Artikel ist als nicht verfügbar markiert. Verfügbarkeit oder Ersatz zuerst bearbeiten"}
 		}
 		err = tx.QueryRow(ctx, "UPDATE shopping.items t SET checked_at=CASE WHEN $3 THEN now() END,checked_by=CASE WHEN $3 THEN $4::uuid END,updated_at=now(),version=version+1 WHERE household_id=$1 AND id=$2 RETURNING to_jsonb(t)", id.HouseholdID, rid, checked, id.UserID).Scan(&raw)
 		if err == nil {

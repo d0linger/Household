@@ -70,5 +70,7 @@ jobs:
           path: |
             outputs/runtime-review
             outputs/security-review
+            outputs/expansion-review
+            outputs/catalog-review
             outputs/qa/a11y-hardening.json
           retention-days: 14

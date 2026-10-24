@@ -315,7 +315,10 @@ func (s *Server) references(r *http.Request, e module.Entity, selected store.Rec
 		}
 		if parts[0] == "core" {
 			if parts[1] == "memberships" {
-				rows, err := s.Pool.Query(r.Context(), "SELECT m.id,u.display_name FROM core.memberships m JOIN core.users u ON u.id=m.user_id WHERE m.household_id=$1 AND m.inactive_at IS NULL AND u.disabled_at IS NULL ORDER BY u.display_name", identity(r).HouseholdID)
+				rows, err := s.Pool.Query(r.Context(), `SELECT m.id,u.display_name||CASE WHEN m.inactive_at IS NOT NULL OR u.disabled_at IS NOT NULL THEN ' (nicht mehr aktiv)' ELSE '' END
+				 FROM core.memberships m JOIN core.users u ON u.id=m.user_id WHERE m.household_id=$1
+				 AND ((m.inactive_at IS NULL AND u.disabled_at IS NULL) OR m.id=nullif($2,'')::uuid)
+				 ORDER BY (m.id=nullif($2,'')::uuid) DESC NULLS LAST,u.display_name,m.id LIMIT 100`, identity(r).HouseholdID, store.String(selected[f.Name]))
 				if err != nil {
 					return nil, err
 				}
@@ -368,6 +371,9 @@ func (s *Server) references(r *http.Request, e module.Entity, selected store.Rec
 		}
 		for _, record := range records {
 			label := store.String(record[target.Primary])
+			if m.ID == "shopping" && target.ID == "products" {
+				label = shoppingProductLabel(record)
+			}
 			if label == "" {
 				label = target.Title + " · " + store.String(record["id"])[:8]
 			}
@@ -392,6 +398,9 @@ func (s *Server) referencesAPI(w http.ResponseWriter, r *http.Request) {
 	}
 	for _, record := range records {
 		record["label"] = record[e.Primary]
+		if m.ID == "shopping" && e.ID == "products" {
+			record["label"] = shoppingProductLabel(record)
+		}
 	}
 	writeJSON(w, 200, records)
 }

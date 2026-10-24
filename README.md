@@ -39,6 +39,8 @@ Production is the default and rejects HTTP origins. Unknown environment names ar
 
 ## What is included
 
+The approved expansion is tracked in [the 180-item checklist](docs/improvements-180.md), with separate implementation and executed-test evidence. The current development batch adds searchable reference choices (50 results per page, signed scope-bound cursors), list-specific quick entry with reviewed local quantity parsing, grouped shopping mode, version-aware conflict review and adaptive live refresh. Shopping reads use 100-row pages and whole-list progress; private responses remain uncached. The [catalog extension](docs/shopping-catalog.md) adds store-specific aisle order, explicit product packs and private previews, substitutes, household assignments, a 30-minute shopping activity claim and dated exact-price estimates. Development migrations are core 6 and shopping 2; the four new domain tables bring audit coverage to 49 policies. This expansion is still in progress and is not represented as 180 completed features or as deployed to the local production container.
+
 | Area | Behavior |
 |---|---|
 | Shopping | Shared lists, quantities/units, groups, stable ordering, versioned checking, short undo, archives, CSV preview/import/export |
@@ -111,6 +113,8 @@ Go **1.27.3** or newer is required. The Docker builders are pinned to an immutab
 ./scripts/verify.ps1 -Integration
 # Linux container race detector, run sequentially after integration:
 ./scripts/test-race.ps1
+# Optional focused regression; the default above still enforces full coverage:
+./scripts/test-race.ps1 -Run 'TestShopping|TestReference'
 ```
 
 The integration script starts a separate disposable PostgreSQL container on `127.0.0.1:55434`, validates both database roles and the actual database, and resets only compiled schemas in `household_test` before/after each fixture. `HOUSEHOLD_REQUIRE_INTEGRATION=1` prevents missing URLs silently skipping CI tests. Browser checks prepare their own data through the real API on port 8101. Run database and browser suites sequentially:

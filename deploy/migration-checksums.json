@@ -18,5 +18,7 @@
   "meters/000001_init.up.sql": "65b60eb5ac1d873f5b2b38c99e76823d6dcb694dcac405814bec018699b89213",
   "pantry/000001_init.up.sql": "1e3ff3206f8aa0d7e004a328754d9abcd3983c818fca4f7baedc83b42eaa79c5",
   "recipes/000001_init.up.sql": "24d68a5070f402d2fa56ef7d9e5fde395a72648e66125f61c7294b63f8eb77e5",
-  "shopping/000001_init.up.sql": "b036a1b5b8ad4ad612642626e54e2dd505c7aee7ed7da7d841349408bc2baa45"
+  "shopping/000001_init.up.sql": "b036a1b5b8ad4ad612642626e54e2dd505c7aee7ed7da7d841349408bc2baa45",
+  "core/000006_shopping_audit.up.sql": "0d970a9760fd48daf6cbc49eb57e26806f4b2988f43796f1f4a9370a1ed59be0",
+  "shopping/000002_catalog.up.sql": "59148fb72ae866217ecb68912ee0c6842f19979e1fb4f920212e670d696547f6"
 }

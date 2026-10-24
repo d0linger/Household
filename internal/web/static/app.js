@@ -27,8 +27,8 @@
   all('[data-time]').forEach(input => {if (input.value && input.value.includes('Z')) {const d = new Date(input.value); if (!isNaN(d)) {d.setMinutes(d.getMinutes() - d.getTimezoneOffset()); input.value = d.toISOString().slice(0,16);}}});
   const referenceButtons = new WeakMap();
   function referenceSubmissionBlocked(form) {
-    // An unloaded multiple select would serialize as empty and erase its links.
-    return all('[data-reference][required],[data-reference][multiple]', form).some(select => select.dataset.referenceState !== 'ready');
+    // Disabled fields are omitted by FormData, including already chosen optional references.
+    return all('[data-reference]', form).some(select => select.dataset.referenceState !== 'ready' && (select.required || select.multiple || Boolean(select.value)));
   }
   function syncReferenceButtons(form) {
     const blocked = referenceSubmissionBlocked(form) || form.dataset.submitting === 'true';
@@ -40,46 +40,74 @@
   all('[data-reference]').forEach((select, index) => {
     const form = select.closest('form');
     if (!form) return;
-    const initiallyDisabled = select.disabled;
+    const initiallyDisabled = select.matches(':disabled');
+    const label = select.labels?.[0]?.childNodes[0]?.textContent.trim() || 'Auswahl';
+    const wrapper = document.createElement('div'); wrapper.className = 'reference-field';
+    const original = select.closest('label') || select;
+    original.replaceWith(wrapper); wrapper.append(original);
+    const controls = document.createElement('div'); controls.className = 'reference-tools';
+    const search = document.createElement('input'); search.type = 'search'; search.maxLength = 100;
+    search.setAttribute('aria-label', label + ' durchsuchen'); search.placeholder = 'Auswahl durchsuchen …';
+    const find = document.createElement('button'); find.type = 'button'; find.textContent = 'Suchen';
+    const next = document.createElement('button'); next.type = 'button'; next.textContent = 'Weitere Treffer'; next.hidden = true;
+    const status = document.createElement('small'); status.setAttribute('role', 'status');
+    controls.append(search, find, next); wrapper.append(controls, status);
+    if (!select.multiple && !all('option', select).some(option => option.value === '')) {
+      const empty = document.createElement('option'); empty.value = ''; empty.textContent = 'Bitte auswählen';
+      select.prepend(empty); select.value = '';
+    }
     const notice = document.createElement('p');
     notice.className = 'form-error reference-error'; notice.id = 'reference-error-' + index;
     notice.setAttribute('role', 'alert'); notice.tabIndex = -1; notice.hidden = true;
     const message = document.createElement('span');
     const retry = document.createElement('button'); retry.type = 'button'; retry.textContent = 'Erneut laden';
     notice.append(message, document.createTextNode(' '), retry);
-    (select.closest('label') || select).after(notice);
+    wrapper.append(notice);
     select.setAttribute('aria-describedby', [select.getAttribute('aria-describedby'), notice.id].filter(Boolean).join(' '));
-    const label = select.labels?.[0]?.childNodes[0]?.textContent.trim() || 'Auswahl';
-    let loading = false;
-    async function loadReferences() {
+    let loading = false, nextCursor = '', currentQuery = '', retryCursor = '';
+    async function loadReferences(cursor = '') {
       if (loading) return;
+      retryCursor = cursor;
+      if (!cursor) currentQuery = search.value.trim();
       loading = true; select.dataset.referenceState = 'loading'; select.disabled = true;
       select.setAttribute('aria-busy', 'true'); retry.disabled = true; syncReferenceButtons(form);
+      search.disabled = true; find.disabled = true; next.disabled = true; status.textContent = 'Auswahl wird geladen …';
       try {
-        const response = await fetch('/api/v1/core/references/' + select.dataset.reference, {headers:{Accept:'application/json'}});
+        const params = new URLSearchParams({q:currentQuery,cursor});
+        const response = await fetch('/api/v1/core/reference-options/' + select.dataset.reference + '?' + params, {headers:{Accept:'application/json'}});
         if (!response.ok) throw new Error('reference request failed');
-        const rows = await response.json();
-        if (!Array.isArray(rows)) throw new Error('invalid references');
+        const page = await response.json(), rows = page.records;
+        if (!Array.isArray(rows) || typeof page.next_cursor !== 'string') throw new Error('invalid references');
         const selected = new Set([...select.selectedOptions].map(option => option.value));
+        // Keep chosen values even when they are outside this result page.
+        all('option', select).filter(option => option.value && !selected.has(option.value)).forEach(option => option.remove());
+        const existing = new Map(all('option', select).map(option => [option.value, option]));
         const fragment = document.createDocumentFragment();
         for (const row of rows) {
+          if (existing.has(row.id)) { existing.get(row.id).textContent = row.label || row.id; continue; }
           const option = document.createElement('option'); option.value = row.id; option.textContent = row.label || row.id;
           option.dataset.loadedReference = 'true'; if (selected.has(option.value)) option.selected = true;
           fragment.append(option);
         }
-        all('[data-loaded-reference]', select).forEach(option => option.remove());
         const restoreFocus = document.activeElement === retry;
         select.append(fragment); select.disabled = initiallyDisabled; select.dataset.referenceState = 'ready'; notice.hidden = true;
+        nextCursor = page.next_cursor; next.hidden = !nextCursor;
+        status.textContent = rows.length ? rows.length + ' Treffer auf dieser Seite. Gewählte Einträge bleiben erhalten.' : 'Keine passenden Treffer. Gewählte Einträge bleiben erhalten.';
         if (restoreFocus) select.focus();
       } catch {
         select.dataset.referenceState = 'error';
+        status.textContent = '';
         message.textContent = label + ' konnte nicht geladen werden. Prüfe die Verbindung und versuche es erneut. Deine Eingaben bleiben erhalten.';
         notice.hidden = false;
       } finally {
         loading = false; retry.disabled = false; select.removeAttribute('aria-busy'); syncReferenceButtons(form);
+        search.disabled = initiallyDisabled; find.disabled = initiallyDisabled; next.disabled = initiallyDisabled;
       }
     }
-    retry.addEventListener('click', loadReferences);
+    retry.addEventListener('click', () => void loadReferences(retryCursor));
+    find.addEventListener('click', () => void loadReferences());
+    next.addEventListener('click', () => void loadReferences(nextCursor));
+    search.addEventListener('keydown', event => {if(event.key === 'Enter'){event.preventDefault();void loadReferences();}});
     void loadReferences();
   });
   const dbPromise = new Promise((resolve, reject) => {
@@ -121,7 +149,7 @@
     try {const result=await request(form.getAttribute('action'),method,body,key);if(result.url)location.assign(result.url);else location.reload();}
     catch(error) {
       if (!error.status && !navigator.onLine) {try {await queueMutation(form.getAttribute('action'),method,body,key);form.closest('dialog')?.close();}catch(queueError){toast(queueError.message);}}
-      else {if(errorBox){errorBox.textContent=error.message;errorBox.hidden=false;errorBox.focus();}else toast(error.message);}
+      else {if(errorBox){errorBox.textContent=error.message;errorBox.hidden=false;errorBox.focus();}else toast(error.message);if(error.status===409&&method==='PATCH')await reviewFormConflict(form,body);}
     } finally {delete form.dataset.submitting; if(button) button.disabled=false; if ($('[data-reference]', form)) syncReferenceButtons(form);}
   }));
   all('[data-check]').forEach(button => button.addEventListener('click',async () => {
@@ -142,8 +170,28 @@
       try{const response=await fetch('/api/v1/core/preferences',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf()},body:JSON.stringify({theme,offline})});if(!response.ok)throw new Error('Einstellungen konnten nicht gespeichert werden.');localStorage.setItem('household-theme',theme);if(theme==='system')delete document.documentElement.dataset.theme;else document.documentElement.dataset.theme=theme;if(offline)localStorage.setItem('household-offline-owner',user);else{localStorage.removeItem('household-offline-owner');await clearQueue();}toast('Geräteeinstellungen gespeichert.');}catch(error){toast(error.message);}
     });
   }
-  const choiceText=value=>({piece:'Stück',diesel:'Diesel',petrol:'Benzin',lpg:'LPG',cng:'CNG',receive:'Zugang',consume:'Verbrauch',waste:'Entsorgung',adjust:'Korrektur',expense:'Ausgabe',refund:'Erstattung',dinner:'Abendessen',lunch:'Mittagessen',breakfast:'Frühstück',snack:'Zwischenmahlzeit',actual:'Abgelesen',estimated:'Geschätzt'})[value]||String(value);
+  const choiceText=value=>({piece:'Stück',available:'Verfügbar',unavailable:'Nicht verfügbar',substituted:'Ersatz gewählt',diesel:'Diesel',petrol:'Benzin',lpg:'LPG',cng:'CNG',receive:'Zugang',consume:'Verbrauch',waste:'Entsorgung',adjust:'Korrektur',expense:'Ausgabe',refund:'Erstattung',dinner:'Abendessen',lunch:'Mittagessen',breakfast:'Frühstück',snack:'Zwischenmahlzeit',actual:'Abgelesen',estimated:'Geschätzt'})[value]||String(value);
   function localDate(value,time=false){const date=new Date(value);return isNaN(date)?String(value):new Intl.DateTimeFormat('de-AT',{dateStyle:'medium',...(time?{timeStyle:'short'}:{}),timeZone:'Europe/Vienna'}).format(date);}
+  async function reviewFormConflict(form, body) {
+    $('.conflict-review',form)?.remove();
+    const article=document.createElement('section');article.className='conflict-review queue-entry';article.tabIndex=-1;
+    const caption=document.createElement('p');caption.textContent='Aktueller Serverwert → deine Eingabe. Prüfe die Unterschiede vor einer erneuten Speicherung.';article.append(caption);form.append(article);
+    try{
+      const response=await fetch('/api/v1/core/bootstrap',{headers:{Accept:'application/json'}});if(!response.ok)throw new Error('Anmeldung erneut prüfen.');
+      const fresh=await response.json(),url=form.getAttribute('action'),mid=url.match(/\/m\/([^/]+)\//)?.[1];
+      if(fresh.user.id!==user||fresh.user.household_id!==household||fresh.states[mid]?.state!=='enabled'||fresh.states[mid]?.generation!==body.generation)throw new Error('Konto oder Modulstand hat sich geändert. Seite neu öffnen und Eingaben prüfen.');
+      const cache=new Map();await describeDraft({url,method:'PATCH',body},fresh,cache,article);
+      const current=await cache.get(url);if(!current?.version)throw new Error('Aktueller Datensatz konnte nicht geprüft werden.');
+      const apply=document.createElement('button');apply.type='button';apply.textContent='Geprüfte Eingaben erneut speichern';
+      apply.addEventListener('click',async()=>{
+        if(referenceSubmissionBlocked(form)){caption.textContent='Die gewählte Zuordnung wird noch geladen oder konnte nicht geladen werden. Auswahl erneut laden, bevor du die Änderung bestätigst.';article.focus();return;}
+        if(JSON.stringify(formBody(form))!==JSON.stringify(body)){await reviewFormConflict(form,formBody(form));return;}
+        apply.disabled=true;
+        try{await request(url,'PATCH',{...body,version:current.version},crypto.randomUUID());location.reload();}
+        catch(error){if(error.status===409)await reviewFormConflict(form,body);else{caption.textContent=error.message+' Eingaben bleiben erhalten.';apply.disabled=false;}}
+      });article.append(apply);article.focus();
+    }catch(error){caption.textContent=error.message;article.focus();}
+  }
   async function describeDraft(entry,fresh,cache,article){
     const match=entry.url.match(/^\/api\/v1\/m\/([^/]+)\/([^/]+)(?:\/([0-9a-f-]{36}))?(?:\/actions\/([^/]+))?$/);
     if(!match)throw new Error('Diesen Vorgang bitte neu öffnen und erfassen.');
@@ -160,7 +208,7 @@
     const namedReference=async(reference,value)=>{
       const [referenceModule,referenceEntity]=reference.split('/');
       const target=fresh.modules.find(m=>m.id===referenceModule)?.entities.find(e=>e.id===referenceEntity);
-      const rows=await read('/api/v1/core/references/'+reference);
+      const rows=(await read('/api/v1/core/reference-options/'+reference+'/'+encodeURIComponent(value))).records;
       let row=rows.find(row=>row.id===value);
       if(!row&&referenceModule!=='core')row=await read('/api/v1/m/'+reference+'/'+value);
       const label=row?.label||row?.[target?.primary];

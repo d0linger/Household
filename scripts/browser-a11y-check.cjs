@@ -116,9 +116,9 @@ module.exports = async function checkAccessibilityHardening(page, report = {chec
     const tagActionPath = '/api/v1/m/recipes/recipes/' + fixtures.recipe + '/actions/tags';
     const countTagMutations = request => { if (request.method() === 'POST' && new URL(request.url()).pathname === tagActionPath) tagMutations++; };
     page.on('request', countTagMutations);
-    await page.route('**/api/v1/core/references/shopping/lists', requiredRoute);
-    await page.route('**/api/v1/core/references/recipes/tags', tagsRoute);
-    await page.route('**/api/v1/core/references/expenses/categories', failReference);
+    await page.route('**/api/v1/core/reference-options/shopping/lists?*', requiredRoute);
+    await page.route('**/api/v1/core/reference-options/recipes/tags?*', tagsRoute);
+    await page.route('**/api/v1/core/reference-options/expenses/categories?*', failReference);
     try {
       await page.goto(base + '/m/recipes/recipes/' + fixtures.recipe);
       const required = page.locator('form[action$="/actions/shopping"]');
@@ -156,9 +156,9 @@ module.exports = async function checkAccessibilityHardening(page, report = {chec
       must(await optionalScalar.locator('[name=category_id]').isDisabled() && await optionalScalar.locator('button:not([type])').isEnabled(), `${failure} optional scalar reference failure leaves its action available`);
     } finally {
       page.off('request', countTagMutations);
-      await page.unroute('**/api/v1/core/references/shopping/lists', requiredRoute);
-      await page.unroute('**/api/v1/core/references/recipes/tags', tagsRoute);
-      await page.unroute('**/api/v1/core/references/expenses/categories', failReference);
+      await page.unroute('**/api/v1/core/reference-options/shopping/lists?*', requiredRoute);
+      await page.unroute('**/api/v1/core/reference-options/recipes/tags?*', tagsRoute);
+      await page.unroute('**/api/v1/core/reference-options/expenses/categories?*', failReference);
     }
   }
   return report;

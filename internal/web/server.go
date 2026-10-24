@@ -155,6 +155,10 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /api/v1/core/bootstrap", s.require(s.bootstrap))
 	mux.Handle("GET /api/v1/core/search", s.require(s.searchAPI))
 	mux.Handle("GET /api/v1/core/references/{module}/{entity}", s.require(s.referencesAPI))
+	mux.Handle("GET /api/v1/core/reference-options/{module}/{entity}", s.require(s.referenceOptions))
+	mux.Handle("GET /api/v1/core/reference-options/{module}/{entity}/{id}", s.require(s.referenceOptions))
+	mux.Handle("GET /api/v1/shopping/lists/{id}/items", s.require(s.shoppingItems))
+	mux.Handle("GET /api/v1/shopping/items/{id}", s.require(s.shoppingItem))
 	mux.Handle("POST /api/v1/core/preferences", s.require(s.preferences))
 	mux.Handle("GET /m/{module}/{entity}", s.require(s.modulePage))
 	mux.Handle("GET /m/{module}/reports", s.require(s.reportPage))
@@ -492,7 +496,7 @@ func formValue(f module.Field, v any) string {
 
 func formatChoice(v any) string {
 	raw := store.String(v)
-	labels := map[string]string{"piece": "Stück", "diesel": "Diesel", "petrol": "Benzin", "lpg": "LPG", "cng": "CNG", "receive": "Zugang", "consume": "Verbrauch", "waste": "Entsorgung", "adjust": "Korrektur", "expense": "Ausgabe", "refund": "Erstattung", "dinner": "Abendessen", "lunch": "Mittagessen", "breakfast": "Frühstück", "snack": "Zwischenmahlzeit", "actual": "Abgelesen", "estimated": "Geschätzt"}
+	labels := map[string]string{"piece": "Stück", "available": "Verfügbar", "unavailable": "Nicht verfügbar", "substituted": "Ersatz gewählt", "diesel": "Diesel", "petrol": "Benzin", "lpg": "LPG", "cng": "CNG", "receive": "Zugang", "consume": "Verbrauch", "waste": "Entsorgung", "adjust": "Korrektur", "expense": "Ausgabe", "refund": "Erstattung", "dinner": "Abendessen", "lunch": "Mittagessen", "breakfast": "Frühstück", "snack": "Zwischenmahlzeit", "actual": "Abgelesen", "estimated": "Geschätzt"}
 	if label, ok := labels[raw]; ok {
 		return label
 	}

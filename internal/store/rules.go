@@ -30,6 +30,11 @@ func (s *Store) validateDomain(ctx context.Context, tx pgx.Tx, id auth.Identity,
 		if archived {
 			return bad("Archivierte Liste zuerst wieder öffnen")
 		}
+		return validateShoppingItem(ctx, tx, id, rid, data, changed)
+	case "shopping/products":
+		return validateShoppingProduct(ctx, tx, id, rid, data)
+	case "shopping/price_observations":
+		return validateShoppingUnit(ctx, tx, id, String(data["product_id"]), String(data["unit_code"]))
 	case "recipes/ingredients", "recipes/steps":
 		if _, err := tx.Exec(ctx, "SELECT id FROM recipes.recipes WHERE household_id=$1 AND id=$2 FOR UPDATE", id.HouseholdID, data["recipe_id"]); err != nil {
 			return err
