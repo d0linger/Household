@@ -397,6 +397,13 @@ func (s *Store) replaceRecipeRows(ctx context.Context, tx pgx.Tx, id auth.Identi
 			version = Int(existing[rowID]["version"])
 		}
 		data := normalized[position]
+		if name == "ingredients" && !creating {
+			if _, supplied := row.Data["catalog_id"]; !supplied {
+				// Clients predating the catalogue field cannot implicitly clear it.
+				// Explicit null or an empty selection remains a deliberate removal.
+				data["catalog_id"] = existing[rowID]["catalog_id"]
+			}
+		}
 		data["recipe_id"] = rid
 		record, err := save(ctx, tx, id, m, entity, rowID, data, creating, version)
 		if err != nil {

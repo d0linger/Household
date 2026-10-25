@@ -49,6 +49,7 @@ try {
       $taskProduct=[guid]::NewGuid().ToString();$taskLocation=[guid]::NewGuid().ToString();$taskLot=[guid]::NewGuid().ToString()
       $taskPack=[guid]::NewGuid().ToString();$taskStockMovement=[guid]::NewGuid().ToString();$taskStockOperation=[guid]::NewGuid().ToString();$taskStockKey=[guid]::NewGuid().ToString()
       $taskRecipe=[guid]::NewGuid().ToString()
+      $taskIngredientCatalog=[guid]::NewGuid().ToString();$taskIngredientBinding=[guid]::NewGuid().ToString()
       $taskCooking=[guid]::NewGuid().ToString();$taskCooked=[guid]::NewGuid().ToString();$taskCookingRecord=[guid]::NewGuid().ToString()
       $taskPlan=[guid]::NewGuid().ToString();$taskCopiedPlan=[guid]::NewGuid().ToString();$taskMeal=[guid]::NewGuid().ToString();$taskCopyKey=[guid]::NewGuid().ToString()
       $taskOriginal=[guid]::NewGuid().ToString();$taskPreview=[guid]::NewGuid().ToString()
@@ -79,7 +80,10 @@ INSERT INTO core.attachments(id,household_id,module_id,module_generation,resourc
 INSERT INTO core.attachment_derivatives(attachment_id,variant,storage_key,media_type,width,height,size_bytes,sha256) VALUES('$taskAttachment','preview','$taskPreview','image/png',1,1,$($taskPng.Length),decode('$taskHash','hex'));
 INSERT INTO shopping.checkouts(household_id,list_id,request_hash,item_count,snapshot,created_by) VALUES('$taskHousehold','$taskList',decode(repeat('cd',32),'hex'),1,jsonb_build_object('restored_completion','once-only','quantity','9007199254.740992'),'$taskUser');
 INSERT INTO recipes.recipes(id,household_id,title,base_servings,created_by) VALUES('$taskRecipe','$taskHousehold','Recovery recipe',2.500001,'$taskUser');
-INSERT INTO recipes.ingredients(household_id,recipe_id,name,quantity,unit_code,created_by) VALUES('$taskHousehold','$taskRecipe','Exact ingredient',9007199254.740993,'g','$taskUser');
+INSERT INTO recipes.ingredient_catalog(id,household_id,name,created_by) VALUES('$taskIngredientCatalog','$taskHousehold','Recovery rice identity','$taskUser');
+INSERT INTO recipes.ingredient_aliases(household_id,catalog_id,name,created_by) VALUES('$taskHousehold','$taskIngredientCatalog','Recovery rice alias','$taskUser');
+INSERT INTO core.ingredient_product_bindings(id,household_id,catalog_id,source_generation,product_id,target_generation,created_by,changed_by) VALUES('$taskIngredientBinding','$taskHousehold','$taskIngredientCatalog',1,'$taskProduct',1,'$taskUser','$taskUser');
+INSERT INTO recipes.ingredients(household_id,recipe_id,name,quantity,unit_code,catalog_id,created_by) VALUES('$taskHousehold','$taskRecipe','Exact ingredient',9007199254.740993,'g','$taskIngredientCatalog','$taskUser');
 INSERT INTO recipes.steps(household_id,recipe_id,instruction,position,created_by) VALUES('$taskHousehold','$taskRecipe','Synthetic preparation',1,'$taskUser');
 COMMIT;
 BEGIN;
@@ -120,6 +124,8 @@ COMMIT;
       if($LASTEXITCODE -ne 0 -or $taskCheckout -ne 'once-only|9007199254.740992|1'){throw 'Restored durable completion differs'}
       $taskRecipeBefore=docker compose -f compose.yaml -f compose.backup.yaml exec -T restore-db psql -U postgres -d household_restore -Atc "SELECT count(*)::text||'|'||min(snapshot->'ingredients'->0->>'quantity') FROM recipes.versions WHERE recipe_id='$taskRecipe'"
       if($LASTEXITCODE -ne 0 -or $taskRecipeBefore -ne '1|9007199254.740993'){throw 'Restored recipe version lost exact history'}
+      $taskIngredientIdentity=docker compose -f compose.yaml -f compose.backup.yaml exec -T restore-db psql -U postgres -d household_restore -Atc "SELECT c.name||'|'||a.name||'|'||i.catalog_label||'|'||b.version::text||'|'||b.source_generation::text||'|'||b.target_generation::text||'|'||(b.product_id='$taskProduct')::text||'|'||(v.snapshot->'ingredients'->0->>'catalog_id'='$taskIngredientCatalog')::text FROM recipes.ingredient_catalog c JOIN recipes.ingredient_aliases a ON a.catalog_id=c.id JOIN recipes.ingredients i ON i.catalog_id=c.id JOIN core.ingredient_product_bindings b ON b.catalog_id=c.id JOIN recipes.versions v ON v.recipe_id=i.recipe_id AND v.revision=1 WHERE c.id='$taskIngredientCatalog'"
+      if($LASTEXITCODE -ne 0 -or $taskIngredientIdentity -ne 'Recovery rice identity|Recovery rice alias|Recovery rice identity|1|1|1|true|true'){throw 'Restored catalogue, alias, captured label, generation-bound binding or source snapshot differs'}
       $taskCookingBefore=docker compose -f compose.yaml -f compose.backup.yaml exec -T restore-db psql -U postgres -d household_restore -Atc "SELECT count(*)::text||'|'||count(*) FILTER(WHERE state='running' AND deadline='2026-10-25T01:30:00Z')::text||'|'||count(*) FILTER(WHERE state='paused' AND remaining_millis=77501)::text FROM recipes.cooking_timers WHERE session_id='$taskCooking'"
       if($LASTEXITCODE -ne 0 -or $taskCookingBefore -ne '2|1|1'){throw 'Restored timer deadline or paused milliseconds changed'}
       $taskCookingResult=docker compose -f compose.yaml -f compose.backup.yaml exec -T restore-db psql -U postgres -d household_restore -Atc "SELECT s.state||'|'||r.actual_servings::text||'|'||r.notes||'|'||v.revision::text FROM recipes.cooking_records r JOIN recipes.cooking_sessions s ON s.id=r.session_id JOIN recipes.versions v ON v.id=r.source_version_id WHERE r.id='$taskCookingRecord'"

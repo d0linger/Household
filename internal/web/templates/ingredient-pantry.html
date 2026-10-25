@@ -1,0 +1,26 @@
+{{define "ingredient-catalog"}}
+<section id="ingredient-catalog" data-catalog="{{index .Record.catalog "id"}}" data-writable="{{.User.CanWrite}}">
+ <a class="back-link" href="/m/recipes/ingredient_catalog">Zum Zutatenkatalog</a><h1 id="catalog-title">{{index .Record.catalog "name"}}</h1>
+ <p>Aliase helfen bei der Suche. Erst deine ausdrückliche Auswahl verbindet eine Rezeptzeile mit dieser Zutat und diese Zutat mit einem Vorratsprodukt.</p>
+ <p id="catalog-status" role="status">Zuordnung wird geladen …</p><div id="catalog-error" class="notice error" role="alert" tabindex="-1" hidden></div>
+ <div class="actions"><button type="button" id="catalog-refresh">Aktuellen Stand laden</button><a href="/m/recipes/ingredient_catalog/{{index .Record.catalog "id"}}">Name, Archivierung und Notizen bearbeiten</a></div>
+ <section class="panel"><h2>Lokale Aliase</h2><ul id="catalog-aliases"></ul><p class="fine">Bis zu 50 eindeutige Aliase; Schreibweise, Akzente und führende Zeichen bleiben erhalten.</p><a href="/m/recipes/ingredient_aliases">Aliase hinzufügen oder bearbeiten</a></section>
+ <section class="panel"><h2>Vorratsprodukt</h2><div id="catalog-binding"></div>
+ {{if .User.CanWrite}}<form id="catalog-binding-form"><fieldset id="catalog-binding-fields"><label>Vorratsprodukt<select id="catalog-product" data-reference="pantry/products"><option value="">Bitte ausdrücklich auswählen</option></select></label><p id="catalog-selection" class="fine">Noch kein neues Produkt ausgewählt.</p><button class="primary">Neue Zuordnung prüfen</button></fieldset></form><button type="button" id="catalog-unbind">Bestehende Zuordnung aufheben</button>{{else}}<p>Du hast Lesezugriff. Änderungen sind für bearbeitende Mitglieder verfügbar.</p>{{end}}
+ <section id="catalog-review" class="pantry-review" aria-labelledby="catalog-review-title" hidden><h3 id="catalog-review-title" tabindex="-1">Geprüfte Zuordnung</h3><p id="catalog-review-description"></p><div class="actions"><button type="button" id="catalog-confirm" class="primary">Zuordnung speichern</button><button type="button" id="catalog-cancel">Auswahl weiterbearbeiten</button><button type="button" id="catalog-retry" hidden>Dieselbe Anfrage erneut prüfen</button></div></section>
+ <p class="fine">Geänderte Produkt-, Zutaten- oder Zuordnungsstände erfordern eine neue Prüfung. Eine Aufhebung bucht keinen Verbrauch und verändert keine Rezeptnamen.</p></section>
+</section><script nonce="{{.Nonce}}" src="{{index .Asset "ingredient-pantry.js"}}" defer></script>
+{{end}}
+
+{{define "ingredient-comparison"}}
+<section id="ingredient-comparison" data-recipe="{{.Record.id}}">
+ <a class="back-link" href="/m/recipes/recipes/{{.Record.id}}/workspace">Zum Rezepteditor</a><h1>Rezept mit Vorrat vergleichen</h1><p>{{.Record.title}}</p>
+ <p>Rezeptinhalt aus dem ausgewählten Stand; Produktzuordnungen und physischer Vorrat zum Zeitpunkt dieser Abfrage. Es werden keine Mengen reserviert oder verbraucht.</p>
+ <form id="comparison-form" class="panel"><div class="form-grid"><label>Rezeptstand<select id="comparison-version"><option value="">Aktueller gespeicherter Stand</option></select></label><label>Gewünschte Portionen<input id="comparison-servings" inputmode="decimal" maxlength="20" value="{{.Record.base_servings}}" required></label></div><div class="actions"><button class="primary">Vorrat neu vergleichen</button><button type="button" id="comparison-more" hidden>Ältere Rezeptstände laden</button></div><p id="comparison-version-status" class="fine" role="status"></p></form>
+ <p id="comparison-status" role="status">Vergleich wird geladen …</p><div id="comparison-error" class="notice error" role="alert" tabindex="-1" hidden></div>
+ <section id="comparison-result" hidden><h2 id="comparison-source" tabindex="-1"></h2><p id="comparison-outcome" class="notice"></p>
+ <h2>Bedarf je Vorratsprodukt</h2><p class="fine">Mehrere Zutaten desselben Produkts teilen sich den Bestand einmal. Bei unvollständigen Mengen ist der ausgewiesene Bedarf nur die bekannte Teilmenge; eine Fehlmenge bleibt unbekannt.</p><div id="comparison-products"></div>
+ <h2>Zuordnung aller Rezeptzutaten</h2><div id="comparison-lines"></div>
+ <p class="fine">Bestand umfasst alle aktiven Lagerorte. Pro Produkt werden höchstens drei positive Chargen nach dem frühesten bekannten Datum gezeigt. Mindesthaltbarkeit, Verbrauchsdatum und eigener Öffnungshinweis sind getrennt gekennzeichnet. Gerundete Mengen bleiben reine Anzeige; exakte Brüche sind einsehbar.</p></section>
+</section><script nonce="{{.Nonce}}" src="{{index .Asset "ingredient-pantry.js"}}" defer></script>
+{{end}}

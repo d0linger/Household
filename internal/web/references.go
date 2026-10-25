@@ -75,6 +75,10 @@ func (s *Server) referenceOptions(w http.ResponseWriter, r *http.Request) {
 		label = "t." + pgx.Identifier{e.Primary}.Sanitize() + "::text"
 		st, _ := s.Store.State(mid)
 		generation = st.Generation
+		if mid == "recipes" && entity == "ingredient_catalog" {
+			label = "t.name||CASE WHEN t.archived THEN ' (archiviert)' ELSE '' END"
+			condition = " AND ($5::uuid IS NOT NULL OR NOT t.archived)"
+		}
 		if mid == "pantry" && entity == "packs" {
 			from += " JOIN pantry.products p ON p.household_id=t.household_id AND p.id=t.product_id"
 			label = "p.name||' · '||t.label||' · '||trim_scale(t.quantity)::text||' '||CASE WHEN t.unit_code='piece' THEN 'Stück' ELSE t.unit_code END||CASE WHEN t.disabled THEN ' (deaktiviert)' ELSE '' END"
@@ -108,9 +112,15 @@ func (s *Server) referenceOptions(w http.ResponseWriter, r *http.Request) {
 	if cursor.ID != "" {
 		created, lastID = cursor.Created, cursor.ID
 	}
-	// Table and column expressions above are compiled descriptors, never request text.
+	search := "($2='' OR strpos(lower(COALESCE(" + label + ",'')),lower($2))>0)"
+	if mid == "recipes" && entity == "ingredient_catalog" {
+		search = `($2='' OR strpos(t.name_key,recipes.ingredient_key($2))>0 OR EXISTS(
+ SELECT 1 FROM recipes.ingredient_aliases a WHERE a.household_id=t.household_id AND a.catalog_id=t.id
+ AND strpos(a.name_key,recipes.ingredient_key($2))>0))`
+	}
+	// Table, label and search expressions are compiled descriptors, never request text.
 	rows, err := s.Pool.Query(r.Context(), "SELECT t.id,COALESCE("+label+",''),t.created_at FROM "+from+
-		" WHERE t.household_id=$1 AND ($5::uuid IS NULL OR t.id=$5) AND ($2='' OR strpos(lower(COALESCE("+label+",'')),lower($2))>0)"+condition+
+		" WHERE t.household_id=$1 AND ($5::uuid IS NULL OR t.id=$5) AND "+search+condition+
 		" AND ($3::timestamptz IS NULL OR (t.created_at,t.id)<($3,$4::uuid)) ORDER BY t.created_at DESC,t.id DESC LIMIT 51",
 		identity(r).HouseholdID, query, created, lastID, selected)
 	if err != nil {

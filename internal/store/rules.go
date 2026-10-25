@@ -57,6 +57,8 @@ func (s *Store) validateDomain(ctx context.Context, tx pgx.Tx, id auth.Identity,
 				return bad("Zubereitungsschritt erforderlich")
 			}
 		}
+	case "recipes/ingredient_catalog", "recipes/ingredient_aliases":
+		return validateIngredientCatalog(ctx, tx, id, entity, rid, data)
 	case "fuel/odometer_series":
 		if quantity("initial_reading").Sign() < 0 {
 			return bad("Anfangsstand darf nicht negativ sein")

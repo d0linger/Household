@@ -143,6 +143,8 @@ func TestShoppingCheckoutPopulatedUpgradeAndBounds(t *testing.T) {
 			version = 9
 		case "shopping":
 			version = 3
+		case "recipes":
+			version = 1 // Match the actual pre-checkout core9 release.
 		}
 		migratePriorAuditSchema(t, f, schema, version)
 	}

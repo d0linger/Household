@@ -306,6 +306,9 @@ func TestPantryPopulatedProjectionUpgrade(t *testing.T) {
 		if schema == "pantry" {
 			version = 1
 		}
+		if schema == "recipes" {
+			version = 1 // Match the actual pre-projection core8 release.
+		}
 		migratePriorAuditSchema(t, f, schema, version)
 	}
 	hid, uid, pid, lid, lot := value.UUID(), value.UUID(), value.UUID(), value.UUID(), value.UUID()

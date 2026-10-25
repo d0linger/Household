@@ -127,6 +127,13 @@ func Ready(ctx context.Context, pool *pgxpool.Pool) error {
 	if !projected {
 		return errors.New("incomplete stock projection contract")
 	}
+	var catalogued bool
+	if err := pool.QueryRow(ctx, "SELECT recipes.catalog_ready()").Scan(&catalogued); err != nil {
+		return fmt.Errorf("inspect ingredient catalogue contract: %w", err)
+	}
+	if !catalogued {
+		return errors.New("incomplete ingredient catalogue contract")
+	}
 	return nil
 }
 

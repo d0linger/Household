@@ -351,7 +351,10 @@ func TestRecipeVersionsPopulatedUpgrade(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	// Reproduce the old child-first writer order while migration waits at the
+	// Advance the independent core first. Otherwise a newer core barrier can
+	// hide a regressed recipes2 lock order by draining the legacy writer early.
+	migratePriorAuditSchema(t, f, "core", uint(database.ExpectedVersion("core")))
+	// Reproduce the old child-first writer order while recipes2 waits at its
 	// household barrier. It must finish before any parent/table migration lock.
 	ctx, cancel := context.WithTimeout(f.ctx, 20*time.Second)
 	defer cancel()
@@ -366,11 +369,15 @@ func TestRecipeVersionsPopulatedUpgrade(t *testing.T) {
 	if _, err = writer.Exec(ctx, "SELECT id FROM recipes.ingredients WHERE recipe_id=$1 FOR UPDATE", rid); err != nil {
 		t.Fatal(err)
 	}
+	var writerPID int32
+	if err = writer.QueryRow(ctx, "SELECT pg_backend_pid()").Scan(&writerPID); err != nil {
+		t.Fatal(err)
+	}
 	migrated := make(chan error, 1)
 	go func() { migrated <- database.Migrate(ctx, os.Getenv("HOUSEHOLD_TEST_OWNER_URL")) }()
 	blocked := false
 	for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); {
-		if err = f.owner.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM pg_locks l JOIN pg_stat_activity a ON a.pid=l.pid WHERE a.datname=current_database() AND NOT l.granted AND a.query LIKE '%Match BeginMutation%')`).Scan(&blocked); err != nil {
+		if err = f.owner.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM pg_stat_activity a WHERE a.datname=current_database() AND $1::int=ANY(pg_blocking_pids(a.pid)) AND a.wait_event_type='Lock' AND a.query LIKE '%Match BeginMutation%')`, writerPID).Scan(&blocked); err != nil {
 			t.Fatal(err)
 		}
 		if blocked {

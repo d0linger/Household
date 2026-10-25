@@ -27,7 +27,7 @@ Ein Schema, eine Schaltfläche oder ein Mock allein schließt keinen Punkt ab. B
 
 ## Fortschritt
 
-180 Punkte: **44 verifiziert, 0 implementiert, 0 in Arbeit, 136 offen**. Dieser Zähler wird mit jedem abgeschlossenen Arbeitspaket abgeglichen.
+180 Punkte: **46 verifiziert, 0 implementiert, 0 in Arbeit, 134 offen**. Dieser Zähler wird mit jedem abgeschlossenen Arbeitspaket abgeglichen.
 
 ## Einkaufen
 
@@ -89,11 +89,11 @@ Ein Schema, eine Schaltfläche oder ein Mock allein schließt keinen Punkt ab. B
 | RE04 | Dauerhafte Küchentimer | Mehrere beschriftete Timer über Navigation und Neuladen hinweg wiederherstellen. | Verifiziert | Native Gesamtsuite, Linux-Race, Upgrade/Restore; 38 Koch-Browserchecks/4 axe, Gesamtkette371; DB-Prüfung ohne Befund, CK01 und Dokumentation abgenommen |
 | RE05 | Rezeptfilter | Dauer, Tags, Zutaten und letzte Zubereitung kombinieren und Ansichten speichern. | Offen | — |
 | RE06 | Geprüfter Rezeptimport | Strukturierte Dateien und Schema.org-Rezepte vor Übernahme prüfen. | Offen | — |
-| RE07 | Zutatenkatalog | Aliase normalisieren und Vorratsprodukte ausdrücklich zuordnen. | Offen | — |
+| RE07 | Zutatenkatalog | Aliase normalisieren und Vorratsprodukte ausdrücklich zuordnen. | Verifiziert | Native Gesamtsuite68,3 %, Linux-Race201,979s, finale12 DB-/Upgradeverträge91,149s;29 Browserchecks/5axe, Gesamtkette481; Restore, DB-, UI- und Dokumentationsabnahme bestanden. |
 | RE08 | Versionen und Varianten | Rezeptstände und abgeleitete Varianten unabhängig vom Audit erhalten. | Verifiziert | Native Gesamtsuite + fokussierte Korrekturprüfung, Linux-Race, Upgrade/Restore; 37 Rezept-Browserchecks/4 axe, Gesamtkette333; RW01 unabhängig abgenommen |
 | RE09 | Zutatenersatz | Austauschregeln mit Mengenhinweisen anzeigen und manuell wählen. | Offen | — |
 | RE10 | Kochhistorie | Tatsächliche Portionen, Bewertung und Notizen einer Zubereitung speichern. | Verifiziert | Native Gesamtsuite, Linux-Race, Upgrade/Restore; 38 Koch-Browserchecks/4 axe, Gesamtkette371; DB-Prüfung ohne Befund, CK01 und Dokumentation abgenommen |
-| RE11 | Vorratsabgleich | Verfügbare Mengen, Fehlmengen und unbekannte Zuordnungen getrennt anzeigen. | Offen | — |
+| RE11 | Vorratsabgleich | Verfügbare Mengen, Fehlmengen und unbekannte Zuordnungen getrennt anzeigen. | Verifiziert | Native Gesamtsuite68,3 %, Linux-Race201,979s, finale12 DB-/Upgradeverträge91,149s;29 Browserchecks/5axe, Gesamtkette481; Restore, DB-, UI- und Dokumentationsabnahme bestanden. |
 | RE12 | Vorrat nach Kochen | Verbrauch mit Mengen und Chargenauswahl prüfen und atomar buchen. | Offen | — |
 | RE13 | Portionskosten | Geschätzte Kosten mit Preisalter, Quellen und fehlenden Preisen anzeigen. | Offen | — |
 | RE14 | Nährwerte und Allergene | Strukturierte Angaben mit Quelle und Vollständigkeit; unbekannt bleibt unbekannt. | Offen | — |

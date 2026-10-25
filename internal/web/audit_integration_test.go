@@ -32,7 +32,7 @@ func TestAuditTrailContract(t *testing.T) {
 			FROM pg_tables t LEFT JOIN core.audit_policies p ON p.schema_name=t.schemaname AND p.table_name=t.tablename
 			WHERE t.schemaname=ANY($1::text[]) AND t.tablename NOT IN('schema_migrations','fuel_types')
 			AND NOT(t.schemaname='pantry' AND t.tablename='lot_balances')`, []string{"shopping", "fuel", "recipes", "pantry", "expenses", "chores", "meters", "documents", "mealplan"}).Scan(&missing, &domainTables)
-		if err != nil || missing != 0 || domainTables != 39 {
+		if err != nil || missing != 0 || domainTables != 41 {
 			t.Fatalf("domain coverage: missing=%d tables=%d error=%v", missing, domainTables, err)
 		}
 		var ready bool
@@ -289,7 +289,7 @@ func TestAuditWorkerFailures(t *testing.T) {
 
 func migratePriorAuditSchema(t *testing.T, f *integrationFixture, schema string, override ...uint) {
 	t.Helper()
-	if _, err := f.owner.Exec(f.ctx, "CREATE SCHEMA "+pgx.Identifier{schema}.Sanitize()); err != nil {
+	if _, err := f.owner.Exec(f.ctx, "CREATE SCHEMA IF NOT EXISTS "+pgx.Identifier{schema}.Sanitize()); err != nil {
 		t.Fatal(err)
 	}
 	// go test executes in the package directory on native and Docker test hosts.

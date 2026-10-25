@@ -467,6 +467,9 @@ func (s *Store) Delete(ctx context.Context, id auth.Identity, m module.Descripto
 	if tag.RowsAffected() != 1 {
 		return ErrConflict
 	}
+	if err = cleanupDeletedIngredientBinding(ctx, tx, id, m.ID, e.ID, rid); err != nil {
+		return err
+	}
 	if err = s.cleanupOrphans(ctx, tx, id, m); err != nil {
 		return err
 	}

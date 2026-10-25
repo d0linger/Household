@@ -80,3 +80,9 @@
 
 /* Pantry daily flows keep exact stock and the review beside the chosen lot. */
 #pantry-consume,#pantry-priority{max-width:960px}#pantry-consume .panel{margin-block:1.25rem}#pantry-consume .actions,#pantry-priority .actions{flex-wrap:wrap}#pantry-consume p,#pantry-priority p{overflow-wrap:anywhere;max-width:75ch}.pantry-review{border-top:1px solid var(--line);margin-top:1.5rem;padding-top:1rem}.pantry-stock-line{font-weight:650;font-variant-numeric:tabular-nums}.pantry-operation,.pantry-priority-row{border-top:1px solid var(--line);padding-block:1.25rem}.pantry-priority-row h2{font-size:1.125rem;margin-block:0 .5rem}.pantry-priority-date{font-weight:650}.pantry-text{white-space:pre-wrap}#consume-review-title,#consume-result-title,#consume-conflict{scroll-margin-top:6rem}#priority-rows:focus{outline:2px solid var(--accent);outline-offset:4px}@media(max-width:600px){#priority-barcode{display:grid}#consume-links{display:grid}.pantry-operation .actions{display:grid}#consume-review .actions{display:grid}}
+/* Ingredient identity and read-only comparison extend the established row UI. */
+.ingredient-comparison-row{padding-block:1rem;border-bottom:1px solid var(--line);overflow-wrap:anywhere}
+.ingredient-comparison-row h3{margin-top:0}
+.recipe-catalog-results{list-style:none;padding:0;max-height:40vh;overflow:auto}
+.recipe-catalog-results li{margin-block:.5rem}
+.recipe-catalog-results button{text-align:start;width:100%;overflow-wrap:anywhere}
