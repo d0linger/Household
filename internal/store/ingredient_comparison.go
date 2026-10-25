@@ -205,7 +205,7 @@ func comparisonMappingReason(cid string, m Record, enabled bool) string {
 }
 
 func comparisonMappings(ctx context.Context, tx pgx.Tx, id auth.Identity, catalogs []string, generation, targetGeneration int64, enabled bool) (map[string]Record, error) {
-	rows, err := tx.Query(ctx, `SELECT c.id,jsonb_build_object('catalog_archived',c.archived,'binding_id',b.id,'assigned',b.product_id IS NOT NULL,
+	rows, err := tx.Query(ctx, `SELECT c.id,jsonb_build_object('catalog_archived',c.archived,'catalog_version',c.version,'binding_id',b.id,'binding_version',b.version,'product_version',p.version,'assigned',b.product_id IS NOT NULL,
  'target_current',b.target_generation=$4,'product_id',p.id,'product_name',p.name,'unit',p.unit_code,'product_archived',p.archived_at IS NOT NULL)
  FROM recipes.ingredient_catalog c LEFT JOIN core.ingredient_product_bindings b
  ON b.household_id=c.household_id AND b.catalog_id=c.id AND b.source_generation=$3

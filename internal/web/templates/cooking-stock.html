@@ -1,0 +1,24 @@
+{{define "cooking-stock"}}
+<section id="cooking-stock" data-history="{{.Record.history}}" data-posting="{{.Record.posting}}" data-writable="{{.User.CanWrite}}">
+ <a class="back-link" href="{{if .Record.history}}/m/recipes/cooking/history/{{.Record.history}}{{else}}/m/pantry/stock{{end}}">{{if .Record.history}}Zur bestätigten Zubereitung{{else}}Zum Vorrat{{end}}</a>
+ <h1>Verbrauch nach Kochen</h1><p id="cs-source"></p><p id="cs-explanation">Prüfe die tatsächlich verwendeten Mengen getrennt vom Kochabschluss. Erst die abschließende Bestätigung entnimmt Vorrat.</p>
+ <p id="cs-status" role="status">Gespeicherte Zubereitung wird geladen …</p><div id="cs-error" class="notice error" role="alert" tabindex="-1" hidden></div>
+ <button type="button" id="cs-load">Seite erneut laden</button>
+ <button type="button" id="cs-refresh" hidden>Aktuelle Chargenstände prüfen · Eingaben behalten</button>
+ <section id="cs-editor" class="panel" hidden><p id="cs-progress" class="fine"></p><h2 id="cs-name" tabindex="-1"></h2><p id="cs-suggestion"></p>
+  <form id="cs-form"><fieldset id="cs-fields" {{if not .User.CanWrite}}disabled{{end}}>
+   <label>Entscheidung für diese Zutat<select id="cs-action" required><option value="">Bitte ausdrücklich wählen</option><option value="consume">Tatsächlichen Verbrauch buchen</option><option value="skip">Ohne Entnahme überspringen</option></select></label>
+   <label>Begründung · bei Überspringen, einmaliger Auswahl oder Abweichung erforderlich<textarea id="cs-reason" rows="2" maxlength="500"></textarea></label>
+   <div id="cs-consume" hidden><p id="cs-product"></p><button type="button" id="cs-use-mapping" hidden>Katalogprodukt für diese Zutat verwenden</button>
+    <details id="cs-manual"><summary>Einmalig ein anderes Vorratsprodukt auswählen</summary><p class="fine">Diese Auswahl ändert keine Katalogzuordnung.</p><label>Vorratsprodukt suchen<input id="cs-product-query" type="search" maxlength="100"></label><div class="actions"><button type="button" id="cs-product-search">Produkte suchen</button><button type="button" id="cs-product-more" hidden>Weitere Produkte laden</button></div><label>Gefundene Vorratsprodukte<select id="cs-products"><option value="">Bitte auswählen</option></select></label><button type="button" id="cs-select-product">Ausgewähltes Produkt verwenden</button></details>
+    <section id="cs-lot-picker" hidden><h3>Chargen ausdrücklich auswählen</h3><p class="fine">Reihenfolge nach frühestem bekannten Datum. Mengen werden nicht automatisch verteilt.</p><label>Verfügbare Chargen<select id="cs-lots"><option value="">Bitte auswählen</option></select></label><div class="actions"><button type="button" id="cs-lot-reload">Chargenauswahl laden</button><button type="button" id="cs-add-lot">Charge hinzufügen</button><button type="button" id="cs-lot-more" hidden>Weitere Chargen laden</button></div><div id="cs-allocations"></div></section>
+   </div>
+   <div class="actions"><button type="button" id="cs-back">Vorherige Zutat</button><button class="primary" id="cs-next">Zutat prüfen und weiter</button></div>
+  </fieldset></form>
+ </section>
+ <section id="cs-review" class="panel" hidden><h2 id="cs-review-title" tabindex="-1">Gemeinsame Entnahme prüfen</h2><div id="cs-review-content"></div><label class="check" id="cs-no-stock-label" hidden><input id="cs-no-stock" type="checkbox">Diesen Kochvorgang ausdrücklich ohne Vorratsentnahme abschließen</label><p>Ein abgeschlossener Kochvorgang kann nur einmal gebucht werden. Rücknahmen erfolgen anschließend je Charge als Gegenbuchung.</p><div class="actions"><button type="button" id="cs-confirm" class="primary">Geprüften Verbrauch verbindlich buchen</button><button type="button" id="cs-edit">Entscheidungen weiterbearbeiten</button></div></section>
+ <button type="button" id="cs-retry" hidden>Dieselbe Buchungsanfrage erneut prüfen</button>
+ <section id="cs-receipt" class="panel" hidden><h2 id="cs-receipt-title" tabindex="-1">Gespeicherter Entnahmebeleg</h2><div id="cs-receipt-content"></div></section>
+ <noscript><p>Für die geführte Verbrauchsprüfung wird das lokal bereitgestellte JavaScript benötigt. Ohne abschließende Bestätigung wird nichts entnommen.</p></noscript>
+</section><script nonce="{{.Nonce}}" src="{{index .Asset "cooking-stock.js"}}" defer></script>
+{{end}}

@@ -27,7 +27,7 @@ Ein Schema, eine Schaltfläche oder ein Mock allein schließt keinen Punkt ab. B
 
 ## Fortschritt
 
-180 Punkte: **46 verifiziert, 0 implementiert, 0 in Arbeit, 134 offen**. Dieser Zähler wird mit jedem abgeschlossenen Arbeitspaket abgeglichen.
+180 Punkte: **47 verifiziert, 0 implementiert, 0 in Arbeit, 133 offen**. Dieser Zähler wird mit jedem abgeschlossenen Arbeitspaket abgeglichen.
 
 ## Einkaufen
 
@@ -94,7 +94,7 @@ Ein Schema, eine Schaltfläche oder ein Mock allein schließt keinen Punkt ab. B
 | RE09 | Zutatenersatz | Austauschregeln mit Mengenhinweisen anzeigen und manuell wählen. | Offen | — |
 | RE10 | Kochhistorie | Tatsächliche Portionen, Bewertung und Notizen einer Zubereitung speichern. | Verifiziert | Native Gesamtsuite, Linux-Race, Upgrade/Restore; 38 Koch-Browserchecks/4 axe, Gesamtkette371; DB-Prüfung ohne Befund, CK01 und Dokumentation abgenommen |
 | RE11 | Vorratsabgleich | Verfügbare Mengen, Fehlmengen und unbekannte Zuordnungen getrennt anzeigen. | Verifiziert | Native Gesamtsuite68,3 %, Linux-Race201,979s, finale12 DB-/Upgradeverträge91,149s;29 Browserchecks/5axe, Gesamtkette481; Restore, DB-, UI- und Dokumentationsabnahme bestanden. |
-| RE12 | Vorrat nach Kochen | Verbrauch mit Mengen und Chargenauswahl prüfen und atomar buchen. | Offen | — |
+| RE12 | Vorrat nach Kochen | Verbrauch mit Mengen und Chargenauswahl prüfen und atomar buchen. | Verifiziert | Native Gesamtsuite68,8 % (Web642,856s), fokussierte8 DB-Verträge59,220s, Linux-Race127,427s;34 Browserchecks/5axe, Gesamtkette515; bestücktes Upgrade/Restore, DB-Findings geschlossen, F01 resolved/ship und separate Dokumentationsprüfung. |
 | RE13 | Portionskosten | Geschätzte Kosten mit Preisalter, Quellen und fehlenden Preisen anzeigen. | Offen | — |
 | RE14 | Nährwerte und Allergene | Strukturierte Angaben mit Quelle und Vollständigkeit; unbekannt bleibt unbekannt. | Offen | — |
 | RE15 | Portabler Austausch | Household-JSON und ausgewählte Tandoor-, Mealie- und Paprika-Profile dokumentiert unterstützen. | Offen | — |

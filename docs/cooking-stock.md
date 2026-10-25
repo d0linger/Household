@@ -1,6 +1,32 @@
 # Reviewed stock posting after cooking — RE12
 
-Next approved work contract. This document is planning evidence only; no RE12 workflow or schema is implemented by its existence. RE07/RE11 acceptance is tracked separately. Preserve PRODUCT.md and DESIGN.md; extend the existing cooking-history and pantry review surfaces in Operate mode.
+RE12 is locally verified. Schema guards, bounded read/mutation contracts, native integration, scoped Linux race, encrypted synthetic restore, browser checks and independent scoped acceptance have passed. RE07/RE11 acceptance is tracked separately. Preserve PRODUCT.md and DESIGN.md; extend the existing cooking-history and pantry review surfaces in Operate mode.
+
+## Surface direction contract
+
+- **THESIS:** A completed cooking entry leads to a separate, deliberate stock review; it never consumes stock merely by finishing cooking.
+- **OWN-WORLD:** Inherit Household's local system type, green/neutral tokens, 44px controls, row-based content and mobile module navigation. The reviewed cooking-history capture is the visual authority; no new visual identity.
+- **STORY:** Source and actual portions first, one ingredient decision at a time, then an aggregate lot review, explicit confirmation and a durable receipt with correction links.
+- **FIRST VIEWPORT:** Name the completed dish, date and actual portions, explain the separate stock action, and expose the first undecided ingredient. A saved posting instead opens its receipt.
+- **FORM:** Visible labels; blank consume/skip choice; explicit catalogue-product use or bounded manual search; paginated lot choice; actual quantity in the product unit; bounded reason. Drafts survive in-page errors and review refresh. No sensitive automatic device storage.
+- **FINISH:** Preserve submitted key/body after unknown response, freeze edits until exact retry, show changed stock without discarding entries, and provide per-lot exact reversal through the existing Pantry flow. Verify desktop/light and mobile/dark, keyboard, errors, empty/all-skip, long labels and receipt states in one batched inspection plus one bounded correction pass; independent finish review and separate documentation handoff follow.
+
+Unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, DESIGN.md, and every shipping raster carrying its provenance. This is a code-led local extension; no new visual-world seed or shipping raster is required.
+
+## Development checklist
+
+- [x] Permanent household/source-generation/cooking-record key and immutable local receipt/movement bundle.
+- [x] Deferred completeness guards on the Core insertion and both Pantry insertions, including readiness checks.
+- [x] Completed-source reads, exact actual amounts, explicit skips/manual selections and aggregate lot validation.
+- [x] Atomic posting, actor-independent replay, target visibility redaction and existing per-lot reversal.
+- [x] Separate cooking-history action, ingredient review, aggregate confirmation, uncertain-response retry and durable receipt.
+- [x] Initial focused database and browser checks; first browser28 checks/five axe scans.
+- [x] Final eight focused native contracts, populated upgrade and injected second-lot rollback (web59.220s).
+- [x] Complete native68.8% regression (web642.856s), scoped Linux race127.427s, zero lint/Gosec findings, GOVul/dependency review and65-Node/41-hash workflow verification.
+- [x] Encrypted restore of proof/receipt/movements and duplicate-source protection (backup8.03s/restore23.04s).
+- [x] Complete515-check browser chain, inspected captures, F01 resolved/ship scoped verdict and separate documentation verification.
+
+RE12 is locally verified as item47 of180. This is acceptance of the documented local scope; no live8100 upgrade, hosted Actions execution or publication is claimed.
 
 ## User outcome
 
