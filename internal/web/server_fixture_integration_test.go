@@ -40,6 +40,7 @@ type integrationFixture struct {
 // intentionally serial: separate workflows must never reset one another's data.
 func newIntegrationFixture(t *testing.T) *integrationFixture {
 	t.Helper()
+	phase := time.Now()
 	ownerURL, appURL := os.Getenv("HOUSEHOLD_TEST_OWNER_URL"), os.Getenv("HOUSEHOLD_TEST_APP_URL")
 	if ownerURL == "" || appURL == "" {
 		if os.Getenv("HOUSEHOLD_REQUIRE_INTEGRATION") == "1" {
@@ -83,6 +84,7 @@ func newIntegrationFixture(t *testing.T) *integrationFixture {
 		pool.Close()
 		t.Fatal("isolated database is already in use by another integration fixture")
 	}
+	phase = fixtureTiming(t, "connections_and_lock", phase)
 	t.Cleanup(func() {
 		cleanup, stop := context.WithTimeout(context.Background(), 10*time.Second)
 		defer stop()
@@ -92,22 +94,25 @@ func newIntegrationFixture(t *testing.T) *integrationFixture {
 		lock.Release()
 	})
 	t.Cleanup(func() {
+		started := time.Now()
 		cleanup, stop := context.WithTimeout(context.Background(), 20*time.Second)
 		defer stop()
 		if err := resetIntegrationSchemas(cleanup, owner); err != nil {
 			t.Errorf("clean integration schemas: %v", err)
 		}
+		fixtureTiming(t, "cleanup", started)
 	})
 	t.Cleanup(pool.Close)
 	if err = resetIntegrationSchemas(ctx, owner); err != nil {
 		t.Fatal(err)
 	}
+	phase = fixtureTiming(t, "reset", phase)
 	if err = database.Migrate(ctx, ownerURL); err != nil {
 		t.Fatal(err)
 	}
-	if err = database.Migrate(ctx, ownerURL); err != nil {
-		t.Fatalf("repeat migration: %v", err)
-	}
+	phase = fixtureTiming(t, "migration", phase)
+	// Repeat and repair are exercised explicitly by the migration contract;
+	// ordinary fixtures still build every schema afresh from the migrations.
 	cfg := config.Config{
 		DatabaseURL: appURL, Origin: "http://localhost:8100",
 		CSRFSecret: auth.RandomToken(), EncryptionKey: auth.RandomToken(), RateSecret: auth.RandomToken(),
@@ -126,6 +131,7 @@ func newIntegrationFixture(t *testing.T) *integrationFixture {
 	if err != nil {
 		t.Fatal(err)
 	}
+	phase = fixtureTiming(t, "application_authentication", phase)
 	server := httptest.NewServer(app.Handler())
 	t.Cleanup(server.Close)
 	app.Cfg.Origin = server.URL
@@ -134,7 +140,14 @@ func newIntegrationFixture(t *testing.T) *integrationFixture {
 		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 	}
 	t.Cleanup(client.CloseIdleConnections)
+	fixtureTiming(t, "http_setup", phase)
 	return &integrationFixture{ctx: ctx, app: app, pool: pool, owner: owner, server: server, client: client, token: token, identity: identity}
+}
+
+func fixtureTiming(t *testing.T, phase string, started time.Time) time.Time {
+	t.Helper()
+	t.Logf("fixture phase=%s duration_ms=%d", phase, time.Since(started).Milliseconds())
+	return time.Now()
 }
 
 func validateIntegrationURLs(ownerURL, appURL string) error {
