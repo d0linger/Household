@@ -43,18 +43,22 @@ type PlanningPurchaseRequirement struct {
 }
 
 type PlanningPurchaseLine struct {
-	ComponentID   string           `json:"component_id"`
-	IngredientID  string           `json:"ingredient_id"`
-	RequirementID string           `json:"requirement_id"`
-	Basis         string           `json:"basis"`
-	StockCoverage IngredientAmount `json:"stock_coverage"`
-	Desired       IngredientAmount `json:"desired"`
-	Delta         IngredientAmount `json:"delta"`
-	Additional    IngredientAmount `json:"additional"`
-	Bookable      bool             `json:"bookable"`
-	Action        string           `json:"action"`
-	Reason        string           `json:"reason"`
-	CurrentItem   Record           `json:"current_item,omitempty"`
+	MealID           string           `json:"meal_id"`
+	ComponentID      string           `json:"component_id"`
+	IngredientID     string           `json:"ingredient_id"`
+	RequirementID    string           `json:"requirement_id"`
+	Decision         string           `json:"decision"`
+	RequiredDecision string           `json:"required_decision"`
+	ReviewReasons    []string         `json:"review_reasons"`
+	Basis            string           `json:"basis"`
+	StockCoverage    IngredientAmount `json:"stock_coverage"`
+	Desired          IngredientAmount `json:"desired"`
+	Delta            IngredientAmount `json:"delta"`
+	Additional       IngredientAmount `json:"additional"`
+	Bookable         bool             `json:"bookable"`
+	Action           string           `json:"action"`
+	Reason           string           `json:"reason"`
+	CurrentItem      Record           `json:"current_item,omitempty"`
 }
 
 type PlanningPurchasesPreview struct {
@@ -66,6 +70,7 @@ type PlanningPurchasesPreview struct {
 	Ready              bool                          `json:"ready"`
 	Plans              []PlanningPurchasePlan        `json:"plans"`
 	Requirements       []PlanningPurchaseRequirement `json:"requirements"`
+	EndedMeals         []string                      `json:"ended_meals"`
 	Demand             PlanningDemand                `json:"demand"`
 	Lines              []PlanningPurchaseLine        `json:"lines"`
 	Issues             []Record                      `json:"issues"`
@@ -75,6 +80,8 @@ type planningPurchaseScope struct {
 	view         PlanningPurchasesPreview
 	requirements map[string]Record
 	items        map[string]Record
+	decisions    map[string]string
+	endedMeals   map[string]bool
 }
 
 func planningPurchaseSelections(selected []PlanningPurchaseSelection) (map[string][]string, error) {
@@ -102,9 +109,19 @@ func planningPurchaseSelections(selected []PlanningPurchaseSelection) (map[strin
 // previous source needed no purchase or its purchase has already been stored.
 // This method is read-only and does not activate the selected meals.
 func (s *Store) PlanningPurchases(ctx context.Context, id auth.Identity, selected []PlanningPurchaseSelection) (PlanningPurchasesPreview, error) {
+	return s.ReviewPlanningPurchases(ctx, id, selected, nil)
+}
+
+// ReviewPlanningPurchases previews explicitly named lifecycle decisions; it
+// never persists them. The mutation verifies the same complete fingerprint.
+func (s *Store) ReviewPlanningPurchases(ctx context.Context, id auth.Identity, selected []PlanningPurchaseSelection, choices []PlanningPurchaseDecision) (PlanningPurchasesPreview, error) {
 	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
 	plans, err := planningPurchaseSelections(selected)
+	if err != nil {
+		return PlanningPurchasesPreview{}, err
+	}
+	_, decisions, err := planningPurchaseDecisions(choices)
 	if err != nil {
 		return PlanningPurchasesPreview{}, err
 	}
@@ -113,7 +130,7 @@ func (s *Store) PlanningPurchases(ctx context.Context, id auth.Identity, selecte
 		return PlanningPurchasesPreview{}, err
 	}
 	defer rollback(tx)
-	scope, err := readPlanningPurchaseScope(ctx, tx, id, plans, nil)
+	scope, err := readPlanningPurchaseScope(ctx, tx, id, plans, decisions, nil)
 	if err != nil {
 		return scope.view, err
 	}
@@ -122,9 +139,9 @@ func (s *Store) PlanningPurchases(ctx context.Context, id auth.Identity, selecte
 
 // Mutation callers own the scope mutex and all source/product locks before
 // invoking this reader with their one post-lock expiry instant.
-func readPlanningPurchaseScope(ctx context.Context, tx pgx.Tx, id auth.Identity, selected map[string][]string, readAt *time.Time) (planningPurchaseScope, error) {
-	out := planningPurchaseScope{view: PlanningPurchasesPreview{Plans: []PlanningPurchasePlan{}, Requirements: []PlanningPurchaseRequirement{}, Lines: []PlanningPurchaseLine{}, Issues: []Record{}},
-		requirements: make(map[string]Record), items: make(map[string]Record)}
+func readPlanningPurchaseScope(ctx context.Context, tx pgx.Tx, id auth.Identity, selected map[string][]string, decisions map[string]string, readAt *time.Time) (planningPurchaseScope, error) {
+	out := planningPurchaseScope{view: PlanningPurchasesPreview{Plans: []PlanningPurchasePlan{}, Requirements: []PlanningPurchaseRequirement{}, EndedMeals: []string{}, Lines: []PlanningPurchaseLine{}, Issues: []Record{}},
+		requirements: make(map[string]Record), items: make(map[string]Record), decisions: decisions, endedMeals: make(map[string]bool)}
 	demand := &out.view.Demand
 	*demand = PlanningDemand{ShoppingCoverage: "typed_scope", Meals: []PlanningDemandMeal{}, Lines: []PlanningDemandLine{}, Products: []*PlanningDemandProduct{}, Issues: []Record{}}
 	if readAt != nil && readAt.IsZero() {
@@ -159,6 +176,9 @@ func readPlanningPurchaseScope(ctx context.Context, tx pgx.Tx, id auth.Identity,
 		}
 	}
 	if err = readPlanningPurchaseRequirements(ctx, tx, id, &out, plans, selectedMeals); err != nil {
+		return out, err
+	}
+	if err = readPlanningPurchaseEndedMeals(ctx, tx, id, &out, selectedMeals); err != nil {
 		return out, err
 	}
 	allMeals := make([]string, 0, planningMealLimit)
@@ -202,6 +222,30 @@ func readPlanningPurchaseScope(ctx context.Context, tx pgx.Tx, id auth.Identity,
 	}
 	err = finishPlanningPurchaseScope(&out)
 	return out, err
+}
+
+func readPlanningPurchaseEndedMeals(ctx context.Context, tx pgx.Tx, id auth.Identity, out *planningPurchaseScope, selected map[string]bool) error {
+	mids := make([]string, 0, len(selected))
+	for mid := range selected {
+		mids = append(mids, mid)
+	}
+	rows, err := tx.Query(ctx, `SELECT mid FROM unnest($3::uuid[]) mid WHERE EXISTS(
+ SELECT 1 FROM core.planning_purchase_requirements r WHERE r.household_id=$1 AND r.mealplan_generation=$2 AND r.meal_id=mid AND NOT r.active)
+ AND NOT EXISTS(SELECT 1 FROM core.planning_purchase_requirements r WHERE r.household_id=$1 AND r.mealplan_generation=$2 AND r.meal_id=mid AND r.active)
+ ORDER BY mid LIMIT 43`, id.HouseholdID, out.view.Generation, mids)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var mid string
+		if err = rows.Scan(&mid); err != nil {
+			return err
+		}
+		out.endedMeals[mid] = true
+		out.view.EndedMeals = append(out.view.EndedMeals, mid)
+	}
+	return rows.Err()
 }
 
 func readPlanningPurchaseRequirements(ctx context.Context, tx pgx.Tx, id auth.Identity, out *planningPurchaseScope, plans map[string][]string, selected map[string]bool) error {
@@ -269,9 +313,10 @@ func readPlanningPurchaseItems(ctx context.Context, tx pgx.Tx, id auth.Identity,
 	if len(ids) == 0 {
 		return nil
 	}
-	rows, err := tx.Query(ctx, `SELECT jsonb_build_object('id',i.id,'name',i.name,'version',i.version,'quantity',i.quantity::text,'unit_code',i.unit_code,
+	rows, err := tx.Query(ctx, `SELECT jsonb_build_object('id',i.id,'name',i.name,'note',i.note,'version',i.version,'quantity',i.quantity::text,'unit_code',i.unit_code,
  'fingerprint',encode(sha256(convert_to(to_jsonb(i)::text,'UTF8')),'hex'),'checked',i.checked_at IS NOT NULL,
- 'list_id',l.id,'list_name',l.name,'list_version',l.version,'list_open',l.archived_at IS NULL AND NOT l.is_template)
+ 'list_id',l.id,'list_name',l.name,'list_version',l.version,'list_open',l.archived_at IS NULL AND NOT l.is_template
+  AND NOT EXISTS(SELECT 1 FROM shopping.checkouts c WHERE c.household_id=l.household_id AND c.list_id=l.id))
  FROM shopping.items i JOIN shopping.lists l ON l.household_id=i.household_id AND l.id=i.list_id
  WHERE i.household_id=$1 AND i.id=ANY($2::uuid[]) ORDER BY i.id LIMIT 501`, id.HouseholdID, ids)
 	if err != nil {

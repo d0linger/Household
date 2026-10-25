@@ -27,6 +27,7 @@
   }catch(e){error(e.message+' Woche erneut anzeigen.');}finally{busy=false;freeze();}
  }
  function render(){
+  $('#demand-purchases-link').href='/planning-purchases?plan='+pid+'&week='+encodeURIComponent($('#demand-week-form').elements.week.value)+[...selected].map(mid=>'&meal='+mid).join('');
   $('#demand-result').hidden=false;$('#demand-summary').textContent=({incomplete:'Prüfung unvollständig. Offene Zuordnungen und Mengen unten ausdrücklich klären.',shortage:'Der nutzbare Vorrat deckt den bekannten Bedarf nicht vollständig.',sufficient:'Der nutzbare Vorrat deckt den bestätigten Bedarf.'})[current.outcome];
   $('#demand-read-at').textContent='Gemeinsamer Datenstand: '+new Intl.DateTimeFormat('de-AT',{dateStyle:'medium',timeStyle:'medium',timeZone:current.timezone}).format(new Date(current.read_at))+' · '+current.timezone;
   const issues=$('#demand-issues');issues.replaceChildren();for(const issue of current.issues){const meal=current.meals.find(m=>m.id===issue.meal_id);issues.append(el('p',(meal?.title||'Mahlzeit')+': '+(issue.reason==='ingredients_missing'?'Rezeptstand enthält keine Zutaten.':'Rezeptkomponenten fehlen.')));}

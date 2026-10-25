@@ -1,0 +1,46 @@
+{{define "planning-purchases"}}
+<div id="planning-purchases" data-plan="{{.Record.plan}}" data-week="{{.Record.week}}" data-selected="{{.Record.selected}}" data-operation="{{.Record.operation}}" data-writable="{{.User.CanWrite}}">
+ <nav class="entity-tabs" aria-label="Planung und Einkauf"><a id="purchase-week-link" href="/m/mealplan/plans">Wochenplanung</a><a href="/m/shopping/lists">Einkaufslisten</a><a href="/settings">Module verwalten</a></nav>
+ <h1>Einkauf aus der Planung</h1>
+ <p>Vergleiche den gesamten aktiven Mahlzeitenbedarf mit Vorrat und zugeordneten Einkäufen. Auch vollständig gedeckte Mahlzeiten bleiben im Umfang, bis ihr Bedarf beendet wird.</p>
+ <p id="purchase-status" role="status">Aktiver Bedarf wird geladen …</p>
+ <div id="purchase-error" class="notice error" role="alert" tabindex="-1" hidden></div>
+ <div class="actions"><button id="purchase-refresh" type="button">Aktuellen Umfang laden</button>{{if .User.CanWrite}}<button id="purchase-retry" type="button" hidden>Genau denselben Vorgang erneut prüfen</button>{{end}}</div>
+ <section class="panel" id="purchase-selection-section" aria-labelledby="purchase-selection-title" hidden>
+  <h2 id="purchase-selection-title">Weitere ganze Mahlzeiten aufnehmen</h2>
+  <p>Die Auswahl ergänzt alle bereits aktiven Mahlzeiten, auch aus anderen Plänen. Beim Vergleichen wird noch nichts gespeichert.</p>
+  <form id="purchase-week-form" class="actions"><label>Woche ab<input name="week" type="date" required value="{{.Record.week}}"></label><button>Woche anzeigen</button></form>
+  <fieldset id="purchase-selection"><legend class="sr-only">Ganze Mahlzeiten dieser Woche</legend><div id="purchase-meals"></div></fieldset>
+  <p id="purchase-no-meals" hidden>Keine offenen Rezeptmahlzeiten in dieser Woche. Ergänze in der Wochenplanung einen bestätigten Rezeptstand.</p>
+  <a id="purchase-mapping-link" href="/m/mealplan/plans">Produktzuordnungen und Mengen prüfen</a>
+ </section>
+ <section class="panel" aria-labelledby="purchase-scope-title">
+  <h2 id="purchase-scope-title">Aktiver Bedarf</h2><p id="purchase-scope-summary"></p><div id="purchase-scope"></div>
+ </section>
+ {{if .User.CanWrite}}
+ <section class="panel" id="purchase-control" aria-labelledby="purchase-control-title" hidden>
+  <h2 id="purchase-control-title" tabindex="-1">Entscheidung prüfen</h2><div id="purchase-control-content"></div>
+  <p>Vorhandene Einkaufspositionen bleiben mit ihren Mengen, Notizen und Erledigungen erhalten. Diese Entscheidung bucht keinen Vorrat.</p>
+  <div class="actions"><button class="primary" id="purchase-control-confirm" type="button">Diese Entscheidung speichern</button><button id="purchase-control-cancel" type="button">Abbrechen</button></div>
+ </section>
+ {{end}}
+ <section class="panel" aria-labelledby="purchase-compare-title">
+  <h2 id="purchase-compare-title">Bedarf und Einkäufe vergleichen</h2>
+  <p>Der Vergleich verteilt nutzbaren Bestand genau einmal über alle aktiven Quellen. Offene zugeordnete Einkaufsmenge wird anschließend mit der neuen Sollmenge verglichen.</p>
+  <button class="primary" id="purchase-compare" type="button">Vollständigen Umfang vergleichen</button>
+  <div id="purchase-preview" hidden><h3 id="purchase-preview-title" tabindex="-1">Geprüfter vollständiger Umfang</h3><p id="purchase-preview-summary"></p><p id="purchase-read-at" class="fine"></p><div id="purchase-issues"></div><div id="purchase-lines"></div></div>
+ </section>
+ {{if .User.CanWrite}}
+ <section id="purchase-commit" class="panel" aria-labelledby="purchase-commit-title" hidden>
+  <h2 id="purchase-commit-title">Geprüften Umfang speichern</h2>
+  <form id="purchase-destination-form" hidden><fieldset id="purchase-destination-fields"><label>Zielliste für neue Positionen<select id="purchase-destination" data-reference="shopping/lists"><option value="">Offene Liste auswählen</option></select></label><button>Zielliste prüfen</button></fieldset></form>
+  <p id="purchase-destination-info"></p><p id="purchase-effects"></p>
+  <p>Nullbedarf wird ebenfalls gespeichert. Einkaufsabschluss und Einlagerung erfolgen anschließend in der Einkaufsliste. Physischer Vorrat wird durch diesen Abgleich nicht verändert.</p>
+  <label class="check"><input id="purchase-confirmation" type="checkbox"><span>Ich habe den vollständigen Umfang, alle Entscheidungen und die Änderungen an Einkaufspositionen geprüft.</span></label>
+  <button id="purchase-save" class="primary" type="button">Geprüften Umfang abgleichen</button>
+ </section>
+ {{end}}
+ <section id="purchase-receipt" class="panel" aria-labelledby="purchase-receipt-title" hidden><h2 id="purchase-receipt-title" tabindex="-1">Gespeicherter Vorgang</h2><div id="purchase-receipt-content"></div><a id="purchase-receipt-link" href="/planning-purchases">Diesen historischen Beleg öffnen</a></section>
+ <noscript><p>Dieser Vergleich benötigt das lokal gehostete JavaScript. Deine gespeicherten Pläne und Einkaufslisten bleiben direkt erreichbar.</p></noscript>
+</div><script nonce="{{.Nonce}}" src="{{index .Asset "planning-purchases.js"}}" defer></script>
+{{end}}

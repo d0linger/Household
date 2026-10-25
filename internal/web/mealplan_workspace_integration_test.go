@@ -187,8 +187,8 @@ func TestPlanningSnapshotShoppingAndHTTPGuards(t *testing.T) {
 		input.TargetGenerations = map[string]int64{"shopping": f.app.Store.States()["shopping"].Generation}
 		return f.app.Store.Action(f.ctx, f.identity, m, e, pid, "shopping", value.UUID(), value.UUID(), input)
 	}
-	if _, err = action(); err == nil || !strings.Contains(err.Error(), "Needs source review") {
-		t.Fatal("unreviewed draft not named", err)
+	if _, err = action(); err == nil || !strings.Contains(err.Error(), "/planning-purchases") {
+		t.Fatal("legacy unreviewed transfer must lead to complete demand review", err)
 	}
 	var count int
 	if err = f.pool.QueryRow(f.ctx, "SELECT count(*) FROM shopping.items WHERE list_id=$1", list["id"]).Scan(&count); err != nil || count != 0 {
@@ -204,13 +204,11 @@ func TestPlanningSnapshotShoppingAndHTTPGuards(t *testing.T) {
 	if _, err = f.pool.Exec(f.ctx, "DELETE FROM recipes.recipes WHERE id=$1", rid); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = action(); err != nil {
-		t.Fatal("snapshot transfer still needs recipe module", err)
+	if _, err = action(); err == nil || !strings.Contains(err.Error(), "/planning-purchases") {
+		t.Fatal("disabled Recipe module revived legacy duplicate transfer", err)
 	}
-	var amount string
-	var unknown int
-	if err = f.pool.QueryRow(f.ctx, "SELECT count(*),max(quantity::text),count(*) FILTER(WHERE quantity IS NULL AND unit_code IS NULL) FROM shopping.items WHERE list_id=$1", list["id"]).Scan(&count, &amount, &unknown); err != nil || count != 2 || amount != "9007199254.740993" || unknown != 1 {
-		t.Fatal("snapshot quantities or meal-kind filtering", count, amount, unknown, err)
+	if err = f.pool.QueryRow(f.ctx, "SELECT count(*) FROM shopping.items WHERE list_id=$1", list["id"]).Scan(&count); err != nil || count != 0 {
+		t.Fatal("rejected legacy transfer created untracked items", count, err)
 	}
 	for _, tc := range []struct {
 		name, method, path, token, csrf, body string

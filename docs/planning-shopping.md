@@ -1,6 +1,6 @@
-# Repeatable planning purchases — MP17 planned contract
+# Repeatable planning purchases — MP17
 
-Status: persistence, complete-scope reader and checkout/lifecycle foundation implemented with focused local PostgreSQL evidence; MP17 remains in progress. No public MP17 scope-registration or purchase-sync API is available. MP14's current PWA preview remains selection-scoped and read-only. Its shortage must not be used as an instruction to append purchases independently. The existing mealsToShopping path still creates independent positions; replacing that path is part of MP17 acceptance, not a second parallel integration. See the [foundation evidence and remaining gates](planning-shopping-verification.md).
+Status: locally verified MP14/MP17 checkpoint. Persistent registration, differential synchronization, explicit lifecycle review, recovery APIs and the embedded PWA workspace are implemented at /planning-purchases. The legacy plan action rejects append-only transfers and leads to complete review. MP14's separate selection-only stock comparison remains read-only and links to this complete active-scope workflow. See [executed evidence and remaining acceptance](planning-shopping-verification.md); implementation does not imply full current-tree verification or deployment.
 
 ## Shared physical coverage
 
@@ -30,7 +30,7 @@ The allocation helper now feeds the read-only complete-scope Store preview. It v
 
 Source review compares the actual accepted per-meal/component/mapping basis with its current value. A changed portion, source or date blocks automatic item effects. Unrelated changes to another meal in the same plan do not change that basis; parent plan versions remain in the complete preview fingerprint. Missing sources retain blocked identities rather than silently releasing their physical coverage.
 
-Actual checkout now writes a typed contribution transition in its existing transaction, after its actual checkout receipt and intake effects exist. It preserves active meal demand and distinguishes matching/partial storage, another target, no_stock and skip. Managed items are protected in both merge directions, including preview. Deletion invalidates the destination while retaining the active source. This foundation is not an available initial registration/sync workflow.
+Actual checkout writes a typed contribution transition in its existing transaction, after its actual checkout receipt and intake effects exist. It preserves active meal demand and distinguishes matching/partial storage, another target, no_stock and skip. Managed items are protected in both merge directions, including preview. Deletion invalidates the destination while retaining the active source. Registration and synchronization now apply only the exact reviewed effects; named decisions must be included in a fresh preview before confirmation.
 
 ## Minimal persistent records
 
@@ -58,6 +58,27 @@ Core21/Shopping5/Pantry9/Mealplan5 implement the reviewed columns and narrow gua
 - Module purge: separate payload cleanup from minimal proof retention before TRUNCATE. Source purge removes active source payload; Pantry purge invalidates target mappings; Shopping purge clears destination/pending coverage. Preserve independent module records and explain lost linkage.
 
 Replay checks current actor authorization and generation boundaries before reading the durable proof. A valid proof does not require the original item still to exist. Detail receipts are shown only under permitted current module access; unavailable details do not recreate effects.
+
+## PWA and API
+
+The embedded workspace is `/planning-purchases`. Weekly plans and the selection-only physical demand comparison link to it with `plan`, `week` and optional repeated `meal` parameters. Settings links to recovery without requiring an active module. Selecting another week or changing a decision invalidates the confirmation; a new complete comparison is required. A destination review includes its current version and rejects an archived/template/completed list, including a completed list reopened by a separate action.
+
+| Route | Contract |
+|---|---|
+| `GET /api/v1/planning-purchases/preview` | Read-only complete active household scope plus optional repeated `source=planUUID/mealUUID`. Repeated `decision=sourceUUID/action` previews named decisions; `reactivate` addresses a whole meal, while `accept`/`renew` address a requirement. |
+| `GET /api/v1/planning-purchases/scope` | Bounded active Core identities and lifecycle state, including missing sources and disabled modules. Live names follow each owning module's state. |
+| `GET /api/v1/planning-purchases/destinations/{list}` | Current household list identity/version/generation and explicit open/uncompleted status. |
+| `POST /api/v1/planning-purchases/sync` | Session-authorized writer, CSRF and UUID `Idempotency-Key`; current three generations, complete fingerprint, additional whole-meal selections, typed decisions and a versioned destination only when a new positive item is needed. Server derives every quantity. |
+| `POST /api/v1/planning-purchases/control` | Authenticated Core recovery with current generations/fingerprint. `end` selects whole `meal_ids`; `detach` selects managed `requirement_ids`. The two identity lists are mutually exclusive. Disabled modules do not prevent recovery. |
+| `GET /api/v1/planning-purchases/operations/{operation}` | Immutable historical proof, separate from current state. Unknown/foreign IDs return404. Shopping details require its enabled matching generation and retained receipt. |
+
+Sync decision records are explicit: `{requirement_id, action:"accept"}` adopts the reviewed current source/mapping/open-item basis; `{requirement_id, action:"renew"}` permits another purchase after an earlier disposition; `{meal_id, action:"reactivate"}` reopens demand for the whole ended meal. Mixed identities, duplicates and unused decisions are rejected. Ending markers are found by meal and generation even when every old component was replaced. A newly reviewed positive contribution after detach or renewal may coexist with independently retained old items; the confirmation explains that consequence.
+
+The preview distinguishes requirement demand, once-allocated physical coverage, new purchase target N, previously attributed Q, signed N−Q and positive additional need. Quantities remain decimal strings plus exact rationals; neither binary floating-point nor implicit rounding authorizes a purchase. Checked, closed, incompatible-unit and unbookable states remain blocked. Product mapping and source-quantity correction stay in the existing demand/planning editors.
+
+Unknown mutation outcomes freeze fresh requests and preserve the original body/key in page memory for an identical retry. Leaving during an unresolved request prompts a browser warning. Private API responses and mutation bodies are not added to the offline asset cache. Reload clears stale previews before showing a new read. Reader pages omit mutation controls; all write authorization is repeated server-side.
+
+Browser development uses20 sequential components. The final demand/purchasing components share one actual authenticated fixture session to remain within the unchanged application login budget. Its temporary state lives only under a resolved workspace `.local/browser-auth-*` directory and is removed by the suite's `finally` cleanup; it is never an uploaded test artifact.
 
 ## Mutation order and integration points
 

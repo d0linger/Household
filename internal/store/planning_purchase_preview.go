@@ -52,7 +52,7 @@ func finishPlanningPurchaseScope(scope *planningPurchaseScope) error {
 		}
 	}
 	for _, requirement := range out.Requirements {
-		reason := requirement.ReviewReason
+		reason := ""
 		if requirement.Active && !seen[requirement.ComponentID+"/"+requirement.IngredientID] {
 			reason = "source_missing"
 		}
@@ -93,6 +93,7 @@ func finishPlanningPurchaseScope(scope *planningPurchaseScope) error {
 		return err
 	}
 	out.Ready = true
+	usedDecisions := make(map[string]bool)
 	for _, allocation := range allocations {
 		key := allocation.ComponentID + "/" + allocation.IngredientID
 		line := lines[key]
@@ -113,14 +114,25 @@ func finishPlanningPurchaseScope(scope *planningPurchaseScope) error {
 		if row.Reason != "" {
 			out.Ready = false
 			row.Action = "blocked"
+			out.Issues = append(out.Issues, Record{"requirement_id": row.RequirementID, "meal_id": line.MealID, "reason": row.Reason})
+		}
+		if row.Decision != "" {
+			identifier := row.RequirementID
+			if row.Decision == "reactivate" {
+				identifier = "meal/" + row.MealID
+			}
+			usedDecisions[identifier] = true
 		}
 		out.Lines = append(out.Lines, row)
+	}
+	if len(usedDecisions) != len(scope.decisions) {
+		return Invalid{"Eine ausdrückliche Entscheidung passt nicht zum aktuellen vollständigen Vergleich"}
 	}
 	return sealPlanningPurchasePreview(out)
 }
 
 func planningPurchasePreviewLine(scope *planningPurchaseScope, source PlanningDemandLine, allocation planningPurchaseAllocation, basis string) (PlanningPurchaseLine, error) {
-	out := PlanningPurchaseLine{ComponentID: source.ComponentID, IngredientID: source.IngredientID, Basis: basis, Bookable: allocation.Bookable, Action: "none"}
+	out := PlanningPurchaseLine{MealID: source.MealID, ComponentID: source.ComponentID, IngredientID: source.IngredientID, Basis: basis, Bookable: allocation.Bookable, Action: "none", ReviewReasons: []string{}}
 	requirement := scope.requirements[source.ComponentID+"/"+source.IngredientID]
 	current := new(big.Rat)
 	if requirement != nil {
@@ -154,44 +166,87 @@ func planningPurchasePreviewLine(scope *planningPurchaseScope, source PlanningDe
 		out.Action = "create"
 	}
 	if requirement == nil {
+		if scope.endedMeals[source.MealID] {
+			out.RequiredDecision = "reactivate"
+			out.ReviewReasons = append(out.ReviewReasons, "reactivation_required")
+			if scope.decisions["meal/"+source.MealID] == "reactivate" {
+				out.Decision = "reactivate"
+			} else if out.Reason == "" {
+				out.Reason = "reactivation_required"
+			}
+		}
 		return out, nil
 	}
+	if requirement["active"] != true {
+		out.ReviewReasons = append(out.ReviewReasons, "reactivation_required")
+	}
 	if requirement["active"] == true && String(requirement["reviewed_basis_hash"]) != basis {
-		out.Reason = "source_changed"
+		out.ReviewReasons = append(out.ReviewReasons, "source_changed")
 	}
 	if String(requirement["binding_id"]) != String(source.Binding["id"]) || Int(requirement["binding_version"]) != Int(source.Binding["version"]) ||
 		String(requirement["product_id"]) != source.ProductID || Int(requirement["pantry_generation"]) != scope.view.PantryGeneration ||
 		String(requirement["unit_code"]) != String(source.Binding["unit"]) {
-		out.Reason = "mapping_changed"
+		out.ReviewReasons = append(out.ReviewReasons, "mapping_changed")
+	}
+	if reason := String(requirement["review_reason"]); reason != "" {
+		out.ReviewReasons = append(out.ReviewReasons, reason)
 	}
 	disposition := String(requirement["procurement_disposition"])
 	if disposition != "managed" {
 		if disposition != "none" && allocation.Net.Sign() > 0 || disposition == "unresolved" || disposition == "missing" {
-			out.Reason = "renewal_required"
+			out.ReviewReasons = append(out.ReviewReasons, "renewal_required")
 		}
-		return out, nil
+	} else {
+		item := scope.items[String(requirement["item_id"])]
+		out.CurrentItem = item
+		switch {
+		case item == nil:
+			out.Reason = "item_missing"
+		case Int(requirement["shopping_generation"]) != scope.view.ShoppingGeneration || String(item["list_id"]) != String(requirement["list_id"]):
+			out.Reason = "destination_changed"
+		case item["checked"] == true:
+			out.Reason = "checkout_required"
+		case item["list_open"] != true:
+			out.Reason = "destination_closed"
+		case String(item["unit_code"]) != String(source.Binding["unit"]):
+			out.Reason = "item_unit_changed"
+		}
+		if item != nil && (Int(item["version"]) != Int(requirement["item_version"]) || String(item["fingerprint"]) != String(requirement["item_fingerprint"])) {
+			out.ReviewReasons = append(out.ReviewReasons, "item_changed")
+		}
+		actual := current
+		if item != nil {
+			actual, err = stockDecimal(String(item["quantity"]))
+			if err != nil {
+				return out, err
+			}
+		}
+		switch {
+		case allocation.Net.Sign() == 0:
+			out.Action = "remove"
+		case actual.Cmp(allocation.Net) != 0:
+			out.Action = "update"
+		default:
+			out.Action = "none"
+		}
 	}
-	item := scope.items[String(requirement["item_id"])]
-	out.CurrentItem = item
-	switch {
-	case item == nil:
-		out.Reason = "item_missing"
-	case Int(requirement["shopping_generation"]) != scope.view.ShoppingGeneration || String(item["list_id"]) != String(requirement["list_id"]):
-		out.Reason = "destination_changed"
-	case Int(item["version"]) != Int(requirement["item_version"]) || String(item["fingerprint"]) != String(requirement["item_fingerprint"]):
-		out.Reason = "item_changed"
-	case item["checked"] == true:
-		out.Reason = "checkout_required"
-	case item["list_open"] != true:
-		out.Reason = "destination_closed"
-	}
-	switch {
-	case allocation.Net.Sign() == 0:
-		out.Action = "remove"
-	case delta.Sign() != 0:
-		out.Action = "update"
-	default:
-		out.Action = "none"
+	if len(out.ReviewReasons) > 0 {
+		out.RequiredDecision = "accept"
+		if disposition != "managed" && (disposition != "none" && allocation.Net.Sign() > 0 || String(requirement["review_reason"]) == "unresolved_checkout" || disposition == "missing" || disposition == "unresolved") {
+			out.RequiredDecision = "renew"
+		}
+		if requirement["active"] != true {
+			out.RequiredDecision = "reactivate"
+		}
+		identifier := out.RequirementID
+		if out.RequiredDecision == "reactivate" {
+			identifier = "meal/" + source.MealID
+		}
+		if choice := scope.decisions[identifier]; choice == out.RequiredDecision {
+			out.Decision = choice
+		} else if out.Reason == "" {
+			out.Reason = out.ReviewReasons[len(out.ReviewReasons)-1]
+		}
 	}
 	return out, nil
 }

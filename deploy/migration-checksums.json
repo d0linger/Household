@@ -25,6 +25,7 @@
   "core/000019_meal_reservations.up.sql": "bd431e1f46711f60deb942ecafaba5cb499f26de57f7ff31db7b30f1a532e379",
   "core/000020_planning_ingredient_bindings.up.sql": "9966a3cbed32f1b0f010b2ee4930a2a69f1007e2d879d963256c324f21d476e4",
   "core/000021_planning_purchases.up.sql": "fc5612cc8941de8b7a331523f69be6f0ed62051ea8bbed3cd90a206889379bf5",
+  "core/000022_planning_purchase_history_index.up.sql": "404bb43d9312b70c7f826344e381ef11c5d8e0819414a1a8698ba99964fb3f6b",
   "documents/000001_init.up.sql": "6a33d06f5655f4c7968cb4cdd29a4ae7720a7e7e4b43ef7fdc944932e2cc9c3f",
   "expenses/000001_init.up.sql": "4e9d54248e716f8d95109299ee3bb9606d674d16f8d597ab8a934e4530c8019e",
   "expenses/000002_integrity.down.sql": "bfce30e078d29f61e0d5b7134479e57abc68c396fb1afffef0b63b51f403a763",
@@ -35,6 +36,7 @@
   "mealplan/000003_reservation_source.up.sql": "e111970d3ee58fa2a4b6acb4eb75c124345ffbda77942ed9aca315a1cbf67eaf",
   "mealplan/000004_ingredient_bindings.up.sql": "4cce5733b107d46fba01b54de94626d525370918ce0dc9a8273e246dd37510e0",
   "mealplan/000005_planning_purchases.up.sql": "eca9a4f65def2d2791c1ae242d4bbd26105e71a3aab4e493e786b351a2d729c6",
+  "mealplan/000006_planning_purchase_detach.up.sql": "1f6ff0a764234d265381925fbfb9d9aa430c51d7c0f6ae624367c17e07d0b22c",
   "meters/000001_init.up.sql": "65b60eb5ac1d873f5b2b38c99e76823d6dcb694dcac405814bec018699b89213",
   "pantry/000001_init.up.sql": "1e3ff3206f8aa0d7e004a328754d9abcd3983c818fca4f7baedc83b42eaa79c5",
   "pantry/000002_stock_projection.up.sql": "466ac5e7803fc5d55ebb46426ed8bb3520344551ce8d566951e760c93d2fd66d",
@@ -45,6 +47,7 @@
   "pantry/000007_reservation_allocations.up.sql": "7268634bcb4c05ddf7014ee4fdbc0ccc0f66c59198f854de36dfdc6de4cb14ba",
   "pantry/000008_planning_bindings.up.sql": "e77bf3bd4100ea6dcaadf8136e2368e38fcdfbd558484d803d247c406e7fc9e5",
   "pantry/000009_planning_purchases.up.sql": "82c4b5b6fac141fe837f2cd75f8d0de30132f3958db7411f1178f9498b1de6a1",
+  "pantry/000010_planning_purchase_detach.up.sql": "315b09fc76522a31f2ce036ee3a2adc571142e1fd18064fa5ac6aea3f0542f89",
   "recipes/000001_init.up.sql": "24d68a5070f402d2fa56ef7d9e5fde395a72648e66125f61c7294b63f8eb77e5",
   "recipes/000002_versions.up.sql": "b8a47a5826268b1a9f0ac061a70f23df27b13c714657c74dd6cb4864f700f25d",
   "recipes/000003_cooking.up.sql": "099d591baf90206c06da86ab2ef82d23e09649522ec9b732c9f14d553fce4494",
@@ -53,5 +56,6 @@
   "shopping/000002_catalog.up.sql": "59148fb72ae866217ecb68912ee0c6842f19979e1fb4f920212e670d696547f6",
   "shopping/000003_reuse.up.sql": "65a7d20d3d235292810946622ef965cc2c6140936fdab9013915042509e0d279",
   "shopping/000004_checkout.up.sql": "5877578c9f26ded254f43889c013e3308438a61a036a6e5b0d7e4b482a112a20",
-  "shopping/000005_planning_purchases.up.sql": "aa6d100e1f7404c323aa56c03bfd1d5ded957efd8b8d7d150577b0fa67871e27"
+  "shopping/000005_planning_purchases.up.sql": "aa6d100e1f7404c323aa56c03bfd1d5ded957efd8b8d7d150577b0fa67871e27",
+  "shopping/000006_planning_destination_completion.up.sql": "e801f05694093c25561329b35091719165fb59a34c6adba0e905dc0bcec5e228"
 }

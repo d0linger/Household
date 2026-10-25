@@ -19,6 +19,7 @@ type planningPurchaseEvidence struct {
 	IngredientID  string          `json:"ingredient_id"`
 	Changed       bool            `json:"changed"`
 	Action        string          `json:"item_action"`
+	Decision      string          `json:"decision,omitempty"`
 	Before        json.RawMessage `json:"requirement_before"`
 	After         json.RawMessage `json:"requirement_after"`
 	ItemBefore    json.RawMessage `json:"item_before"`

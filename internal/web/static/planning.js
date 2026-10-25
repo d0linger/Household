@@ -51,6 +51,7 @@
  function renderWeek(){
   $('#planning-title').textContent=week.plan.name;$('#planning-template-note').hidden=!week.plan.is_template;$('#planning-week-form').elements.week.value=start;
   $('#planning-stock-demand').href='/m/mealplan/demand/'+pid+'?week='+encodeURIComponent(start);$('#planning-stock-demand').hidden=week.plan.is_template;
+  $('#planning-purchases-link').href='/planning-purchases?plan='+pid+'&week='+encodeURIComponent(start);$('#planning-purchases-link').hidden=week.plan.is_template;
   $('#planning-previous').disabled=busy||shifted(start,-1)<week.plan.starts_on;$('#planning-next').disabled=busy||shifted(start,7)>week.plan.ends_on;
   const days=$('#planning-days');days.replaceChildren();
   for(const day of week.days){

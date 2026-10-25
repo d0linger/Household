@@ -210,10 +210,7 @@ func (s *Store) Action(ctx context.Context, id auth.Identity, m module.Descripto
 	case "mealplan/meals/recipe":
 		return nil, Invalid{"Rezeptstände und Komponenten ausdrücklich in der Wochenplanung prüfen; die alte Einzelverknüpfung wird nicht mehr gespeichert"}
 	case "mealplan/plans/shopping":
-		err = s.mealsToShopping(ctx, tx, id, record, data)
-		if err == nil {
-			raw = []byte(`{"message":"Zutaten geplanter Rezepte übernommen"}`)
-		}
+		return nil, Invalid{"Ganze Mahlzeiten, Vorrat und vorhandene Einkaufszuordnungen zuerst unter /planning-purchases ausdrücklich vergleichen und bestätigen"}
 	case "fuel/fillups/expense":
 		var result Record
 		result, err = s.fuelToExpense(ctx, tx, id, record, data)

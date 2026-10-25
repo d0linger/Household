@@ -351,9 +351,15 @@ func TestRecipeVersionsPopulatedUpgrade(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	// Advance the independent core first. Otherwise a newer core barrier can
-	// hide a regressed recipes2 lock order by draining the legacy writer early.
-	migratePriorAuditSchema(t, f, "core", uint(database.ExpectedVersion("core")))
+	// Advance independent schemas that migrate before recipes. Otherwise a
+	// newer Core or Shopping barrier drains this writer before recipes2 can
+	// exercise the legacy ingredient/parent lock order this test constrains.
+	for _, schema := range database.Schemas {
+		if schema == "recipes" {
+			break
+		}
+		migratePriorAuditSchema(t, f, schema, uint(database.ExpectedVersion(schema)))
+	}
 	// Reproduce the old child-first writer order while recipes2 waits at its
 	// household barrier. It must finish before any parent/table migration lock.
 	ctx, cancel := context.WithTimeout(f.ctx, 20*time.Second)
@@ -374,9 +380,31 @@ func TestRecipeVersionsPopulatedUpgrade(t *testing.T) {
 		t.Fatal(err)
 	}
 	migrated := make(chan error, 1)
+	migrationFinished := false
 	go func() { migrated <- database.Migrate(ctx, os.Getenv("HOUSEHOLD_TEST_OWNER_URL")) }()
+	defer func() {
+		_ = writer.Rollback(f.ctx)
+		if migrationFinished {
+			return
+		}
+		cancel()
+		select {
+		case cleanupErr := <-migrated:
+			if cleanupErr != nil {
+				t.Log("migration finished during cleanup:", cleanupErr)
+			}
+		case <-time.After(5 * time.Second):
+			t.Error("migration did not finish after its blocked writer was released")
+		}
+	}()
 	blocked := false
 	for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); {
+		select {
+		case migrationErr := <-migrated:
+			migrationFinished = true
+			t.Fatal("migration ended before the recipe household barrier", migrationErr)
+		default:
+		}
 		if err = f.owner.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM pg_stat_activity a WHERE a.datname=current_database() AND $1::int=ANY(pg_blocking_pids(a.pid)) AND a.wait_event_type='Lock' AND a.query LIKE '%Match BeginMutation%')`, writerPID).Scan(&blocked); err != nil {
 			t.Fatal(err)
 		}
@@ -386,7 +414,12 @@ func TestRecipeVersionsPopulatedUpgrade(t *testing.T) {
 		time.Sleep(20 * time.Millisecond)
 	}
 	if !blocked {
-		t.Fatal("migration never reached household barrier")
+		var blockingQuery string
+		if err = f.owner.QueryRow(ctx, `SELECT coalesce(string_agg(left(a.query,180),E'\n'),'none') FROM pg_stat_activity a
+ WHERE a.datname=current_database() AND $1::int=ANY(pg_blocking_pids(a.pid)) AND a.wait_event_type='Lock'`, writerPID).Scan(&blockingQuery); err != nil {
+			t.Fatal(err)
+		}
+		t.Fatal("migration never reached recipe household barrier; actual blocked statement:", blockingQuery)
 	}
 	if _, err = writer.Exec(ctx, "SELECT id FROM recipes.recipes WHERE id=$1 FOR UPDATE", rid); err != nil {
 		t.Fatal("migration inverted legacy child/parent lock", err)
@@ -397,7 +430,9 @@ func TestRecipeVersionsPopulatedUpgrade(t *testing.T) {
 	if err = writer.Commit(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if err = <-migrated; err != nil {
+	err = <-migrated
+	migrationFinished = true
+	if err != nil {
 		t.Fatal(err)
 	}
 	for range 2 {
