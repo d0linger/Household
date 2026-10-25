@@ -41,6 +41,7 @@
         const locations=product.locations.join(', ')+(Number(product.location_count)>product.locations.length?' · '+product.location_count+' Orte insgesamt':'');
         const dates=[['Mindestens haltbar bis',product.next_best_before],['Zu verbrauchen bis',product.next_use_by]].filter(([,v])=>v).map(([label,v])=>label+': '+date(v));
         article.append(node('p',locations||'Kein belegter Lagerort'));if(dates.length)article.append(node('p',dates.join(' · ')));if(product.minimum!==null)article.append(node('p','Mindestbestand: '+qty(product.minimum)+' '+unit(product.unit)));
+        if(product.target!==null&&product.target!==undefined)article.append(node('p',(day?'Aktueller Zielbestand: ':'Zielbestand: ')+qty(product.target)+' '+unit(product.unit)));if(!day)article.append(link('Nachkauf prüfen','/m/pantry/replenish/'+product.id));
         if(product.archived)article.append(node('p','Produkt archiviert'));if(Number(product.later_corrections)>0)article.append(node('p',product.later_corrections+' spätere Korrekturbuchung(en); zuletzt '+moment(product.latest_correction_at,data.timezone)+'. Mengen hier bleiben am Stichtag.'));
         article.append(lotsFor(product,day,query));container.append(article);
       }

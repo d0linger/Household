@@ -27,7 +27,7 @@ Ein Schema, eine Schaltfläche oder ein Mock allein schließt keinen Punkt ab. B
 
 ## Fortschritt
 
-180 Punkte: **49 verifiziert, 0 implementiert, 0 in Arbeit, 131 offen**. Dieser Zähler wird mit jedem abgeschlossenen Arbeitspaket abgeglichen.
+180 Punkte: **50 verifiziert, 0 implementiert, 0 in Arbeit, 130 offen**. Dieser Zähler wird mit jedem abgeschlossenen Arbeitspaket abgeglichen.
 
 ## Einkaufen
 
@@ -118,7 +118,7 @@ Ein Schema, eine Schaltfläche oder ein Mock allein schließt keinen Punkt ab. B
 | PA08 | Geöffnete Haltbarkeit | Nutzer- oder Herstellerangaben mit Herkunft als Hinweis anzeigen. | Verifiziert | Native Gesamtsuite67,2 %, Linux-Race259,069s, bestücktes Upgrade/Restore, direkte50/100-Grenzen; Vorrat35Browserchecks/5axe, Gesamtkette448; DB-, UI- und Dokumentationsabnahme bestanden. |
 | PA09 | FEFO-Vorschlag | Passende Chargen nach Datum vorschlagen; manuelle Auswahl und Datumsarten erhalten. | Verifiziert | Native Gesamtsuite67,2 %, Linux-Race259,069s, bestücktes Upgrade/Restore, direkte50/100-Grenzen; Vorrat35Browserchecks/5axe, Gesamtkette448; DB-, UI- und Dokumentationsabnahme bestanden. |
 | PA10 | Gekochte Reste | Rezeptbezug, Portionen, Zubereitung und Lagerort erfassen. | Offen | — |
-| PA11 | Zielbestand | Mindest- und Zielbestand unterscheiden; Nachkauf auf Packungen aufrunden. | Offen | — |
+| PA11 | Zielbestand | Mindest- und Zielbestand unterscheiden; Nachkauf auf Packungen aufrunden. | Verifiziert | Native70,1%, sieben finale PostgreSQL-Verträge, fokussierte Linux-Race; 32 Nachkauf-Browserchecks/sechs axe, Gesamtkette584; Upgrade/Restore und F01 unabhängig abgenommen. |
 | PA12 | Reservierungen | Freien und für Mahlzeiten reservierten Bestand getrennt ausweisen. | Offen | — |
 | PA13 | Open Food Facts | Optionalen Adapter mit Quellenangabe und lokalem Cache bereitstellen. | Offen | — |
 | PA14 | Abfallanalyse | Gründe und optional geschätzte Kosten der Verluste auswerten. | Offen | — |

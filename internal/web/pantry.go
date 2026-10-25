@@ -107,7 +107,7 @@ func (s *Server) pantryStock(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	rows, err := tx.Query(ctx, base+` SELECT jsonb_build_object('id',p.id,'name',p.name,'unit',p.unit_code,
-		'archived',p.archived_at IS NOT NULL,'minimum',p.low_stock_threshold::text,'stock',coalesce(s.stock,0)::text,
+		'archived',p.archived_at IS NOT NULL,'minimum',p.low_stock_threshold::text,'target',p.target_stock::text,'stock',coalesce(s.stock,0)::text,
 		'lot_count',s.lot_count,'location_count',s.location_count,'locations',coalesce(n.names,'[]'::jsonb),
 		'next_best_before',s.best_before,'next_use_by',s.use_by,'later_corrections',s.corrections,'latest_correction_at',s.latest_correction),p.created_at
 		FROM selected p LEFT JOIN LATERAL (

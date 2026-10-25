@@ -64,12 +64,15 @@ func (s *Store) Action(ctx context.Context, id auth.Identity, m module.Descripto
 	if e.Immutable {
 		lock = ""
 	} // Immutable rows cannot be changed by the runtime role; the household barrier blocks maintenance purge.
+	if m.ID == "pantry" && e.ID == "products" && action == "shopping" {
+		lock = " FOR UPDATE NOWAIT"
+	}
 	err = tx.QueryRow(ctx, "SELECT to_jsonb(t) FROM "+table+" t WHERE household_id=$1 AND id=$2"+lock, id.HouseholdID, rid).Scan(&raw)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNotFound
 	}
 	if err != nil {
-		return nil, err
+		return nil, shoppingContention(err)
 	}
 	record, err := decode(raw)
 	if err != nil {
@@ -199,9 +202,10 @@ func (s *Store) Action(ctx context.Context, id auth.Identity, m module.Descripto
 		}
 		err = tx.QueryRow(ctx, "UPDATE recipes.recipes t SET version=version+1,updated_at=now() WHERE id=$1 RETURNING to_jsonb(t)", rid).Scan(&raw)
 	case "pantry/products/shopping":
-		err = s.pantryToShopping(ctx, tx, id, record, data)
+		var result Record
+		result, err = s.pantryToShopping(ctx, tx, id, record, data)
 		if err == nil {
-			raw = []byte(`{"message":"Einkaufsvorschlag übernommen"}`)
+			raw, err = json.Marshal(result)
 		}
 	case "mealplan/meals/recipe":
 		return nil, Invalid{"Rezeptstände und Komponenten ausdrücklich in der Wochenplanung prüfen; die alte Einzelverknüpfung wird nicht mehr gespeichert"}

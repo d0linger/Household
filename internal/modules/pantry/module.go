@@ -3,7 +3,7 @@ package pantry
 import m "household/internal/module"
 
 var Module = m.Descriptor{ID: "pantry", Title: "Vorräte", Short: "Vorrat", Icon: "package", Order: 40, DefaultEnabled: true, Entities: []m.Entity{
-	{ID: "products", Title: "Produkte", Primary: "name", Fields: []m.Field{m.Text("name", "Produkt", true), m.Select("unit_code", "Basiseinheit", "piece", "g", "kg", "ml", "l"), m.Qty("low_stock_threshold", "Mindestbestand", false, false), m.Bool("integer_quantities", "Nur ganze Stückzahlen"), m.Long("notes", "Notizen")}},
+	{ID: "products", Title: "Produkte", Primary: "name", Fields: []m.Field{m.Text("name", "Produkt", true), m.Select("unit_code", "Basiseinheit", "piece", "g", "kg", "ml", "l"), m.Qty("low_stock_threshold", "Mindestbestand · Warnschwelle in der Basiseinheit", false, false), m.Qty("target_stock", "Zielbestand · leer = bis zum Mindestbestand auffüllen", false, false), m.Bool("integer_quantities", "Nur ganze Stückzahlen"), m.Long("notes", "Notizen")}},
 	{ID: "packs", Title: "Packungen", Primary: "label", Fields: []m.Field{m.Ref("product_id", "Produkt", "pantry/products", true), m.Text("label", "Packungsbezeichnung", true), m.Qty("quantity", "Inhalt pro Packung", true, true), m.Select("unit_code", "Inhaltseinheit", "piece", "g", "kg", "ml", "l"), m.Bool("disabled", "Packung nicht mehr verwenden")}},
 	{ID: "barcodes", Title: "Barcodes", Primary: "code", Fields: []m.Field{m.Ref("product_id", "Produkt", "pantry/products", true), m.Ref("pack_id", "Packung · optional, vom selben Produkt", "pantry/packs", false), m.Text("code", "Barcode · führende Nullen beibehalten", true)}},
 	{ID: "locations", Title: "Lagerorte", Primary: "name", Fields: []m.Field{m.Text("name", "Lagerort", true), m.Int("sort_order", "Reihenfolge")}},

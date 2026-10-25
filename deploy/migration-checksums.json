@@ -20,6 +20,8 @@
   "core/000014_pantry_daily_audit.up.sql": "5d56b925e983b431ad7363b8505329d27af845d42ede7b0ad17e8340ce5303d4",
   "core/000015_ingredient_bindings.up.sql": "f0c3f6b3f81835f9c2fac6a0944923a214ebdf80277fa8666e2442fc78bd4f65",
   "core/000016_cooking_stock_postings.up.sql": "6355a1fd55c3e4c2e57975d47c6c6123aab70fa61dd9a299d42c00d3ebf12fb1",
+  "core/000017_pantry_batches_audit.up.sql": "dec0b959d4f48093ef56cb15a5b841569b39ae40f92ea2ca6dc0a8b370cccd42",
+  "core/000018_pantry_target_audit.up.sql": "209e3dafe0c3691588683b709d5473f428dae98ed9c8fe4eb2e7de96cb4794e6",
   "documents/000001_init.up.sql": "6a33d06f5655f4c7968cb4cdd29a4ae7720a7e7e4b43ef7fdc944932e2cc9c3f",
   "expenses/000001_init.up.sql": "4e9d54248e716f8d95109299ee3bb9606d674d16f8d597ab8a934e4530c8019e",
   "expenses/000002_integrity.down.sql": "bfce30e078d29f61e0d5b7134479e57abc68c396fb1afffef0b63b51f403a763",
@@ -32,6 +34,8 @@
   "pantry/000002_stock_projection.up.sql": "466ac5e7803fc5d55ebb46426ed8bb3520344551ce8d566951e760c93d2fd66d",
   "pantry/000003_daily_workflows.up.sql": "2f8e53bb23ee9dc62ba941e94607c2d3cc6139d4e0504a63e5fe22ef5d29dbf4",
   "pantry/000004_cooking_stock.up.sql": "54c01db8febd9d9e6a49dcce8d27b5b3989473fcc3fe94800eb5e61377676c7c",
+  "pantry/000005_stock_batches.up.sql": "be0190daffaa1ca61b631c893ce7487757eac899a097b0ba69263e26fba07378",
+  "pantry/000006_replenishment_target.up.sql": "c3e978257ffc6289bf77c87704eaaf7b8845a608e39e784989c99271e5fbc186",
   "recipes/000001_init.up.sql": "24d68a5070f402d2fa56ef7d9e5fde395a72648e66125f61c7294b63f8eb77e5",
   "recipes/000002_versions.up.sql": "b8a47a5826268b1a9f0ac061a70f23df27b13c714657c74dd6cb4864f700f25d",
   "recipes/000003_cooking.up.sql": "099d591baf90206c06da86ab2ef82d23e09649522ec9b732c9f14d553fce4494",
@@ -39,7 +43,5 @@
   "shopping/000001_init.up.sql": "b036a1b5b8ad4ad612642626e54e2dd505c7aee7ed7da7d841349408bc2baa45",
   "shopping/000002_catalog.up.sql": "59148fb72ae866217ecb68912ee0c6842f19979e1fb4f920212e670d696547f6",
   "shopping/000003_reuse.up.sql": "65a7d20d3d235292810946622ef965cc2c6140936fdab9013915042509e0d279",
-  "shopping/000004_checkout.up.sql": "5877578c9f26ded254f43889c013e3308438a61a036a6e5b0d7e4b482a112a20",
-  "core/000017_pantry_batches_audit.up.sql": "dec0b959d4f48093ef56cb15a5b841569b39ae40f92ea2ca6dc0a8b370cccd42",
-  "pantry/000005_stock_batches.up.sql": "be0190daffaa1ca61b631c893ce7487757eac899a097b0ba69263e26fba07378"
+  "shopping/000004_checkout.up.sql": "5877578c9f26ded254f43889c013e3308438a61a036a6e5b0d7e4b482a112a20"
 }

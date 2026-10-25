@@ -136,6 +136,9 @@ func (s *Store) validateDomain(ctx context.Context, tx pgx.Tx, id auth.Identity,
 		if quantity("low_stock_threshold").Sign() < 0 {
 			return bad("Mindestbestand darf nicht negativ sein")
 		}
+		if err := validatePantryTarget(data); err != nil {
+			return err
+		}
 		if rid != "" {
 			if _, exists := changed["unit_code"]; exists {
 				var old string
