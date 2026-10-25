@@ -35,6 +35,9 @@ func TestPlanningDemandWholeMealAggregationClaimsAndLotScope(t *testing.T) {
 	if err != nil || view.Outcome != "incomplete" || len(view.Lines) != 2 || len(view.Products) != 0 || view.ShoppingCoverage != "unlinked" {
 		t.Fatal("unconfirmed mappings became coverage", view, err)
 	}
+	if view.Lines[0].ComponentPosition != 0 || view.Lines[1].ComponentPosition != 0 || view.Lines[0].IngredientPosition != 0 || view.Lines[1].IngredientPosition != 1 {
+		t.Fatal("frozen ingredient/component order missing for whole-scope allocation", view.Lines)
+	}
 	var mappings int
 	if err = f.pool.QueryRow(f.ctx, "SELECT count(*) FROM core.planning_ingredient_bindings").Scan(&mappings); err != nil || mappings != 0 {
 		t.Fatal("preview mutated source mappings", mappings, err)

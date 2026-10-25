@@ -169,6 +169,13 @@ func Ready(ctx context.Context, pool *pgxpool.Pool) error {
 	if !planningBindings {
 		return errors.New("incomplete planning ingredient binding contract")
 	}
+	var planningPurchases bool
+	if err := pool.QueryRow(ctx, "SELECT core.planning_purchases_ready()").Scan(&planningPurchases); err != nil {
+		return fmt.Errorf("inspect planning purchase contract: %w", err)
+	}
+	if !planningPurchases {
+		return errors.New("incomplete planning purchase contract")
+	}
 	return nil
 }
 

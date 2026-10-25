@@ -9,6 +9,7 @@ import (
 )
 
 func readDemandMeals(ctx context.Context, tx pgx.Tx, id auth.Identity, pid string, selected []string, out *PlanningDemand) error {
+	prior := len(out.Meals)
 	rows, err := tx.Query(ctx, `SELECT id,title,planned_on::text,meal_slot,version,kind,status FROM mealplan.meals
  WHERE household_id=$1 AND plan_id=$2 AND id=ANY($3::uuid[]) ORDER BY planned_on,meal_slot,id LIMIT 43`, id.HouseholdID, pid, selected)
 	if err != nil {
@@ -24,12 +25,13 @@ func readDemandMeals(ctx context.Context, tx pgx.Tx, id auth.Identity, pid strin
 		if kind != "recipe" || status != "open" && status != "planned" {
 			return PlanningConflict{"Nur ganze offene oder geplante Rezeptmahlzeiten berücksichtigen. Aktuelle Auswahl erneut prüfen."}
 		}
+		meal.PlanID = pid
 		out.Meals = append(out.Meals, meal)
 	}
 	if err = rows.Err(); err != nil {
 		return err
 	}
-	if len(out.Meals) != len(selected) {
+	if len(out.Meals)-prior != len(selected) {
 		return ErrNotFound
 	}
 	return nil
@@ -74,7 +76,7 @@ func readDemandComponents(ctx context.Context, tx pgx.Tx, id auth.Identity, sele
 	if len(ids) == 0 {
 		return components, nil
 	}
-	rows, err = tx.Query(ctx, `SELECT id,meal_id,servings::text,version,source_generation,encode(sha256(convert_to(snapshot::text,'UTF8')),'hex'),snapshot
+	rows, err = tx.Query(ctx, `SELECT id,meal_id,position,servings::text,version,source_generation,encode(sha256(convert_to(snapshot::text,'UTF8')),'hex'),snapshot
  FROM mealplan.components WHERE household_id=$1 AND id=ANY($2::uuid[]) ORDER BY meal_id,position,id LIMIT 421`, id.HouseholdID, ids)
 	if err != nil {
 		return nil, err
@@ -82,7 +84,7 @@ func readDemandComponents(ctx context.Context, tx pgx.Tx, id auth.Identity, sele
 	defer rows.Close()
 	for rows.Next() {
 		var component planningDemandComponent
-		if err = rows.Scan(&component.id, &component.meal, &component.servings, &component.version, &component.sourceGeneration, &component.hash, &component.snapshot); err != nil {
+		if err = rows.Scan(&component.id, &component.meal, &component.position, &component.servings, &component.version, &component.sourceGeneration, &component.hash, &component.snapshot); err != nil {
 			return nil, err
 		}
 		components = append(components, component)

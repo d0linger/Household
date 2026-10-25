@@ -21,6 +21,8 @@ func TestPlanningIngredientBindingPopulatedPriorUpgrade(t *testing.T) {
 		switch schema {
 		case "core":
 			version = 19
+		case "shopping":
+			version = 4 // MP17 Shopping receipts require Core21.
 		case "pantry":
 			version = 7
 		case "mealplan":

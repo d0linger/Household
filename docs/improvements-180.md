@@ -27,7 +27,7 @@ Ein Schema, eine Schaltfläche oder ein Mock allein schließt keinen Punkt ab. B
 
 ## Fortschritt
 
-180 Punkte: **52 verifiziert, 0 implementiert, 1 in Arbeit, 127 offen**. Dieser Zähler wird mit jedem abgeschlossenen Arbeitspaket abgeglichen.
+180 Punkte: **52 verifiziert, 0 implementiert, 2 in Arbeit, 126 offen**. Dieser Zähler wird mit jedem abgeschlossenen Arbeitspaket abgeglichen.
 
 ## Einkaufen
 
@@ -246,10 +246,10 @@ Ein Schema, eine Schaltfläche oder ein Mock allein schließt keinen Punkt ab. B
 | MP11 | Vorratsbasierte Vorschläge | Verfügbarkeit anhand ausdrücklicher Produktzuordnungen bewerten. | Offen | — |
 | MP12 | Verfallsorientierte Planung | Geöffnete und bald fällige Produkte mit erklärbarem Grund priorisieren. | Offen | — |
 | MP13 | Wochenbudget | Geschätzte Kosten und Alternativen mit fehlenden Preisen anzeigen. | Offen | — |
-| MP14 | Differenzieller Bedarf | Freien, reservierten und bereits vorgemerkten Bestand korrekt vom Bedarf abziehen. | In Arbeit | Plan-eigene Zutatenzuordnungen, exakte gruppierte Vorschau und chargenbezogene eigene/fremde Reservierungsanteile implementiert. Neun fokussierte PostgreSQL-Verträge, scoped Linux Race, 19 Browserkomponenten mit668 Checks und verschlüsselter synthetischer Restore bestanden; drei Review-Befunde behoben. Vollständiger nativer Lauf nach Infrastrukturabbrüchen und einem Pakettimeout erneut in Prüfung. Zurechenbare Einkaufsdeckung über MP17 bleibt offen. |
+| MP14 | Differenzieller Bedarf | Freien, reservierten und bereits vorgemerkten Bestand korrekt vom Bedarf abziehen. | In Arbeit | Plan-eigene Zutatenzuordnungen, exakte gruppierte Vorschau und chargenbezogene eigene/fremde Reservierungsanteile implementiert. Neun fokussierte PostgreSQL-Verträge, scoped Linux Race, 19 Browserkomponenten mit668 Checks und verschlüsselter synthetischer Restore bestanden; drei Review-Befunde behoben. Vollständiger nativer Grundstand bestanden (web993,516s;70,9%). Zurechenbare Einkaufsdeckung über MP17 bleibt offen; spätere MP17-Änderungen sind nicht durch diesen Grundstandslauf abgenommen. |
 | MP15 | Essens-Kalender | ICS mit stabilen Kennungen, Aktualisierung und widerrufbaren Feeds anbieten. | Offen | — |
 | MP16 | Rezeptstand im Plan | Verwendete Rezeptversion erhalten und Änderungen zur bewussten Übernahme anzeigen. | Verifiziert | Native Gesamtsuite 66,8 %, fokussierte Linux-Race, Upgrade/Purge/Restore; Planung 38 Browserchecks/4 axe, Gesamtkette 409; DB-Prüfung und PW01/PW02-Abnahme bestanden. |
-| MP17 | Wiederholbare Einkaufsübernahme | Bedarf über Plan-, Komponenten- und Zutatenidentität aktualisieren statt duplizieren. | Offen | — |
+| MP17 | Wiederholbare Einkaufsübernahme | Bedarf über Plan-, Komponenten- und Zutatenidentität aktualisieren statt duplizieren. | In Arbeit | Schema, globaler Transaktionsleser mit Nullbedarf/weiter aktivem Bedarf nach Einlagerung, exakte N-vor-Q-Verteilung und atomarer Checkout-Übergang implementiert. Fokussierte PostgreSQL-Prüfungen für Quellenwechsel, individuelle Rechte/Schutzregeln, fünf Abschlussarten, späte Rücknahme, beide Merge-Richtungen und drei echte Modul-Purges bestanden. [Nachweise und offene Abnahme](planning-shopping-verification.md). Persistente Erstregistrierung, Sync-API/PWA, ausdrückliche Auflösung sowie Ablösung des alten Übernahmewegs bleiben offen. |
 | MP18 | Reservierungen freigeben | Bei Verschieben, Absage und Ablauf versionsgeprüft freigeben. | Verifiziert | [Gemeinsame Abnahme mit PA12](stock-reservations-verification.md): Quellenänderung, konkrete Lease-Freigabe, Ablauf, echte Purges, Replay bei abweichendem Nachfolger und späte Fehler-Rollbacks geprüft. |
 | MP19 | Regelbasierter Autoplan | Gewichtete Kriterien erklären und jede Mahlzeit austauschbar lassen; kein KI-Zwang. | Offen | — |
 | MP20 | Gebündelte Wochendaten | Autorisierte Wochenansicht mit Versionen, verzögerten Bildern und gezielten Updates laden. | Verifiziert | Native Gesamtsuite 66,8 %, fokussierte Linux-Race, Upgrade/Purge/Restore; Planung 38 Browserchecks/4 axe, Gesamtkette 409; DB-Prüfung und PW01/PW02-Abnahme bestanden. |

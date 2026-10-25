@@ -1,12 +1,14 @@
 # Repeatable planning purchases — MP17 planned contract
 
-Status: next implementation scope, not implemented or verified. MP14's current preview is selection-scoped and read-only. Its shortage must not be used as an instruction to append purchases independently. The existing mealsToShopping path still creates independent positions; replacing that path is part of MP17 acceptance, not a second parallel integration.
+Status: persistence, complete-scope reader and checkout/lifecycle foundation implemented with focused local PostgreSQL evidence; MP17 remains in progress. No public MP17 scope-registration or purchase-sync API is available. MP14's current PWA preview remains selection-scoped and read-only. Its shortage must not be used as an instruction to append purchases independently. The existing mealsToShopping path still creates independent positions; replacing that path is part of MP17 acceptance, not a second parallel integration. See the [foundation evidence and remaining gates](planning-shopping-verification.md).
 
 ## Shared physical coverage
 
 Two independent sources needing1kg each must not both subtract the same free0.5kg and purchase only1kg in total. Product locks alone cannot solve this: the first Shopping sync changes neither physical stock nor a PA12 lease.
 
 The initial safe model uses one explicitly reviewed active household planning scope. Each preview includes the newly selected whole meals plus every already-active requirement, including requirements with zero net purchase and no Shopping item. Scope is bounded to42 whole meals and500 ingredients across all included plans; refuse an excess instead of truncating it. The UI names added existing sources and every affected destination list before confirmation. Unchecking a source in a new selection does not silently deactivate a previously accepted requirement.
+
+Activation and ending apply to whole meals, including every ingredient of every component. Detaching an item ends its Shopping management only; it does not remove that ingredient from the active meal demand. Ordinary source deletion or mapping loss leaves a blocked active identity until an explicit whole-meal end. Actual Mealplan module purge deliberately removes all current source/scope payload before truncation; minimal operation proofs and independent Shopping records survive.
 
 Requirement activity is independent of the last purchase's disposition. A stored purchase clears pending procurement coverage, but its still-planned meal remains an active requirement until cooked/cancelled or explicitly ended. Otherwise the newly stored goods could immediately cover a second meal while the first meal disappears from the shared calculation.
 
@@ -24,6 +26,12 @@ All active requirements are read in one consistent preview. On mutation, seriali
 
 Equal unlinked names, copied lists and another source's purchases provide no automatic source coverage. Pantry identity and Shopping catalogue identity remain separate concepts.
 
+The allocation helper now feeds the read-only complete-scope Store preview. It validates source ownership/order, exact per-product coverage, whole-meal/ingredient bounds and stable N-before-Q differences. The shared transaction reader reads all plans/components together and evaluates claims with one instant. It registers no scope. The [schema decision record](planning-shopping-schema.md) describes the current development migrations; they have been exercised only in the disposable test database. Later MP17 evidence is separate from the frozen MP14 candidate.
+
+Source review compares the actual accepted per-meal/component/mapping basis with its current value. A changed portion, source or date blocks automatic item effects. Unrelated changes to another meal in the same plan do not change that basis; parent plan versions remain in the complete preview fingerprint. Missing sources retain blocked identities rather than silently releasing their physical coverage.
+
+Actual checkout now writes a typed contribution transition in its existing transaction, after its actual checkout receipt and intake effects exist. It preserves active meal demand and distinguishes matching/partial storage, another target, no_stock and skip. Managed items are protected in both merge directions, including preview. Deletion invalidates the destination while retaining the active source. This foundation is not an available initial registration/sync workflow.
+
 ## Minimal persistent records
 
 | Record | Required contract |
@@ -32,7 +40,7 @@ Equal unlinked names, copied lists and another source's purchases provide no aut
 | Core operation proof | Immutable household/actor/request-key identity and canonical request hash; module generations; result/receipt UUID and bounded counts. No human names, notes or full response payload. Retain across all module purges and ordinary receipt cleanup. |
 | Shopping receipt | Append-only bounded snapshot of reviewed scope, previous/next contributions, explicit decisions and item before/after states. No foreign key to a deletable item or another optional schema. Deferred completeness prevents a proof-only commit. |
 
-Exact columns, narrow guards and migrations follow source-pattern review and the accepted amount/lifecycle contract. No migration is implemented by this document. Runtime grants and readiness must check each required privilege, trigger identity/mode/owner/search_path and durable unique index. General resource_links must not own these records or their lifetime.
+Core21/Shopping5/Pantry9/Mealplan5 implement the reviewed columns and narrow guards. Runtime grants and readiness check each required privilege, trigger identity/mode/owner/search_path and durable unique index. Shopping item audit events add only bounded exact-row fingerprints while preserving the existing private-value redaction. Deferred receipt checks compare those immutable same-transaction effects; checkout evidence also requires the actual actor/correlation and same-transaction intake movement. General resource_links do not own these records or their lifetime.
 
 ## Lifecycle and conflict decisions
 
@@ -40,6 +48,7 @@ Exact columns, narrow guards and migrations follow source-pattern review and the
 - Manual edit or check→uncheck: preserve the user's record; explicitly re-review/adopt the current state before another managed update. A version mismatch is never silently overwritten.
 - Checked item: preserve purchased history; no automatic repeat or quantity update.
 - Actual matching Pantry intake: atomically record the purchase disposition and remove its pending procurement coverage. Keep the underlying planned requirement active. Partial intake permits only a newly reviewed residual need.
+- Historical checkout references are separate from an open destination. A completed archived list does not block a source whose current net need is zero. Require a reviewed open list only for a new positive contribution.
 - no_stock: bought without physical stock evidence. Keep this distinct and prevent automatic reorder; an explicit decision must settle how the already-bought source quantity is represented or separately recorded.
 - skip: not bought and no stock coverage. A new purchase requires an explicit renewed decision.
 - Intake into another Pantry product/unit/generation: preserve honest intake and mark the planning relationship for explicit resolution; do not claim it covers the original ingredient automatically.

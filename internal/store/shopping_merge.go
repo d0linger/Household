@@ -34,6 +34,9 @@ func (s *Store) mergeShoppingItems(ctx context.Context, tx pgx.Tx, id auth.Ident
 	if Int(other["version"]) != Int(data["other_version"]) {
 		return nil, ErrConflict
 	}
+	if err = guardPlanningPurchaseMerge(ctx, tx, id, String(survivor["id"]), otherID); err != nil {
+		return nil, err
+	}
 	if err = shoppingMergeCompatible(survivor, other); err != nil {
 		return nil, err
 	}

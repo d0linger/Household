@@ -15,6 +15,7 @@ import (
 
 type PlanningDemandMeal struct {
 	ID      string `json:"id"`
+	PlanID  string `json:"plan_id"`
 	Title   string `json:"title"`
 	Date    string `json:"planned_on"`
 	Slot    string `json:"slot"`
@@ -22,22 +23,24 @@ type PlanningDemandMeal struct {
 }
 
 type PlanningDemandLine struct {
-	MealID           string            `json:"meal_id"`
-	ComponentID      string            `json:"component_id"`
-	ComponentTitle   string            `json:"component_title"`
-	ComponentVersion int64             `json:"component_version"`
-	SourceHash       string            `json:"source_hash"`
-	IngredientID     string            `json:"ingredient_id"`
-	Name             string            `json:"name"`
-	Quantity         string            `json:"source_quantity"`
-	SourceUnit       string            `json:"source_unit"`
-	Servings         string            `json:"servings"`
-	BaseServings     string            `json:"base_servings"`
-	Reason           string            `json:"reason"`
-	ProductID        string            `json:"product_id,omitempty"`
-	Binding          Record            `json:"binding"`
-	Suggestion       Record            `json:"suggestion,omitempty"`
-	Demand           *IngredientAmount `json:"demand,omitempty"`
+	MealID             string            `json:"meal_id"`
+	ComponentID        string            `json:"component_id"`
+	ComponentTitle     string            `json:"component_title"`
+	ComponentVersion   int64             `json:"component_version"`
+	ComponentPosition  int               `json:"component_position"`
+	SourceHash         string            `json:"source_hash"`
+	IngredientID       string            `json:"ingredient_id"`
+	IngredientPosition int               `json:"ingredient_position"`
+	Name               string            `json:"name"`
+	Quantity           string            `json:"source_quantity"`
+	SourceUnit         string            `json:"source_unit"`
+	Servings           string            `json:"servings"`
+	BaseServings       string            `json:"base_servings"`
+	Reason             string            `json:"reason"`
+	ProductID          string            `json:"product_id,omitempty"`
+	Binding            Record            `json:"binding"`
+	Suggestion         Record            `json:"suggestion,omitempty"`
+	Demand             *IngredientAmount `json:"demand,omitempty"`
 }
 
 type PlanningDemandProduct struct {
@@ -78,6 +81,7 @@ type PlanningDemand struct {
 
 type planningDemandComponent struct {
 	id, meal, servings string
+	position           int
 	version            int64
 	sourceGeneration   int64
 	hash               string
@@ -103,14 +107,29 @@ func (s *Store) PlanningDemand(ctx context.Context, id auth.Identity, pid string
 		return out, err
 	}
 	defer rollback(tx)
+	out, err = readPlanningDemand(ctx, tx, id, pid, selected, nil)
+	if err != nil {
+		return out, err
+	}
+	return out, tx.Commit(ctx)
+}
+
+// The caller validates the selected whole-meal identifiers and owns the
+// transaction. A mutation supplies one shared post-lock instant for every plan;
+// the read-only preview uses its repeatable-read transaction timestamp.
+func readPlanningDemand(ctx context.Context, tx pgx.Tx, id auth.Identity, pid string, selected []string, readAt *time.Time) (PlanningDemand, error) {
+	out := PlanningDemand{PlanID: pid, ShoppingCoverage: "unlinked", Meals: []PlanningDemandMeal{}, Lines: []PlanningDemandLine{}, Products: []*PlanningDemandProduct{}, Issues: []Record{}}
+	if readAt != nil && readAt.IsZero() {
+		return out, Invalid{"Gemeinsamen gültigen Lesezeitpunkt nach den Sperren verwenden"}
+	}
 	var template, recipesEnabled bool
 	var recipesGeneration int64
-	err = tx.QueryRow(ctx, `SELECT p.name,p.version,p.is_template,ms.data_generation,ps.data_generation,ps.state='enabled',h.timezone,transaction_timestamp(),
+	err := tx.QueryRow(ctx, `SELECT p.name,p.version,p.is_template,ms.data_generation,ps.data_generation,ps.state='enabled',h.timezone,coalesce($3::timestamptz,transaction_timestamp()),
  rs.state='enabled',rs.data_generation FROM mealplan.plans p JOIN core.households h ON h.id=p.household_id
  JOIN core.module_states ms ON ms.household_id=h.id AND ms.module_id='mealplan' AND ms.state='enabled'
  JOIN core.module_states ps ON ps.household_id=h.id AND ps.module_id='pantry'
  JOIN core.module_states rs ON rs.household_id=h.id AND rs.module_id='recipes'
- WHERE p.household_id=$1 AND p.id=$2`, id.HouseholdID, pid).Scan(&out.PlanName, &out.PlanVersion, &template, &out.Generation,
+ WHERE p.household_id=$1 AND p.id=$2`, id.HouseholdID, pid, readAt).Scan(&out.PlanName, &out.PlanVersion, &template, &out.Generation,
 		&out.PantryGeneration, &out.PantryEnabled, &out.Timezone, &out.ReadAt, &recipesEnabled, &recipesGeneration)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return out, ErrNotFound
@@ -128,9 +147,14 @@ func (s *Store) PlanningDemand(ctx context.Context, id auth.Identity, pid string
 	if err != nil {
 		return out, err
 	}
+	err = readPlanningDemandContents(ctx, tx, id, selected, components, recipesEnabled, recipesGeneration, &out)
+	return out, err
+}
+
+func readPlanningDemandContents(ctx context.Context, tx pgx.Tx, id auth.Identity, selected []string, components []planningDemandComponent, recipesEnabled bool, recipesGeneration int64, out *PlanningDemand) error {
 	bindings, err := readDemandBindings(ctx, tx, id, components, out.Generation, out.PantryGeneration, out.PantryEnabled)
 	if err != nil {
-		return out, err
+		return err
 	}
 	quantities := make([]planningDemandQuantity, 0, planningIngredientLimit)
 	products := make(map[string]*PlanningDemandProduct)
@@ -139,24 +163,25 @@ func (s *Store) PlanningDemand(ctx context.Context, id auth.Identity, pid string
 	for _, component := range components {
 		bundle, parseErr := recipeBundle(component.snapshot)
 		if parseErr != nil {
-			return out, Invalid{"Gespeicherter Plan-Rezeptstand ist ungültig. Quelle in der Planung erneut prüfen."}
+			return Invalid{"Gespeicherter Plan-Rezeptstand ist ungültig. Quelle in der Planung erneut prüfen."}
 		}
 		base, baseErr := value.Decimal(String(bundle.Recipe["base_servings"]))
 		servings, portionsErr := value.Decimal(component.servings)
 		if baseErr != nil || portionsErr != nil || base.Sign() <= 0 || servings.Sign() <= 0 {
-			return out, Invalid{"Gespeicherte Basis- oder Komponentenportionen sind ungültig"}
+			return Invalid{"Gespeicherte Basis- oder Komponentenportionen sind ungültig"}
 		}
 		if len(bundle.Ingredients) == 0 {
 			out.Issues = append(out.Issues, Record{"meal_id": component.meal, "component_id": component.id, "reason": "ingredients_missing"})
 		}
 		if len(bundle.Ingredients) > 0 {
 			if _, parseErr = planningIngredientSource(component.snapshot, String(bundle.Ingredients[0]["id"])); parseErr != nil {
-				return out, parseErr
+				return parseErr
 			}
 		}
-		for _, ingredient := range bundle.Ingredients {
+		for position, ingredient := range bundle.Ingredients {
 			line := PlanningDemandLine{MealID: component.meal, ComponentID: component.id, ComponentTitle: String(bundle.Recipe["title"]),
-				ComponentVersion: component.version, SourceHash: component.hash, IngredientID: String(ingredient["id"]), Name: String(ingredient["name"]),
+				ComponentVersion: component.version, ComponentPosition: component.position, SourceHash: component.hash,
+				IngredientID: String(ingredient["id"]), IngredientPosition: position, Name: String(ingredient["name"]),
 				Quantity: String(ingredient["quantity"]), SourceUnit: String(ingredient["unit_code"]), Servings: component.servings, BaseServings: String(bundle.Recipe["base_servings"])}
 			binding := bindings[component.id+"/"+line.IngredientID]
 			line.Binding = demandBindingView(binding, out.PantryEnabled, out.PantryGeneration)
@@ -180,7 +205,7 @@ func (s *Store) PlanningDemand(ctx context.Context, id auth.Identity, pid string
 					} else {
 						amount, amountErr := ingredientAmount(quantity)
 						if amountErr != nil {
-							return out, amountErr
+							return amountErr
 						}
 						line.Demand = &amount
 					}
@@ -202,7 +227,7 @@ func (s *Store) PlanningDemand(ctx context.Context, id auth.Identity, pid string
 	if len(catalogs) > 0 {
 		suggestions, suggestionErr := comparisonMappings(ctx, tx, id, catalogs, recipesGeneration, out.PantryGeneration, out.PantryEnabled)
 		if suggestionErr != nil {
-			return out, suggestionErr
+			return suggestionErr
 		}
 		for i, catalog := range lineCatalogs {
 			if suggestion := suggestions[catalog]; comparisonMappingReason(catalog, suggestion, out.PantryEnabled) == "" {
@@ -213,10 +238,10 @@ func (s *Store) PlanningDemand(ctx context.Context, id auth.Identity, pid string
 	}
 	groups, complete, err := groupPlanningDemand(quantities)
 	if err != nil {
-		return out, err
+		return err
 	}
-	if err = planningDemandStock(ctx, tx, id, selected, &out, products); err != nil {
-		return out, err
+	if err = planningDemandStock(ctx, tx, id, selected, out, products); err != nil {
+		return err
 	}
 	out.Outcome = "sufficient"
 	for pid, group := range groups {
@@ -224,16 +249,16 @@ func (s *Store) PlanningDemand(ctx context.Context, id auth.Identity, pid string
 		product.Complete = group.Complete
 		product.Demand, err = ingredientAmount(group.Quantity)
 		if err != nil {
-			return out, err
+			return err
 		}
 		product.Shortage, err = planningDemandShortage(group, product.AvailableForSelection)
 		if err != nil {
-			return out, err
+			return err
 		}
 		if product.Shortage != nil {
 			shortage, ok := new(big.Rat).SetString(product.Shortage.Rational)
 			if !ok {
-				return out, Invalid{"Bedarf konnte nicht exakt dargestellt werden"}
+				return Invalid{"Bedarf konnte nicht exakt dargestellt werden"}
 			}
 			product.Bookable = shortage.Sign() == 0
 			if shortage.Sign() > 0 {
@@ -253,5 +278,5 @@ func (s *Store) PlanningDemand(ctx context.Context, id auth.Identity, pid string
 		}
 		return out.Products[i].Name < out.Products[j].Name
 	})
-	return out, tx.Commit(ctx)
+	return nil
 }

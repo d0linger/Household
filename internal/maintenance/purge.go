@@ -74,6 +74,26 @@ func Purge(ctx context.Context, pool *pgxpool.Pool, requestID string) error {
 	if len(tables) == 0 {
 		return errors.New("module has no purgeable tables")
 	}
+	switch mid {
+	case "mealplan":
+		if _, err = tx.Exec(ctx, "DELETE FROM core.planning_purchase_requirements WHERE household_id=$1", hid); err != nil {
+			return err
+		}
+	case "pantry":
+		if _, err = tx.Exec(ctx, `UPDATE core.planning_purchase_requirements SET binding_id=NULL,binding_version=NULL,product_id=NULL,pantry_generation=NULL,unit_code=NULL,
+ review_reason='pantry_purged',changed_by=$2 WHERE household_id=$1 AND product_id IS NOT NULL`, hid, actor); err != nil {
+			return err
+		}
+	case "shopping":
+		if _, err = tx.Exec(ctx, `UPDATE core.planning_purchase_requirements SET
+ procurement_disposition=CASE WHEN item_id IS NOT NULL THEN 'missing' ELSE procurement_disposition END,
+ review_reason=CASE WHEN item_id IS NOT NULL THEN 'shopping_purged' ELSE review_reason END,
+ shopping_generation=NULL,list_id=NULL,item_id=NULL,item_version=NULL,item_fingerprint=NULL,pending_quantity=0,
+ last_checkout_generation=NULL,last_checkout_id=NULL,last_checkout_item_id=NULL,changed_by=$2
+ WHERE household_id=$1 AND (item_id IS NOT NULL OR last_checkout_id IS NOT NULL)`, hid, actor); err != nil {
+			return err
+		}
+	}
 	if mid == "mealplan" || mid == "pantry" {
 		if mid == "mealplan" {
 			if _, err = tx.Exec(ctx, "DELETE FROM core.planning_ingredient_bindings WHERE household_id=$1", hid); err != nil {

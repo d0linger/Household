@@ -68,6 +68,9 @@ func TestPantryBatchPopulatedPriorUpgrade(t *testing.T) {
 		if schema == "core" {
 			v = 16
 		}
+		if schema == "shopping" {
+			v = 4 // MP17 Shopping receipts require Core21.
+		}
 		if schema == "pantry" {
 			v = 4
 		}

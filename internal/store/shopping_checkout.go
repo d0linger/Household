@@ -312,6 +312,9 @@ func (s *Store) CheckoutShopping(ctx context.Context, id auth.Identity, listID, 
 	if err != nil {
 		return nil, err
 	}
+	if err = recordPlanningCheckout(ctx, tx, id, checkoutID, in, results, hash[:]); err != nil {
+		return nil, err
+	}
 	var listRaw []byte
 	err = tx.QueryRow(ctx, `UPDATE shopping.lists l SET archived_at=now(),shopper_id=NULL,shopper_until=NULL,version=version+1,updated_at=now()
  WHERE household_id=$1 AND id=$2 RETURNING to_jsonb(l)`, id.HouseholdID, listID).Scan(&listRaw)
@@ -448,7 +451,14 @@ func (s *Store) checkoutLine(ctx context.Context, tx pgx.Tx, id auth.Identity, i
 		return nil, err
 	}
 	movements, _ := m.Entity("stock_movements")
-	movement, err := save(ctx, tx, id, m, movements, value.UUID(), Record{"lot_id": lot["id"], "quantity_delta": base, "reason": "receive", "note": "Geprüfter Einkaufsabschluss"}, true, 0)
+	var movementRaw []byte
+	err = tx.QueryRow(ctx, `INSERT INTO pantry.stock_movements AS movement(id,household_id,lot_id,quantity_delta,reason,note,created_by,correlation_id)
+ VALUES($1,$2,$3,$4::numeric,'receive','Geprüfter Einkaufsabschluss',$5,$6) RETURNING to_jsonb(movement)`,
+		value.UUID(), id.HouseholdID, lot["id"], base, id.UserID, checkoutID).Scan(&movementRaw)
+	if err != nil {
+		return nil, err
+	}
+	movement, err := decode(movementRaw)
 	if err != nil {
 		return nil, err
 	}

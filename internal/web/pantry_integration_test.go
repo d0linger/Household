@@ -326,6 +326,9 @@ func TestPantryPopulatedProjectionUpgrade(t *testing.T) {
 		if schema == "core" {
 			version = 8
 		}
+		if schema == "shopping" {
+			version = 4 // MP17 Shopping receipts require Core21.
+		}
 		if schema == "pantry" {
 			version = 1
 		}

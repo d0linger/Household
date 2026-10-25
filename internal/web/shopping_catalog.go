@@ -96,7 +96,17 @@ func (s *Server) shoppingMergePreview(w http.ResponseWriter, r *http.Request) {
 	if replacement, ok := a["replacement"].(map[string]any); ok {
 		p = replacement
 	}
-	amount, err := store.PreviewShoppingMerge(a, b, store.String(p["quantity"]), store.String(p["unit"]))
+	err = s.Store.CheckShoppingMerge(r.Context(), identity(r), store.String(a["id"]), store.String(b["id"]))
+	var amount string
+	if err == nil {
+		amount, err = store.PreviewShoppingMerge(a, b, store.String(p["quantity"]), store.String(p["unit"]))
+	} else {
+		var invalid store.Invalid
+		if !errors.As(err, &invalid) {
+			s.fail(w, r, err)
+			return
+		}
+	}
 	result := store.Record{"keep": a, "other": b, "quantity": amount, "compatible": err == nil}
 	if err != nil {
 		result["reason"] = err.Error()

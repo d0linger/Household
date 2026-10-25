@@ -76,6 +76,10 @@ func TestShoppingCheckoutAtomicReplayAndProjections(t *testing.T) {
 		}
 		first = r.record
 	}
+	var movementCorrelation, movementActor string
+	if err := f.pool.QueryRow(f.ctx, "SELECT correlation_id,created_by FROM pantry.stock_movements WHERE reason='receive'").Scan(&movementCorrelation, &movementActor); err != nil || movementCorrelation != store.String(first["id"]) || movementActor != f.identity.UserID {
+		t.Fatal("actual intake lacks checkout/actor correlation", movementCorrelation, movementActor, err)
+	}
 	var stock string
 	var lots, movements, links, search, reminders, complete, auditRows int
 	var archived bool

@@ -127,6 +127,9 @@ func TestCookingStockPopulatedUpgrade(t *testing.T) {
 		if schema == "core" {
 			v = 15
 		}
+		if schema == "shopping" {
+			v = 4 // MP17 Shopping receipts require Core21.
+		}
 		if schema == "pantry" {
 			v = 3
 		}
