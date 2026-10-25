@@ -99,7 +99,12 @@ func (s *Store) PantryConsumptionView(ctx context.Context, id auth.Identity, lid
  'operations',coalesce((SELECT jsonb_agg(x.item ORDER BY x.created_at DESC,x.id DESC) FROM
   (SELECT o.id,o.created_at,jsonb_build_object('id',o.id,'kind',o.kind,'movement_id',o.movement_id,'created_at',o.created_at,
    'quantity',o.snapshot->>'quantity','unit',o.snapshot->>'unit','undone',EXISTS(SELECT 1 FROM pantry.stock_movements r WHERE r.household_id=o.household_id AND r.reverses_movement_id=o.movement_id)) item
-   FROM pantry.stock_operations o WHERE o.household_id=l.household_id AND o.lot_id=l.id ORDER BY o.created_at DESC,o.id DESC LIMIT 21) x),'[]'::jsonb))`+pantryLotFrom, id.HouseholdID, lid).Scan(&raw)
+   FROM pantry.stock_operations o WHERE o.household_id=l.household_id AND o.lot_id=l.id ORDER BY o.created_at DESC,o.id DESC LIMIT 21) x),'[]'::jsonb),
+ 'batches',coalesce((SELECT jsonb_agg(x.item ORDER BY x.created_at DESC,x.id DESC) FROM
+  (SELECT r.id,r.created_at,jsonb_build_object('id',r.id,'kind',r.kind,'created_at',r.created_at,'before',bl.before_quantity::text,
+   'counted',bl.counted_quantity::text,'delta',bl.quantity_delta::text,'unit',bl.unit_code) item
+   FROM pantry.stock_batch_lines bl JOIN pantry.stock_batch_receipts r ON r.household_id=bl.household_id AND r.id=bl.receipt_id
+   WHERE bl.household_id=l.household_id AND bl.lot_id=l.id ORDER BY r.created_at DESC,r.id DESC LIMIT 20) x),'[]'::jsonb))`+pantryLotFrom, id.HouseholdID, lid).Scan(&raw)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNotFound
 	}

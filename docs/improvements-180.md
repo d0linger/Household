@@ -27,7 +27,7 @@ Ein Schema, eine Schaltfläche oder ein Mock allein schließt keinen Punkt ab. B
 
 ## Fortschritt
 
-180 Punkte: **47 verifiziert, 0 implementiert, 0 in Arbeit, 133 offen**. Dieser Zähler wird mit jedem abgeschlossenen Arbeitspaket abgeglichen.
+180 Punkte: **49 verifiziert, 0 implementiert, 0 in Arbeit, 131 offen**. Dieser Zähler wird mit jedem abgeschlossenen Arbeitspaket abgeglichen.
 
 ## Einkaufen
 
@@ -111,8 +111,8 @@ Ein Schema, eine Schaltfläche oder ein Mock allein schließt keinen Punkt ab. B
 | PA01 | Produktübersicht | Gesamtbestand, Orte und nächstes Datum anzeigen; Chargen aufklappen. | Verifiziert | PostgreSQL/Migration/Restore + Linux-Race; Pantry 18 Browserchecks/3 axe; unabhängige DB- und UI-Abnahme bestanden |
 | PA02 | Zuerst verbrauchen | Datumsart, Öffnung und Restmenge für erklärbare Priorisierung verwenden. | Verifiziert | Native Gesamtsuite67,2 %, Linux-Race259,069s, bestücktes Upgrade/Restore, direkte50/100-Grenzen; Vorrat35Browserchecks/5axe, Gesamtkette448; DB-, UI- und Dokumentationsabnahme bestanden. |
 | PA03 | Schnellverbrauch | Packung, Hälfte oder eigene Menge buchen; Rücknahme als Gegenbewegung. | Verifiziert | Native Gesamtsuite67,2 %, Linux-Race259,069s, bestücktes Upgrade/Restore, direkte50/100-Grenzen; Vorrat35Browserchecks/5axe, Gesamtkette448; DB-, UI- und Dokumentationsabnahme bestanden. |
-| PA04 | Einlagerungsassistent | Mehrere Produkte mit Menge, Ort und Datum erfassen und Fortschritt bewahren. | Offen | — |
-| PA05 | Inventur | Zählbestand mit Buchbestand je Ort vergleichen und Differenzen begründet buchen. | Offen | — |
+| PA04 | Einlagerungsassistent | Mehrere Produkte mit Menge, Ort und Datum erfassen und Fortschritt bewahren. | Verifiziert | Native Gesamtsuite69,4 % (5758/8299; web772,207s),15 DB-Verträge, Linux-Race272,812s;37 Browserchecks/5axe, Gesamtkette552. Bestücktes Upgrade/echtes Purge/verschlüsseltes Restore, DB-Befunde geschlossen, UI F01/F02 resolved/ship und separate Designprüfung. |
+| PA05 | Inventur | Zählbestand mit Buchbestand je Ort vergleichen und Differenzen begründet buchen. | Verifiziert | Native Gesamtsuite69,4 % (5758/8299; web772,207s),15 DB-Verträge, Linux-Race272,812s;37 Browserchecks/5axe, Gesamtkette552. Bestücktes Upgrade/echtes Purge/verschlüsseltes Restore, DB-Befunde geschlossen, UI F01/F02 resolved/ship und separate Designprüfung. |
 | PA06 | Packungsgrößen | Packung und Basiseinheit getrennt speichern und exakt umrechnen. | Verifiziert | Native Gesamtsuite67,2 %, Linux-Race259,069s, bestücktes Upgrade/Restore, direkte50/100-Grenzen; Vorrat35Browserchecks/5axe, Gesamtkette448; DB-, UI- und Dokumentationsabnahme bestanden. |
 | PA07 | Mehrere Barcodes | Produkt- und Packungsvarianten mehrere eindeutige Barcodes zuordnen. | Verifiziert | Native Gesamtsuite67,2 %, Linux-Race259,069s, bestücktes Upgrade/Restore, direkte50/100-Grenzen; Vorrat35Browserchecks/5axe, Gesamtkette448; DB-, UI- und Dokumentationsabnahme bestanden. |
 | PA08 | Geöffnete Haltbarkeit | Nutzer- oder Herstellerangaben mit Herkunft als Hinweis anzeigen. | Verifiziert | Native Gesamtsuite67,2 %, Linux-Race259,069s, bestücktes Upgrade/Restore, direkte50/100-Grenzen; Vorrat35Browserchecks/5axe, Gesamtkette448; DB-, UI- und Dokumentationsabnahme bestanden. |

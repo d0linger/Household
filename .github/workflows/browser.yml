@@ -82,5 +82,6 @@ jobs:
             outputs/pantry-daily-review
             outputs/ingredient-pantry-review
             outputs/cooking-stock-review
+            outputs/pantry-batches-review
             outputs/qa/a11y-hardening.json
           retention-days: 14

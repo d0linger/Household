@@ -41,6 +41,7 @@ func (s *Server) referenceOptions(w http.ResponseWriter, r *http.Request) {
 	defer s.Store.Gate.RUnlock()
 	mid, entity := r.PathValue("module"), r.PathValue("entity")
 	favorites := r.URL.Query().Get("favorites") == "1"
+	active := mid == "pantry" && (entity == "products" || entity == "locations") && r.URL.Query().Get("active") == "1"
 	if favorites && (mid != "shopping" || entity != "products") {
 		s.fail(w, r, store.Invalid{Message: "Favoriten sind nur für Einkaufsprodukte verfügbar"})
 		return
@@ -75,6 +76,12 @@ func (s *Server) referenceOptions(w http.ResponseWriter, r *http.Request) {
 		label = "t." + pgx.Identifier{e.Primary}.Sanitize() + "::text"
 		st, _ := s.Store.State(mid)
 		generation = st.Generation
+		if mid == "pantry" && (entity == "products" || entity == "locations") {
+			label += "||CASE WHEN t.archived_at IS NOT NULL THEN ' (archiviert)' ELSE '' END"
+			if active {
+				condition = " AND ($5::uuid IS NOT NULL OR t.archived_at IS NULL)"
+			}
+		}
 		if mid == "recipes" && entity == "ingredient_catalog" {
 			label = "t.name||CASE WHEN t.archived THEN ' (archiviert)' ELSE '' END"
 			condition = " AND ($5::uuid IS NOT NULL OR NOT t.archived)"
@@ -97,7 +104,7 @@ func (s *Server) referenceOptions(w http.ResponseWriter, r *http.Request) {
 			condition = " AND EXISTS(SELECT 1 FROM shopping.lists l WHERE l.household_id=t.household_id AND l.id=t.list_id AND l.archived_at IS NULL)"
 		}
 	}
-	scopeBytes, err := json.Marshal([]any{identity(r).HouseholdID, identity(r).UserID, mid, entity, generation, query, selectedID, favorites})
+	scopeBytes, err := json.Marshal([]any{identity(r).HouseholdID, identity(r).UserID, mid, entity, generation, query, selectedID, favorites, active})
 	if err != nil {
 		s.fail(w, r, err)
 		return

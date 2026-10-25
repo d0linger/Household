@@ -1,6 +1,6 @@
 # Pantry intake and inventory batches — PA04 / PA05
 
-Next approved work contract, prepared while RE12 completes regression. This document is planning evidence only: PA04 and PA05 remain open until their implementation and acceptance run. Preserve PRODUCT.md and DESIGN.md. The completed RE12 slice is tracked separately in cooking-stock.md.
+PA04 and PA05 are locally verified after RE12 (fd7297c). Acceptance is supported by the executed evidence in implementation.md and pantry-batches-verification.md; this contract and its pattern scan alone are not acceptance. Preserve PRODUCT.md and DESIGN.md. The completed RE12 slice is tracked separately in cooking-stock.md.
 
 ## User outcomes
 
@@ -20,7 +20,7 @@ Do not infer lot allocation from a product total. Unrecorded physical stock uses
 - Intake permits several locations. Inventory fixes one selected location in its draft, with every selected lot checked against it.
 - Every final line is an explicit reviewed intake/count. Draft rows with missing fields can be saved as incomplete but cannot be committed. Omitted inventory lots have no effect.
 
-## Planned independent schema
+## Independent schema
 
 Pantry owns three tables; no optional-module foreign keys and no new permanent Core proof are needed for this entirely Pantry-local workflow. Purge removes local history and increments the generation, which rejects old requests. Existing stock_operations retains its consume/undo contract.
 
@@ -30,9 +30,9 @@ Pantry owns three tables; no optional-module foreign keys and no new permanent C
 | pantry.stock_batch_receipts | UUID, household, draft UUID, generation, actor, request key/hash, kind, line/movement counts, immutable bounded historical snapshot, server confirmation time. Unique household/draft and household/actor/request-key. Runtime SELECT/INSERT only. |
 | pantry.stock_batch_lines | Receipt/line identity, household, lot identity, exact before/count/delta values as appropriate, optional journal movement UUID for zero inventory difference, frozen product/unit/location labels and provenance in the receipt. Same-household local FKs, unique receipt/line and unique inventory receipt/lot. Runtime SELECT/INSERT only. |
 
-Expected new migrations are core17/pantry5 after accepted core16/pantry4. Three redacted audit policies would raise64 to67 and the domain-table count43 to46. These are planned counts, not installed schema evidence.
+Development migrations core17/pantry5 follow accepted core16/pantry4. Their three redacted audit policies raise64 to67 and the domain-table count43 to46. Schema, dedicated API and PWA workflows have passed the bounded local acceptance recorded below; these counts alone do not certify either feature.
 
-Narrow secure invoker guards must protect identity/version/state transitions and enforce line/lot/actor/correlation/reason/exact journal-amount agreement. A deferred completeness constraint must be attached to the receipt root as well as its lines, including zero-movement inventory receipts. Readiness checks exact trigger events/functions, protected search paths, each privilege separately and deferred properties. Private draft JSON, labels, count amounts and reasons stay out of safe audit columns.
+Narrow secure invoker guards protect identity/version/state transitions and enforce line/lot/actor/correlation/reason/exact journal-amount agreement. A deferred completeness constraint is attached to the receipt root as well as its lines, including zero-movement inventory receipts. Readiness checks exact trigger events/functions, protected search paths, each privilege separately and deferred properties. Private draft JSON, labels, count amounts and reasons stay out of safe audit columns. Draft cleanup has runtime DELETE only for discarded or expired unposted drafts; its invoker guard rejects active nonexpired and posted deletion, while receipt FKs retain finalized sources. An explicit save renews the30-day expiry subject to the same10-active quota; expiry never authorizes posting without review/save.
 
 ## Transaction and replay contract
 
@@ -49,7 +49,7 @@ Narrow secure invoker guards must protect identity/version/state transitions and
 
 ## Reads, privacy and workflow
 
-- Draft listing/detail/save/discard always scopes household, owner and current generation. Other members receive not-found for private drafts, including readers. Shared completed receipts are readable to authorized household members while Pantry is enabled.
+- Draft listing/detail/save/discard always scopes household, owner and current generation. Other writing members receive not-found for private drafts. Reader accounts receive forbidden regardless of the draft identity, so that response does not disclose whether a private draft exists. Shared completed receipts are readable to authorized household members while Pantry is enabled.
 - Explicit server-draft save persists incomplete rows with version guards. Confirm/save indicators distinguish local edits, saved draft and posted stock. Reload restores saved progress; unsaved changes receive the existing navigation protection. No automatic local sensitive storage.
 - Catalogue/reference results provide choices, not authoritative versions. Load the selected product/location/pack stand separately and bind it to final review.
 - Inventory needs a location-scoped lot read that includes zero balances. Its signed cursor binds household, actor, purpose, generation, location, filter and expiry. Use a stable direct sort anchor; deletion of the previous row must not invalidate pagination or leak a new scope.
@@ -59,37 +59,37 @@ Narrow secure invoker guards must protect identity/version/state transitions and
 
 ## Chronological implementation checklist
 
-1. Preserve the reviewed archived-inventory policy from incumbent rules and cover it with tests.
-2. Define precise typed input/output and JSON/text/count limits.
-3. Add pure exact count/intake/difference normalization and boundary tests.
-4. Design the three local tables, ownership/state invariants and redacted audit policies.
-5. Implement narrow guards, deferred root completeness and readiness metadata.
-6. Exercise direct-SQL incomplete bundles and privilege/readiness failures.
-7. Add bounded private draft reads, explicit versioned save and discard.
-8. Add location-scoped zero-inclusive lot pagination and signed scope checks.
-9. Add authoritative product/location/pack review reads.
-10. Implement actor/request/draft durable replay before new-state validation.
-11. Implement all-or-nothing intake with new explicit lots and exact receive amounts.
-12. Implement selected-lot absolute inventory counts and nonzero adjustments.
-13. Cover two-tab draft conflicts, parallel finalization and same-balance intervening movement.
-14. Inject a real failure into the second effect and prove complete rollback.
-15. Test reader/owner/household/CSRF/module/generation boundaries and real Pantry purge.
-16. Test populated prior-schema upgrade, immutable grants and audit redaction.
-17. Record the Operate surface direction and read craft-floor immediately before UI work.
-18. Extend the Pantry workspace with discoverable intake and count actions.
-19. Build private saved-draft list, bounded row editor and explicit progress states.
-20. Build aggregate review, count conflict comparison and exact uncertain-response retry.
-21. Build immutable completed receipt views and correctly named correction guidance.
-22. Test reload, keyboard editing/removal, incomplete rows, zero count, pagination and long labels in browser.
-23. Inspect desktop/light and mobile/dark states in a bounded batch; correct material findings once.
-24. Obtain the required fresh finish review and separate incumbent-design documentation comparison.
-25. Extend synthetic encrypted restore to preserve saved draft, posted receipt, exact effects and duplicate-draft protection.
-26. Run appropriate native integration, scoped Linux race, lint/security/workflow and complete browser regression.
-27. Update README and honest implementation evidence; mark PA04/PA05 verified only after acceptance.
+1. [x] Preserve the reviewed archived-inventory policy from incumbent rules and cover it with tests.
+2. [x] Define precise typed input/output and JSON/text/count limits.
+3. [x] Add pure exact count/intake/difference normalization and boundary tests.
+4. [x] Design the three local tables, ownership/state invariants and redacted audit policies.
+5. [x] Implement narrow guards, deferred root completeness and readiness metadata.
+6. [x] Exercise direct-SQL incomplete bundles and privilege/readiness failures.
+7. [x] Add bounded private draft reads, explicit versioned save and discard.
+8. [x] Add location-scoped zero-inclusive lot pagination and signed scope checks.
+9. [x] Add authoritative product/location/pack review reads.
+10. [x] Implement actor/request/draft durable replay before new-state validation.
+11. [x] Implement all-or-nothing intake with new explicit lots and exact receive amounts.
+12. [x] Implement selected-lot absolute inventory counts and nonzero adjustments.
+13. [x] Cover two-tab draft conflicts, parallel finalization and same-balance intervening movement.
+14. [x] Inject a real failure into the second effect and prove complete rollback.
+15. [x] Test reader/owner/household/CSRF/module/generation boundaries and real Pantry purge.
+16. [x] Test populated prior-schema upgrade, immutable grants and audit redaction.
+17. [x] Record the Operate surface direction and read craft-floor immediately before UI work.
+18. [x] Extend the Pantry workspace with discoverable intake and count actions.
+19. [x] Build private saved-draft list, bounded row editor and explicit progress states.
+20. [x] Build aggregate review, count conflict comparison and exact uncertain-response retry.
+21. [x] Build immutable completed receipt views and correctly named correction guidance.
+22. [x] Test reload, keyboard editing/removal, incomplete rows, zero count, pagination and long labels in browser.
+23. [x] Inspect desktop/light and mobile/dark states in a bounded batch; correct material findings once.
+24. [x] Obtain the required fresh finish review and separate incumbent-design documentation comparison.
+25. [x] Extend synthetic encrypted restore to preserve saved draft, posted receipt, exact effects and duplicate-draft protection.
+26. [x] Run appropriate native integration, scoped Linux race, lint/security/workflow and complete browser regression.
+27. [x] Update README and honest implementation evidence; mark PA04/PA05 verified only after acceptance.
 
 ## Planned mobile and desktop flow
 
-These wireframes specify the next workflow, not an existing interface. Inherit the Pantry workspace's established layout and controls; no visual identity replacement.
+The implemented workflow follows these wireframes and inherits the Pantry workspace's established layout and controls. Surface mode: **Operate**. This is an extension of the incumbent system, with no replacement visual identity.
 
 ```text
 Vorrat
@@ -158,4 +158,13 @@ Desktop may show the selected line/count list beside its editor, but mobile reta
 
 ## Evidence required
 
-The pattern scan is read-only design input. No PA04/PA05 migration, API, browser flow, operational check or verified checklist item is claimed by this document. Required acceptance includes mixed products/locations, exact packs, zero/positive/negative counts, skipped lots, duplicate identities, same-draft new-key replay, second-effect rollback, concurrent quick/manual/cooking consumption, two-tab private drafts, zero-inclusive pagination, actual purge, populated upgrade, encrypted restore and keyboard/accessibility review.
+The pattern scan is read-only design input. Executed scoped tests and failures are recorded in implementation.md; PA04/PA05 passed complete native regression, scoped Linux race, the sixteen-component browser chain and the independent UI correction verdict. Required acceptance includes mixed products/locations, exact packs, zero/positive/negative counts, skipped lots, duplicate identities, same-draft new-key replay, second-effect rollback, the common lot-lock contract with quick/manual/cooking consumption, two-tab private drafts, zero-inclusive pagination, actual purge, populated upgrade, encrypted restore and keyboard/accessibility review.
+
+## API and retention
+
+- `GET /api/v1/pantry/batches/drafts` lists at most ten active, unexpired owned drafts. `GET`/`PUT /api/v1/pantry/batches/drafts/{draft}` reads/saves a versioned private draft.
+- `POST .../drafts/{draft}/discard` discards it. `POST .../drafts/{draft}/post` confirms its exact saved version/fingerprint, with an idempotency key. Changed-key retries cannot finalize the same draft again.
+- `GET /api/v1/pantry/batches/intake-state` loads authoritative product/location/pack choices; `GET .../inventory-lots` pages selected-location lots, including zero balances, with an explicit archived-inclusive option.
+- `GET .../receipts/{receipt}` reads an immutable household receipt. `/m/pantry/batches` provides the private wizard; `/m/pantry/batches/receipts/{receipt}` opens the household-readable receipt. Affected lot histories link their newest twenty batch receipts.
+- Reader accounts cannot access draft workflows or write stock. Every endpoint remains behind authentication, enabled-module gating and household scoping; mutations also recheck the current session/role, CSRF and module generation.
+- Housekeeping deletes at most100 discarded or expired unposted drafts per job with `SKIP LOCKED`. Active nonexpired and posted source rows remain protected. Generic replay responses keep their existing bounded TTL; discard is not represented as immediate erasure of every temporary response copy.

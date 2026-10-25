@@ -141,6 +141,13 @@ func Ready(ctx context.Context, pool *pgxpool.Pool) error {
 	if !cookingStock {
 		return errors.New("incomplete cooking stock contract")
 	}
+	var stockBatch bool
+	if err := pool.QueryRow(ctx, "SELECT pantry.stock_batch_ready()").Scan(&stockBatch); err != nil {
+		return fmt.Errorf("inspect stock batch contract: %w", err)
+	}
+	if !stockBatch {
+		return errors.New("incomplete stock batch contract")
+	}
 	return nil
 }
 

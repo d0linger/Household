@@ -114,7 +114,7 @@ jobs:
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with: {node-version: '24'}
       - run: npm ci --ignore-scripts
-      - run: node --test scripts/quality-tools.test.cjs scripts/shopping-input.test.cjs scripts/shopping-checkout.test.cjs scripts/recipe-workspace.test.cjs scripts/cooking.test.cjs scripts/planning.test.cjs scripts/pantry-daily.test.cjs scripts/ingredient-pantry.test.cjs scripts/cooking-stock.test.cjs
+      - run: node --test scripts/quality-tools.test.cjs scripts/shopping-input.test.cjs scripts/shopping-checkout.test.cjs scripts/recipe-workspace.test.cjs scripts/cooking.test.cjs scripts/planning.test.cjs scripts/pantry-daily.test.cjs scripts/ingredient-pantry.test.cjs scripts/cooking-stock.test.cjs scripts/pantry-batches.test.cjs
       - run: node scripts/check-workflows.cjs
       - run: go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
       - run: actionlint

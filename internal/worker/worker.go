@@ -184,6 +184,9 @@ func (w *Worker) job(ctx context.Context) (jobErr error) {
 			return fmt.Errorf("housekeeping: %w", err)
 		}
 	}
+	if err = prunePantryDrafts(ctx, tx); err != nil {
+		return err
+	}
 	if err = expireJobs(ctx, tx); err != nil {
 		return err
 	}
@@ -194,6 +197,25 @@ func (w *Worker) job(ctx context.Context) (jobErr error) {
 		return err
 	}
 	return tx.Commit(ctx)
+}
+
+func prunePantryDrafts(ctx context.Context, tx pgx.Tx) error {
+	// Housekeeping already holds the household maintenance barrier. Older
+	// schema versions and disabled optional modules do not require this table.
+	var installed bool
+	if err := tx.QueryRow(ctx, "SELECT to_regclass('pantry.stock_batch_drafts') IS NOT NULL").Scan(&installed); err != nil {
+		return err
+	}
+	if !installed {
+		return nil
+	}
+	_, err := tx.Exec(ctx, `DELETE FROM pantry.stock_batch_drafts WHERE id IN(
+ SELECT id FROM pantry.stock_batch_drafts WHERE state<>'posted' AND(state='discarded' OR expires_at<=clock_timestamp())
+ ORDER BY expires_at,id LIMIT 100 FOR UPDATE SKIP LOCKED)`)
+	if err != nil {
+		return fmt.Errorf("prune private pantry drafts: %w", err)
+	}
+	return nil
 }
 
 func (w *Worker) failJob(ctx context.Context, id, lease string) error {
