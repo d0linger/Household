@@ -21,7 +21,7 @@
         for(const row of page.records){const article=node('article');article.className='pantry-lot';const label=String(row.name||'').trim()||'Charge vom '+date(row.received_on)+' · '+row.location;article.append(link(label,'/m/pantry/lots/'+row.id),node('p',qty(row.stock)+' '+unit(product.unit)+' · '+row.location));
           const dates=[['Erhalten',row.received_on],['Mindestens haltbar bis',row.best_before_on],['Zu verbrauchen bis',row.use_by_on],['Geöffnet',row.opened_on]].filter(([,value])=>value).map(([label,value])=>label+': '+date(value));
           article.append(node('p',dates.join(' · ')));if(Number(row.later_corrections)>0)article.append(node('p',row.later_corrections+' spätere Korrekturbuchung(en). Letzte: '+moment(row.latest_correction_at,page.timezone)),link('Korrekturen im Chargenjournal prüfen','/m/pantry/lots/'+row.id));
-          list.append(article);
+          if(!at)article.append(link('Verbrauch prüfen','/m/pantry/consume/'+row.id));list.append(article);
         }
         loaded=true;lotCursor=page.next_cursor;more.hidden=!lotCursor;more.textContent='Weitere Chargen';message.textContent=list.children.length?list.children.length+' Chargen geladen.':'Noch keine Chargen an diesem Stichtag.';
       }catch(error){message.textContent=error.message+' Erneut laden ist möglich.';more.textContent='Chargen erneut laden';more.hidden=false;}

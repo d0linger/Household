@@ -75,6 +75,11 @@ func (s *Server) referenceOptions(w http.ResponseWriter, r *http.Request) {
 		label = "t." + pgx.Identifier{e.Primary}.Sanitize() + "::text"
 		st, _ := s.Store.State(mid)
 		generation = st.Generation
+		if mid == "pantry" && entity == "packs" {
+			from += " JOIN pantry.products p ON p.household_id=t.household_id AND p.id=t.product_id"
+			label = "p.name||' · '||t.label||' · '||trim_scale(t.quantity)::text||' '||CASE WHEN t.unit_code='piece' THEN 'Stück' ELSE t.unit_code END||CASE WHEN t.disabled THEN ' (deaktiviert)' ELSE '' END"
+			condition = " AND ($5::uuid IS NOT NULL OR NOT t.disabled AND p.archived_at IS NULL)"
+		}
 		if mid == "shopping" && entity == "products" {
 			label = "t.name||CASE WHEN t.brand<>'' THEN ' · '||t.brand ELSE '' END||' · '||trim_scale(t.pack_quantity)::text||' '||CASE WHEN t.pack_unit='piece' THEN 'Stück' ELSE t.pack_unit END"
 			if favorites {

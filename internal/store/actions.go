@@ -467,7 +467,7 @@ func (s *Store) transferStock(ctx context.Context, tx pgx.Tx, id auth.Identity, 
 	}
 	newID, correlation := value.UUID(), value.UUID()
 	var newLotRaw []byte
-	err = tx.QueryRow(ctx, "INSERT INTO pantry.lots AS t(id,household_id,product_id,location_id,received_on,best_before_on,use_by_on,opened_on,notes,created_by) SELECT $3,household_id,product_id,$4,received_on,best_before_on,use_by_on,opened_on,notes,$5 FROM pantry.lots WHERE household_id=$1 AND id=$2 RETURNING to_jsonb(t)", id.HouseholdID, lot["id"], newID, location, id.UserID).Scan(&newLotRaw)
+	err = tx.QueryRow(ctx, "INSERT INTO pantry.lots AS t(id,household_id,product_id,location_id,received_on,best_before_on,use_by_on,opened_on,after_open_days,after_open_source,after_open_note,notes,created_by) SELECT $3,household_id,product_id,$4,received_on,best_before_on,use_by_on,opened_on,after_open_days,after_open_source,after_open_note,notes,$5 FROM pantry.lots WHERE household_id=$1 AND id=$2 RETURNING to_jsonb(t)", id.HouseholdID, lot["id"], newID, location, id.UserID).Scan(&newLotRaw)
 	if err != nil {
 		return err
 	}

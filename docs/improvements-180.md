@@ -27,7 +27,7 @@ Ein Schema, eine Schaltfläche oder ein Mock allein schließt keinen Punkt ab. B
 
 ## Fortschritt
 
-180 Punkte: **37 verifiziert, 0 implementiert, 0 in Arbeit, 143 offen**. Dieser Zähler wird mit jedem abgeschlossenen Arbeitspaket abgeglichen.
+180 Punkte: **44 verifiziert, 0 implementiert, 0 in Arbeit, 136 offen**. Dieser Zähler wird mit jedem abgeschlossenen Arbeitspaket abgeglichen.
 
 ## Einkaufen
 
@@ -109,14 +109,14 @@ Ein Schema, eine Schaltfläche oder ein Mock allein schließt keinen Punkt ab. B
 | ID | Verbesserung | Abnahmekriterium | Status | Nachweis |
 |---|---|---|---|---|
 | PA01 | Produktübersicht | Gesamtbestand, Orte und nächstes Datum anzeigen; Chargen aufklappen. | Verifiziert | PostgreSQL/Migration/Restore + Linux-Race; Pantry 18 Browserchecks/3 axe; unabhängige DB- und UI-Abnahme bestanden |
-| PA02 | Zuerst verbrauchen | Datumsart, Öffnung und Restmenge für erklärbare Priorisierung verwenden. | Offen | — |
-| PA03 | Schnellverbrauch | Packung, Hälfte oder eigene Menge buchen; Rücknahme als Gegenbewegung. | Offen | — |
+| PA02 | Zuerst verbrauchen | Datumsart, Öffnung und Restmenge für erklärbare Priorisierung verwenden. | Verifiziert | Native Gesamtsuite67,2 %, Linux-Race259,069s, bestücktes Upgrade/Restore, direkte50/100-Grenzen; Vorrat35Browserchecks/5axe, Gesamtkette448; DB-, UI- und Dokumentationsabnahme bestanden. |
+| PA03 | Schnellverbrauch | Packung, Hälfte oder eigene Menge buchen; Rücknahme als Gegenbewegung. | Verifiziert | Native Gesamtsuite67,2 %, Linux-Race259,069s, bestücktes Upgrade/Restore, direkte50/100-Grenzen; Vorrat35Browserchecks/5axe, Gesamtkette448; DB-, UI- und Dokumentationsabnahme bestanden. |
 | PA04 | Einlagerungsassistent | Mehrere Produkte mit Menge, Ort und Datum erfassen und Fortschritt bewahren. | Offen | — |
 | PA05 | Inventur | Zählbestand mit Buchbestand je Ort vergleichen und Differenzen begründet buchen. | Offen | — |
-| PA06 | Packungsgrößen | Packung und Basiseinheit getrennt speichern und exakt umrechnen. | Offen | — |
-| PA07 | Mehrere Barcodes | Produkt- und Packungsvarianten mehrere eindeutige Barcodes zuordnen. | Offen | — |
-| PA08 | Geöffnete Haltbarkeit | Nutzer- oder Herstellerangaben mit Herkunft als Hinweis anzeigen. | Offen | — |
-| PA09 | FEFO-Vorschlag | Passende Chargen nach Datum vorschlagen; manuelle Auswahl und Datumsarten erhalten. | Offen | — |
+| PA06 | Packungsgrößen | Packung und Basiseinheit getrennt speichern und exakt umrechnen. | Verifiziert | Native Gesamtsuite67,2 %, Linux-Race259,069s, bestücktes Upgrade/Restore, direkte50/100-Grenzen; Vorrat35Browserchecks/5axe, Gesamtkette448; DB-, UI- und Dokumentationsabnahme bestanden. |
+| PA07 | Mehrere Barcodes | Produkt- und Packungsvarianten mehrere eindeutige Barcodes zuordnen. | Verifiziert | Native Gesamtsuite67,2 %, Linux-Race259,069s, bestücktes Upgrade/Restore, direkte50/100-Grenzen; Vorrat35Browserchecks/5axe, Gesamtkette448; DB-, UI- und Dokumentationsabnahme bestanden. |
+| PA08 | Geöffnete Haltbarkeit | Nutzer- oder Herstellerangaben mit Herkunft als Hinweis anzeigen. | Verifiziert | Native Gesamtsuite67,2 %, Linux-Race259,069s, bestücktes Upgrade/Restore, direkte50/100-Grenzen; Vorrat35Browserchecks/5axe, Gesamtkette448; DB-, UI- und Dokumentationsabnahme bestanden. |
+| PA09 | FEFO-Vorschlag | Passende Chargen nach Datum vorschlagen; manuelle Auswahl und Datumsarten erhalten. | Verifiziert | Native Gesamtsuite67,2 %, Linux-Race259,069s, bestücktes Upgrade/Restore, direkte50/100-Grenzen; Vorrat35Browserchecks/5axe, Gesamtkette448; DB-, UI- und Dokumentationsabnahme bestanden. |
 | PA10 | Gekochte Reste | Rezeptbezug, Portionen, Zubereitung und Lagerort erfassen. | Offen | — |
 | PA11 | Zielbestand | Mindest- und Zielbestand unterscheiden; Nachkauf auf Packungen aufrunden. | Offen | — |
 | PA12 | Reservierungen | Freien und für Mahlzeiten reservierten Bestand getrennt ausweisen. | Offen | — |
@@ -125,7 +125,7 @@ Ein Schema, eine Schaltfläche oder ein Mock allein schließt keinen Punkt ab. B
 | PA15 | Rezeptvorschläge | Vorhandene und bald fällige Zutaten transparent gewichtet berücksichtigen. | Offen | — |
 | PA16 | Große Bestandslisten | Gefilterte Paginierung und exakte Gesamtsummen ohne 100-Produkte-Grenze anbieten. | Verifiziert | PostgreSQL/Migration/Restore + Linux-Race; Pantry 18 Browserchecks/3 axe; unabhängige DB- und UI-Abnahme bestanden |
 | PA17 | Bestandsprojektion | Transaktionale Salden pflegen und gegen das Bewegungsjournal prüfen. | Verifiziert | PostgreSQL/Migration/Restore + Linux-Race; Pantry 18 Browserchecks/3 axe; unabhängige DB- und UI-Abnahme bestanden |
-| PA18 | Verbrauchskonflikte | Verbleibende Menge nach gleichzeitiger Buchung zeigen; kein blindes Wiederholen. | Offen | — |
+| PA18 | Verbrauchskonflikte | Verbleibende Menge nach gleichzeitiger Buchung zeigen; kein blindes Wiederholen. | Verifiziert | Native Gesamtsuite67,2 %, Linux-Race259,069s, bestücktes Upgrade/Restore, direkte50/100-Grenzen; Vorrat35Browserchecks/5axe, Gesamtkette448; DB-, UI- und Dokumentationsabnahme bestanden. |
 | PA19 | Offline-Scans | Scans als lokale Entwürfe prüfen; Offline-Daten sind keine Bestandsautorität. | Offen | — |
 | PA20 | Historischer Bestand | Bestand zum Stichtag aus Bewegungen rekonstruieren und Korrekturzeitpunkte zeigen. | Verifiziert | PostgreSQL/Migration/Restore + Linux-Race; Pantry 18 Browserchecks/3 axe; unabhängige DB- und UI-Abnahme bestanden |
 

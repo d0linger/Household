@@ -194,8 +194,15 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /api/v1/shopping/items/{id}", s.require(s.shoppingItem))
 	mux.Handle("GET /api/v1/shopping/items/{id}/merge-preview", s.require(s.shoppingMergePreview))
 	mux.Handle("GET /m/pantry/stock", s.require(s.pantryPage))
+	mux.Handle("GET /m/pantry/priority", s.require(s.pantryDailyPage))
+	mux.Handle("GET /m/pantry/consume/{lot}", s.require(s.pantryDailyPage))
 	mux.Handle("GET /api/v1/pantry/stock", s.require(s.pantryStock))
 	mux.Handle("GET /api/v1/pantry/products/{id}/lots", s.require(s.pantryLots))
+	mux.Handle("GET /api/v1/pantry/lots/{lot}/consume", s.require(s.pantryConsumptionAPI))
+	mux.Handle("POST /api/v1/pantry/lots/{lot}/consume", s.require(s.pantryConsumptionAPI))
+	mux.Handle("GET /api/v1/pantry/operations/{operation}", s.require(s.pantryConsumptionAPI))
+	mux.Handle("GET /api/v1/pantry/lookup", s.require(s.pantryConsumptionAPI))
+	mux.Handle("GET /api/v1/pantry/priority", s.require(s.pantryPriorityAPI))
 	mux.Handle("POST /api/v1/core/preferences", s.require(s.preferences))
 	mux.Handle("GET /m/{module}/{entity}", s.require(s.modulePage))
 	mux.Handle("GET /m/{module}/reports", s.require(s.reportPage))
@@ -535,6 +542,15 @@ func formValue(f module.Field, v any) string {
 
 func formatChoice(v any) string {
 	raw := store.String(v)
+	if raw == "user" {
+		return "Eigene Angabe"
+	}
+	if raw == "manufacturer" {
+		return "Herstellerangabe"
+	}
+	if raw == "" {
+		return "Keine Angabe"
+	}
 	labels := map[string]string{"piece": "Stück", "available": "Verfügbar", "unavailable": "Nicht verfügbar", "substituted": "Ersatz gewählt", "diesel": "Diesel", "petrol": "Benzin", "lpg": "LPG", "cng": "CNG", "receive": "Zugang", "consume": "Verbrauch", "waste": "Entsorgung", "adjust": "Korrektur", "expense": "Ausgabe", "refund": "Erstattung", "dinner": "Abendessen", "lunch": "Mittagessen", "breakfast": "Frühstück", "snack": "Zwischenmahlzeit", "actual": "Abgelesen", "estimated": "Geschätzt"}
 	if label, ok := labels[raw]; ok {
 		return label

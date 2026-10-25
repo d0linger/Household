@@ -126,6 +126,10 @@ func (s *Store) validateDomain(ctx context.Context, tx pgx.Tx, id auth.Identity,
 		if new(big.Rat).Add(stock, delta).Sign() < 0 {
 			return bad("Bestand würde negativ; Vorgang prüfen")
 		}
+	case "pantry/packs":
+		return validatePantryPack(ctx, tx, id, rid, data)
+	case "pantry/barcodes":
+		return validatePantryBarcode(ctx, tx, id, rid, data, changed)
 	case "pantry/products":
 		if quantity("low_stock_threshold").Sign() < 0 {
 			return bad("Mindestbestand darf nicht negativ sein")
@@ -141,9 +145,21 @@ func (s *Store) validateDomain(ctx context.Context, tx pgx.Tx, id auth.Identity,
 				if count > 0 && old != String(data["unit_code"]) {
 					return bad("Einheit mit vorhandenem Bestand nicht ändern")
 				}
+				if old != String(data["unit_code"]) {
+					var packs bool
+					if err = tx.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM pantry.packs WHERE household_id=$1 AND product_id=$2)", id.HouseholdID, rid).Scan(&packs); err != nil {
+						return err
+					}
+					if packs {
+						return bad("Basiseinheit mit vorhandenen Packungen nicht ändern; Packungen zuerst prüfen")
+					}
+				}
 			}
 		}
 	case "pantry/lots":
+		if err := validatePantryOpening(data, changed); err != nil {
+			return err
+		}
 		if rid != "" {
 			var oldProduct, oldLocation string
 			var movements bool
