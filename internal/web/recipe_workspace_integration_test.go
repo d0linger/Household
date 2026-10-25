@@ -330,13 +330,14 @@ func TestRecipeVersionsPopulatedUpgrade(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, schema := range database.Schemas {
-		if schema == "core" {
+		switch schema {
+		case "core":
 			migratePriorAuditSchema(t, f, schema, 10)
-		} else if schema == "shopping" {
+		case "shopping":
 			migratePriorAuditSchema(t, f, schema, 4)
-		} else if schema == "pantry" {
+		case "pantry":
 			migratePriorAuditSchema(t, f, schema, 2)
-		} else {
+		default:
 			migratePriorAuditSchema(t, f, schema)
 		}
 	}

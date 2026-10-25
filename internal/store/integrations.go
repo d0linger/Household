@@ -2,9 +2,11 @@ package store
 
 import (
 	"context"
+	"errors"
 	"household/internal/auth"
 	"household/internal/value"
 	"math/big"
+	"unicode/utf8"
 
 	"github.com/jackc/pgx/v5"
 )
@@ -66,42 +68,122 @@ func (s *Store) pantryToShopping(ctx context.Context, tx pgx.Tx, id auth.Identit
 	return s.afterWrite(ctx, tx, id, m, e, record, generation)
 }
 func (s *Store) mealsToShopping(ctx context.Context, tx pgx.Tx, id auth.Identity, plan, data Record) error {
-	if _, err := requireModule(ctx, tx, id, "recipes"); err != nil {
-		return err
-	}
-	rows, err := tx.Query(ctx, `SELECT to_jsonb(r),m.servings::text FROM mealplan.meals m JOIN core.resource_links l ON l.household_id=m.household_id AND l.source_module='mealplan' AND l.source_type='meals' AND l.source_id=m.id AND l.relation='meal_recipe' JOIN recipes.recipes r ON r.household_id=m.household_id AND r.id=l.target_id WHERE m.household_id=$1 AND m.plan_id=$2 ORDER BY m.planned_on,m.id FOR SHARE OF r,m,l`, id.HouseholdID, plan["id"])
+	generation, err := requireModule(ctx, tx, id, "shopping")
 	if err != nil {
 		return err
 	}
-	type meal struct {
-		recipe   Record
-		servings string
+	if plan["is_template"] == true {
+		return Invalid{"Wochenvorlage zuerst als neue Arbeitswoche kopieren"}
 	}
-	items := []meal{}
+	start := String(data["week_start"])
+	if start == "" {
+		days, windowErr := planningWindow(String(plan["starts_on"]))
+		if windowErr != nil {
+			return windowErr
+		}
+		if String(plan["ends_on"]) > days[6] {
+			return Invalid{"Bei längeren Plänen die zu übernehmende Woche ausdrücklich auswählen"}
+		}
+		start = days[0]
+	}
+	pid := String(plan["id"])
+	week, err := lockPlanningWeek(ctx, tx, id, pid, start)
+	if err != nil {
+		return err
+	}
+	var size int64
+	ids := make([]string, 0)
+	for _, meal := range week.Meals {
+		if meal.Kind != "recipe" || meal.Status != "open" && meal.Status != "planned" {
+			continue
+		}
+		if meal.RequiresReview {
+			return Invalid{"Mahlzeit „" + meal.Title + "“: Rezeptstand zuerst in der Wochenplanung prüfen"}
+		}
+		for _, component := range meal.Components {
+			size += component.SnapshotBytes
+			ids = append(ids, component.ID)
+		}
+	}
+	if size > planningCopyBytes {
+		return Invalid{"Rezeptstände der Einkaufswoche überschreiten 16 MiB"}
+	}
+	if err = lockPlanningComponents(ctx, tx, id, ids); err != nil {
+		return err
+	}
+	list := String(data["list_id"])
+	if !value.ValidUUID(list) {
+		return Invalid{"Einkaufsliste auswählen"}
+	}
+	var open bool
+	err = tx.QueryRow(ctx, "SELECT archived_at IS NULL AND NOT is_template FROM shopping.lists WHERE household_id=$1 AND id=$2 FOR UPDATE NOWAIT", id.HouseholdID, list).Scan(&open)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ErrNotFound
+	}
+	if err != nil {
+		return err
+	}
+	if !open {
+		return Invalid{"Eine offene Einkaufsliste auswählen"}
+	}
+	rows, err := tx.Query(ctx, `SELECT c.snapshot,c.servings::text,m.title FROM mealplan.components c JOIN mealplan.meals m ON m.household_id=c.household_id AND m.id=c.meal_id
+ WHERE m.household_id=$1 AND m.plan_id=$2 AND c.id=ANY($3::uuid[]) AND m.kind='recipe' AND m.status IN('open','planned') ORDER BY m.planned_on,m.meal_slot,m.id,c.position,c.id`, id.HouseholdID, pid, ids)
+	if err != nil {
+		return err
+	}
+	pending := []Record{}
 	for rows.Next() {
 		var raw []byte
-		var x meal
-		if err = rows.Scan(&raw, &x.servings); err != nil {
+		var servings, title string
+		if err = rows.Scan(&raw, &servings, &title); err != nil {
 			rows.Close()
 			return err
 		}
-		x.recipe, err = decode(raw)
-		if err != nil {
+		bundle, decodeErr := recipeBundle(raw)
+		if decodeErr != nil {
 			rows.Close()
-			return err
+			return decodeErr
 		}
-		items = append(items, x)
+		for _, ingredient := range bundle.Ingredients {
+			if len(pending) >= 500 {
+				rows.Close()
+				return Invalid{"Höchstens 500 Zutaten pro Einkaufsübernahme. Woche aufteilen."}
+			}
+			name := String(ingredient["name"])
+			if name == "" || utf8.RuneCountInString(name) > 200 {
+				rows.Close()
+				return Invalid{"Zutatenname muss für den Einkauf 1 bis 200 Zeichen enthalten"}
+			}
+			quantity, quantityErr := planningQuantity(ingredient["quantity"], String(bundle.Recipe["base_servings"]), servings)
+			if quantityErr != nil {
+				rows.Close()
+				return Invalid{"Mahlzeit „" + title + "“, Zutat „" + name + "“: " + quantityErr.Error()}
+			}
+			note := title
+			for _, field := range []string{"quantity_note", "preparation_note"} {
+				if text := String(ingredient[field]); text != "" {
+					note += " · " + text
+				}
+			}
+			pending = append(pending, Record{"list_id": list, "name": name, "quantity": quantity, "unit_code": ingredient["unit_code"], "note": note, "group_name": "Wochenplanung"})
+		}
 	}
 	err = rows.Err()
 	rows.Close()
 	if err != nil {
 		return err
 	}
-	if len(items) == 0 {
-		return Invalid{"Zuerst Mahlzeiten mit Rezepten verknüpfen"}
+	if len(pending) == 0 {
+		return Invalid{"Keine Zutaten aus offenen oder geplanten Rezeptmahlzeiten in der gewählten Woche"}
 	}
-	for _, x := range items {
-		if err = s.recipeToShopping(ctx, tx, id, x.recipe, Record{"list_id": data["list_id"], "servings": x.servings}); err != nil {
+	m, _ := s.Module("shopping")
+	e, _ := m.Entity("items")
+	for _, item := range pending {
+		record, writeErr := save(ctx, tx, id, m, e, value.UUID(), item, true, 0)
+		if writeErr != nil {
+			return writeErr
+		}
+		if err = s.afterWrite(ctx, tx, id, m, e, record, generation); err != nil {
 			return err
 		}
 	}

@@ -15,7 +15,7 @@ try {
     if($LASTEXITCODE -ne 0){throw 'Coverage report failed'}
     go mod verify
     if($LASTEXITCODE -ne 0){throw 'Module verification failed'}
-    node --test scripts/quality-tools.test.cjs scripts/shopping-input.test.cjs scripts/shopping-checkout.test.cjs scripts/recipe-workspace.test.cjs scripts/cooking.test.cjs
+    node --test scripts/quality-tools.test.cjs scripts/shopping-input.test.cjs scripts/shopping-checkout.test.cjs scripts/recipe-workspace.test.cjs scripts/cooking.test.cjs scripts/planning.test.cjs
     if($LASTEXITCODE -ne 0){throw 'Quality tool tests failed'}
     node scripts/check-workflows.cjs
     if($LASTEXITCODE -ne 0){throw 'Workflow policy failed'}
@@ -23,5 +23,5 @@ try {
     if($LASTEXITCODE -ne 0){throw 'Migration checksums failed'}
     if($Integration){& ./scripts/test-integration.ps1}
     if($Race){& ./scripts/test-race.ps1}
-    if($Browser){node ./scripts/browser-check.cjs;if($LASTEXITCODE -ne 0){throw 'Browser checks failed'}}
+    if($Browser){npm run test:browser;if($LASTEXITCODE -ne 0){throw 'Browser checks failed'}}
 } finally {Pop-Location}

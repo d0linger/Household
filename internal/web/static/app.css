@@ -59,3 +59,21 @@
 #cooking summary { cursor:pointer; min-height:44px; align-content:center; }
 #cooking-refresh { margin-block:.75rem; }
 #cooking-abandon { margin-top:1rem; }
+.planning-toolbar,.planning-toolbar form { display:flex;flex-wrap:wrap;gap:.75rem;align-items:end;margin-block:1rem; }
+.planning-days { display:grid;grid-template-columns:1fr;gap:1rem;align-items:start; }
+.planning-day { min-width:0;border-top:2px solid var(--line);padding-block:.75rem; }
+.planning-day>h2 { font-size:1.2rem;margin-block:0 .5rem; }
+.planning-slot { padding-block:.5rem;min-height:44px; }
+.planning-slot>h3 { font-size:.95rem;color:var(--muted);margin-block:.25rem .5rem; }
+.planning-meal { padding:.75rem;background:var(--surface);border:1px solid var(--line);border-radius:10px;margin-block:.5rem;overflow-wrap:anywhere; }
+.planning-meal-title { text-align:left;width:100%;padding:.25rem 0;border:0;border-radius:0;background:transparent;color:var(--ink);font-weight:700; }
+.planning-card-actions { display:grid;gap:.5rem;padding-block:.5rem; }
+.planning-meal summary { cursor:pointer;min-height:44px;align-content:center;font-size:.85rem; }
+.planning-components { padding-left:1.5rem; }
+.planning-component { border-top:1px solid var(--line);padding-block:1rem; }
+.planning-component h4 { margin-block:0 .5rem;overflow-wrap:anywhere; }
+.planning-text { white-space:pre-wrap;overflow-wrap:anywhere; }
+.planning-drop { outline:3px solid var(--accent);outline-offset:3px; }
+#planning-editor,#planning-detail,#planning-conflict,#planning-source-preview { scroll-margin-top:6rem; }
+#planning-source-preview { margin-block:1rem; }
+@media(min-width:1200px) { .planning-days { grid-template-columns:repeat(7,minmax(0,1fr));gap:.75rem; }.planning-day .fine { font-size:.8rem; }.planning-slot>button { width:100%; } }

@@ -291,8 +291,21 @@ func (s *Store) validateDomain(ctx context.Context, tx pgx.Tx, id auth.Identity,
 			}
 		}
 	case "mealplan/meals":
+		if rid != "" {
+			var oldPlan string
+			var components bool
+			if err := tx.QueryRow(ctx, "SELECT plan_id,EXISTS(SELECT 1 FROM mealplan.components c WHERE c.household_id=m.household_id AND c.meal_id=m.id) FROM mealplan.meals m WHERE household_id=$1 AND id=$2", id.HouseholdID, rid).Scan(&oldPlan, &components); err != nil {
+				return err
+			}
+			if oldPlan != String(data["plan_id"]) {
+				return bad("Mahlzeiten bleiben in ihrem Plan. Innerhalb der Wochenansicht verschieben oder eine neue Woche kopieren.")
+			}
+			if components && String(data["kind"]) != "recipe" {
+				return bad("Rezeptkomponenten zuerst in der Wochenplanung entfernen, bevor die Planungsart geändert wird")
+			}
+		}
 		var valid bool
-		err := tx.QueryRow(ctx, "SELECT $3::date BETWEEN starts_on AND ends_on FROM mealplan.plans WHERE household_id=$1 AND id=$2 FOR SHARE", id.HouseholdID, data["plan_id"], data["planned_on"]).Scan(&valid)
+		err := tx.QueryRow(ctx, "SELECT $3::date BETWEEN starts_on AND ends_on FROM mealplan.plans WHERE household_id=$1 AND id=$2 FOR SHARE NOWAIT", id.HouseholdID, data["plan_id"], data["planned_on"]).Scan(&valid)
 		if err != nil {
 			return err
 		}

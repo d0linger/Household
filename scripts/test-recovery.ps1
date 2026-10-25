@@ -49,6 +49,7 @@ try {
       $taskProduct=[guid]::NewGuid().ToString();$taskLocation=[guid]::NewGuid().ToString();$taskLot=[guid]::NewGuid().ToString()
       $taskRecipe=[guid]::NewGuid().ToString()
       $taskCooking=[guid]::NewGuid().ToString();$taskCooked=[guid]::NewGuid().ToString();$taskCookingRecord=[guid]::NewGuid().ToString()
+      $taskPlan=[guid]::NewGuid().ToString();$taskCopiedPlan=[guid]::NewGuid().ToString();$taskMeal=[guid]::NewGuid().ToString();$taskCopyKey=[guid]::NewGuid().ToString()
       $taskOriginal=[guid]::NewGuid().ToString();$taskPreview=[guid]::NewGuid().ToString()
       # A tiny valid PNG is sufficient to exercise binary integrity and private-file metadata.
       $taskPng=[Convert]::FromBase64String('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jN1sAAAAASUVORK5CYII=')
@@ -83,6 +84,11 @@ INSERT INTO recipes.cooking_timers(household_id,session_id,name,duration_seconds
 INSERT INTO recipes.cooking_timers(household_id,session_id,name,duration_seconds,state,remaining_millis) VALUES('$taskHousehold','$taskCooking','Persisted pause',120,'paused',77501);
 INSERT INTO recipes.cooking_records(id,household_id,session_id,user_id,source_version_id,actual_servings,cooked_on,notes) SELECT '$taskCookingRecord','$taskHousehold','$taskCooked','$taskUser',v.id,3.000001,'2026-10-24','Synthetic confirmed note' FROM recipes.versions v WHERE v.recipe_id='$taskRecipe' AND v.revision=1;
 UPDATE recipes.cooking_sessions SET state='completed' WHERE id='$taskCooked';
+INSERT INTO mealplan.plans(id,household_id,name,starts_on,ends_on,created_by) VALUES('$taskPlan','$taskHousehold','Original planning week','2026-10-22','2026-10-28','$taskUser');
+INSERT INTO mealplan.plans(id,household_id,name,starts_on,ends_on,created_by,copy_source_plan,copy_key,copy_request_hash) VALUES('$taskCopiedPlan','$taskHousehold','Independent copied week','2026-10-29','2026-11-04','$taskUser','$taskPlan','$taskCopyKey',decode(repeat('ab',32),'hex'));
+INSERT INTO mealplan.meals(id,household_id,plan_id,planned_on,title,servings,kind,status,created_by) VALUES('$taskMeal','$taskHousehold','$taskCopiedPlan','2026-10-30','Frozen component meal',3.000001,'recipe','open','$taskUser');
+INSERT INTO mealplan.components(household_id,meal_id,position,servings,source_recipe_id,source_version_id,source_generation,source_revision,snapshot,created_by)
+ SELECT '$taskHousehold','$taskMeal',s.position,s.servings,'$taskRecipe',v.id,1,v.revision,v.snapshot,'$taskUser' FROM recipes.versions v CROSS JOIN (VALUES(0,1.500001::numeric),(1,2.500001::numeric)) s(position,servings) WHERE v.recipe_id='$taskRecipe' AND v.revision=1;
 COMMIT;
 "@
       $taskSQL | docker compose -f compose.yaml -f compose.backup.yaml exec -T restore-db psql -U postgres -d household_fixture -v ON_ERROR_STOP=1
@@ -115,9 +121,13 @@ COMMIT;
       if($LASTEXITCODE -ne 0){throw 'Recipe edit after restore failed'}
       $taskRecipeAfter=docker compose -f compose.yaml -f compose.backup.yaml exec -T restore-db psql -U postgres -d household_restore -Atc "SELECT count(*)::text||'|'||max(snapshot->'ingredients'->0->>'quantity') FILTER(WHERE revision=1)||'|'||max(snapshot->'ingredients'->0->>'quantity') FILTER(WHERE revision=2) FROM recipes.versions WHERE recipe_id='$taskRecipe'"
       if($LASTEXITCODE -ne 0 -or $taskRecipeAfter -ne '2|9007199254.740993|9007199254.740992'){throw 'Recipe history after restore was overwritten or not appended once'}
+      $taskPlanning=docker compose -f compose.yaml -f compose.backup.yaml exec -T restore-db psql -U postgres -d household_restore -Atc "SELECT count(*)::text||'|'||min(c.servings)::text||'|'||max(c.servings)::text||'|'||min(c.snapshot->'ingredients'->0->>'quantity')||'|'||bool_and(c.source_revision=1 AND m.status='open' AND p.copy_source_plan='$taskPlan' AND p.copy_key='$taskCopyKey' AND p.copy_request_hash=decode(repeat('ab',32),'hex'))::text FROM mealplan.components c JOIN mealplan.meals m ON m.id=c.meal_id JOIN mealplan.plans p ON p.id=m.plan_id WHERE m.id='$taskMeal'"
+      if($LASTEXITCODE -ne 0 -or $taskPlanning -ne '2|1.500001|2.500001|9007199254.740993|true'){throw 'Restored plan lost component portions, frozen source or durable copy provenance'}
+      $taskPlanningDuplicate=docker compose -f compose.yaml -f compose.backup.yaml exec -T restore-db psql -U postgres -d household_restore -Atc "WITH attempted AS (INSERT INTO mealplan.plans(household_id,name,starts_on,ends_on,created_by,copy_source_plan,copy_key,copy_request_hash) VALUES('$taskHousehold','Repeated copy','2026-10-29','2026-11-04','$taskUser','$taskPlan','$taskCopyKey',decode(repeat('ab',32),'hex')) ON CONFLICT(household_id,created_by,copy_source_plan,copy_key) DO NOTHING RETURNING id) SELECT count(*) FROM attempted"
+      if($LASTEXITCODE -ne 0 -or $taskPlanningDuplicate -ne '0'){throw 'Restored durable week-copy uniqueness failed'}
       $taskRestoreTimer.Stop()
       $taskRehearsalTimer.Stop()
-      [ordered]@{passed=$true;source='disposable household_fixture';target='disposable household_restore';snapshot=$taskSnapshot;domainValue=$taskRestored;stockProjection=$taskStock;durableCompletion=$taskCheckout;recipeVersionsAfterEdit=$taskRecipeAfter;cookingTimers=$taskCookingBefore;cookingRecord=$taskCookingResult;cookingDuplicateInserted=$taskCookingDuplicate;hashedFiles=2;includesOriginalAndPreview=$true;backupSeconds=[Math]::Round($taskBackupTimer.Elapsed.TotalSeconds,2);restoreAndVerifySeconds=[Math]::Round($taskRestoreTimer.Elapsed.TotalSeconds,2);rehearsalSeconds=[Math]::Round($taskRehearsalTimer.Elapsed.TotalSeconds,2);scope='Small synthetic local fixture; not acceptance of a production RTO/RPO';verifiedAt=[DateTime]::UtcNow.ToString('o')} | ConvertTo-Json | Set-Content outputs/recovery-review/report.json
+      [ordered]@{passed=$true;source='disposable household_fixture';target='disposable household_restore';snapshot=$taskSnapshot;domainValue=$taskRestored;stockProjection=$taskStock;durableCompletion=$taskCheckout;recipeVersionsAfterEdit=$taskRecipeAfter;cookingTimers=$taskCookingBefore;cookingRecord=$taskCookingResult;cookingDuplicateInserted=$taskCookingDuplicate;planningComponents=$taskPlanning;planningDuplicateInserted=$taskPlanningDuplicate;hashedFiles=2;includesOriginalAndPreview=$true;backupSeconds=[Math]::Round($taskBackupTimer.Elapsed.TotalSeconds,2);restoreAndVerifySeconds=[Math]::Round($taskRestoreTimer.Elapsed.TotalSeconds,2);rehearsalSeconds=[Math]::Round($taskRehearsalTimer.Elapsed.TotalSeconds,2);scope='Small synthetic local fixture; not acceptance of a production RTO/RPO';verifiedAt=[DateTime]::UtcNow.ToString('o')} | ConvertTo-Json | Set-Content outputs/recovery-review/report.json
       Get-Content outputs/recovery-review/report.json
     } finally {
       docker compose -f compose.yaml -f compose.backup.yaml exec -T restore-db dropdb -U postgres household_fixture

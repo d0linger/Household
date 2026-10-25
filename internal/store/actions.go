@@ -204,27 +204,7 @@ func (s *Store) Action(ctx context.Context, id auth.Identity, m module.Descripto
 			raw = []byte(`{"message":"Einkaufsvorschlag übernommen"}`)
 		}
 	case "mealplan/meals/recipe":
-		if _, err = requireModule(ctx, tx, id, "recipes"); err != nil {
-			return nil, err
-		}
-		recipe := String(data["recipe_id"])
-		if !value.ValidUUID(recipe) {
-			return nil, Invalid{"Rezept auswählen"}
-		}
-		var exists bool
-		if err = tx.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM recipes.recipes WHERE household_id=$1 AND id=$2)", id.HouseholdID, recipe).Scan(&exists); err != nil {
-			return nil, err
-		}
-		if !exists {
-			return nil, ErrNotFound
-		}
-		if _, err = tx.Exec(ctx, "DELETE FROM core.resource_links WHERE household_id=$1 AND source_module='mealplan' AND source_type='meals' AND source_id=$2 AND relation='meal_recipe'", id.HouseholdID, rid); err != nil {
-			return nil, err
-		}
-		if _, err = tx.Exec(ctx, "INSERT INTO core.resource_links(household_id,source_module,source_type,source_id,target_module,target_type,target_id,relation) VALUES($1,'mealplan','meals',$2,'recipes','recipes',$3,'meal_recipe')", id.HouseholdID, rid, recipe); err != nil {
-			return nil, err
-		}
-		err = tx.QueryRow(ctx, "UPDATE mealplan.meals t SET version=version+1,updated_at=now() WHERE id=$1 RETURNING to_jsonb(t)", rid).Scan(&raw)
+		return nil, Invalid{"Rezeptstände und Komponenten ausdrücklich in der Wochenplanung prüfen; die alte Einzelverknüpfung wird nicht mehr gespeichert"}
 	case "mealplan/plans/shopping":
 		err = s.mealsToShopping(ctx, tx, id, record, data)
 		if err == nil {
@@ -296,10 +276,8 @@ func ActionTargets(mid, entity, action string) []string {
 		return []string{"shopping"}
 	case "fuel/fillups/expense":
 		return []string{"expenses"}
-	case "mealplan/meals/recipe":
-		return []string{"recipes"}
 	case "mealplan/plans/shopping":
-		return []string{"recipes", "shopping"}
+		return []string{"shopping"}
 	default:
 		return nil
 	}

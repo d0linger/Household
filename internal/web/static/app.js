@@ -138,7 +138,7 @@
     for(const name of ['ingredient_ids','tag_ids'])if(form.querySelector(`[name="${name}"]`))data[name]=fields.getAll(name);if(Object.keys(overrides).length)data.unit_overrides=overrides;
     return {data,version:Number(fields.get('version') || 0),generation:Number(fields.get('generation') || 0),...(targets.length?{target_generations:targetGenerations}:{})};
   }
-  function actionTargets(url){const match=url.match(/\/m\/([^/]+)\/([^/]+)\/[^/]+\/actions\/([^/]+)$/);if(!match)return [];return ({'recipes/recipes/shopping':['shopping'],'pantry/products/shopping':['shopping'],'fuel/fillups/expense':['expenses'],'mealplan/meals/recipe':['recipes'],'mealplan/plans/shopping':['recipes','shopping']})[match.slice(1).join('/')]||[];}
+  function actionTargets(url){const match=url.match(/\/m\/([^/]+)\/([^/]+)\/[^/]+\/actions\/([^/]+)$/);if(!match)return [];return ({'recipes/recipes/shopping':['shopping'],'pantry/products/shopping':['shopping'],'fuel/fillups/expense':['expenses'],'mealplan/plans/shopping':['shopping']})[match.slice(1).join('/')]||[];}
   all('[data-record-form]').forEach(form => form.addEventListener('submit', async event => {
     event.preventDefault();
     if (referenceSubmissionBlocked(form)) { const notice = $('.reference-error:not([hidden])', form); if (notice) notice.focus(); return; }

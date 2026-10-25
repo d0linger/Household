@@ -34,6 +34,8 @@ Stock changes serialize on their lot. Posted financial entries and allocations a
 
 Recipe authoring commits a complete ordered bundle and captures one immutable final version per transaction. Private cooking sessions refer to a selected version within the recipe schema. Session/timer writes lock the parent first, read authoritative PostgreSQL time after locks and advance optimistic versions. Confirmed cooking history is household-readable and permanently unique per session; private working progress is absent from generic CRUD, search and reference projections.
 
+Meal planning copies explicitly reviewed immutable recipe sources into its own component snapshots, with no optional-module foreign key. The desktop week grid and mobile agenda share a bounded seven-day read model; complete ingredients load separately. Plan-first locks, child NOWAIT guards and expected versions serialize save/move/swap/copy. Durable copy provenance prevents repeated week creation after response loss or receipt expiry. Recipe disable/purge cannot erase owned planning content; new selection/comparison still requires current source authorization. The interim shopping adapter uses only open/planned recipe components and exact representable quantities; differential transfer and stock reservations remain separate open expansion work.
+
 The household exclusive barrier serializes module state changes, privileged purge, and consistent backup snapshots. The runtime has one app replica; its read/write gate prevents HTML/API/file responses crossing an in-process disable commit. Each authenticated request refreshes activation snapshots, so operator generation changes become visible. Writes also verify database state/generation inside their transaction.
 
 ## Runtime and failure behavior

@@ -138,9 +138,10 @@ func TestShoppingCheckoutPopulatedUpgradeAndBounds(t *testing.T) {
 	}
 	for _, schema := range database.Schemas {
 		version := uint(database.ExpectedVersion(schema))
-		if schema == "core" {
+		switch schema {
+		case "core":
 			version = 9
-		} else if schema == "shopping" {
+		case "shopping":
 			version = 3
 		}
 		migratePriorAuditSchema(t, f, schema, version)

@@ -27,7 +27,7 @@ Ein Schema, eine Schaltfläche oder ein Mock allein schließt keinen Punkt ab. B
 
 ## Fortschritt
 
-180 Punkte: **27 verifiziert, 0 implementiert, 0 in Arbeit, 153 offen**. Dieser Zähler wird mit jedem abgeschlossenen Arbeitspaket abgeglichen.
+180 Punkte: **37 verifiziert, 0 implementiert, 0 in Arbeit, 143 offen**. Dieser Zähler wird mit jedem abgeschlossenen Arbeitspaket abgeglichen.
 
 ## Einkaufen
 
@@ -233,28 +233,30 @@ Ein Schema, eine Schaltfläche oder ein Mock allein schließt keinen Punkt ab. B
 
 | ID | Verbesserung | Abnahmekriterium | Status | Nachweis |
 |---|---|---|---|---|
-| MP01 | Wochenansicht | Desktop-Wochenraster und mobile Tagesagenda aus denselben Daten darstellen. | Offen | — |
-| MP02 | Mahlzeiten bewegen | Verschieben und Tauschen per Tastatur vollständig, Drag-and-drop ergänzend anbieten. | Offen | — |
-| MP03 | Rezept im Zeitfenster | Rezept mit Portionen und Aufwand direkt im Slot auswählen. | Offen | — |
-| MP04 | Mahlzeitentypen | Reste, auswärts, Bestellung und freie Planung ohne falschen Einkaufsbedarf unterscheiden. | Offen | — |
-| MP05 | Planungsstatus | Offen, geplant, eingekauft, gekocht und abgesagt nachvollziehbar verwalten. | Offen | — |
+| MP01 | Wochenansicht | Desktop-Wochenraster und mobile Tagesagenda aus denselben Daten darstellen. | Verifiziert | Native Gesamtsuite 66,8 %, fokussierte Linux-Race, Upgrade/Purge/Restore; Planung 38 Browserchecks/4 axe, Gesamtkette 409; DB-Prüfung und PW01/PW02-Abnahme bestanden. |
+| MP02 | Mahlzeiten bewegen | Verschieben und Tauschen per Tastatur vollständig, Drag-and-drop ergänzend anbieten. | Verifiziert | Native Gesamtsuite 66,8 %, fokussierte Linux-Race, Upgrade/Purge/Restore; Planung 38 Browserchecks/4 axe, Gesamtkette 409; DB-Prüfung und PW01/PW02-Abnahme bestanden. |
+| MP03 | Rezept im Zeitfenster | Rezept mit Portionen und Aufwand direkt im Slot auswählen. | Verifiziert | Native Gesamtsuite 66,8 %, fokussierte Linux-Race, Upgrade/Purge/Restore; Planung 38 Browserchecks/4 axe, Gesamtkette 409; DB-Prüfung und PW01/PW02-Abnahme bestanden. |
+| MP04 | Mahlzeitentypen | Reste, auswärts, Bestellung und freie Planung ohne falschen Einkaufsbedarf unterscheiden. | Verifiziert | Native Gesamtsuite 66,8 %, fokussierte Linux-Race, Upgrade/Purge/Restore; Planung 38 Browserchecks/4 axe, Gesamtkette 409; DB-Prüfung und PW01/PW02-Abnahme bestanden. |
+| MP05 | Planungsstatus | Offen, geplant, eingekauft, gekocht und abgesagt nachvollziehbar verwalten. | Verifiziert | Native Gesamtsuite 66,8 %, fokussierte Linux-Race, Upgrade/Purge/Restore; Planung 38 Browserchecks/4 axe, Gesamtkette 409; DB-Prüfung und PW01/PW02-Abnahme bestanden. |
 | MP06 | Teilnehmer und Gäste | Portionen ableiten und manuell überschreibbar halten. | Offen | — |
-| MP07 | Wochenvorlagen | Neue Wochen ohne alte Erledigungshistorie oder falsche Links aus Vorlage erzeugen. | Offen | — |
+| MP07 | Wochenvorlagen | Neue Wochen ohne alte Erledigungshistorie oder falsche Links aus Vorlage erzeugen. | Verifiziert | Native Gesamtsuite 66,8 %, fokussierte Linux-Race, Upgrade/Purge/Restore; Planung 38 Browserchecks/4 axe, Gesamtkette 409; DB-Prüfung und PW01/PW02-Abnahme bestanden. |
 | MP08 | Geplante Reste | Erwartete Restportionen mit Folgemahlzeit verknüpfen und vom realen Bestand unterscheiden. | Offen | — |
-| MP09 | Mehrere Komponenten | Beilagen und Hauptgerichte mit eigenen Portionen und gemeinsamer Bedarfsvorschau planen. | Offen | — |
-| MP10 | Zeitbudget | Vorbereitung und Kochen pro Tag berechnen; Parallelität nur ausdrücklich annehmen. | Offen | — |
+| MP09 | Mehrere Komponenten | Beilagen und Hauptgerichte mit eigenen Portionen und gemeinsamer Bedarfsvorschau planen. | Verifiziert | Native Gesamtsuite 66,8 %, fokussierte Linux-Race, Upgrade/Purge/Restore; Planung 38 Browserchecks/4 axe, Gesamtkette 409; DB-Prüfung und PW01/PW02-Abnahme bestanden. |
+| MP10 | Zeitbudget | Vorbereitung und Kochen pro Tag berechnen; Parallelität nur ausdrücklich annehmen. | Verifiziert | Native Gesamtsuite 66,8 %, fokussierte Linux-Race, Upgrade/Purge/Restore; Planung 38 Browserchecks/4 axe, Gesamtkette 409; DB-Prüfung und PW01/PW02-Abnahme bestanden. |
 | MP11 | Vorratsbasierte Vorschläge | Verfügbarkeit anhand ausdrücklicher Produktzuordnungen bewerten. | Offen | — |
 | MP12 | Verfallsorientierte Planung | Geöffnete und bald fällige Produkte mit erklärbarem Grund priorisieren. | Offen | — |
 | MP13 | Wochenbudget | Geschätzte Kosten und Alternativen mit fehlenden Preisen anzeigen. | Offen | — |
 | MP14 | Differenzieller Bedarf | Freien, reservierten und bereits vorgemerkten Bestand korrekt vom Bedarf abziehen. | Offen | — |
 | MP15 | Essens-Kalender | ICS mit stabilen Kennungen, Aktualisierung und widerrufbaren Feeds anbieten. | Offen | — |
-| MP16 | Rezeptstand im Plan | Verwendete Rezeptversion erhalten und Änderungen zur bewussten Übernahme anzeigen. | Offen | — |
+| MP16 | Rezeptstand im Plan | Verwendete Rezeptversion erhalten und Änderungen zur bewussten Übernahme anzeigen. | Verifiziert | Native Gesamtsuite 66,8 %, fokussierte Linux-Race, Upgrade/Purge/Restore; Planung 38 Browserchecks/4 axe, Gesamtkette 409; DB-Prüfung und PW01/PW02-Abnahme bestanden. |
 | MP17 | Wiederholbare Einkaufsübernahme | Bedarf über Plan-, Komponenten- und Zutatenidentität aktualisieren statt duplizieren. | Offen | — |
 | MP18 | Reservierungen freigeben | Bei Verschieben, Absage und Ablauf versionsgeprüft freigeben. | Offen | — |
 | MP19 | Regelbasierter Autoplan | Gewichtete Kriterien erklären und jede Mahlzeit austauschbar lassen; kein KI-Zwang. | Offen | — |
-| MP20 | Gebündelte Wochendaten | Autorisierte Wochenansicht mit Versionen, verzögerten Bildern und gezielten Updates laden. | Offen | — |
+| MP20 | Gebündelte Wochendaten | Autorisierte Wochenansicht mit Versionen, verzögerten Bildern und gezielten Updates laden. | Verifiziert | Native Gesamtsuite 66,8 %, fokussierte Linux-Race, Upgrade/Purge/Restore; Planung 38 Browserchecks/4 axe, Gesamtkette 409; DB-Prüfung und PW01/PW02-Abnahme bestanden. |
 
 ## Prüfprotokoll dieser Erweiterung
+
+- MP01/02/03/04/05/07/09/10/16/20 abgeschlossen: Wochenraster/mobile Agenda, mehrere unabhängige Rezeptkomponenten, bewusste Quellenübernahme, Planungsarten/-status, Verschieben/Tauschen, Aufwand und dauerhafte Wochenkopien. Native Gesamtsuite 66,8 % (4304/6439; Web 461,034 s); fokussierte Linux-Race Planung/Rezepte/Kochen: Web 267,217 s. Sechs fokussierte PostgreSQL-Tests bestanden (36,885 s), tatsächlicher Rezept-Purge und dauerhafter Copy-Replay zusätzlich (10,229 s). Verify: 14,6 % (969/6618), 49 Node-Tests, 35 Migrationsprüfsummen; kompatibles Lint ohne Befund und Gosec: 66 Dateien/11431 Zeilen ohne Befund. Bestückter Restore erhielt exakte Komponentenportionen, eingefrorene Zutaten und Kopiereindeutigkeit sowie bisherige Werte und zwei Dateihashes. Vollständige zwölfteilige Browserkette: 409 Checks; Planung: 38 Checks, vier saubere axe-Scans, vier geprüfte Aufnahmen. PW01/PW02 korrigiert und eng unabhängig abgenommen. Die 37 verifizierten Punkte sind keine Freigabe aller 180; Live-Port 8100 bleibt unverändert.
 
 - Vorratsgrundlage PA01/PA16/PA17/PA20 abgeschlossen: exakte Saldenprojektion, Produkt- und Chargenpagination, vollständige gefilterte Einheitensummen und historische Tagesgrenzen mit späteren Korrekturzeitpunkten. Vollständige native Integration: 63,8 % (3103/4862), Web 316,636 s; Linux-Race Vorrat 71,601 s; abschließende Zeitpunktergänzung gezielt mit 7,256 s erneut geprüft. Bestückte Docker-Sicherung/Wiederherstellung bestätigte exakte Salden und zwei Dateihashes.
 - Vollständige Browserkette dieses Stands bestanden: 103 allgemein, 38 Dialog/Fehler, 15 Audit, 33 Expansion, 27 Katalog, 17 Wiederverwendung, 13 Zusammenführen und 18 Vorrat — 264 Checks. Vorrat: drei saubere axe-Scans und drei aktuelle Screenshots. Erster Kettenlauf stoppte am veralteten Pantry-Berichtsstub; nach der API-Anpassung prüft dieser den weiter begrenzten Tankbericht. Der neue Vorratsfehlerpfad wird separat geprüft. Schriftgröße und Alt-Chargenlink korrigiert und unabhängig abgenommen.

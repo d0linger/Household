@@ -12,7 +12,7 @@ try {
     $env:HOUSEHOLD_TEST_APP_URL="postgres://household_app:${taskApp}@localhost:55434/household_test?sslmode=disable"
     $env:HOUSEHOLD_REQUIRE_INTEGRATION='1'
     New-Item -ItemType Directory -Force outputs/qa | Out-Null
-    go test -tags=integration -p 1 -shuffle=on '-coverpkg=./internal/...' '-coverprofile=outputs/qa/integration-coverage.out' ./... -count=1 -timeout=8m
+    go test -tags=integration -p 1 -shuffle=on '-coverpkg=./internal/...' '-coverprofile=outputs/qa/integration-coverage.out' ./... -count=1 -timeout=12m
     if ($LASTEXITCODE -ne 0) {throw 'Integration tests failed'}
     node scripts/check-coverage.cjs outputs/qa/integration-coverage.out 55 outputs/qa/integration-coverage.json
     if ($LASTEXITCODE -ne 0) {throw 'Coverage report failed'}
