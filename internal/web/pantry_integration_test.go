@@ -15,6 +15,8 @@ import (
 	"household/internal/maintenance"
 	"household/internal/store"
 	"household/internal/value"
+
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 func pantryFixture(t *testing.T, f *integrationFixture, suffix string) (store.Record, store.Record) {
@@ -144,6 +146,22 @@ func TestPantryRebuildWaitsForWriterBeforeJournalLock(t *testing.T) {
 	f := newIntegrationFixture(t)
 	_, lot := pantryFixture(t, f, "rebuild-order")
 	auditCreate(t, f, "pantry", "stock_movements", store.Record{"lot_id": lot["id"], "quantity_delta": "3", "reason": "receive"})
+	config, err := pgxpool.ParseConfig(os.Getenv("HOUSEHOLD_TEST_OWNER_URL"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	config.MaxConns = 1
+	config.ConnConfig.RuntimeParams["default_transaction_isolation"] = "repeatable read"
+	repairPool, err := pgxpool.NewWithConfig(f.ctx, config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer repairPool.Close()
+	var inherited string
+	var repairPID int
+	if err = repairPool.QueryRow(f.ctx, "SELECT current_setting('default_transaction_isolation'),pg_backend_pid()").Scan(&inherited, &repairPID); err != nil || inherited != "repeatable read" {
+		t.Fatal("repair fixture did not install the alternative default", inherited, err)
+	}
 	ctx, cancel := context.WithTimeout(f.ctx, 5*time.Second)
 	defer cancel()
 	writer, err := f.pool.Begin(ctx)
@@ -158,10 +176,10 @@ func TestPantryRebuildWaitsForWriterBeforeJournalLock(t *testing.T) {
 		t.Fatal(err)
 	}
 	done := make(chan error, 1)
-	go func() { _, err := maintenance.PantryProjection(ctx, f.owner, true); done <- err }()
+	go func() { _, err := maintenance.PantryProjection(ctx, repairPool, true); done <- err }()
 	blocked := false
 	for range 100 {
-		if err = f.pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM pg_locks l JOIN pg_stat_activity a ON a.pid=l.pid WHERE a.datname=current_database() AND NOT l.granted)`).Scan(&blocked); err != nil {
+		if err = f.pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM pg_locks WHERE pid=$1 AND NOT granted)`, repairPID).Scan(&blocked); err != nil {
 			t.Fatal(err)
 		}
 		if blocked {
@@ -183,6 +201,11 @@ func TestPantryRebuildWaitsForWriterBeforeJournalLock(t *testing.T) {
 	}
 	if drift, err := maintenance.PantryProjection(ctx, f.pool, false); err != nil || drift != 0 {
 		t.Fatalf("post-writer rebuild: %d/%v", drift, err)
+	}
+	var quantity string
+	var movements int64
+	if err = f.pool.QueryRow(ctx, "SELECT quantity::text,movement_count FROM pantry.lot_balances WHERE lot_id=$1", lot["id"]).Scan(&quantity, &movements); err != nil || quantity != "2.000000" || movements != 2 {
+		t.Fatal("repair lost the writer committed after its barrier read", quantity, movements, err)
 	}
 }
 
@@ -308,6 +331,9 @@ func TestPantryPopulatedProjectionUpgrade(t *testing.T) {
 		}
 		if schema == "recipes" {
 			version = 1 // Match the actual pre-projection core8 release.
+		}
+		if schema == "mealplan" {
+			version = 2 // This fixture predates the Core reservation contract.
 		}
 		migratePriorAuditSchema(t, f, schema, version)
 	}

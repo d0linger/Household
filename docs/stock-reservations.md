@@ -1,6 +1,6 @@
-# Planned stock reservations and differential meal demand
+# Stock reservations and planned differential meal demand
 
-Status: read-only pattern/design work for PA12, MP18, MP14 and MP17. These four checklist items remain open. This document implements no reservation, shopping contribution or lifecycle behavior. PA11 acceptance is a separate workstream.
+Status: PA12/MP18 locally verified. MP14/MP17 remain open. Core19/pantry7/mealplan3, explicit reservation/release APIs, source hooks, bounded expiry and payload purge are implemented and accepted at the scopes in stock-reservations-verification.md. The checklist is52 verified/128 open.
 
 ## Delivery order
 
@@ -17,7 +17,7 @@ Optional module schemas remain independent. Core owns generation-bound identitie
 | Shopping contribution revision | Requirement identity, Shopping generation/list/item, desired and last-applied exact quantity/unit, expected item version, active/purchased/stored/missing/manual-review disposition. Begin with one attributable open item per source; visual grouping does not imply destructive merging. |
 | Operation proof | Actor/request key and hash with immutable result or minimal effect identity, retained independently of expiring general idempotency responses. An old request cannot reactivate a released revision or recreate effects after an actual module purge. |
 
-These are logical responsibilities; the implementation will choose the smallest auditable table set after a focused source review. Core audit policies mask human plan content. Runtime privileges, narrowly scoped guards and readiness are explicit. New migrations preserve historical files and follow the household maintenance barrier.
+These are logical responsibilities across the full four-item roadmap. The first PA12/MP18 slice deliberately supports explicit per-meal lot claims; inferred ingredient requirements and Shopping contributions remain MP14/MP17 work. Core audit policies mask human plan content. Runtime privileges, narrowly scoped guards and readiness are explicit. New migrations preserve historical files and follow the household maintenance barrier.
 
 ## Quantities and stock scope
 
@@ -49,25 +49,49 @@ Only an unchanged, open, attributable item may receive a reviewed update. Manual
 
 Checkout with actual Pantry intake marks the corresponding contribution stored in the same transaction. Otherwise physical stock plus a still-counted shopping contribution would count the same goods twice. Checkout without intake leaves coverage explicitly unresolved or user-confirmed; a checked item is not automatically Pantry stock.
 
-## Planned implementation sequence and acceptance
 
-- [ ] Confirm bounded requirement/lease/contribution states, mappings and allocation limits.
-- [ ] Add Core schema/privileges/audit/readiness and immutable operation proofs.
-- [ ] Add pure exact demand/allocation/undercoverage and local-calendar-to-UTC expiry tests.
-- [ ] Implement read-only snapshot demand and explicit mapping selection without live Recipe dependence.
-- [ ] Implement reviewed atomic reserve/release with shared lot locks and current movement basis.
-- [ ] Integrate source changes, generic CRUD, move/swap and deletion release paths.
-- [ ] Integrate disable/reactivate/purge generation and tombstone behavior.
-- [ ] Add immediate expiry filtering and bounded race-safe terminal housekeeping.
-- [ ] Expose physical/reserved/free/undercovered values in Pantry and planning review.
-- [ ] Verify two-plan contention, concurrent consumption/counting and late-write rollback.
-- [ ] Verify actual source/target purges, no revival after receipt pruning and independent Recipe purge.
-- [ ] Complete PA12/MP18 browser/accessibility, migration/restore, race/security and independent finish evidence.
-- [ ] Add MP14 differential coverage using selected-own versus other reservations once.
-- [ ] Add MP17 durable source contributions and explicit create/update/remove preview.
-- [ ] Integrate Shopping manual edits/check/delete/merge and checkout storage dispositions.
-- [ ] Verify unchanged repeated refresh, changed source portions, equal-name ambiguity and checked-item protection.
-- [ ] Verify checkout cannot double-count stored goods as both physical and pending coverage.
-- [ ] Complete final regression and independent review; only then update the four fixed checklist IDs.
+## Implemented first slice: explicit per-meal claims
+
+- Core owns two tables: meal_reservations combines the minimal durable operation identity with a lease's terminal lifecycle, and meal_reservation_allocations stores detailed product/lot/base-unit amounts. Runtime cannot delete either table's records or modify allocation quantities. Purge removes allocation payload using the maintenance role and retains terminal minimal proofs. No optional-module foreign key is added.
+- Each deliberate review creates a fresh immutable lease ID. A source-serialized monotone revision identifies the newest lease even after clock rollback; state version guards release/replacement. One active recorded root per meal/generation is enforced independently of the expiry worker. Existing expired roots are explicitly replaced rather than reopened.
+- Reserve accepts at most100 distinct lots, each with exact positive amount, current product/lot/location versions, physical stock, movement count and other-meal claim basis. Whole-unit products cannot receive fractional claims. Locks use ordered sources/lots and fresh READ COMMITTED reads; replacing a lease excludes its own prior share once and caps availability by physical stock.
+- Expiry is explicit in the reviewed request: in the future, at most31 days ahead and no later than the planned household calendar day's end. The page proposes the earlier bound and names the household timezone. Read-side state and quantity aggregates use one statement timestamp. Effective expiry needs no worker; housekeeping terminalizes at most100 locked roots with version/expiry rechecks and no subsequent source/lot lock.
+- Source AFTER-hooks invalidate relevant meal/component changes and plan-template transitions, including generic CRUD. Title/notes, component effort and ordering remain irrelevant. Recipe purge preserves frozen plan-owned components and these manual claims. Mealplan/Pantry disable or generation change releases active roots under the household barrier; direct SQL uses NOWAIT to avoid an inverse wait.
+- Reserve keys/hashes survive general idempotency pruning. Replay returns the original immutable identity plus explicitly current lease state, never another effect. Release addresses one exact lease ID and is naturally repeatable, so retry cannot release a successor. Changed source/stock/claims require a new review. A late allocation failure rolls back the old lease's release and every new record.
+- The planning action opens a bounded, code-led extension of the existing workspace. Named lot review separates physical, own, other, total reserved, free and undercovered amounts. Editors assemble an explicit draft, confirm every line/expiry/replacement, recover uncertainty with frozen requests and release an identified lease. Reader pages expose no mutation controls. This is manual reservation, not inferred Recipe demand or a Shopping update.
+
+Current execution: all12 reservation contracts, repeat/repair, five historical upgrades and both affected projection/repair cases pass together (web188.649s). Complete native backend regression passes at70.4% (6172/8765; web864.116s), at the compiled-candidate scope recorded in implementation.md. The corrected18-component browser chain passes625 checks, including41 reservation checks/10 clean axe scans/10 captures. Independent F01 follow-up is resolved/ship at its screenshot/source/report scope; separate design documentation preserves the existing system. Scoped Linux race passes at web322.439s for the named reservation/helper/projection/upgrade/repair/configuration cases; packages with no matches do not receive whole-tree acceptance. PA12/MP18 are locally verified. Earlier failed/superseded fixture, audit-assertion and pre-readiness browser attempts remain in the implementation ledger.
+
+Exact-index-export encrypted synthetic recovery passes: backup7.76s/restore20.72s, restored exact0.250001 claim, revision/version1, request identity/hash, frozen source basis, readiness, all earlier domain values and two file hashes. No restored authenticated reservation replay or production RTO/RPO is claimed.
+
+## PA12/MP18 acceptance and next sequence
+
+- [x] Bound explicit leases to100 named lots with current source/stock review.
+- [x] Add two Core tables, secure guards, runtime privileges, audit and readiness.
+- [x] Verify exact physical/own/other/free/undercovered arithmetic and input bounds.
+- [x] Implement reviewed atomic reserve/replacement and exact-lease release.
+- [x] Integrate source edits, generic CRUD, move/swap and deletion release paths.
+- [x] Integrate disable/reactivate/purge generation and minimal durable proofs.
+- [x] Filter expiry immediately and terminalize at most100 locked roots per job.
+- [x] Expose Pantry and planning quantities without mixing historical/current data.
+- [x] Verify contention, real consumption, late rollback and same-balance journal conflicts.
+- [x] Verify receipt pruning, actual purges and independent Recipe purge.
+- [x] Complete browser/accessibility, upgrade/restore, scoped race/security and independent finish evidence.
+- [ ] Add MP14 plan-owned ingredient mappings and whole-meal differential coverage.
+- [ ] Add MP17 durable source contributions and explicit create/update/remove review.
+- [ ] Integrate Shopping manual edits/check/delete/merge and checkout dispositions.
+- [ ] Verify stable repeat refresh, changed portions, equal-name ambiguity and checked-item protection.
+- [ ] Verify stored goods cannot count as both physical and pending shopping coverage.
+- [ ] Complete separate MP14/MP17 regression and review before advancing those IDs.
 
 The independent database pattern scan was source-only. No operation in this plan has been executed or accepted merely because a similar existing pattern exists.
+
+## Next-slice source inventory (MP14/MP17 research only)
+
+The existing planning workspace owns frozen component snapshots and separate component portions (`mealplan_read.go`, `mealplan_values.go`). Its current client-side ingredient preview scales each component but neither persists ingredient/product mappings nor computes differential stock coverage. The Recipe comparison's `ingredientDemand` and `IngredientAmount` provide exact rational conversion/display helpers; its stock sum is physical stock in active locations, not reservation-aware planning availability. Reuse those arithmetic primitives, not that stock total or a live Recipe lookup, for MP14.
+
+MP14 must aggregate repeated mapped products before assigning coverage. For example, two component lines requiring0.6kg each against1kg available produce0.2kg shortage, not two independently covered lines. With0.6kg physical stock,0.4kg own claim and0.3kg other-meal claim, selected-meal usable stock is0.3kg; adding the own claim to free stock without a physical cap is incorrect after real consumption. Lot-level undercoverage must remain visible even where another lot has surplus. Unmapped or inexact demand remains unresolved rather than silently becoming zero.
+
+The first differential preview must select whole meals. Existing manual claims belong to a meal rather than one ingredient/component, so their own share cannot safely be attributed to a component-only selection. Stable mapping identity is household, Mealplan generation, component ID and frozen ingredient ID; a catalogue ID or recipe ID cannot distinguish independent components. Current Recipe bindings may suggest a mapping, but a confirmed plan-owned mapping must remain readable after actual Recipe purge without joining its catalogue.
+
+MP17 must distinguish the desired net purchase from its previous attributable contribution. Demand2kg with0.5kg eligible coverage gives a stable target1.5kg. An unchanged open contribution1.5kg therefore needs no update; subtracting that contribution before computing its replacement target causes oscillation. Persist plan/component/ingredient identities, frozen mapping/source basis and destination generation before enabling updates. A manually edited, checked, merged, deleted or actually stored contribution requires its own explicit lifecycle decision. These examples are next-slice acceptance requirements, not implemented or executed MP14/MP17 evidence.

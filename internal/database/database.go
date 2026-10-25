@@ -155,6 +155,13 @@ func Ready(ctx context.Context, pool *pgxpool.Pool) error {
 	if !replenishment {
 		return errors.New("incomplete replenishment contract")
 	}
+	var reservations bool
+	if err := pool.QueryRow(ctx, "SELECT core.meal_reservations_ready()").Scan(&reservations); err != nil {
+		return fmt.Errorf("inspect meal reservation contract: %w", err)
+	}
+	if !reservations {
+		return errors.New("incomplete meal reservation contract")
+	}
 	return nil
 }
 

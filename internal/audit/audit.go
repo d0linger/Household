@@ -107,7 +107,9 @@ func Begin(ctx context.Context, pool *pgxpool.Pool) (pgx.Tx, error) {
 	if _, err := validated(ctx); err != nil {
 		return nil, err
 	}
-	tx, err := pool.Begin(ctx)
+	// Mutation guards deliberately re-read aggregates after parent locks.
+	// Do not inherit an operator's repeatable-read connection default here.
+	tx, err := pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted})
 	if err != nil {
 		return nil, err
 	}

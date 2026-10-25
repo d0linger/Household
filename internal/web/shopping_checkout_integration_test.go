@@ -147,6 +147,8 @@ func TestShoppingCheckoutPopulatedUpgradeAndBounds(t *testing.T) {
 			version = 1 // Match the actual pre-checkout core9 release.
 		case "pantry":
 			version = 2 // Newer cooking receipts depend on later Core contracts.
+		case "mealplan":
+			version = 2 // Reservation hooks require the later Core19 contract.
 		}
 		migratePriorAuditSchema(t, f, schema, version)
 	}

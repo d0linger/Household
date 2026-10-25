@@ -40,7 +40,8 @@
   all('[data-reference]').forEach((select, index) => {
     const form = select.closest('form');
     if (!form) return;
-    const initiallyDisabled = select.matches(':disabled');
+    // A parent fieldset owns its temporary or read-only state independently.
+    const initiallyDisabled = select.disabled;
     const label = select.labels?.[0]?.childNodes[0]?.textContent.trim() || 'Auswahl';
     const wrapper = document.createElement('div'); wrapper.className = 'reference-field';
     const original = select.closest('label') || select;

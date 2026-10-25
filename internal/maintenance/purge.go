@@ -74,6 +74,16 @@ func Purge(ctx context.Context, pool *pgxpool.Pool, requestID string) error {
 	if len(tables) == 0 {
 		return errors.New("module has no purgeable tables")
 	}
+	if mid == "mealplan" || mid == "pantry" {
+		if _, err = tx.Exec(ctx, "UPDATE core.meal_reservations SET state='released',release_reason='module_purged' WHERE household_id=$1 AND state='active'", hid); err != nil {
+			return err
+		}
+		// Keep minimal immutable operation identities; remove the detailed links
+		// and quantities with the separate maintenance role after release.
+		if _, err = tx.Exec(ctx, "DELETE FROM core.meal_reservation_allocations WHERE household_id=$1", hid); err != nil {
+			return err
+		}
+	}
 	if _, err = tx.Exec(ctx, "INSERT INTO core.file_deletions(storage_key,household_id,attachment_id) SELECT storage_key,household_id,id FROM core.attachments WHERE household_id=$1 AND module_id=$2 UNION ALL SELECT d.storage_key,a.household_id,a.id FROM core.attachment_derivatives d JOIN core.attachments a ON a.id=d.attachment_id WHERE a.household_id=$1 AND a.module_id=$2 ON CONFLICT DO NOTHING", hid, mid); err != nil {
 		return err
 	}

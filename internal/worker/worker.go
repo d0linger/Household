@@ -187,6 +187,9 @@ func (w *Worker) job(ctx context.Context) (jobErr error) {
 	if err = prunePantryDrafts(ctx, tx); err != nil {
 		return err
 	}
+	if err = expireMealReservations(ctx, tx); err != nil {
+		return err
+	}
 	if err = expireJobs(ctx, tx); err != nil {
 		return err
 	}
@@ -214,6 +217,27 @@ func prunePantryDrafts(ctx context.Context, tx pgx.Tx) error {
  ORDER BY expires_at,id LIMIT 100 FOR UPDATE SKIP LOCKED)`)
 	if err != nil {
 		return fmt.Errorf("prune private pantry drafts: %w", err)
+	}
+	return nil
+}
+
+func expireMealReservations(ctx context.Context, tx pgx.Tx) error {
+	var installed bool
+	if err := tx.QueryRow(ctx, "SELECT to_regclass('core.meal_reservations') IS NOT NULL").Scan(&installed); err != nil {
+		return err
+	}
+	if !installed {
+		return nil
+	}
+	// Effective reads already exclude expired leases. This bounded operation
+	// records terminal history without taking source or lot locks after Core.
+	_, err := tx.Exec(ctx, `WITH selected AS (
+ SELECT id,version,expires_at FROM core.meal_reservations WHERE state='active' AND expires_at<=clock_timestamp()
+ ORDER BY expires_at,id LIMIT 100 FOR UPDATE SKIP LOCKED)
+ UPDATE core.meal_reservations r SET state='expired',release_reason='expired' FROM selected s
+ WHERE r.id=s.id AND r.version=s.version AND r.expires_at=s.expires_at AND r.state='active' AND r.expires_at<=clock_timestamp()`)
+	if err != nil {
+		return fmt.Errorf("expire meal reservations: %w", err)
 	}
 	return nil
 }

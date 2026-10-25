@@ -108,12 +108,17 @@ func (s *Server) pantryStock(w http.ResponseWriter, r *http.Request) {
 	}
 	rows, err := tx.Query(ctx, base+` SELECT jsonb_build_object('id',p.id,'name',p.name,'unit',p.unit_code,
 		'archived',p.archived_at IS NOT NULL,'minimum',p.low_stock_threshold::text,'target',p.target_stock::text,'stock',coalesce(s.stock,0)::text,
+		'reserved',CASE WHEN $2::timestamptz IS NULL THEN coalesce(s.reserved,0)::text END,'physical_free',CASE WHEN $2::timestamptz IS NULL THEN coalesce(s.physical_free,0)::text END,
+		'free',(CASE WHEN $2::timestamptz IS NOT NULL THEN NULL WHEN p.archived_at IS NULL THEN coalesce(s.eligible_free,0) ELSE 0 END)::text,
+		'undercovered',CASE WHEN $2::timestamptz IS NULL THEN coalesce(s.undercovered,0)::text END,
 		'lot_count',s.lot_count,'location_count',s.location_count,'locations',coalesce(n.names,'[]'::jsonb),
 		'next_best_before',s.best_before,'next_use_by',s.use_by,'later_corrections',s.corrections,'latest_correction_at',s.latest_correction),p.created_at
 		FROM selected p LEFT JOIN LATERAL (
 		 SELECT sum(quantity) stock,count(*) lot_count,count(DISTINCT location_id) FILTER(WHERE quantity>0) location_count,
 		 min(best_before_on) FILTER(WHERE quantity>0) best_before,min(use_by_on) FILTER(WHERE quantity>0) use_by,
-		 coalesce(sum(later_corrections),0) corrections,max(latest_correction_at) latest_correction FROM lot_state l WHERE l.product_id=p.id
+		 coalesce(sum(later_corrections),0) corrections,max(latest_correction_at) latest_correction,
+		 sum(l.reserved) reserved,sum(l.physical_free) physical_free,sum(l.physical_free) FILTER(WHERE loc.archived_at IS NULL) eligible_free,sum(l.undercovered) undercovered
+		 FROM lot_state l JOIN pantry.locations loc ON loc.household_id=l.household_id AND loc.id=l.location_id WHERE l.product_id=p.id
 		) s ON true LEFT JOIN LATERAL (
 		 SELECT jsonb_agg(name ORDER BY name) names FROM (SELECT DISTINCT loc.name FROM lot_state l
 		 JOIN pantry.locations loc ON loc.household_id=l.household_id AND loc.id=l.location_id
@@ -158,11 +163,20 @@ func (s *Server) pantryStock(w http.ResponseWriter, r *http.Request) {
 }
 
 func pantryStockCTE(historical bool) string {
-	stock := `SELECT l.*,coalesce(b.quantity,0) quantity,0::bigint later_corrections,NULL::timestamptz latest_correction_at,b.last_recorded_at
+	prefix := `WITH claims AS MATERIALIZED(SELECT a.lot_id,sum(a.quantity) quantity FROM core.meal_reservation_allocations a
+	 JOIN core.meal_reservations r ON r.household_id=a.household_id AND r.id=a.reservation_id
+	 JOIN core.module_states ms ON ms.household_id=r.household_id AND ms.module_id='mealplan' AND ms.state='enabled' AND ms.data_generation=r.mealplan_generation
+	 JOIN core.module_states ps ON ps.household_id=r.household_id AND ps.module_id='pantry' AND ps.state='enabled' AND ps.data_generation=r.pantry_generation
+	 WHERE a.household_id=$1 AND r.state='active' AND r.expires_at>statement_timestamp() GROUP BY a.lot_id),`
+	stock := `SELECT l.*,coalesce(b.quantity,0) quantity,0::bigint later_corrections,NULL::timestamptz latest_correction_at,b.last_recorded_at,
+		coalesce(c.quantity,0) reserved,greatest(coalesce(b.quantity,0)-coalesce(c.quantity,0),0) physical_free,greatest(coalesce(c.quantity,0)-coalesce(b.quantity,0),0) undercovered
 		FROM pantry.lots l LEFT JOIN pantry.lot_balances b ON b.household_id=l.household_id AND b.lot_id=l.id
+		LEFT JOIN claims c ON c.lot_id=l.id
 		WHERE l.household_id=$1 AND ($2::timestamptz IS NULL OR l.created_at<$2)`
 	if historical {
-		stock = `SELECT l.*,coalesce(b.quantity,0) quantity,coalesce(b.later_corrections,0) later_corrections,b.latest_correction_at,b.last_recorded_at
+		prefix = "WITH "
+		stock = `SELECT l.*,coalesce(b.quantity,0) quantity,coalesce(b.later_corrections,0) later_corrections,b.latest_correction_at,b.last_recorded_at,
+		NULL::numeric reserved,NULL::numeric physical_free,NULL::numeric undercovered
 		FROM pantry.lots l LEFT JOIN (
 		 SELECT lot_id,sum(quantity_delta) FILTER(WHERE created_at<$2) quantity,
 		 count(*) FILTER(WHERE created_at>=$2 AND reason IN('adjust','reversal')) later_corrections,
@@ -171,7 +185,7 @@ func pantryStockCTE(historical bool) string {
 		 FROM pantry.stock_movements WHERE household_id=$1 GROUP BY lot_id
 		) b ON b.lot_id=l.id WHERE l.household_id=$1 AND l.created_at<$2`
 	}
-	return "WITH lot_state AS MATERIALIZED (" + stock + `),selected AS (
+	return prefix + "lot_state AS MATERIALIZED (" + stock + `),selected AS (
 		SELECT * FROM pantry.products WHERE household_id=$1 AND ($2::timestamptz IS NULL OR created_at<$2)
 		AND ($3='' OR strpos(lower(name),lower($3))>0))`
 }
@@ -196,6 +210,7 @@ func (s *Server) pantryLots(w http.ResponseWriter, r *http.Request) {
 	}
 	rows, err := s.Pool.Query(r.Context(), pantryStockCTE(f.day != "")+` SELECT jsonb_build_object(
 		'id',l.id,'name',l.notes,'stock',l.quantity::text,'location',loc.name,'received_on',l.received_on,
+		'reserved',l.reserved::text,'physical_free',l.physical_free::text,'free',(CASE WHEN $2::timestamptz IS NOT NULL THEN NULL WHEN p.archived_at IS NULL AND loc.archived_at IS NULL THEN l.physical_free ELSE 0 END)::text,'undercovered',l.undercovered::text,
 		'best_before_on',l.best_before_on,'use_by_on',l.use_by_on,'opened_on',l.opened_on,
 		'later_corrections',l.later_corrections,'latest_correction_at',l.latest_correction_at,'last_recorded_at',l.last_recorded_at),l.created_at
 		FROM lot_state l JOIN selected p ON p.id=l.product_id

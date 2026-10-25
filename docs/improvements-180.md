@@ -27,7 +27,7 @@ Ein Schema, eine Schaltfläche oder ein Mock allein schließt keinen Punkt ab. B
 
 ## Fortschritt
 
-180 Punkte: **50 verifiziert, 0 implementiert, 0 in Arbeit, 130 offen**. Dieser Zähler wird mit jedem abgeschlossenen Arbeitspaket abgeglichen.
+180 Punkte: **52 verifiziert, 0 implementiert, 0 in Arbeit, 128 offen**. Dieser Zähler wird mit jedem abgeschlossenen Arbeitspaket abgeglichen.
 
 ## Einkaufen
 
@@ -119,7 +119,7 @@ Ein Schema, eine Schaltfläche oder ein Mock allein schließt keinen Punkt ab. B
 | PA09 | FEFO-Vorschlag | Passende Chargen nach Datum vorschlagen; manuelle Auswahl und Datumsarten erhalten. | Verifiziert | Native Gesamtsuite67,2 %, Linux-Race259,069s, bestücktes Upgrade/Restore, direkte50/100-Grenzen; Vorrat35Browserchecks/5axe, Gesamtkette448; DB-, UI- und Dokumentationsabnahme bestanden. |
 | PA10 | Gekochte Reste | Rezeptbezug, Portionen, Zubereitung und Lagerort erfassen. | Offen | — |
 | PA11 | Zielbestand | Mindest- und Zielbestand unterscheiden; Nachkauf auf Packungen aufrunden. | Verifiziert | Native70,1%, sieben finale PostgreSQL-Verträge, fokussierte Linux-Race; 32 Nachkauf-Browserchecks/sechs axe, Gesamtkette584; Upgrade/Restore und F01 unabhängig abgenommen. |
-| PA12 | Reservierungen | Freien und für Mahlzeiten reservierten Bestand getrennt ausweisen. | Offen | — |
+| PA12 | Reservierungen | Freien und für Mahlzeiten reservierten Bestand getrennt ausweisen. | Verifiziert | [Abnahme](stock-reservations-verification.md): Core19/Pantry7/Mealplan3,12 DB-Verträge, native70,4%, gezielter Linux-Race322,439s,625 Browserprüfungen,10 saubere axe-Scans und exakter synthetischer Restore. |
 | PA13 | Open Food Facts | Optionalen Adapter mit Quellenangabe und lokalem Cache bereitstellen. | Offen | — |
 | PA14 | Abfallanalyse | Gründe und optional geschätzte Kosten der Verluste auswerten. | Offen | — |
 | PA15 | Rezeptvorschläge | Vorhandene und bald fällige Zutaten transparent gewichtet berücksichtigen. | Offen | — |
@@ -250,7 +250,7 @@ Ein Schema, eine Schaltfläche oder ein Mock allein schließt keinen Punkt ab. B
 | MP15 | Essens-Kalender | ICS mit stabilen Kennungen, Aktualisierung und widerrufbaren Feeds anbieten. | Offen | — |
 | MP16 | Rezeptstand im Plan | Verwendete Rezeptversion erhalten und Änderungen zur bewussten Übernahme anzeigen. | Verifiziert | Native Gesamtsuite 66,8 %, fokussierte Linux-Race, Upgrade/Purge/Restore; Planung 38 Browserchecks/4 axe, Gesamtkette 409; DB-Prüfung und PW01/PW02-Abnahme bestanden. |
 | MP17 | Wiederholbare Einkaufsübernahme | Bedarf über Plan-, Komponenten- und Zutatenidentität aktualisieren statt duplizieren. | Offen | — |
-| MP18 | Reservierungen freigeben | Bei Verschieben, Absage und Ablauf versionsgeprüft freigeben. | Offen | — |
+| MP18 | Reservierungen freigeben | Bei Verschieben, Absage und Ablauf versionsgeprüft freigeben. | Verifiziert | [Gemeinsame Abnahme mit PA12](stock-reservations-verification.md): Quellenänderung, konkrete Lease-Freigabe, Ablauf, echte Purges, Replay bei abweichendem Nachfolger und späte Fehler-Rollbacks geprüft. |
 | MP19 | Regelbasierter Autoplan | Gewichtete Kriterien erklären und jede Mahlzeit austauschbar lassen; kein KI-Zwang. | Offen | — |
 | MP20 | Gebündelte Wochendaten | Autorisierte Wochenansicht mit Versionen, verzögerten Bildern und gezielten Updates laden. | Verifiziert | Native Gesamtsuite 66,8 %, fokussierte Linux-Race, Upgrade/Purge/Restore; Planung 38 Browserchecks/4 axe, Gesamtkette 409; DB-Prüfung und PW01/PW02-Abnahme bestanden. |
 

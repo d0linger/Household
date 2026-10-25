@@ -11,7 +11,8 @@ import (
 // PantryProjection compares every projected lot with the immutable journal.
 // Repair requires the operator's database role; the runtime role has SELECT only.
 func PantryProjection(ctx context.Context, pool *pgxpool.Pool, repair bool) (int64, error) {
-	tx, err := pool.BeginTx(ctx, pgx.TxOptions{})
+	// A repair must see writers that commit while it waits for the barrier.
+	tx, err := pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted})
 	if err != nil {
 		return 0, err
 	}

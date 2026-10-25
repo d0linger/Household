@@ -284,6 +284,9 @@ func TestPantryReplenishmentPopulatedUpgrade(t *testing.T) {
 		if schema == "pantry" {
 			version = 5
 		}
+		if schema == "mealplan" {
+			version = 2 // This fixture predates the Core reservation contract.
+		}
 		migratePriorAuditSchema(t, f, schema, version)
 	}
 	hh, user, product, location, lot := value.UUID(), value.UUID(), value.UUID(), value.UUID(), value.UUID()
