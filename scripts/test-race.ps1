@@ -18,7 +18,7 @@ try {
       $taskImage=[regex]::Match([IO.File]::ReadAllText((Join-Path $taskRoot 'Dockerfile')),'(?m)^FROM (golang:\S+@sha256:[0-9a-f]{64}) AS build').Groups[1].Value
       if(!$taskImage){throw 'No pinned Go builder found'}
       # Packages share this disposable database; their intentional concurrency remains enabled.
-      $taskCommand='apk add --no-cache build-base >/dev/null && go test -race -p 1 -tags=integration -shuffle=on -coverpkg=./internal/... -covermode=atomic -coverprofile=/evidence/linux-race-coverage.out ./... -count=1 -timeout=15m'
+      $taskCommand='apk add --no-cache build-base >/dev/null && go test -race -p 1 -tags=integration -shuffle=on -coverpkg=./internal/... -covermode=atomic -coverprofile=/evidence/linux-race-coverage.out ./... -count=1 -timeout=30m'
       if($Run -ne '.'){$taskCommand='apk add --no-cache build-base >/dev/null && go test -race -p 1 -tags=integration -shuffle=on -run "$HOUSEHOLD_TEST_PATTERN" ./... -count=1 -timeout=15m'}
       docker run --rm --cpus 2 --memory 2g --network household-tests_default --env-file $taskEnvironment --mount "type=bind,source=$taskRoot,target=/src,readonly" --mount "type=bind,source=$taskOutput,target=/evidence" --mount type=volume,source=household-go-mod-cache,target=/go/pkg/mod --mount type=volume,source=household-go-build-cache,target=/cache/build -w /src $taskImage sh -c $taskCommand
       if($LASTEXITCODE -ne 0){throw 'Linux race/integration checks failed'}

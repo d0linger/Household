@@ -5,6 +5,7 @@
  <div id="planning-error" class="notice error" role="alert" tabindex="-1" hidden></div>
  <div class="actions"><button type="button" id="planning-refresh" hidden>Gespeicherten Plan laden und prüfen</button><button type="button" id="planning-retry" hidden>Anfrage mit gleicher Kennung erneut prüfen</button></div>
  <div class="planning-toolbar"><form id="planning-week-form"><label>Woche ab<input name="week" type="date" required></label><button>Woche anzeigen</button></form><div class="actions"><button type="button" id="planning-previous">Vorige Woche</button><button type="button" id="planning-next">Nächste Woche</button>{{if .User.CanWrite}}<button type="button" id="planning-copy">Woche oder Vorlage kopieren</button>{{end}}</div></div>
+ <p><a id="planning-stock-demand" href="/m/mealplan/demand/{{.Record.id}}?week={{.Record.week}}">Bedarf mehrerer Mahlzeiten mit Vorrat prüfen</a></p>
  <section id="planning-editor" class="panel" hidden aria-labelledby="planning-editor-title">
   <div class="page-heading"><h2 id="planning-editor-title" tabindex="-1">Mahlzeit bearbeiten</h2><button type="button" id="planning-editor-close">Entwurf schließen</button></div>
   <form id="planning-meal-form">

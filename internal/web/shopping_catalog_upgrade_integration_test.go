@@ -61,7 +61,7 @@ func TestShoppingCatalogPopulatedUpgrade(t *testing.T) {
 		t.Fatalf("upgrade changed existing shopping values: %s/%s/%t/%v", quantity, availability, unchanged, err)
 	}
 	var policies, events int
-	if err = f.owner.QueryRow(f.ctx, "SELECT (SELECT count(*) FROM core.audit_policies),(SELECT count(*) FROM core.audit_log WHERE resource_id=$1 AND action='CREATE')", item).Scan(&policies, &events); err != nil || policies != 69 || events != 1 {
+	if err = f.owner.QueryRow(f.ctx, "SELECT (SELECT count(*) FROM core.audit_policies),(SELECT count(*) FROM core.audit_log WHERE resource_id=$1 AND action='CREATE')", item).Scan(&policies, &events); err != nil || policies != 70 || events != 1 {
 		t.Fatalf("upgrade lost audit contract/history: %d/%d/%v", policies, events, err)
 	}
 }

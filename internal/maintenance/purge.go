@@ -75,6 +75,14 @@ func Purge(ctx context.Context, pool *pgxpool.Pool, requestID string) error {
 		return errors.New("module has no purgeable tables")
 	}
 	if mid == "mealplan" || mid == "pantry" {
+		if mid == "mealplan" {
+			if _, err = tx.Exec(ctx, "DELETE FROM core.planning_ingredient_bindings WHERE household_id=$1", hid); err != nil {
+				return err
+			}
+		} else if _, err = tx.Exec(ctx, `UPDATE core.planning_ingredient_bindings SET product_id=NULL,pantry_generation=NULL,unit_code=NULL,changed_by=$2
+ WHERE household_id=$1 AND product_id IS NOT NULL`, hid, actor); err != nil {
+			return err
+		}
 		if _, err = tx.Exec(ctx, "UPDATE core.meal_reservations SET state='released',release_reason='module_purged' WHERE household_id=$1 AND state='active'", hid); err != nil {
 			return err
 		}

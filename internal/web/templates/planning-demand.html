@@ -1,0 +1,32 @@
+{{define "planning-demand"}}
+<div id="planning-demand-board" data-plan="{{.Record.id}}" data-week="{{.Record.week}}" data-selected="{{.Record.selected}}" data-writable="{{.User.CanWrite}}">
+ <a href="/m/mealplan/workspace/{{.Record.id}}?week={{.Record.week}}">Zur Wochenplanung</a>
+ <h1>Bedarf und Vorrat prüfen</h1><p id="demand-plan-name">{{.Record.name}}</p>
+ <p id="demand-status" role="status">Mahlzeiten werden geladen …</p>
+ <div id="demand-error" class="notice error" role="alert" tabindex="-1" hidden></div>
+ <section class="panel" aria-labelledby="demand-selection-title"><h2 id="demand-selection-title">Ganze Mahlzeiten auswählen</h2>
+  <p>Offene oder geplante Rezeptmahlzeiten derselben Woche. Jede Komponente behält ihre eigenen Portionen. Höchstens 42 Mahlzeiten und insgesamt 500 Zutaten.</p>
+  <form id="demand-week-form" class="actions"><label>Woche ab<input name="week" type="date" value="{{.Record.week}}" required></label><button>Woche anzeigen</button></form>
+  <fieldset id="demand-selection"><legend class="sr-only">Mahlzeiten dieser Woche</legend><div id="demand-meals" class="demand-meals"></div></fieldset>
+  <p id="demand-no-meals" hidden>Keine offenen Rezeptmahlzeiten in dieser Woche. Lege in der Wochenplanung eine Mahlzeit mit bestätigtem Rezeptstand an.</p>
+  <button type="button" class="primary" id="demand-preview">Auswahl mit aktuellem Vorrat prüfen</button>
+ </section>
+ <section id="demand-result" class="panel" aria-labelledby="demand-result-title" hidden>
+  <h2 id="demand-result-title" tabindex="-1">Ergebnis der Bestandsprüfung</h2><p id="demand-summary"></p><p id="demand-read-at" class="fine"></p>
+  <p class="notice">Bereits geplante Einkaufspositionen sind noch nicht mit dieser Vorschau verknüpft. Die angezeigte Fehlmenge ist keine zusätzliche Einkaufsmenge. Diese Prüfung bucht keinen Vorrat und erstellt keinen Einkauf.</p>
+  <div id="demand-issues"></div><div id="demand-products"></div>
+  <h3>Zutaten und bestätigte Produkte</h3><p>Gleich benannte Zutaten werden erst nach deiner Produktzuordnung zusammengefasst. Unbekannte Mengen bleiben offen.</p><div id="demand-lines"></div>
+ </section>
+ {{if .User.CanWrite}}
+ <section id="demand-mapping" class="panel" aria-labelledby="demand-mapping-title" hidden>
+  <h2 id="demand-mapping-title" tabindex="-1">Produktzuordnung prüfen</h2><div id="demand-mapping-source"></div>
+  <form id="demand-mapping-form"><fieldset id="demand-mapping-fields"><label>Vorratsprodukt<select id="demand-product" data-reference="pantry/products"><option value="">Produkt auswählen</option></select></label><button id="demand-target-review">Gewähltes Produkt prüfen</button></fieldset></form>
+  <div id="demand-target" hidden><h3>Geprüfte Änderung</h3><div id="demand-target-description"></div><p>Nur die Produktzuordnung dieser gespeicherten Plan-Zutat wird geändert. Rezept, Portionen, physischer Vorrat und Einkauf bleiben erhalten.</p><button type="button" class="primary" id="demand-confirm">Diese Zuordnung speichern</button></div>
+  <div id="demand-mapping-error" class="notice error" role="alert" tabindex="-1" hidden></div>
+  <div class="actions"><button type="button" id="demand-retry" hidden>Denselben Vorgang erneut prüfen</button><button type="button" id="demand-clear">Bestehende Zuordnung aufheben prüfen</button><button type="button" id="demand-mapping-close">Zuordnung schließen</button></div>
+ </section>
+ {{end}}
+ <section id="demand-receipt" class="panel" aria-labelledby="demand-receipt-title" hidden><h2 id="demand-receipt-title" tabindex="-1">Zuordnung gespeichert</h2><p id="demand-receipt-content"></p></section>
+ <noscript><p>Die gemeinsame Bestandsprüfung benötigt das lokal gehostete JavaScript. Gespeicherte Mahlzeiten bleiben in der Wochenplanung erreichbar.</p></noscript>
+</div><script nonce="{{.Nonce}}" src="{{index .Asset "planning-demand.js"}}" defer></script>
+{{end}}

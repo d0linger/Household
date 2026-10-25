@@ -50,6 +50,7 @@
  $('#planning-retry').addEventListener('click',()=>{if(pending)perform(JSON.parse(pending.body),true);});
  function renderWeek(){
   $('#planning-title').textContent=week.plan.name;$('#planning-template-note').hidden=!week.plan.is_template;$('#planning-week-form').elements.week.value=start;
+  $('#planning-stock-demand').href='/m/mealplan/demand/'+pid+'?week='+encodeURIComponent(start);$('#planning-stock-demand').hidden=week.plan.is_template;
   $('#planning-previous').disabled=busy||shifted(start,-1)<week.plan.starts_on;$('#planning-next').disabled=busy||shifted(start,7)>week.plan.ends_on;
   const days=$('#planning-days');days.replaceChildren();
   for(const day of week.days){
@@ -63,6 +64,7 @@
      if(meal.requires_recipe_review)card.append(element('p','Rezeptstand vor der Einkaufsübernahme prüfen','notice'));
      for(const c of meal.components)card.append(element('p',c.title+' · '+display(c.servings)+' Portionen · Stand '+c.source_revision,'fine'));
      const details=element('details'),summary=element('summary','Aktionen für '+meal.title);details.append(summary);const actions=element('div',null,'planning-card-actions');actions.append(button('Zutatenbedarf ansehen',()=>viewDemand(meal)));const reserve=element('a','Vorrat für diese Mahlzeit prüfen');reserve.href='/m/mealplan/reservations/'+pid+'/'+meal.id;actions.append(reserve);
+     if(!week.plan.is_template&&meal.kind==='recipe'&&['open','planned'].includes(meal.status)){const demand=element('a','Bedarf dieser Mahlzeit mit Vorrat prüfen');demand.href='/m/mealplan/demand/'+pid+'?week='+encodeURIComponent(start)+'&meal='+meal.id;actions.append(demand);}
      if(writable){const movable=!['cooked','cancelled'].includes(meal.status);const move=button('Verschieben',()=>openOperation('move',meal)),swap=button('Tauschen',()=>openOperation('swap',meal));move.disabled=swap.disabled=!movable;actions.append(move,swap,button('Mahlzeit entfernen',()=>removeMeal(meal)));if(!movable)actions.append(element('p','Zum Verschieben zuerst im Editor wieder öffnen.','fine'));card.draggable=movable;card.addEventListener('dragstart',event=>{dragged=meal.id;event.dataTransfer.setData('text/plain',meal.id);});card.addEventListener('dragend',()=>{dragged=null;root.querySelectorAll('.planning-drop').forEach(n=>n.classList.remove('planning-drop'));});}
      details.append(actions);card.append(details);section.append(card);
     }

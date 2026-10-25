@@ -1,6 +1,6 @@
 # Stock reservations and planned differential meal demand
 
-Status: PA12/MP18 locally verified. MP14/MP17 remain open. Core19/pantry7/mealplan3, explicit reservation/release APIs, source hooks, bounded expiry and payload purge are implemented and accepted at the scopes in stock-reservations-verification.md. The checklist is52 verified/128 open.
+Status: PA12/MP18 locally verified at Core19/pantry7/mealplan3, at the scopes in stock-reservations-verification.md. MP14 is in development as described in planning-demand.md; MP17 remains open. Current checklist:52 verified/1 in progress/127 open; the reservation checkpoint had52 verified/128 open.
 
 ## Delivery order
 
