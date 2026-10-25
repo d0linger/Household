@@ -27,7 +27,7 @@ Ein Schema, eine Schaltfläche oder ein Mock allein schließt keinen Punkt ab. B
 
 ## Fortschritt
 
-180 Punkte: **23 verifiziert, 0 implementiert, 0 in Arbeit, 157 offen**. Dieser Zähler wird mit jedem abgeschlossenen Arbeitspaket abgeglichen.
+180 Punkte: **27 verifiziert, 0 implementiert, 0 in Arbeit, 153 offen**. Dieser Zähler wird mit jedem abgeschlossenen Arbeitspaket abgeglichen.
 
 ## Einkaufen
 
@@ -84,15 +84,15 @@ Ein Schema, eine Schaltfläche oder ein Mock allein schließt keinen Punkt ab. B
 | ID | Verbesserung | Abnahmekriterium | Status | Nachweis |
 |---|---|---|---|---|
 | RE01 | Rezepteditor | Grunddaten, Zutaten und Schritte gemeinsam mit Entwurf und Feldfehlern bearbeiten. | Verifiziert | Native Gesamtsuite + fokussierte Korrekturprüfung, Linux-Race, Upgrade/Restore; 37 Rezept-Browserchecks/4 axe, Gesamtkette333; RW01 unabhängig abgenommen |
-| RE02 | Kochmodus | Aktuellen Schritt, abgehakte Zutaten, Fortschritt und optional Wake Lock anbieten. | Offen | — |
-| RE03 | Portionen im Kochmodus | Mengen exakt skalieren, ohne das Originalrezept zu ändern. | Offen | — |
-| RE04 | Dauerhafte Küchentimer | Mehrere beschriftete Timer über Navigation und Neuladen hinweg wiederherstellen. | Offen | — |
+| RE02 | Kochmodus | Aktuellen Schritt, abgehakte Zutaten, Fortschritt und optional Wake Lock anbieten. | Verifiziert | Native Gesamtsuite, Linux-Race, Upgrade/Restore; 38 Koch-Browserchecks/4 axe, Gesamtkette371; DB-Prüfung ohne Befund, CK01 und Dokumentation abgenommen |
+| RE03 | Portionen im Kochmodus | Mengen exakt skalieren, ohne das Originalrezept zu ändern. | Verifiziert | Native Gesamtsuite, Linux-Race, Upgrade/Restore; 38 Koch-Browserchecks/4 axe, Gesamtkette371; DB-Prüfung ohne Befund, CK01 und Dokumentation abgenommen |
+| RE04 | Dauerhafte Küchentimer | Mehrere beschriftete Timer über Navigation und Neuladen hinweg wiederherstellen. | Verifiziert | Native Gesamtsuite, Linux-Race, Upgrade/Restore; 38 Koch-Browserchecks/4 axe, Gesamtkette371; DB-Prüfung ohne Befund, CK01 und Dokumentation abgenommen |
 | RE05 | Rezeptfilter | Dauer, Tags, Zutaten und letzte Zubereitung kombinieren und Ansichten speichern. | Offen | — |
 | RE06 | Geprüfter Rezeptimport | Strukturierte Dateien und Schema.org-Rezepte vor Übernahme prüfen. | Offen | — |
 | RE07 | Zutatenkatalog | Aliase normalisieren und Vorratsprodukte ausdrücklich zuordnen. | Offen | — |
 | RE08 | Versionen und Varianten | Rezeptstände und abgeleitete Varianten unabhängig vom Audit erhalten. | Verifiziert | Native Gesamtsuite + fokussierte Korrekturprüfung, Linux-Race, Upgrade/Restore; 37 Rezept-Browserchecks/4 axe, Gesamtkette333; RW01 unabhängig abgenommen |
 | RE09 | Zutatenersatz | Austauschregeln mit Mengenhinweisen anzeigen und manuell wählen. | Offen | — |
-| RE10 | Kochhistorie | Tatsächliche Portionen, Bewertung und Notizen einer Zubereitung speichern. | Offen | — |
+| RE10 | Kochhistorie | Tatsächliche Portionen, Bewertung und Notizen einer Zubereitung speichern. | Verifiziert | Native Gesamtsuite, Linux-Race, Upgrade/Restore; 38 Koch-Browserchecks/4 axe, Gesamtkette371; DB-Prüfung ohne Befund, CK01 und Dokumentation abgenommen |
 | RE11 | Vorratsabgleich | Verfügbare Mengen, Fehlmengen und unbekannte Zuordnungen getrennt anzeigen. | Offen | — |
 | RE12 | Vorrat nach Kochen | Verbrauch mit Mengen und Chargenauswahl prüfen und atomar buchen. | Offen | — |
 | RE13 | Portionskosten | Geschätzte Kosten mit Preisalter, Quellen und fehlenden Preisen anzeigen. | Offen | — |
@@ -280,3 +280,5 @@ Ein Schema, eine Schaltfläche oder ein Mock allein schließt keinen Punkt ab. B
 - Erste Sichtprüfung Desktop/390px dunkel erfolgt; die unabhängige UI- und Sicherheitsprüfung war zu diesem Zwischenstand noch offen und ist inzwischen wie oben beschrieben abgeschlossen. Der statische Design-Detektor konnte den Go-Template-CSS-Link nicht auflösen und meldete deshalb eine flache Hierarchie; separate CSS-Prüfung ohne weitere Befunde. Tatsächliche Browser- und axe-Ergebnisse sind maßgeblich.
 - Die Änderungen laufen bisher auf dem isolierten Prüfserver 8101; die Live-Docker-Instanz 8100 wurde noch nicht aktualisiert.
 - Vorherige Prüfstände bleiben in `docs/implementation.md` dokumentiert.
+
+- RE02/RE03/RE04/RE10 abgeschlossen: eingefrorene persönliche Kochsitzungen, exakte Portionsrechnung, dauerhafte Timer und bestätigter unveränderlicher Kochverlauf. Native Gesamtregression 65,8 % (3854/5861), Web 406,497 s; fokussierte Linux-Race für Kochen/Rezepte 168,684 s; Verify 15,3 % (924/6040), 38 Node-Tests, 33 Migrationshashes. Lint und Gosec ohne Befund. Synthetischer Restore erhielt UTC-Endzeit, pausierte Millisekunden und genau einen Abschluss. Elfteilige Browserkette: 371 Checks, davon Kochen 38 mit vier sauberen axe-Scans und vier geprüften Aufnahmen. CK01-Mengenbezug korrigiert und eng abgenommen; separate Dokumentation in cooking-session-verification.md. Live-Port8100 unverändert.

@@ -32,6 +32,8 @@ A domain mutation takes the household shared barrier, validates/locks current se
 
 Stock changes serialize on their lot. Posted financial entries and allocations are protected by triggers; allocation parent links are immutable, and deferred checks require exact posted totals. Corrections append compensating entries. Parent edits cannot invalidate existing fuel, meter, lot, or meal-plan history. Immutable stock movements need no runtime UPDATE permission merely to read them for a correction.
 
+Recipe authoring commits a complete ordered bundle and captures one immutable final version per transaction. Private cooking sessions refer to a selected version within the recipe schema. Session/timer writes lock the parent first, read authoritative PostgreSQL time after locks and advance optimistic versions. Confirmed cooking history is household-readable and permanently unique per session; private working progress is absent from generic CRUD, search and reference projections.
+
 The household exclusive barrier serializes module state changes, privileged purge, and consistent backup snapshots. The runtime has one app replica; its read/write gate prevents HTML/API/file responses crossing an in-process disable commit. Each authenticated request refreshes activation snapshots, so operator generation changes become visible. Writes also verify database state/generation inside their transaction.
 
 ## Runtime and failure behavior
@@ -50,7 +52,7 @@ The service worker precaches only fingerprinted public assets and a neutral offl
 
 ## Limits and selected exclusions
 
-The supported deployment is one household, one app replica, EUR, and local storage. Lists use bounded pages with stable sort ties; they do not promise a snapshot across page changes. Reports and CSV exports cap at 10,000 records. Reference pickers return 100 matches; use their search API for larger collections. Imports cap at 500 rows and 1 MiB. Uploads cap at 10 MiB and 20 megapixels, with a 2 GiB household quota.
+The supported deployment is one household, one app replica, EUR, and local storage. Lists use bounded pages with stable sort ties; they do not promise a snapshot across page changes. Reports and CSV exports generally cap at 10,000 records; dedicated pantry aggregates use their documented bounded query contract. Searchable reference pickers return 50 results per page with signed scope-bound cursors and retain a selected value separately. Imports cap at 500 rows and 1 MiB. Uploads cap at 10 MiB and 20 megapixels, with a 2 GiB household quota.
 
 Cloud AI, external push delivery, passkeys, multi-household hosting, high-availability app replicas, arbitrary plugins, and arbitrary OCR executables are excluded from this release. Local OCR is a separate optional image target. The schema contains some future integration primitives; unused tables are not user-facing capability claims.
 

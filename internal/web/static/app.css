@@ -41,3 +41,21 @@
 #recipe-history-content { max-width: 75ch; white-space: pre-wrap; overflow-wrap: anywhere; }
 #recipe-tags li { display: flex; align-items: center; gap: .5rem; padding-block: .25rem; }
 @media(max-width:600px) { .recipe-row-controls { width: 100%; } .recipe-row-heading { gap: .75rem; } }
+.cooking-step { margin-block:1rem; }
+.cooking-step h2 { margin-top:0; }
+#cooking-instruction { max-width:65ch; font-size:clamp(1.125rem,2.5vw,1.4rem); line-height:1.65; white-space:pre-wrap; overflow-wrap:anywhere; }
+#cooking-progress { width:100%; height:.5rem; accent-color:var(--accent); }
+.cooking-portions,.cooking-tools { display:flex; flex-wrap:wrap; gap:.75rem; align-items:end; margin-block:1rem; }
+.cooking-ingredients { padding:0; list-style:none; }
+.cooking-ingredients li { border-bottom:1px solid var(--line); padding-block:.75rem; }
+.cooking-ingredients label { display:flex; flex-direction:row; gap:.75rem; align-items:start; min-height:44px; }
+.cooking-ingredients input { width:24px; min-height:24px; margin-top:.2rem; flex-shrink:0; }
+.cooking-ingredients small { display:block; }
+.cooking-timer { padding-block:1rem; border-top:1px solid var(--line); }
+.cooking-timer h3 { margin:0; overflow-wrap:anywhere; }
+.cooking-timer output { font-variant-numeric:tabular-nums; font-size:1.25rem; display:block; margin-block:.5rem; }
+.cooking-timer .actions { justify-content:start; }
+.cooking-text,#cooking-record-source,#cooking-source-content { white-space:pre-wrap; overflow-wrap:anywhere; }
+#cooking summary { cursor:pointer; min-height:44px; align-content:center; }
+#cooking-refresh { margin-block:.75rem; }
+#cooking-abandon { margin-top:1rem; }
