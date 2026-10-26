@@ -21,6 +21,8 @@ try {
     if($LASTEXITCODE -ne 0){throw 'Workflow policy failed'}
     node scripts/check-migrations.cjs
     if($LASTEXITCODE -ne 0){throw 'Migration checksums failed'}
+    node scripts/update-tasklist.cjs --check
+    if($LASTEXITCODE -ne 0){throw 'Task list is stale'}
     if($Integration){& ./scripts/test-integration.ps1}
     if($Race){& ./scripts/test-race.ps1}
     if($Browser){npm run test:browser;if($LASTEXITCODE -ne 0){throw 'Browser checks failed'}}
