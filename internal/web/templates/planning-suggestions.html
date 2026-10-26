@@ -1,0 +1,21 @@
+{{define "planning-suggestions"}}
+<details id="planning-suggestions" class="planning-suggestions">
+ <summary>Rezeptvorschläge mit Vorrat und Datumsgründen</summary>
+ <p>Jedes Rezept wird einzeln mit dem aktuell freien Vorrat verglichen. Mehrere verfügbare Alternativen sind zusammen noch keine gedeckte Wochenplanung.</p>
+ <form id="suggestion-form"><fieldset id="suggestion-fields" class="form-grid">
+  <label class="full">Rezepte eingrenzen<input name="q" type="search" maxlength="300" placeholder="Rezepttitel"></label>
+  <label>Portionen für den Vergleich<input name="servings" inputmode="decimal" value="1" required></label>
+  <label>Kochen am<input name="on" type="date" required></label>
+  <button class="primary">Auswahl neu bewerten</button>
+ </fieldset></form>
+ <p id="suggestion-status" role="status">Portionen und Tag prüfen, dann die Auswahl bewerten.</p>
+ <p id="suggestion-error" class="notice error" role="alert" tabindex="-1" hidden></p>
+ <section id="suggestion-result" hidden aria-labelledby="suggestion-result-title">
+  <h3 id="suggestion-result-title" tabindex="-1">Bewertete Rezeptauswahl</h3>
+  <p id="suggestion-read-at" class="fine"></p><p id="suggestion-scope" class="fine"></p>
+  <p class="fine">Verbrauchsdatum, MHD und Hinweise nach dem Öffnen werden getrennt angezeigt. Abgelaufene Verbrauchsdaten zählen nicht zur Deckung. Datumsangaben ersetzen keine Prüfung des Lebensmittels.</p>
+  <ol id="suggestion-candidates" class="suggestion-candidates"></ol>
+  <button id="suggestion-next" type="button" hidden>Nächste Rezeptauswahl bewerten</button>
+ </section>
+</details>
+{{end}}

@@ -186,6 +186,7 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /planning-purchases", s.require(s.planningPurchasesPage))
 	mux.Handle("GET /m/mealplan/reservations/{plan}/{meal}", s.require(s.reservationPage))
 	mux.Handle("GET /api/v1/planning/source/{source}", s.require(s.planningAPI))
+	mux.Handle("GET /api/v1/planning/suggestions", s.require(s.planningSuggestionsAPI))
 	mux.Handle("GET /api/v1/planning-purchases/preview", s.require(s.planningPurchasesAPI))
 	mux.Handle("GET /api/v1/planning-purchases/scope", s.require(s.planningPurchasesAPI))
 	mux.Handle("POST /api/v1/planning-purchases/sync", s.require(s.planningPurchasesAPI))

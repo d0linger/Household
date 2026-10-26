@@ -27,7 +27,7 @@ Ein Schema, eine Schaltfläche oder ein Mock allein schließt keinen Punkt ab. B
 
 ## Fortschritt
 
-180 Punkte: **55 verifiziert, 0 implementiert, 2 in Arbeit, 123 offen**. Dieser Zähler wird mit jedem abgeschlossenen Arbeitspaket abgeglichen.
+180 Punkte: **57 verifiziert, 0 implementiert, 2 in Arbeit, 121 offen**. Dieser Zähler wird mit jedem abgeschlossenen Arbeitspaket abgeglichen.
 
 ## Einkaufen
 
@@ -134,7 +134,7 @@ Ein Schema, eine Schaltfläche oder ein Mock allein schließt keinen Punkt ab. B
 | ID | Verbesserung | Abnahmekriterium | Status | Nachweis |
 |---|---|---|---|---|
 | EX01 | Monatsübersicht | Gebuchte Beträge, Entwürfe und Hauptkategorien getrennt darstellen. | Offen | — |
-| EX02 | Aufgeteilte Erfassung | Buchung und Kategoriezeilen gemeinsam bearbeiten; Restdifferenz sichtbar halten. | Offen | — |
+| EX02 | Aufgeteilte Erfassung | Buchung und Kategoriezeilen gemeinsam bearbeiten; Restdifferenz sichtbar halten. | In Arbeit | Getrennte ignorierte Vorbereitung mit expliziten EUR-Eingaben, exakten Cent-/Restbeträgen,100-Zeilen-Grenze, Versions-/Identitätsprüfung und Entwurf-vs-Buchen. Neun gemeinsame reine Tests0,843s/95,2% Paketabdeckung; keine SQL-/HTTP-/UI-Funktion in der Anwendung. [Vertrag](finance-workspace.md). |
 | EX03 | Buchungszustände | Entwurf, gebucht, erstattet und korrigiert mit passenden Aktionen erklären. | Offen | — |
 | EX04 | Gespeicherte Finanzfilter | Person, Kategorie, Empfänger, Zeitraum und Status kombinieren. | Offen | — |
 | EX05 | Belegprüfung | Beleg und Buchung nebeneinander beziehungsweise mobil mit erhaltenem Formularzustand zeigen. | Offen | — |
@@ -151,7 +151,7 @@ Ein Schema, eine Schaltfläche oder ein Mock allein schließt keinen Punkt ab. B
 | EX16 | Finanzberichte | Konten-, Personen-, Kategorien- und Zeitaggregate serverseitig nachvollziehbar berechnen. | Offen | — |
 | EX17 | Kontoabstimmung | Externen Stichtagssaldo vergleichen; keine stillen Ausgleichsbuchungen. | Offen | — |
 | EX18 | Mehrere Währungen | Originalbetrag, Basisbetrag, Kurs, Datum und Rundungsregel unveränderlich nachvollziehen. | Offen | — |
-| EX19 | Finanzsichtbarkeit | Konten- und Datensatzrechte in Suche, Aggregaten, Dateien, Export und Audit anwenden. | Offen | — |
+| EX19 | Finanzsichtbarkeit | Konten- und Datensatzrechte in Suche, Aggregaten, Dateien, Export und Audit anwenden. | In Arbeit | Quelleninventur und isolierte strukturelle Freigabenormalisierung vorbereitet; gemeinsame neun reine Tests bestanden. Aktuelle Anwendung bleibt haushaltsweit geteilt. Core-Verträge und sämtliche Daten-/Such-/Export-/Beleg-/Audit-/Replaypfade noch umzusetzen und tatsächlich zu prüfen. [Vertrag](finance-workspace.md). |
 | EX20 | Buchungsherkunft | Manuell, Bank, Tankung und Beleg über gemeinsame Herkunft und Dublettenschutz verbinden. | Offen | — |
 
 ## Aufgaben
@@ -243,8 +243,8 @@ Ein Schema, eine Schaltfläche oder ein Mock allein schließt keinen Punkt ab. B
 | MP08 | Geplante Reste | Erwartete Restportionen mit Folgemahlzeit verknüpfen und vom realen Bestand unterscheiden. | Offen | — |
 | MP09 | Mehrere Komponenten | Beilagen und Hauptgerichte mit eigenen Portionen und gemeinsamer Bedarfsvorschau planen. | Verifiziert | Native Gesamtsuite 66,8 %, fokussierte Linux-Race, Upgrade/Purge/Restore; Planung 38 Browserchecks/4 axe, Gesamtkette 409; DB-Prüfung und PW01/PW02-Abnahme bestanden. |
 | MP10 | Zeitbudget | Vorbereitung und Kochen pro Tag berechnen; Parallelität nur ausdrücklich annehmen. | Verifiziert | Native Gesamtsuite 66,8 %, fokussierte Linux-Race, Upgrade/Purge/Restore; Planung 38 Browserchecks/4 axe, Gesamtkette 409; DB-Prüfung und PW01/PW02-Abnahme bestanden. |
-| MP11 | Vorratsbasierte Vorschläge | Verfügbarkeit anhand ausdrücklicher Produktzuordnungen bewerten. | In Arbeit | Getrennte, ignorierte Vorbereitung: exakte unabhängige Alternativenbewertung; konsistenter begrenzter Store-/Claim-Lesedienst kompiliert,14 reine Tests bestanden(Store1,401s). Fünf PostgreSQL-Verträge kompiliert, noch nicht ausgeführt; keine HTTP/PWA-Anbindung oder Feature-Abnahme. MP06-Prüfstand unverändert. [Vertrag](planning-suggestions.md). |
-| MP12 | Verfallsorientierte Planung | Geöffnete und bald fällige Produkte mit erklärbarem Grund priorisieren. | In Arbeit | Getrennte Vorbereitung mit vollständiger begrenzter Chargenbewertung, MHD-/Verbrauchs-/Öffnungsgründen,0-Tage-Abgrenzung, Prüfhinweisen und Ranking.14 gemeinsame reine Tests bestanden; vergangene Planungstage für aktuellen Vorrat abgelehnt. Datenbankverträge, API/PWA und Abnahme noch offen. [Vertrag](planning-suggestions.md). |
+| MP11 | Vorratsbasierte Vorschläge | Verfügbarkeit anhand ausdrücklicher Produktzuordnungen bewerten. | Verifiziert | Aktueller Lesedienst/signierte API/PWA; vollständige native Regression295Haupttests,73,3% interne Abdeckung(Web1234,590s);42Webverträge in Linux-Race603,489s.778Browserchecks,38Vorschlagschecks/10saubere axe-Scans, SUG-F01 resolved/ship, separate Designprüfung, aktuelle Images und verschlüsselter synthetischer Restore. [Abnahme](planning-suggestions-verification.md). |
+| MP12 | Verfallsorientierte Planung | Geöffnete und bald fällige Produkte mit erklärbarem Grund priorisieren. | Verifiziert | Vollständige begrenzte freie Chargen/aktuelle Ansprüche, getrennte MHD-/Verbrauchs-/Öffnungsgründe,0-Tage-Abgrenzung, explizite Prüfzustände und Ranking pro Auswahlseite. Gemeinsame295native Haupttests/73,3%,42gezielte Web-Raceverträge,778Browserchecks und aktuelle Restore-/Reviewnachweise bestanden. [Abnahme](planning-suggestions-verification.md). |
 | MP13 | Wochenbudget | Geschätzte Kosten und Alternativen mit fehlenden Preisen anzeigen. | Offen | — |
 | MP14 | Differenzieller Bedarf | Freien, reservierten und bereits vorgemerkten Bestand korrekt vom Bedarf abziehen. | Verifiziert | Vollständige native Regression72,3% (259 Haupttests),37 Planungs-Verträge in gezielter Linux-Race708,702s mit weiteren Integrations-/Auditfällen;710 Browserchecks, exakter synthetischer Restore. Zurechenbare Einkäufe über MP17, keine doppelte Bestandsdeckung. [Gemeinsame Abnahme](planning-shopping-verification.md). |
 | MP15 | Essens-Kalender | ICS mit stabilen Kennungen, Aktualisierung und widerrufbaren Feeds anbieten. | Offen | — |
