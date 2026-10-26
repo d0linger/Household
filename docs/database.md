@@ -2,7 +2,7 @@
 
 The embedded [migration files](../internal/database/migrations) are the complete executable schema definition, including every column, default, check, foreign key, index, trigger and grant. This dictionary explains their ownership and invariants. UUIDs identify resources; household-owned records carry `household_id` and attribution. Mutable domain records use optimistic versions; immutable journals and identity links follow their explicit contracts. Audit uses a generated sequence plus a public event UUID.
 
-Current schema checkpoint: Core23, Shopping6, Pantry10, Recipes4 and Mealplan7; other foundation schemas retain their independent histories. The manifest verifies61migration files, and readiness classifies74audit policies/48optional-domain tables. The numbered sections below retain the migration history that introduced each invariant. [Meal participants](planning-participants.md) and [read-only suggestions](planning-suggestions.md) extend that history.
+Current schema checkpoint: Core23, Shopping6, Pantry10, Recipes4, Expenses3 and Mealplan7; other foundation schemas retain their independent histories. The manifest contains63migration files, and readiness classifies74audit policies/48optional-domain tables. Expenses3 adds the [shared editing foundation](finance-workspace.md); its focused preparation tests pass and root compatibility checks are tracked separately. The numbered sections below retain the migration history that introduced each invariant. [Meal participants](planning-participants.md) and [read-only suggestions](planning-suggestions.md) extend that history.
 
 ## Core schema
 
@@ -78,7 +78,7 @@ Quantities use `numeric(18,6)`; currency uses integer cents, never floating-poin
 
 ## Financial trigger behavior
 
-`expenses.protect_posted` blocks mutation/deletion of a posted entry and mutation of its allocations. Every allocation write locks its parent. Reparenting is prohibited, closing the old-parent/new-parent loophole. Deferred constraint triggers require posted allocation totals to equal the entry exactly, and reversal amounts to negate their original. Owner maintenance is separately privileged; the HTTP runtime never receives those credentials.
+`expenses.protect_posted` blocks mutation/deletion of a posted entry and mutation of its allocations. Every allocation write locks its household-bound parent with NOWAIT; the generic Go child path uses the same fail-fast lock. Reparenting and identity changes are prohibited. Expenses3 increments the parent version after every runtime child insert/update/delete, preserves owner restore versions, and allows draft cascade after parent deletion. Its household upgrade barrier drains prior writers; the ordered editor index supports the101-row completeness sentinel. `expenses.editing_ready()` checks exact trigger behavior/identity, individual privileges, composite parent FK and ordered index definition. Deferred constraint triggers require posted allocation totals to equal the entry exactly, and reversal amounts to negate their original. Owner maintenance is separately privileged; the HTTP runtime never receives those credentials.
 
 `core.reject_mutation` protects audit history and stock movements. It is an invoker function with no `SECURITY DEFINER`; PUBLIC execution grants are removed. Runtime DML privileges additionally prevent direct UPDATE/DELETE of immutable tables. Runtime has no schema CREATE/ALTER/TRUNCATE permission.
 

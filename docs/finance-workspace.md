@@ -1,6 +1,6 @@
 # Atomic expense editing and financial visibility
 
-Next preparation: EX02 transaction integrity first, then the complete EX19 selected-access contract. MP11/MP12 is saved as16affdd; PA15 reuses it in the frozen main candidate. Financial work remains in ignored `.local/finance-work`; no new financial schema, HTTP permission, editor or operational acceptance is added to the application yet. EX01/EX03/EX06/EX09/EX10 remain separate later acceptance items.
+EX02 transaction integrity comes first, followed by the complete EX19 selected-access contract. PA15 is saved as1748d6c. The first financial foundation is now materialized from the separately tested preparation: Expenses3 guards/readiness, exact shared normalization and a bounded current-authorized bundle reader. This does not yet expose a new HTTP editor or selected financial access. EX01/EX03/EX06/EX09/EX10 remain separate later acceptance items.
 
 The first EX02 increment retains the existing explicit household-wide sharing. It does not need a fictitious access-policy revision or new Core visibility tables. Remove AccessVersion from the shared editor DTO; introduce real policy revisions only when the later Core contract exists. The complete selected-access inventory below remains mandatory before any restricted mode is offered.
 
@@ -46,7 +46,7 @@ The smallest safe first increment excludes the new financial editor and financia
 
 Required indirect cases include revocation after notification delivery, during OCR and after confirmed capture; a visible source linked to a selected expense; revocation between mutation and replay; deletion/purge with retained audit; and policy/account changes with a local draft present. Reuse the existing capture privacy sentinel/lifecycle test patterns.
 
-The current child guard locks the parent but does not increment its version. Introduce a parent content revision covering every category-line insert/update/delete, or compare complete child identities/versions in addition to parent version. The bundle must prove a complete read set, including deliberate removals, before replacement. A truncated or stale client cannot silently drop unseen lines. Preserve existing posted/oversized legacy records and offer a bounded read/recovery state rather than truncating them.
+The prior Expenses2 child guard locked the parent without incrementing its version. Expenses3 now increments its parent content revision after every App category-line insert/update/delete; complete child identities/versions are checked in addition to the parent version. The bundle proves a complete read set, including deliberate removals, before replacement. A truncated or stale client cannot silently drop unseen lines. Preserve existing posted/oversized legacy records and offer a bounded read/recovery state rather than truncating them.
 
 Lock order is household/module → current access policy/context → entry → sorted bounded children → categories/memberships. Incumbent generic child writes acquire a child before its parent; use bounded NOWAIT contention and compatible guards rather than allowing opposite lock orders to wait indefinitely. New selections require active resources; retained inactive payer/category references remain visibly distinguishable and receive an explicit posting decision.
 
@@ -55,6 +55,22 @@ Save/post changes, category lines, parent revision, attribution, search/audit pr
 Use only new forward migrations. Core contract creation precedes Expenses backfill/guards; initial empty installation and populated Expenses2 upgrade must both work. Existing immutable migration hashes stay unchanged. Runtime roles receive only exact necessary grants; fixed search paths, exact trigger/type/constraint checks and audit-policy/readiness census accompany schema changes. Fuel-to-expense, capture/import and all generic child paths must participate in the new invariants before availability.
 
 ## Implementation sequence
+
+### EX02 delivery checklist
+
+- [x] Exact shared EUR/cent normalization and complete child-set reconciliation.
+- [x] Expenses3 migration barrier, parent revision, posted guards and NOWAIT compatibility.
+- [x] Exact readiness including individual privileges, trigger restrictions and ordered index direction.
+- [x] Current-authorized bounded RR bundle reader, legacy bounds and inactive references.
+- [x] Ten new root PostgreSQL contracts and six existing compatibility contracts actually pass.
+- [ ] Atomic shared writer and permanent minimal proof, including replay, late rollback and real purge acceptance.
+- [ ] Current-authorized private HTTP endpoints and mobile editor; explicit allocation rest and posting review.
+- [ ] Financial offline-queue exclusion, browser/axe/keyboard and independent interface review.
+- [ ] Fresh final native/scoped-race/security/image/recovery acceptance before EX02 is verified.
+
+The word private for HTTP denotes authenticated, non-cacheable transport; selected financial visibility remains a later EX19 feature.
+
+### Ordered implementation work
 
 1. Preserve the accepted MP11/MP12 and PA15 candidate while preparing the financial increment separately.
 2. Finalize pure EUR/header/line normalization and complete child-set reconciliation; test signed differences, bounds and no usable partial result after error.
@@ -83,4 +99,10 @@ Nine pure tests pass in the ignored preparation copy(package expenseedit0.843s,9
 
 The subsequent shared preparation has14pure contracts passing(package0.901s,95.5% observed package coverage), plus compile-only integration and affected tagged lint0issues. Complete baseline/current identities and versions detect unseen/removed/edited children independently of parent-version history; removals are explicit, ordered and bounded. Initial preparation compile failed for a missing test-only fixture; the first lint found a capitalized sentinel error. Both are corrected in the successful repeat.
 
-Expenses3 migration/readiness and five PostgreSQL contract sources are prepared only in the ignored export. They have not yet been executed against PostgreSQL. Source review found conditional/UPDATE-OF triggers could fool the first readiness draft; the prepared checker now requires no WHEN/column restriction/arguments and test sources cover both counterexamples. Both Go and SQL parent locks use NOWAIT; App child writes bump the parent while owner restore/purge behavior is preserved. This is source/compile evidence only. Root remains Expenses2 with61migration hashes while PA15 native/race is active.
+The final preparation campaign actually passes ten PostgreSQL contracts in63.878s: five integrity/upgrade contracts and five reader contracts. This includes populated Expenses2 and101-line legacy preservation, old-writer drain at the household barrier, direct App child version propagation and actor audit, posted immutability, signed discounts, draft cascade, NOWAIT contention, current authorization, household calendar, complete row/text bounds and one consistent RR snapshot. Readiness rejects each missing CRUD privilege, disabled/conditional/column-restricted trigger, wrong index key order and mixed index direction. The new Btree follows(household_id,entry_id,position,id); readiness checks its exact ascending definition, valid/ready/live status and absence of predicates/expressions.
+
+An earlier five-reader campaign and its diagnostic repeat failed because the non-superuser owner cannot inspect another role's pg_stat_activity query details. The controlled snapshot observer now uses the App role; its narrow repeat and the final ten-contract campaign pass without weakening the consistency assertion or database privileges. Those failed logs remain evidence. Source-only independent review closes the index/readiness and shared text-limit findings; it performed no database tests.
+
+Only13named files were copied after hash-checking the two existing root targets against their preparation baseline. The manifest adds two new hashes while preserving all61accepted hashes. Root now expects Expenses3/63migration files, with74audit policies/48optional-domain tables unchanged. Root compatibility passes six existing application/audit/migration/capture contracts(Web91.379s) and all ten new financial contracts(Web61.927s). Pure root tests pass0.747s/95.5%; standard verification passes17.2%(1946/11299),78Node cases,63migration hashes, module verification and workflow policy; affected tagged lint0issues. The old PA15 full-suite/race/browser/image evidence does not certify these new financial changes. Latest pure preparation passes14contracts in0.732s with95.5% package coverage; affected tagged lint reports0issues. EX02/EX19 remain in progress, checklist58verified/2inprogress/120open.
+
+Foundation Gosec passes with explicit cmd/internal scope:133files/20623lines/0findings. The earlier unrestricted traversal included the ignored tool cache and was stopped; it is not counted as a passing scan. No new dependency is required.

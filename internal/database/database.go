@@ -183,6 +183,13 @@ func Ready(ctx context.Context, pool *pgxpool.Pool) error {
 	if !participants {
 		return errors.New("incomplete planning participant contract")
 	}
+	var expenseEditing bool
+	if err := pool.QueryRow(ctx, "SELECT expenses.editing_ready()").Scan(&expenseEditing); err != nil {
+		return fmt.Errorf("inspect expense editor integrity: %w", err)
+	}
+	if !expenseEditing {
+		return errors.New("incomplete expense editor integrity contract")
+	}
 	return nil
 }
 

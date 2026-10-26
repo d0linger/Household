@@ -196,16 +196,12 @@ func (s *Store) validateDomain(ctx context.Context, tx pgx.Tx, id auth.Identity,
 			}
 		}
 		var status string
-		var amount int64
-		err := tx.QueryRow(ctx, "SELECT state,amount_minor FROM expenses.entries WHERE household_id=$1 AND id=$2 FOR UPDATE", id.HouseholdID, data["entry_id"]).Scan(&status, &amount)
+		err := tx.QueryRow(ctx, "SELECT state FROM expenses.entries WHERE household_id=$1 AND id=$2 FOR UPDATE NOWAIT", id.HouseholdID, data["entry_id"]).Scan(&status)
 		if err != nil {
 			return err
 		}
 		if status == "posted" {
 			return bad("Gebuchte Aufteilung ist unveränderlich")
-		}
-		if amount > 0 && Int(data["amount_minor"]) < 0 || amount < 0 && Int(data["amount_minor"]) > 0 {
-			return bad("Teilbetrag muss das Vorzeichen der Ausgabe haben")
 		}
 	case "chores/task_templates":
 		if Int(data["repeat_days"]) == 0 {

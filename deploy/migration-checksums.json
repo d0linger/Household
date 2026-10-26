@@ -31,6 +31,8 @@
   "expenses/000001_init.up.sql": "4e9d54248e716f8d95109299ee3bb9606d674d16f8d597ab8a934e4530c8019e",
   "expenses/000002_integrity.down.sql": "bfce30e078d29f61e0d5b7134479e57abc68c396fb1afffef0b63b51f403a763",
   "expenses/000002_integrity.up.sql": "0b0be40dd4bf2fbdcb1079d3145323170bed4fe66ebeff3b64ce5c52fae8b2c3",
+  "expenses/000003_editor_integrity.down.sql": "e5bfcc331a814fe1f61020eeb39233a0a4df59f15cccf0e523c4a1c3f376f58f",
+  "expenses/000003_editor_integrity.up.sql": "cce758269a6df22f6f6aef9d00f34d4d8f930589e9fbc380044893ba6be1e787",
   "fuel/000001_init.up.sql": "9b63c9cfe8fe05bd3d839566ccf586240a3d4d3730cc5555fccc0bb29f99817e",
   "mealplan/000001_init.up.sql": "f6e35e44c2f1f8f37b1b903d31e115d83329cea4daabf9fadf19ec8226db2ba5",
   "mealplan/000002_workspace.up.sql": "9420d181093b5d37eee88553614e38804c603df786f0374349778678fd75b223",
