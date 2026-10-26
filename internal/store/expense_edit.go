@@ -92,8 +92,11 @@ func (s *Store) SaveExpense(ctx context.Context, id auth.Identity, key, requestI
 		if !bytes.Equal(hash[:], priorHash) {
 			return ExpenseEditReceipt{}, ErrConflict
 		}
+		if _, err = lockFinancialPolicy(ctx, tx, id, "entries", prior.EntryID, financialEdit); err != nil {
+			return ExpenseEditReceipt{}, shoppingContention(err)
+		}
 		prior.Replayed = true
-		if err = currentExpenseReceipt(ctx, tx, id, &prior); err != nil {
+		if err = currentExpenseReceipt(ctx, tx, id, scope.Generation, &prior); err != nil {
 			return ExpenseEditReceipt{}, err
 		}
 		return prior, nil
@@ -101,9 +104,22 @@ func (s *Store) SaveExpense(ctx context.Context, id auth.Identity, key, requestI
 	if !errors.Is(err, pgx.ErrNoRows) {
 		return ExpenseEditReceipt{}, err
 	}
+	if draft.EntryID != "" {
+		if _, err = lockFinancialPolicy(ctx, tx, id, "entries", draft.EntryID, financialEdit); err != nil {
+			return ExpenseEditReceipt{}, shoppingContention(err)
+		}
+	}
 	current, payer, err := lockExpenseEdit(ctx, tx, id, draft)
 	if err != nil {
 		return ExpenseEditReceipt{}, shoppingContention(err)
+	}
+	if draft.EntryID != "" {
+		// RC takes a new snapshot after parent/child locks: the complete binding
+		// set must still agree before reconciling or exposing financial facts.
+		currentScope := financialScope{householdID: id.HouseholdID, generation: scope.Generation}
+		if _, err = readFinancialAccessVersion(ctx, tx, currentScope, draft.EntryID); err != nil {
+			return ExpenseEditReceipt{}, err
+		}
 	}
 	versions := make([]expenseedit.LineVersion, 0, len(current))
 	for _, line := range current {
@@ -146,10 +162,16 @@ func readExpenseEditProof(ctx context.Context, tx pgx.Tx, id auth.Identity, key 
 	return out, hash, err
 }
 
-func currentExpenseReceipt(ctx context.Context, tx pgx.Tx, id auth.Identity, out *ExpenseEditReceipt) error {
-	err := tx.QueryRow(ctx, "SELECT version,state FROM expenses.entries WHERE household_id=$1 AND id=$2", id.HouseholdID, out.EntryID).Scan(&out.CurrentVersion, &out.CurrentState)
+func currentExpenseReceipt(ctx context.Context, tx pgx.Tx, id auth.Identity, generation int64, out *ExpenseEditReceipt) error {
+	scope := financialScope{householdID: id.HouseholdID, generation: generation, role: id.Role}
+	predicate, args, err := financialPredicate(scope, "entries", financialEdit, 3)
+	if err != nil {
+		return err
+	}
+	err = tx.QueryRow(ctx, "SELECT t.version,t.state FROM expenses.entries t WHERE t.household_id=$1 AND t.id=$2 AND "+predicate,
+		append([]any{id.HouseholdID, out.EntryID}, args...)...).Scan(&out.CurrentVersion, &out.CurrentState)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return nil
+		return ErrNotFound
 	}
 	if err == nil {
 		out.CurrentExists = true

@@ -188,8 +188,8 @@ func TestExpenseEditReplayAfterFollowupDeletionAndResponsePruning(t *testing.T) 
 	}
 	before = expenseEditSnapshot(t, f)
 	replay, err = f.app.Store.SaveExpense(f.ctx, f.identity, key, value.UUID(), in)
-	if err != nil || !replay.Replayed || replay.CurrentExists || replay.ID != first.ID || expenseEditSnapshot(t, f) != before {
-		t.Fatal("replay after deletion recreated source or old form", replay, err)
+	if !errors.Is(err, store.ErrNotFound) || replay != (store.ExpenseEditReceipt{}) || expenseEditSnapshot(t, f) != before {
+		t.Fatal("replay after deletion exposed retired identity or repeated effects", replay, err)
 	}
 }
 

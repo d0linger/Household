@@ -15,6 +15,7 @@ import (
 
 type financialScope struct {
 	householdID string
+	role        string
 	generation  int64
 	timezone    string
 	currency    string
@@ -27,7 +28,7 @@ func readFinancialScope(ctx context.Context, tx pgx.Tx, id auth.Identity) (finan
 		!value.ValidUUID(id.SessionID) || id.AuthVersion <= 0 {
 		return financialScope{}, ErrForbidden
 	}
-	out := financialScope{householdID: id.HouseholdID}
+	out := financialScope{householdID: id.HouseholdID, role: id.Role}
 	var enabled bool
 	err := tx.QueryRow(ctx, `SELECT h.timezone,h.currency_code,transaction_timestamp(),
  coalesce(ms.state='enabled',false),coalesce(ms.data_generation,0)
@@ -56,7 +57,17 @@ func financialEntity(mid, entity string) bool {
 
 // The caller supplies only compiled entity kinds and a fixed t alias. Every
 // actual child must inherit the live policy; partial financial facts are denied.
-func financialReadPredicate(scope financialScope, entity string, first int) (string, []any, error) {
+type financialIntent uint8
+
+const (
+	financialView financialIntent = iota
+	financialEdit
+)
+
+func financialPredicate(scope financialScope, entity string, intent financialIntent, first int) (string, []any, error) {
+	if intent != financialView && intent != financialEdit || intent == financialEdit && scope.role != "admin" && scope.role != "editor" {
+		return "", nil, ErrForbidden
+	}
 	parent := "t.id"
 	child := ""
 	switch entity {
@@ -91,7 +102,7 @@ func financialReadPredicate(scope financialScope, entity string, first int) (str
 }
 
 func readFinancialAccessVersion(ctx context.Context, tx pgx.Tx, scope financialScope, entry string) (int64, error) {
-	predicate, args, err := financialReadPredicate(scope, "entries", 3)
+	predicate, args, err := financialPredicate(scope, "entries", financialView, 3)
 	if err != nil {
 		return 0, err
 	}
@@ -119,7 +130,7 @@ func (s *Store) listFinancial(ctx context.Context, id auth.Identity, e module.En
 	if err != nil {
 		return nil, err
 	}
-	predicate, args, err := financialReadPredicate(scope, e.ID, 6)
+	predicate, args, err := financialPredicate(scope, e.ID, financialView, 6)
 	if err != nil {
 		return nil, err
 	}
@@ -164,7 +175,7 @@ func (s *Store) getFinancial(ctx context.Context, id auth.Identity, e module.Ent
 	if err != nil {
 		return nil, err
 	}
-	predicate, args, err := financialReadPredicate(scope, e.ID, 3)
+	predicate, args, err := financialPredicate(scope, e.ID, financialView, 3)
 	if err != nil {
 		return nil, err
 	}
