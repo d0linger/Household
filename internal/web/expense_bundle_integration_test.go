@@ -288,7 +288,7 @@ func TestExpenseBundleKeepsOneSnapshotAcrossBlockedContentRead(t *testing.T) {
 		// Observe through the reader's role; pg_stat_activity hides another
 		// role's query/wait details from the non-superuser migration owner.
 		if err = f.pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM pg_stat_activity a WHERE a.datname=current_database()
- AND $1::int=ANY(pg_blocking_pids(a.pid)) AND a.wait_event_type='Lock' AND a.query LIKE '%e.paid_by_membership_id%')`, writerPID).Scan(&blocked); err != nil {
+ AND $1::int=ANY(pg_blocking_pids(a.pid)) AND a.wait_event_type='Lock' AND a.query LIKE '%SELECT p.version FROM expenses.entries t%')`, writerPID).Scan(&blocked); err != nil {
 			t.Fatal(err)
 		}
 		if blocked {

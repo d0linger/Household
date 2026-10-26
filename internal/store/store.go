@@ -167,6 +167,9 @@ func (s *Store) List(ctx context.Context, id auth.Identity, m module.Descriptor,
 	if offset < 0 || offset > 100000 {
 		offset = 0
 	}
+	if financialEntity(m.ID, e.ID) {
+		return s.listFinancial(ctx, id, e, query, limit, offset)
+	}
 	table := pgx.Identifier{m.ID, e.ID}.Sanitize()
 	primary := pgx.Identifier{e.Primary}.Sanitize()
 	where := ""
@@ -236,6 +239,9 @@ func (s *Store) List(ctx context.Context, id auth.Identity, m module.Descriptor,
 func (s *Store) Get(ctx context.Context, id auth.Identity, m module.Descriptor, e module.Entity, rid string) (Record, error) {
 	if !value.ValidUUID(rid) {
 		return nil, ErrNotFound
+	}
+	if financialEntity(m.ID, e.ID) {
+		return s.getFinancial(ctx, id, e, rid)
 	}
 	var raw []byte
 	err := s.Pool.QueryRow(ctx, "SELECT to_jsonb(t) FROM "+pgx.Identifier{m.ID, e.ID}.Sanitize()+" t WHERE household_id=$1 AND id=$2", id.HouseholdID, rid).Scan(&raw)

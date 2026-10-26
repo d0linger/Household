@@ -47,6 +47,7 @@ type ExpenseBundleLine struct {
 
 type ExpenseBundle struct {
 	Generation     int64                     `json:"generation"`
+	AccessVersion  int64                     `json:"access_version"`
 	ReadAt         time.Time                 `json:"read_at"`
 	Timezone       string                    `json:"timezone"`
 	Today          string                    `json:"today"`
@@ -94,8 +95,15 @@ func (s *Store) ExpenseBundle(ctx context.Context, id auth.Identity, entry strin
 	}
 	if entry == "" {
 		out.Header = ExpenseHeader{OccurredOn: out.Today, Kind: "expense", State: "draft"}
-	} else if err = readExpenseBundleContent(ctx, tx, id, entry, &out); err != nil {
-		return ExpenseBundle{}, err
+	} else {
+		scope := financialScope{householdID: id.HouseholdID, generation: out.Generation}
+		out.AccessVersion, err = readFinancialAccessVersion(ctx, tx, scope, entry)
+		if err != nil {
+			return ExpenseBundle{}, err
+		}
+		if err = readExpenseBundleContent(ctx, tx, id, entry, &out); err != nil {
+			return ExpenseBundle{}, err
+		}
 	}
 	if err = tx.Commit(ctx); err != nil {
 		return ExpenseBundle{}, err
@@ -104,25 +112,11 @@ func (s *Store) ExpenseBundle(ctx context.Context, id auth.Identity, entry strin
 }
 
 func readExpenseBundleScope(ctx context.Context, tx pgx.Tx, id auth.Identity, out *ExpenseBundle) error {
-	var enabled bool
-	err := tx.QueryRow(ctx, `SELECT h.timezone,h.currency_code,transaction_timestamp(),
- coalesce(ms.state='enabled',false),coalesce(ms.data_generation,0)
- FROM core.households h JOIN core.memberships m ON m.household_id=h.id AND m.user_id=$2 AND m.id=$3 AND m.role=$4 AND m.inactive_at IS NULL
- JOIN core.users u ON u.id=m.user_id AND u.disabled_at IS NULL AND u.auth_version=$5 AND NOT u.must_change_password
- JOIN core.sessions s ON s.user_id=u.id AND s.id=$6 AND s.revoked_at IS NULL AND s.auth_version=u.auth_version
- AND s.idle_expires_at>transaction_timestamp() AND s.absolute_expires_at>transaction_timestamp()
- LEFT JOIN core.module_states ms ON ms.household_id=h.id AND ms.module_id='expenses'
- WHERE h.id=$1`, id.HouseholdID, id.UserID, id.MembershipID, id.Role, id.AuthVersion, id.SessionID).Scan(
-		&out.Timezone, &out.Currency, &out.ReadAt, &enabled, &out.Generation)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return ErrForbidden
-	}
+	scope, err := readFinancialScope(ctx, tx, id)
 	if err != nil {
 		return err
 	}
-	if !enabled || out.Generation <= 0 {
-		return ErrNotFound
-	}
+	out.Timezone, out.Currency, out.ReadAt, out.Generation = scope.timezone, scope.currency, scope.readAt, scope.generation
 	return nil
 }
 
