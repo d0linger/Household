@@ -37,14 +37,9 @@ func (s *Server) exportCSV(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, err)
 		return
 	}
-	for offset := 0; offset < 10000; offset += 100 {
-		rows, err := s.Store.List(r.Context(), identity(r), m, e, "", 100, offset)
-		if err != nil {
-			s.fail(w, r, err)
-			return
-		}
+	emit := func(rows []store.Record) error {
 		for _, row := range rows {
-			line := []string{}
+			line := make([]string, 0, len(e.Fields))
 			for _, f := range e.Fields {
 				v := formValue(f, row[f.Name])
 				if f.Kind == "text" || f.Kind == "longtext" {
@@ -52,18 +47,42 @@ func (s *Server) exportCSV(w http.ResponseWriter, r *http.Request) {
 				}
 				line = append(line, v)
 			}
-			if err = writer.Write(line); err != nil {
-				s.fail(w, r, err)
-				return
+			if err := writer.Write(line); err != nil {
+				return err
 			}
 		}
-		if len(rows) < 100 {
-			break
+		writer.Flush()
+		if err := writer.Error(); err != nil {
+			return err
 		}
-		if offset == 9900 {
-			s.fail(w, r, store.Invalid{Message: "Export umfasst mehr als 10.000 Einträge; bitte über die Betreiber-Sicherung exportieren"})
-			return
+		if m.ID == "expenses" && buf.Len() > 16<<20 {
+			return store.Invalid{Message: "Export überschreitet die unterstützte Ausgabegröße; Betreiber-Sicherung verwenden"}
 		}
+		return nil
+	}
+	if m.ID == "expenses" && (e.ID == "entries" || e.ID == "entry_lines") {
+		err = s.Store.ExportFinancial(r.Context(), identity(r), e.ID, emit)
+	} else {
+		for offset := 0; offset < 10000; offset += 100 {
+			var rows []store.Record
+			rows, err = s.Store.List(r.Context(), identity(r), m, e, "", 100, offset)
+			if err != nil {
+				break
+			}
+			if err = emit(rows); err != nil {
+				break
+			}
+			if len(rows) < 100 {
+				break
+			}
+			if offset == 9900 {
+				err = store.Invalid{Message: "Export umfasst mehr als 10.000 Einträge; bitte über die Betreiber-Sicherung exportieren"}
+			}
+		}
+	}
+	if err != nil {
+		s.fail(w, r, err)
+		return
 	}
 	writer.Flush()
 	if err = writer.Error(); err != nil {

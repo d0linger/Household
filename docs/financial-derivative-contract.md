@@ -1,6 +1,6 @@
 # Financial derivatives — implementation contract
 
-This specifies the next Core26 foundation and its later consumer integration. It is **not an available schema or selected-access capability**. Current source has Core25/Expenses4 and the household-only rollout CHECK. Direct financial readers and the shared editor have separate executed evidence in [financial-visibility-verification.md](financial-visibility-verification.md). No live deployment is authorized by this contract.
+Core26's structural foundation is now materialized in development source alongside Expenses4; scoped root regression, Linux race and current-image encrypted synthetic recovery checks pass. App has SELECT-only access to the new metadata. The producer and consumer contracts below remain later work, and selected financial access is unavailable under the household-only rollout CHECK. Executed evidence is in [financial-visibility-verification.md](financial-visibility-verification.md). No live deployment is authorized by this contract.
 
 ## Required invariant
 
@@ -8,7 +8,9 @@ A derivative requires every original financial subject and policy that contribut
 
 Missing classification, unresolved provenance, a retired subject/policy, mismatched household/generation or an unavailable required source denies access. There is no administrator bypass. Current view/edit rights and future account intersections apply to every member; a stored policy version is never a permanent grant. An authenticated read uses one bounded authorized snapshot. A mutation rechecks after acquiring the required locks.
 
-## Proposed Core foundation
+The staged capture producer must retain a durable marker for each automatically derived financial result, independently of expiring capture payload. A marked result with missing or unresolved inherited scope is denied. Ordinary unmarked financial subjects can retain their current household-shared behavior only while the database household-only rollout CHECK remains enforced; absence is **not proof of manual origin**. Before selected access is enabled, every old and new subject must have complete known or unresolved origin classification, and unknown origins must deny access. No fabricated zero-origin classification or unrestricted final fallback is permitted.
+
+## Core26 structural foundation
 
 All relationships use Core FKs. Optional module schemas never reference one another. The foundation introduces structural metadata only; it must not claim producer completeness or enable selected access before the later integration gates.
 
@@ -46,6 +48,8 @@ Existing audit writers are SECURITY DEFINER. A trigger's `current_user='househol
 Copied financial content also retains its origin. An expense created from OCR can reveal the source values through ordinary Expenses reads even when the file itself is protected. Bind the result's Core financial subject to a durable inherited set, independently of the expiring capture payload, and include it in every central financial read/edit predicate before selected mode is enabled. A typed `financial_subject` scope kind can be added explicitly in the foundation or a forward producer migration. Its UUID is the actual Core subject ID, not a guessed optional-domain key. Flatten complete inherited original requirements at creation; check the result's own primary policy separately so the representation has no self-reference or recursive authorization cycle. Repeated derivation retains all prior requirements within the declared hard bound.
 
 Producer ordering is a required gate. The existing Expenses subject hook runs before row audit and creates its policy/subject before Go `save()` returns. Registering result-origin metadata only afterwards would leave the first immutable audit event incomplete. The producer migration must establish validated typed capture-result evidence before that audit runs, or enforce an exact deferred event binding within the same transaction. It must neither precreate conflicting Expenses4 identities nor classify an earlier event from a later transaction's artifact head. A scope-less or incomplete result/audit commit must fail atomically.
+
+The chosen next-stage approach registers pending typed evidence before the initial audit. A pre-save reservation derives the original union and a bounded pending result union from the actual locked capture. The new Core subject hook fills the exact result anchor before its audit; deferred validation rejects unfinished or mismatched evidence. For a captured category line, the actual parent is validated before insertion and its resulting audit must inherit the complete requirements. Current AFTER trigger order is financial subject, child audit, then parent touch; proof must not assume a parent-first audit. Narrow APIs accept artifact IDs, expected scope heads, canonical input and real current identity; they never accept authoritative policy arrays. These producer APIs remain separate preparation and do not expand foundation-only App privileges.
 
 ## Historical classification
 

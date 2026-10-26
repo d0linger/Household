@@ -10,6 +10,18 @@ import (
 )
 
 func (s *Server) related(r *http.Request, m module.Descriptor, e module.Entity, rid string) ([]Related, error) {
+	if m.ID == "expenses" && (e.ID == "entries" || e.ID == "categories") {
+		records, err := s.Store.FinancialRelated(r.Context(), identity(r), e.ID, rid)
+		if err != nil {
+			return nil, err
+		}
+		child, _ := m.Entity("entry_lines")
+		field := "entry_id"
+		if e.ID == "categories" {
+			field = "category_id"
+		}
+		return []Related{{Entity: child, Field: field, Records: records}}, nil
+	}
 	if m.ID == "recipes" && e.ID == "recipes" {
 		bundle, err := s.Store.Recipe(r.Context(), identity(r), rid)
 		if err != nil {

@@ -69,6 +69,7 @@ try {
       [IO.File]::WriteAllBytes((Join-Path $taskUploads $taskOriginal),$taskPng)
       [IO.File]::WriteAllBytes((Join-Path $taskUploads $taskPreview),$taskPng)
       $taskHash=[Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($taskPng)).ToLowerInvariant()
+      $taskRequirementFixture=[IO.File]::ReadAllText((Join-Path $taskRoot 'scripts/fixtures/financial-requirements-recovery.sql'))
       $taskSQL=@"
 BEGIN;
 SET ROLE household_owner;
@@ -100,6 +101,10 @@ INSERT INTO core.financial_policies(id,household_id,module_id,module_generation,
 INSERT INTO core.financial_subjects(household_id,module_id,module_generation,resource_type,resource_id,policy_id,retired_at,created_by,changed_by,version) VALUES
  ('$taskHousehold','expenses',1,'entries','$taskRetiredEntry','$taskRetiredPolicy','2026-10-25T01:30:00Z','$taskUser','$taskUser',2),
  ('$taskHousehold','expenses',1,'entry_lines','$taskRetiredLine','$taskRetiredPolicy','2026-10-25T01:30:00Z','$taskUser','$taskUser',3);
+SET LOCAL household.fixture_household='$taskHousehold';
+SET LOCAL household.fixture_actor='$taskUser';
+SET LOCAL household.fixture_generation='1';
+$taskRequirementFixture
 INSERT INTO shopping.lists(id,household_id,name,created_by) VALUES('$taskList','$taskHousehold','Recovery verification','$taskUser');
 INSERT INTO shopping.items(id,household_id,list_id,name,quantity,unit_code,created_by) VALUES('$taskItem','$taskHousehold','$taskList','Synthetic rice',2.5,'kg','$taskUser');
 INSERT INTO pantry.products(id,household_id,name,unit_code,low_stock_threshold,target_stock,created_by) VALUES('$taskProduct','$taskHousehold','Recovery stock','kg',1,3,'$taskUser');
@@ -194,7 +199,19 @@ COMMIT;
 "@
       $taskSQL | docker compose -f compose.yaml -f compose.backup.yaml exec -T restore-db psql -U postgres -d household_fixture -v ON_ERROR_STOP=1
       if($LASTEXITCODE -ne 0){throw 'Fixture insertion failed'}
-      $taskExpenseSnapshotSQL="SELECT jsonb_build_object('category',(SELECT to_jsonb(c) FROM expenses.categories c WHERE c.id='$taskExpenseCategory'),'entry',(SELECT to_jsonb(e) FROM expenses.entries e WHERE e.id='$taskExpenseEntry'),'lines',(SELECT jsonb_agg(to_jsonb(l) ORDER BY l.position,l.id) FROM expenses.entry_lines l WHERE l.household_id='$taskHousehold' AND l.entry_id='$taskExpenseEntry'),'proof',(SELECT to_jsonb(p) FROM core.expense_edit_operations p WHERE p.id='$taskExpenseOperation'),'policies',(SELECT jsonb_agg(to_jsonb(p) ORDER BY p.id) FROM core.financial_policies p WHERE p.household_id='$taskHousehold'),'subjects',(SELECT jsonb_agg(to_jsonb(s) ORDER BY s.id) FROM core.financial_subjects s WHERE s.household_id='$taskHousehold'))::text"
+      $taskExpenseSnapshotSQL=@"
+SELECT jsonb_build_object(
+ 'category',(SELECT to_jsonb(c) FROM expenses.categories c WHERE c.id='$taskExpenseCategory'),
+ 'entry',(SELECT to_jsonb(e) FROM expenses.entries e WHERE e.id='$taskExpenseEntry'),
+ 'lines',(SELECT jsonb_agg(to_jsonb(l) ORDER BY l.position,l.id) FROM expenses.entry_lines l WHERE l.household_id='$taskHousehold' AND l.entry_id='$taskExpenseEntry'),
+ 'proof',(SELECT to_jsonb(p) FROM core.expense_edit_operations p WHERE p.id='$taskExpenseOperation'),
+ 'policies',(SELECT jsonb_agg(to_jsonb(p) ORDER BY p.id) FROM core.financial_policies p WHERE p.household_id='$taskHousehold'),
+ 'subjects',(SELECT jsonb_agg(to_jsonb(s) ORDER BY s.id) FROM core.financial_subjects s WHERE s.household_id='$taskHousehold'),
+ 'requirement_sets',(SELECT jsonb_agg(to_jsonb(r) ORDER BY r.id) FROM core.financial_requirement_sets r WHERE r.household_id='$taskHousehold'),
+ 'requirement_members',(SELECT jsonb_agg(to_jsonb(r) ORDER BY r.set_id,r.subject_id) FROM core.financial_requirement_members r WHERE r.household_id='$taskHousehold'),
+ 'artifact_scopes',(SELECT jsonb_agg(to_jsonb(r) ORDER BY r.id) FROM core.financial_artifact_scope_versions r WHERE r.household_id='$taskHousehold')
+)::text
+"@
       $taskExpenseBefore=docker compose -f compose.yaml -f compose.backup.yaml exec -T restore-db psql -U postgres -d household_fixture -Atc $taskExpenseSnapshotSQL
       if($LASTEXITCODE -ne 0 -or !$taskExpenseBefore){throw 'Financial source snapshot unavailable'}
       $taskBackupTimer=[Diagnostics.Stopwatch]::StartNew()
@@ -284,11 +301,24 @@ SELECT count(*)=2 AND count(DISTINCT r.id)=2 AND count(DISTINCT (r.component_id,
       if($LASTEXITCODE -ne 0 -or $taskExpenseDuplicate -ne '0'){throw 'Restored durable financial key allowed duplication across action/generation'}
       $taskFinancialBindings=docker compose -f compose.yaml -f compose.backup.yaml exec -T restore-db psql -U postgres -d household_restore -Atc "SELECT (SELECT count(*) FROM core.financial_policies WHERE household_id='$taskHousehold')::text||'|'||(SELECT count(*) FROM core.financial_subjects WHERE household_id='$taskHousehold')::text||'|'||(SELECT count(*) FROM core.financial_policies WHERE household_id='$taskHousehold' AND retired_at IS NOT NULL)::text||'|'||(SELECT count(*) FROM core.financial_subjects WHERE household_id='$taskHousehold' AND retired_at IS NOT NULL)::text||'|'||(core.financial_foundation_ready() AND expenses.financial_bindings_ready() AND (SELECT bool_and(access_mode='household' AND responsible_membership_id IS NULL AND module_generation=1) FROM core.financial_policies WHERE household_id='$taskHousehold'))::text"
       if($LASTEXITCODE -ne 0 -or $taskFinancialBindings -ne '2|5|1|2|true'){throw 'Restored financial policy identities, tombstones or rollout readiness differ'}
+      $taskFinancialRequirementsSQL=@"
+SELECT (SELECT count(*) FROM core.financial_requirement_sets WHERE household_id='$taskHousehold')::text||'|'||
+ (SELECT count(*) FROM core.financial_requirement_members WHERE household_id='$taskHousehold')::text||'|'||
+ (SELECT count(*) FROM core.financial_artifact_scope_versions WHERE household_id='$taskHousehold')::text||'|'||
+ (core.financial_requirements_ready()
+ AND (SELECT count(DISTINCT artifact_kind) FROM core.financial_artifact_scope_versions WHERE household_id='$taskHousehold')=7
+ AND EXISTS(SELECT 1 FROM core.financial_artifact_scope_versions WHERE household_id='$taskHousehold' AND artifact_kind='audit' AND audit_id=9007199254740993)
+ AND EXISTS(SELECT 1 FROM core.financial_artifact_scope_versions WHERE household_id='$taskHousehold' AND artifact_kind='import_row' AND row_number=501)
+ AND EXISTS(SELECT 1 FROM core.financial_artifact_scope_versions WHERE household_id='$taskHousehold' AND artifact_kind='attachment' AND revision=2 AND previous_id='fe260000-0000-4000-8000-000000000021' AND created_at='1999-01-01T00:00:00Z')
+ AND (SELECT count(*) FROM core.financial_requirement_members m JOIN core.financial_subjects s ON s.household_id=m.household_id AND s.id=m.subject_id AND s.policy_id=m.policy_id WHERE m.household_id='$taskHousehold' AND s.retired_at IS NOT NULL)=1)::text
+"@
+      $taskFinancialRequirements=docker compose -f compose.yaml -f compose.backup.yaml exec -T restore-db psql -U postgres -d household_restore -Atc $taskFinancialRequirementsSQL
+      if($LASTEXITCODE -ne 0 -or $taskFinancialRequirements -ne '3|2|8|true'){throw 'Restored financial original requirements, typed scope keys or revisions differ'}
       $taskExpenseAfter=docker compose -f compose.yaml -f compose.backup.yaml exec -T restore-db psql -U postgres -d household_restore -Atc $taskExpenseSnapshotSQL
       if($LASTEXITCODE -ne 0 -or $taskExpenseBefore -cne $taskExpenseAfter){throw 'Financial logical snapshot differs after restore or duplicate attempt'}
       $taskRestoreTimer.Stop()
       $taskRehearsalTimer.Stop()
-      [ordered]@{passed=$true;source='disposable household_fixture';target='disposable household_restore';snapshot=$taskSnapshot;domainValue=$taskRestored;stockProjection=$taskStock;pantryTarget=$taskTarget;pantryDaily=$taskPantryDaily;stockDuplicateInserted=$taskStockDuplicate;pantryBatch=$taskPantryBatch;pantryPrivateDraft=$taskPantryDraft;pantryBatchUniqueConstraint=$taskPantryBatchDuplicate;durableCompletion=$taskCheckout;recipeVersionsAfterEdit=$taskRecipeAfter;cookingTimers=$taskCookingBefore;cookingRecord=$taskCookingResult;cookingDuplicateInserted=$taskCookingDuplicate;cookingStockPosting=$taskCookingPostingResult;cookingStockDuplicateInserted=$taskCookingPostingDuplicate;planningComponents=$taskPlanning;planningDuplicateInserted=$taskPlanningDuplicate;planningParticipants=$taskParticipants;planningParticipantIdentities=$taskParticipantIdentities;mealReservation=$taskReservationResult;planningIngredientBinding=$taskPlanningBindingResult;planningPurchaseScope=$taskPurchaseResult;planningPurchaseProof=$taskPurchaseProof;planningPurchaseDetailValidation=$taskPurchaseDetailValidation;planningPurchaseDuplicateInserted=$taskPurchaseDuplicate;expensePosted=$taskExpenseResult;expenseMinimalProof=$taskExpenseProof;expenseDuplicateInserted=$taskExpenseDuplicate;expenseLogicalSnapshotEqual=($taskExpenseBefore -ceq $taskExpenseAfter);financialBindings=$taskFinancialBindings;hashedFiles=2;includesOriginalAndPreview=$true;backupSeconds=[Math]::Round($taskBackupTimer.Elapsed.TotalSeconds,2);restoreAndVerifySeconds=[Math]::Round($taskRestoreTimer.Elapsed.TotalSeconds,2);rehearsalSeconds=[Math]::Round($taskRehearsalTimer.Elapsed.TotalSeconds,2);scope='Small synthetic local fixture; not acceptance of a production RTO/RPO or authenticated restored-service replay';verifiedAt=[DateTime]::UtcNow.ToString('o')} | ConvertTo-Json | Set-Content outputs/recovery-review/report.json
+      [ordered]@{passed=$true;source='disposable household_fixture';target='disposable household_restore';snapshot=$taskSnapshot;domainValue=$taskRestored;stockProjection=$taskStock;pantryTarget=$taskTarget;pantryDaily=$taskPantryDaily;stockDuplicateInserted=$taskStockDuplicate;pantryBatch=$taskPantryBatch;pantryPrivateDraft=$taskPantryDraft;pantryBatchUniqueConstraint=$taskPantryBatchDuplicate;durableCompletion=$taskCheckout;recipeVersionsAfterEdit=$taskRecipeAfter;cookingTimers=$taskCookingBefore;cookingRecord=$taskCookingResult;cookingDuplicateInserted=$taskCookingDuplicate;cookingStockPosting=$taskCookingPostingResult;cookingStockDuplicateInserted=$taskCookingPostingDuplicate;planningComponents=$taskPlanning;planningDuplicateInserted=$taskPlanningDuplicate;planningParticipants=$taskParticipants;planningParticipantIdentities=$taskParticipantIdentities;mealReservation=$taskReservationResult;planningIngredientBinding=$taskPlanningBindingResult;planningPurchaseScope=$taskPurchaseResult;planningPurchaseProof=$taskPurchaseProof;planningPurchaseDetailValidation=$taskPurchaseDetailValidation;planningPurchaseDuplicateInserted=$taskPurchaseDuplicate;expensePosted=$taskExpenseResult;expenseMinimalProof=$taskExpenseProof;expenseDuplicateInserted=$taskExpenseDuplicate;expenseLogicalSnapshotEqual=($taskExpenseBefore -ceq $taskExpenseAfter);financialBindings=$taskFinancialBindings;financialRequirements=$taskFinancialRequirements;hashedFiles=2;includesOriginalAndPreview=$true;backupSeconds=[Math]::Round($taskBackupTimer.Elapsed.TotalSeconds,2);restoreAndVerifySeconds=[Math]::Round($taskRestoreTimer.Elapsed.TotalSeconds,2);rehearsalSeconds=[Math]::Round($taskRehearsalTimer.Elapsed.TotalSeconds,2);scope='Small synthetic local fixture; not acceptance of a production RTO/RPO or authenticated restored-service replay';verifiedAt=[DateTime]::UtcNow.ToString('o')} | ConvertTo-Json | Set-Content outputs/recovery-review/report.json
       Get-Content outputs/recovery-review/report.json
     } finally {
       docker compose -f compose.yaml -f compose.backup.yaml exec -T restore-db dropdb -U postgres household_fixture

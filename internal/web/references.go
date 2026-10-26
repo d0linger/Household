@@ -115,6 +115,10 @@ func (s *Server) referenceOptions(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, err)
 		return
 	}
+	if mid == "expenses" && (entity == "entries" || entity == "entry_lines") {
+		s.financialReferenceOptions(w, r, entity, generation, query, selectedID, cursor, scope)
+		return
+	}
 	var created, lastID any
 	if cursor.ID != "" {
 		created, lastID = cursor.Created, cursor.ID
@@ -161,6 +165,34 @@ func (s *Server) referenceOptions(w http.ResponseWriter, r *http.Request) {
 	if err = rows.Err(); err != nil {
 		s.fail(w, r, err)
 		return
+	}
+	writeJSON(w, http.StatusOK, page)
+}
+
+func (s *Server) financialReferenceOptions(w http.ResponseWriter, r *http.Request, entity string, generation int64, query, selected string, cursor referenceCursor, scope string) {
+	options, err := s.Store.FinancialReferenceOptions(r.Context(), identity(r), entity, store.FinancialReferenceQuery{
+		Query: query, SelectedID: selected, AfterID: cursor.ID, After: cursor.Created, Generation: generation,
+	})
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	page := referencePage{Records: []referenceOption{}}
+	for i, option := range options {
+		if i == 50 {
+			last := options[i-1]
+			page.Next, err = s.makeReferenceCursor(referenceCursor{Created: last.Created, ID: last.ID, Expires: time.Now().Add(30 * time.Minute).Unix()}, scope)
+			if err != nil {
+				s.fail(w, r, err)
+				return
+			}
+			break
+		}
+		label := option.Label
+		if label == "" {
+			label = "Eintrag · " + option.ID[:8]
+		}
+		page.Records = append(page.Records, referenceOption{ID: option.ID, Label: label})
 	}
 	writeJSON(w, http.StatusOK, page)
 }

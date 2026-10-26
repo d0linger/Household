@@ -8,6 +8,10 @@ Household is a modular monolith with one Go process, one PostgreSQL database, an
 
 Each module owns a PostgreSQL schema and migration history. The core owns users, permissions, sessions, activation state, idempotency, cross-module links, files, capture review, jobs, search, reminders, notifications, and audit. Cross-module references use `core.resource_links` and explicit integration actions rather than foreign keys between domain schemas.
 
+Development source now includes Core26/Expenses4 and67immutable migration files. Core has45declared tables excluding migration history; the three financial requirement/scope tables are security infrastructure with SELECT-only App privileges, nine explicit guards and separate readiness. They retain original subject/policy pairs and typed UUID, bigint audit and composite import-row identities. They are explicit exceptions to automatic business row audit; its77-policy census remains unchanged. Producers and complete inherited-origin consumers remain separate work under the household-only rollout CHECK. See [the derivative contract](financial-derivative-contract.md).
+
+Financial search, reference hydration, related rows and monthly totals use current-authorized SQL predicates before ordering, pagination or aggregation. CSV uses one bounded authorized snapshot with a15second deadline,10000rows,1MiB variable text per record and16MiB total output; rejected exports publish no partial content. This preserves the current shared-only behavior and does not confer selected grants.
+
 `internal/audit` binds authenticated user, household and server-generated request identity using transaction-local settings. Core5 owner-managed triggers record committed field changes centrally, including cascades, imports and maintenance truncation. Explicit semantic events cover authentication and terminal worker outcomes. The administrator viewer reads bounded household-scoped cursor pages. [Audit architecture](audit-trail.md) defines safe fields, exclusions and the trusted owner boundary.
 
 ```mermaid
@@ -37,6 +41,8 @@ Recipe authoring commits a complete ordered bundle and captures one immutable fi
 Meal planning copies explicitly reviewed immutable recipe sources into its own component snapshots, with no optional-module foreign key. The desktop week grid and mobile agenda share a bounded seven-day read model; complete ingredients load separately. Plan-first locks, child NOWAIT guards and expected versions serialize save/move/swap/copy. Durable copy provenance prevents repeated week creation after response loss or receipt expiry. Recipe disable/purge cannot erase owned planning content; new selection/comparison still requires current source authorization. The interim shopping adapter uses only open/planned recipe components and exact representable quantities; differential transfer and stock reservations remain separate open expansion work.
 
 The household exclusive barrier serializes module state changes, privileged purge, and consistent backup snapshots. The runtime has one app replica; its read/write gate prevents HTML/API/file responses crossing an in-process disable commit. Each authenticated request refreshes activation snapshots, so operator generation changes become visible. Writes also verify database state/generation inside their transaction.
+
+The operator-only recovery rehearsal loads its additional synthetic financial metadata from `scripts/fixtures/financial-requirements-recovery.sql` into a disposable database. It compares complete source/restored snapshots, including retained denied origins, revisions, large audit keys and composite row keys. This fixture is never application bootstrap or production seeding; acceptance requires an actually executed current-image rehearsal.
 
 ## Runtime and failure behavior
 

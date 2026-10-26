@@ -29,6 +29,7 @@
   "core/000023_planning_participants.up.sql": "d9d32ebfa2c46f75f7fe2d43506eabd62ca0c8a2e947d7b5c7e3ace191a2dc1f",
   "core/000024_expense_edit_operations.up.sql": "418d9c8deab2c4e52de25e49bcf474e2c4ea49b2d98e03907894dbbe89e1f7db",
   "core/000025_financial_visibility_foundation.up.sql": "16d9d8d8aceaea1653ee978bc40e41c899a547e4e0d848c9b333cf2f2bafae9f",
+  "core/000026_financial_requirement_sets.up.sql": "7ea36d588bd82e1980d4de0becee9d725c7912ab2e9eebe36397db5fafc4acad",
   "documents/000001_init.up.sql": "6a33d06f5655f4c7968cb4cdd29a4ae7720a7e7e4b43ef7fdc944932e2cc9c3f",
   "expenses/000001_init.up.sql": "4e9d54248e716f8d95109299ee3bb9606d674d16f8d597ab8a934e4530c8019e",
   "expenses/000002_integrity.down.sql": "bfce30e078d29f61e0d5b7134479e57abc68c396fb1afffef0b63b51f403a763",

@@ -204,6 +204,13 @@ func Ready(ctx context.Context, pool *pgxpool.Pool) error {
 	if !financialBindings {
 		return errors.New("incomplete financial identity foundation")
 	}
+	var financialRequirements bool
+	if err := pool.QueryRow(ctx, "SELECT core.financial_requirements_ready()").Scan(&financialRequirements); err != nil {
+		return fmt.Errorf("inspect financial requirement foundation: %w", err)
+	}
+	if !financialRequirements {
+		return errors.New("incomplete financial requirement foundation")
+	}
 	return nil
 }
 

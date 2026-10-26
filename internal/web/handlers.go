@@ -351,7 +351,14 @@ func (s *Server) references(r *http.Request, e module.Entity, selected store.Rec
 		if !ok {
 			continue
 		}
-		records, err := s.Store.List(r.Context(), identity(r), m, target, "", 100, 0)
+		var records []store.Record
+		var err error
+		financialTarget := m.ID == "expenses" && (target.ID == "entries" || target.ID == "entry_lines")
+		if financialTarget {
+			records, err = s.Store.FinancialReferences(r.Context(), identity(r), target.ID, store.String(selected[f.Name]))
+		} else {
+			records, err = s.Store.List(r.Context(), identity(r), m, target, "", 100, 0)
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -361,7 +368,7 @@ func (s *Server) references(r *http.Request, e module.Entity, selected store.Rec
 		for _, record := range records {
 			found = found || store.String(record["id"]) == selectedID
 		}
-		if selectedID != "" && !found && value.ValidUUID(selectedID) {
+		if selectedID != "" && !found && value.ValidUUID(selectedID) && !financialTarget {
 			record, getErr := s.Store.Get(r.Context(), identity(r), m, target, selectedID)
 			if getErr == nil {
 				records = append(records, record)
@@ -635,29 +642,7 @@ func (s *Server) preferences(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) searchRows(r *http.Request) ([]store.Record, error) {
-	q := strings.TrimSpace(r.URL.Query().Get("q"))
-	if len(q) > 100 {
-		return nil, store.Invalid{Message: "Suchbegriff zu lang"}
-	}
-	if q == "" {
-		return []store.Record{}, nil
-	}
-	rows, err := s.Pool.Query(r.Context(), `SELECT d.module_id,d.resource_type,d.resource_id,d.title FROM core.search_documents d JOIN core.module_states m ON m.household_id=d.household_id AND m.module_id=d.module_id WHERE d.household_id=$1 AND m.state='enabled' AND m.data_generation=d.module_generation AND (d.search_vector @@ websearch_to_tsquery('german',$2) OR d.title ILIKE $3 OR d.title OPERATOR(core.%) $2) ORDER BY (ts_rank(d.search_vector,websearch_to_tsquery('german',$2))+core.similarity(d.title,$2)) DESC,d.title LIMIT 50`, identity(r).HouseholdID, q, "%"+q+"%")
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	list := []store.Record{}
-	for rows.Next() {
-		var mid, entity, id, title string
-		if err = rows.Scan(&mid, &entity, &id, &title); err != nil {
-			return nil, err
-		}
-		if _, known := s.Store.Module(mid); known {
-			list = append(list, store.Record{"module": mid, "entity": entity, "id": id, "title": title, "url": "/m/" + mid + "/" + entity + "/" + id})
-		}
-	}
-	return list, rows.Err()
+	return s.Store.Search(r.Context(), identity(r), r.URL.Query().Get("q"))
 }
 func (s *Server) searchPage(w http.ResponseWriter, r *http.Request) {
 	rows, err := s.searchRows(r)
@@ -779,23 +764,8 @@ func (s *Server) report(w http.ResponseWriter, r *http.Request) {
 	result := map[string]any{}
 	switch m.ID {
 	case "expenses":
-		rows, err := s.Pool.Query(r.Context(), "SELECT to_char(occurred_on,'YYYY-MM'),sum(amount_minor)::bigint FROM expenses.entries WHERE household_id=$1 AND state='posted' GROUP BY 1 ORDER BY 1 DESC LIMIT 24", identity(r).HouseholdID)
+		months, err := s.Store.ExpenseReport(r.Context(), identity(r))
 		if err != nil {
-			s.fail(w, r, err)
-			return
-		}
-		defer rows.Close()
-		months := []store.Record{}
-		for rows.Next() {
-			var month string
-			var amount int64
-			if err = rows.Scan(&month, &amount); err != nil {
-				s.fail(w, r, err)
-				return
-			}
-			months = append(months, store.Record{"month": month, "amount_minor": amount})
-		}
-		if err = rows.Err(); err != nil {
 			s.fail(w, r, err)
 			return
 		}
