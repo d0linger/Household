@@ -32,6 +32,9 @@ func planningSelections(ctx context.Context, tx pgx.Tx, id auth.Identity, old Pl
 	selected := make([]planningSelection, 0, len(in.Components))
 	var total int64
 	for _, input := range in.Components {
+		if err := planningComponentPortions(&input, available[input.ID], in.Meal.Servings); err != nil {
+			return nil, err
+		}
 		if err := planningComponentValues(&input); err != nil {
 			return nil, err
 		}
@@ -75,12 +78,6 @@ func planningSelections(ctx context.Context, tx pgx.Tx, id auth.Identity, old Pl
 }
 
 func (s *Store) savePlanningMeal(ctx context.Context, tx pgx.Tx, id auth.Identity, plan Record, in PlanningInput) (Record, error) {
-	if err := normalizePlanningMeal(&in.Meal); err != nil {
-		return nil, err
-	}
-	if in.Meal.PlannedOn < String(plan["starts_on"]) || in.Meal.PlannedOn > String(plan["ends_on"]) {
-		return nil, Invalid{"Mahlzeit liegt außerhalb des Planzeitraums"}
-	}
 	pid, mid := String(plan["id"]), in.MealID
 	var old PlanningMeal
 	var err error
@@ -89,6 +86,16 @@ func (s *Store) savePlanningMeal(ctx context.Context, tx pgx.Tx, id auth.Identit
 		if err != nil {
 			return nil, err
 		}
+	}
+	participation, err := planningParticipantReview(ctx, tx, id, old, &in)
+	if err != nil {
+		return nil, err
+	}
+	if err = normalizePlanningMeal(&in.Meal); err != nil {
+		return nil, err
+	}
+	if in.Meal.PlannedOn < String(plan["starts_on"]) || in.Meal.PlannedOn > String(plan["ends_on"]) {
+		return nil, Invalid{"Mahlzeit liegt außerhalb des Planzeitraums"}
 	}
 	if old.ID != "" && (old.Status == "cooked" || old.Status == "cancelled") && (old.PlannedOn != in.Meal.PlannedOn || old.Slot != in.Meal.Slot) {
 		return nil, Invalid{"Abgeschlossene oder abgesagte Mahlzeit zuerst ausdrücklich wieder öffnen"}
@@ -109,13 +116,18 @@ func (s *Store) savePlanningMeal(ctx context.Context, tx pgx.Tx, id auth.Identit
 		if _, err = tx.Exec(ctx, "DELETE FROM mealplan.components WHERE household_id=$1 AND meal_id=$2 AND NOT(id=ANY($3::uuid[]))", id.HouseholdID, mid, kept); err != nil {
 			return nil, err
 		}
-		_, err = tx.Exec(ctx, "UPDATE mealplan.meals SET title=$3,planned_on=$4,meal_slot=$5,kind=$6,status=$7,servings=$8,notes=$9 WHERE household_id=$1 AND id=$2", id.HouseholdID, mid, in.Meal.Title, in.Meal.PlannedOn, in.Meal.Slot, in.Meal.Kind, in.Meal.Status, in.Meal.Servings, in.Meal.Notes)
+		_, err = tx.Exec(ctx, "UPDATE mealplan.meals SET title=$3,planned_on=$4,meal_slot=$5,kind=$6,status=$7,servings=$8,notes=$9,servings_mode=$10,guest_count=$11 WHERE household_id=$1 AND id=$2", id.HouseholdID, mid, in.Meal.Title, in.Meal.PlannedOn, in.Meal.Slot, in.Meal.Kind, in.Meal.Status, in.Meal.Servings, in.Meal.Notes, participation.Mode, participation.Guests)
 	} else {
 		mid = value.UUID()
-		_, err = tx.Exec(ctx, `INSERT INTO mealplan.meals(id,household_id,plan_id,title,planned_on,meal_slot,kind,status,servings,notes,created_by) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`, mid, id.HouseholdID, pid, in.Meal.Title, in.Meal.PlannedOn, in.Meal.Slot, in.Meal.Kind, in.Meal.Status, in.Meal.Servings, in.Meal.Notes, id.UserID)
+		_, err = tx.Exec(ctx, `INSERT INTO mealplan.meals(id,household_id,plan_id,title,planned_on,meal_slot,kind,status,servings,notes,created_by,servings_mode,guest_count) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`, mid, id.HouseholdID, pid, in.Meal.Title, in.Meal.PlannedOn, in.Meal.Slot, in.Meal.Kind, in.Meal.Status, in.Meal.Servings, in.Meal.Notes, id.UserID, participation.Mode, participation.Guests)
 	}
 	if err != nil {
 		return nil, err
+	}
+	if in.Meal.Participation != nil {
+		if err = savePlanningParticipants(ctx, tx, id, mid, old, participation); err != nil {
+			return nil, err
+		}
 	}
 	if len(selected) > 0 || in.Meal.Kind != "recipe" {
 		if _, err = tx.Exec(ctx, "DELETE FROM core.resource_links WHERE household_id=$1 AND source_module='mealplan' AND source_type='meals' AND source_id=$2 AND relation='meal_recipe' AND NOT(target_id=ANY($3::uuid[]))", id.HouseholdID, mid, recipes); err != nil {
@@ -125,9 +137,9 @@ func (s *Store) savePlanningMeal(ctx context.Context, tx pgx.Tx, id auth.Identit
 	for position, item := range selected {
 		input := item.input
 		if input.ID != "" {
-			_, err = tx.Exec(ctx, "UPDATE mealplan.components SET position=$3,servings=$4,prep_minutes=$5,cook_minutes=$6 WHERE household_id=$1 AND id=$2", id.HouseholdID, input.ID, position, input.Servings, input.PrepMinutes, input.CookMinutes)
+			_, err = tx.Exec(ctx, "UPDATE mealplan.components SET position=$3,servings=$4,prep_minutes=$5,cook_minutes=$6,servings_mode=$7 WHERE household_id=$1 AND id=$2", id.HouseholdID, input.ID, position, input.Servings, input.PrepMinutes, input.CookMinutes, input.ServingsMode)
 		} else {
-			_, err = tx.Exec(ctx, `INSERT INTO mealplan.components(household_id,meal_id,position,servings,prep_minutes,cook_minutes,source_recipe_id,source_version_id,source_generation,source_revision,snapshot,created_by) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`, id.HouseholdID, mid, position, input.Servings, input.PrepMinutes, input.CookMinutes, item.recipeID, input.SourceVersionID, input.SourceGeneration, item.revision, item.snapshot, id.UserID)
+			_, err = tx.Exec(ctx, `INSERT INTO mealplan.components(household_id,meal_id,position,servings,prep_minutes,cook_minutes,source_recipe_id,source_version_id,source_generation,source_revision,snapshot,created_by,servings_mode) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`, id.HouseholdID, mid, position, input.Servings, input.PrepMinutes, input.CookMinutes, item.recipeID, input.SourceVersionID, input.SourceGeneration, item.revision, item.snapshot, id.UserID, input.ServingsMode)
 			if err == nil {
 				_, err = tx.Exec(ctx, `INSERT INTO core.resource_links(household_id,source_module,source_type,source_id,target_module,target_type,target_id,relation) VALUES($1,'mealplan','meals',$2,'recipes','recipes',$3,'meal_recipe') ON CONFLICT DO NOTHING`, id.HouseholdID, mid, item.recipeID)
 			}

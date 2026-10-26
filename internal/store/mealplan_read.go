@@ -18,6 +18,7 @@ type PlanningComponent struct {
 	Version          int64  `json:"version"`
 	SnapshotBytes    int64  `json:"snapshot_bytes"`
 	Servings         string `json:"servings"`
+	ServingsMode     string `json:"servings_mode"`
 	Title            string `json:"title"`
 	BaseServings     string `json:"base_servings"`
 	SourceRecipeID   string `json:"source_recipe_id"`
@@ -29,18 +30,29 @@ type PlanningComponent struct {
 }
 
 type PlanningMeal struct {
-	ID             string              `json:"id"`
-	PlanID         string              `json:"plan_id"`
-	Version        int64               `json:"version"`
-	Title          string              `json:"title"`
-	PlannedOn      string              `json:"planned_on"`
-	Slot           string              `json:"meal_slot"`
-	Kind           string              `json:"kind"`
-	Status         string              `json:"status"`
-	Servings       string              `json:"servings"`
-	Notes          string              `json:"notes"`
-	Components     []PlanningComponent `json:"components"`
-	RequiresReview bool                `json:"requires_recipe_review"`
+	ID              string                `json:"id"`
+	PlanID          string                `json:"plan_id"`
+	Version         int64                 `json:"version"`
+	Title           string                `json:"title"`
+	PlannedOn       string                `json:"planned_on"`
+	Slot            string                `json:"meal_slot"`
+	Kind            string                `json:"kind"`
+	Status          string                `json:"status"`
+	Servings        string                `json:"servings"`
+	ServingsMode    string                `json:"servings_mode"`
+	GuestCount      int                   `json:"guest_count"`
+	DerivedServings string                `json:"derived_servings"`
+	Participants    []PlanningParticipant `json:"participants"`
+	Notes           string                `json:"notes"`
+	Components      []PlanningComponent   `json:"components"`
+	RequiresReview  bool                  `json:"requires_recipe_review"`
+}
+
+type PlanningParticipant struct {
+	ID           string `json:"id"`
+	MembershipID string `json:"membership_id"`
+	Name         string `json:"name"`
+	Active       bool   `json:"active"`
 }
 
 type PlanningWeek struct {
@@ -57,9 +69,16 @@ type planningQuerier interface {
 const planningComponentJSON = `jsonb_build_object('id',c.id,'position',c.position,'version',c.version,'snapshot_bytes',octet_length(c.snapshot::text),'servings',c.servings::text,
  'title',c.snapshot->'recipe'->>'title','base_servings',c.snapshot->'recipe'->>'base_servings',
  'source_recipe_id',c.source_recipe_id,'source_version_id',c.source_version_id,'source_generation',c.source_generation,'source_revision',c.source_revision,
- 'prep_minutes',c.prep_minutes,'cook_minutes',c.cook_minutes)`
+ 'prep_minutes',c.prep_minutes,'cook_minutes',c.cook_minutes,'servings_mode',c.servings_mode)`
 
 const planningMealJSON = `to_jsonb(m)||jsonb_build_object('servings',m.servings::text,
+ 'derived_servings',((SELECT count(*) FROM mealplan.participants part WHERE part.household_id=m.household_id AND part.meal_id=m.id)+m.guest_count)::text,
+ 'participants',coalesce((SELECT jsonb_agg(x.item ORDER BY x.membership_id) FROM
+ (SELECT part.membership_id,jsonb_build_object('id',part.id,'membership_id',part.membership_id,'name',u.display_name,
+ 'active',member.inactive_at IS NULL AND u.disabled_at IS NULL) item
+ FROM mealplan.participants part JOIN core.memberships member ON member.household_id=part.household_id AND member.id=part.membership_id
+ JOIN core.users u ON u.id=member.user_id WHERE part.household_id=m.household_id AND part.meal_id=m.id
+ ORDER BY part.membership_id LIMIT 101) x),'[]'::jsonb),
  'requires_recipe_review',m.kind='recipe' AND NOT EXISTS(SELECT 1 FROM mealplan.components c WHERE c.household_id=m.household_id AND c.meal_id=m.id),
  'components',coalesce((SELECT jsonb_agg(x.item ORDER BY x.position,x.id) FROM
  (SELECT c.position,c.id,` + planningComponentJSON + ` AS item FROM mealplan.components c WHERE c.household_id=m.household_id AND c.meal_id=m.id ORDER BY c.position,c.id LIMIT 11) x),'[]'::jsonb))`
@@ -104,6 +123,9 @@ func readPlanningWeek(ctx context.Context, q planningQuerier, id auth.Identity, 
 		week.Effort[day] = PlanningEffort{}
 	}
 	for _, meal := range week.Meals {
+		if len(meal.Participants) > 100 {
+			return week, Invalid{"Mahlzeit enthält mehr als100 gespeicherte Teilnehmer"}
+		}
 		if len(meal.Components) > planningComponentLimit {
 			return week, Invalid{"Mahlzeit überschreitet die Komponentengrenze"}
 		}
@@ -141,6 +163,9 @@ func readPlanningMeal(ctx context.Context, q planningQuerier, id auth.Identity, 
 	}
 	if len(meal.Components) > planningComponentLimit {
 		return meal, Invalid{"Mahlzeit überschreitet die Komponentengrenze"}
+	}
+	if len(meal.Participants) > 100 {
+		return meal, Invalid{"Mahlzeit enthält mehr als100 gespeicherte Teilnehmer"}
 	}
 	return meal, nil
 }

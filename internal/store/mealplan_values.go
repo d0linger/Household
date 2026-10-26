@@ -23,18 +23,26 @@ type PlanningComponentInput struct {
 	SourceVersionID  string `json:"source_version_id"`
 	SourceGeneration int64  `json:"source_generation"`
 	Servings         string `json:"servings"`
+	ServingsMode     string `json:"servings_mode,omitempty"`
 	PrepMinutes      *int64 `json:"prep_minutes"`
 	CookMinutes      *int64 `json:"cook_minutes"`
 }
 
 type PlanningMealInput struct {
-	Title     string `json:"title"`
-	PlannedOn string `json:"planned_on"`
-	Slot      string `json:"slot"`
-	Kind      string `json:"kind"`
-	Status    string `json:"status"`
-	Servings  string `json:"servings"`
-	Notes     string `json:"notes"`
+	Title         string                      `json:"title"`
+	PlannedOn     string                      `json:"planned_on"`
+	Slot          string                      `json:"slot"`
+	Kind          string                      `json:"kind"`
+	Status        string                      `json:"status"`
+	Servings      string                      `json:"servings"`
+	Notes         string                      `json:"notes"`
+	Participation *PlanningParticipationInput `json:"participation,omitempty"`
+}
+
+type PlanningParticipationInput struct {
+	Mode          string   `json:"mode"`
+	MembershipIDs []string `json:"memberships"`
+	GuestCount    int      `json:"guest_count"`
 }
 
 type PlanningInput struct {

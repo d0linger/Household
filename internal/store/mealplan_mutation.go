@@ -26,6 +26,9 @@ func (s *Store) MutatePlanning(ctx context.Context, id auth.Identity, pid, key, 
 	if len(in.Components) > planningComponentLimit {
 		return nil, Invalid{"Höchstens zehn Komponenten pro Mahlzeit"}
 	}
+	if err := normalizePlanningParticipationPayload(&in); err != nil {
+		return nil, err
+	}
 	ctx = audit.WithRequest(audit.WithActor(ctx, id.UserID, id.HouseholdID), requestID)
 	tx, err := s.BeginMutation(ctx, id, "mealplan", in.Generation)
 	if err != nil {

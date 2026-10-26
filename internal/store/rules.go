@@ -324,6 +324,9 @@ func (s *Store) validateDomain(ctx context.Context, tx pgx.Tx, id auth.Identity,
 			if components && String(data["kind"]) != "recipe" {
 				return bad("Rezeptkomponenten zuerst in der Wochenplanung entfernen, bevor die Planungsart geändert wird")
 			}
+			if err := validatePlanningGenericPortions(ctx, tx, id, rid, data); err != nil {
+				return err
+			}
 		}
 		var valid bool
 		err := tx.QueryRow(ctx, "SELECT $3::date BETWEEN starts_on AND ends_on FROM mealplan.plans WHERE household_id=$1 AND id=$2 FOR SHARE NOWAIT", id.HouseholdID, data["plan_id"], data["planned_on"]).Scan(&valid)

@@ -87,5 +87,6 @@ jobs:
             outputs/reservations-review
             outputs/planning-demand-review
             outputs/planning-purchases-review
+            outputs/planning-participants-review
             outputs/qa/a11y-hardening.json
           retention-days: 14

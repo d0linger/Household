@@ -1,6 +1,6 @@
 # Participants, guests and explicit portion modes
 
-Status: MP06 in progress. A separate ignored source copy under .local/participants-work contains provisional migrations, Store/read/copy and PWA integration. Pure, Store/Web and preview/conflict unit checks pass there; PostgreSQL, browser, recovery and final acceptance have not run. None of this source changes the root application's compiled MP14/MP17 candidate. The [180-item checklist](improvements-180.md) records the item as in progress.
+Status: MP06 in progress, materialized in the application after local checkpoint ecc8391. Core23/Mealplan7, Store/read/copy and PWA integration are implemented. Eight native PostgreSQL contracts pass together (web55.802s final repeat); an additional activity-lock contract passes(web10.515s). The final740-check browser chain, current-image encrypted recovery, scoped independent impact-correction verdict and separate design comparison pass. Complete native regression is running; scoped Linux race remains pending. The [verification ledger](planning-participants-verification.md) and [180-item checklist](improvements-180.md) separate implementation from acceptance.
 
 ## User contract
 
@@ -12,9 +12,9 @@ Initial limits are100 unique household memberships and100 guests per meal. Refus
 
 ## Model and invariants
 
-The next forward migrations are planned as Mealplan7 and Core23; these names are reservations in this document, not installed migrations.
+The forward migrations are Mealplan7 and Core23. The prior59 migration files remain unchanged; the development manifest contains61 hashes.
 
-| Owner | Planned record | Contract |
+| Owner | Record | Contract |
 |---|---|---|
 | Mealplan meal | `servings_mode` | `manual` or `participants`; existing rows default to manual. |
 | Mealplan meal | `guest_count` | Integer0–100; existing rows default to0. |
@@ -25,7 +25,7 @@ The next forward migrations are planned as Mealplan7 and Core23; these names are
 
 Deferred final-state checks enforce roster bounds, derived equality and linked-component equality. Roster writes take the parent meal/plan locking path and advance versions. Avoid recursive synchronization triggers: the existing component guard already updates its meal. The dedicated Store transaction writes intended effective quantities; guards validate the committed result.
 
-Core23 is expected to register one additional audit policy and the corresponding readiness contract, bringing73 policies to74 if no other table is added. Verify actual table/policy counts during implementation rather than changing expected census numbers speculatively.
+Core23 registers the additional participant audit policy, bringing the verified schema census to74 policies and48 optional-domain tables. Readiness checks exact FK/Unique columns, valid ready indexes, individual runtime grants, trigger identity/type/deferral/search path and CHECK expressions/columns. Aggregate portion modes and guest counts are safe audit fields; membership identities and free person names are redacted.
 
 ## Membership and compatibility
 
@@ -65,4 +65,4 @@ Each existing component exposes “Use meal portions” versus “Own portions,�
 8. Connect the PWA, then check desktop/mobile, light/dark, keyboard/focus, long/inactive labels, reference pagination, reader access, validation/conflicts and exact retry.
 9. Run complete native regression, scoped Linux race, security/workflow checks, encrypted restore and fresh independent UI/documentation review. Update README, the ledger and checklist only with executed evidence.
 
-The standalone Windows `-race` attempt is unavailable without CGO; the separate pure unit invocation passed. No race, PostgreSQL or browser acceptance is claimed for this preparation.
+MP06 is locally verified. Native focused campaigns cover nine contracts, including actual reservation release and MP17 source review, inactive-member copy/purge,100-member replacement, late rollback, authorization/privacy, contested user/membership activity and a populated Core22/Mealplan6 upgrade. Final browser30checks/seven clean axe scans and the740-check complete chain pass, as do current-image synthetic recovery and scoped independent correction/documentation review. Complete native regression passes272main tests(web1219.400s),72.7% internal coverage(7528/10353). Scoped Linux race passes(web624.225s, Store1.038s) under the recorded participant/weekly/reservation/demand/audit/migration/portion selection. The standalone Windows race attempt without CGO is not acceptance. See [the verification ledger](planning-participants-verification.md) for failed historical-fixture evidence, corrected repeat and operational limits.

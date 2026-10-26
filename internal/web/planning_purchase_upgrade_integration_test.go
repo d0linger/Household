@@ -6,6 +6,7 @@ import (
 	"os"
 	"testing"
 
+	"household/internal/audit"
 	"household/internal/database"
 	"household/internal/store"
 	"household/internal/value"
@@ -64,16 +65,20 @@ func TestPlanningPurchasePopulatedPriorUpgrade(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	input := planningInput(t, f, pid)
-	input.Action, input.MealID, input.Version = "save", mid, store.Int(meal["version"])
-	input.Meal = store.PlanningMealInput{Title: "Existing mapped recipe", PlannedOn: day, Slot: "dinner", Kind: "recipe", Status: "planned", Servings: "3"}
-	input.Components = []store.PlanningComponentInput{{SourceVersionID: store.String(source["source_version_id"]), SourceGeneration: store.Int(source["source_generation"]), Servings: "3"}}
-	planningMutation(t, f, pid, input)
-	var cid string
-	if err = f.pool.QueryRow(f.ctx, "SELECT id FROM mealplan.components WHERE meal_id=$1", mid).Scan(&cid); err != nil {
-		t.Fatal(err)
+	// Seed the real prior-schema client contract. The current weekly Store reads
+	// Mealplan7 participant fields and must not be run against historical Mealplan4.
+	cid := value.UUID()
+	ctx := audit.WithRequest(audit.WithActor(f.ctx, f.identity.UserID, f.identity.HouseholdID), value.UUID())
+	if _, err = audit.Exec(ctx, f.pool, `INSERT INTO mealplan.components(id,household_id,meal_id,position,servings,source_recipe_id,source_version_id,source_generation,source_revision,snapshot,created_by)
+ SELECT $1,$2,$3,0,3,v.recipe_id,v.id,$5,v.revision,v.snapshot,$6 FROM recipes.versions v WHERE v.household_id=$2 AND v.id=$4`,
+		cid, f.identity.HouseholdID, mid, source["source_version_id"], store.Int(source["source_generation"]), f.identity.UserID); err != nil {
+		t.Fatal("prior client frozen component", err)
 	}
-	bindPlanningIngredients(t, f, pid, mid, cid, product)
+	if _, err = audit.Exec(ctx, f.pool, `INSERT INTO core.planning_ingredient_bindings(household_id,mealplan_generation,plan_id,meal_id,component_id,ingredient_id,source_hash,product_id,pantry_generation,unit_code,created_by,changed_by)
+ SELECT c.household_id,$2,$3,c.meal_id,c.id,(c.snapshot->'ingredients'->0->>'id')::uuid,sha256(convert_to(c.snapshot::text,'UTF8')),$4,$5,'kg',$6,$6
+ FROM mealplan.components c WHERE c.id=$1 AND c.household_id=$7`, cid, f.app.Store.States()["mealplan"].Generation, pid, product["id"], f.app.Store.States()["pantry"].Generation, f.identity.UserID, f.identity.HouseholdID); err != nil {
+		t.Fatal("prior client confirmed binding", err)
+	}
 	var before, after string
 	const fingerprint = `SELECT md5(c.snapshot::text||b::text) FROM mealplan.components c
  JOIN core.planning_ingredient_bindings b ON b.household_id=c.household_id AND b.component_id=c.id WHERE c.id=$1`

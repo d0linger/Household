@@ -176,6 +176,13 @@ func Ready(ctx context.Context, pool *pgxpool.Pool) error {
 	if !planningPurchases {
 		return errors.New("incomplete planning purchase contract")
 	}
+	var participants bool
+	if err := pool.QueryRow(ctx, "SELECT core.planning_participants_ready()").Scan(&participants); err != nil {
+		return fmt.Errorf("inspect planning participant contract: %w", err)
+	}
+	if !participants {
+		return errors.New("incomplete planning participant contract")
+	}
 	return nil
 }
 

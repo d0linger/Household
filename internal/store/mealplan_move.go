@@ -125,11 +125,15 @@ func (s *Store) copyPlanningWeek(ctx context.Context, tx pgx.Tx, id auth.Identit
 			return nil, dateErr
 		}
 		newMeal := value.UUID()
-		if _, err = tx.Exec(ctx, `INSERT INTO mealplan.meals(id,household_id,plan_id,planned_on,meal_slot,title,servings,notes,kind,status,created_by) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,'open',$10)`, newMeal, id.HouseholdID, newPlan, date, meal.Slot, meal.Title, meal.Servings, meal.Notes, meal.Kind, id.UserID); err != nil {
+		if _, err = tx.Exec(ctx, `INSERT INTO mealplan.meals(id,household_id,plan_id,planned_on,meal_slot,title,servings,notes,kind,status,created_by,servings_mode,guest_count) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,'open',$10,$11,$12)`, newMeal, id.HouseholdID, newPlan, date, meal.Slot, meal.Title, meal.Servings, meal.Notes, meal.Kind, id.UserID, meal.ServingsMode, meal.GuestCount); err != nil {
 			return nil, err
 		}
-		if _, err = tx.Exec(ctx, `INSERT INTO mealplan.components(household_id,meal_id,position,servings,prep_minutes,cook_minutes,source_recipe_id,source_version_id,source_generation,source_revision,snapshot,copied_at,created_by)
- SELECT household_id,$3,position,servings,prep_minutes,cook_minutes,source_recipe_id,source_version_id,source_generation,source_revision,snapshot,copied_at,$4 FROM mealplan.components WHERE household_id=$1 AND meal_id=$2 ORDER BY position,id`, id.HouseholdID, meal.ID, newMeal, id.UserID); err != nil {
+		if _, err = tx.Exec(ctx, `INSERT INTO mealplan.components(household_id,meal_id,position,servings,prep_minutes,cook_minutes,source_recipe_id,source_version_id,source_generation,source_revision,snapshot,copied_at,created_by,servings_mode)
+ SELECT household_id,$3,position,servings,prep_minutes,cook_minutes,source_recipe_id,source_version_id,source_generation,source_revision,snapshot,copied_at,$4,servings_mode FROM mealplan.components WHERE household_id=$1 AND meal_id=$2 ORDER BY position,id`, id.HouseholdID, meal.ID, newMeal, id.UserID); err != nil {
+			return nil, err
+		}
+		if _, err = tx.Exec(ctx, `INSERT INTO mealplan.participants(household_id,meal_id,membership_id,created_by)
+ SELECT household_id,$3,membership_id,$4 FROM mealplan.participants WHERE household_id=$1 AND meal_id=$2 ORDER BY membership_id`, id.HouseholdID, meal.ID, newMeal, id.UserID); err != nil {
 			return nil, err
 		}
 		if err = s.projectPlanning(ctx, tx, id, "meals", newMeal, in.Generation); err != nil {
