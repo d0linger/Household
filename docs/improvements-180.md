@@ -27,7 +27,7 @@ Ein Schema, eine Schaltfläche oder ein Mock allein schließt keinen Punkt ab. B
 
 ## Fortschritt
 
-180 Punkte: **57 verifiziert, 0 implementiert, 2 in Arbeit, 121 offen**. Dieser Zähler wird mit jedem abgeschlossenen Arbeitspaket abgeglichen.
+180 Punkte: **58 verifiziert, 0 implementiert, 2 in Arbeit, 120 offen**. Dieser Zähler wird mit jedem abgeschlossenen Arbeitspaket abgeglichen.
 
 ## Einkaufen
 
@@ -122,7 +122,7 @@ Ein Schema, eine Schaltfläche oder ein Mock allein schließt keinen Punkt ab. B
 | PA12 | Reservierungen | Freien und für Mahlzeiten reservierten Bestand getrennt ausweisen. | Verifiziert | [Abnahme](stock-reservations-verification.md): Core19/Pantry7/Mealplan3,12 DB-Verträge, native70,4%, gezielter Linux-Race322,439s,625 Browserprüfungen,10 saubere axe-Scans und exakter synthetischer Restore. |
 | PA13 | Open Food Facts | Optionalen Adapter mit Quellenangabe und lokalem Cache bereitstellen. | Offen | — |
 | PA14 | Abfallanalyse | Gründe und optional geschätzte Kosten der Verluste auswerten. | Offen | — |
-| PA15 | Rezeptvorschläge | Vorhandene und bald fällige Zutaten transparent gewichtet berücksichtigen. | Offen | — |
+| PA15 | Rezeptvorschläge | Vorhandene und bald fällige Zutaten transparent gewichtet berücksichtigen. | Verifiziert | Unabhängiger Vorratseinstieg mit exaktem freien Bestand/Datumsgründen und gebundenen Cursorn; vollständige native Regression297Haupttests/73,4%,44Webtests im gezielten Linux-Race677,101s.803Browserchecks einschließlich25PA15Checks/7sauberen axe-Scans, frisches UI-ship, separate Designprüfung, aktuelle Images und verschlüsselter synthetischer Restore. [Abnahme](pantry-suggestions-verification.md). |
 | PA16 | Große Bestandslisten | Gefilterte Paginierung und exakte Gesamtsummen ohne 100-Produkte-Grenze anbieten. | Verifiziert | PostgreSQL/Migration/Restore + Linux-Race; Pantry 18 Browserchecks/3 axe; unabhängige DB- und UI-Abnahme bestanden |
 | PA17 | Bestandsprojektion | Transaktionale Salden pflegen und gegen das Bewegungsjournal prüfen. | Verifiziert | PostgreSQL/Migration/Restore + Linux-Race; Pantry 18 Browserchecks/3 axe; unabhängige DB- und UI-Abnahme bestanden |
 | PA18 | Verbrauchskonflikte | Verbleibende Menge nach gleichzeitiger Buchung zeigen; kein blindes Wiederholen. | Verifiziert | Native Gesamtsuite67,2 %, Linux-Race259,069s, bestücktes Upgrade/Restore, direkte50/100-Grenzen; Vorrat35Browserchecks/5axe, Gesamtkette448; DB-, UI- und Dokumentationsabnahme bestanden. |
@@ -134,7 +134,7 @@ Ein Schema, eine Schaltfläche oder ein Mock allein schließt keinen Punkt ab. B
 | ID | Verbesserung | Abnahmekriterium | Status | Nachweis |
 |---|---|---|---|---|
 | EX01 | Monatsübersicht | Gebuchte Beträge, Entwürfe und Hauptkategorien getrennt darstellen. | Offen | — |
-| EX02 | Aufgeteilte Erfassung | Buchung und Kategoriezeilen gemeinsam bearbeiten; Restdifferenz sichtbar halten. | In Arbeit | Getrennte ignorierte Vorbereitung mit expliziten EUR-Eingaben, exakten Cent-/Restbeträgen,100-Zeilen-Grenze, Versions-/Identitätsprüfung und Entwurf-vs-Buchen. Neun gemeinsame reine Tests0,843s/95,2% Paketabdeckung; keine SQL-/HTTP-/UI-Funktion in der Anwendung. [Vertrag](finance-workspace.md). |
+| EX02 | Aufgeteilte Erfassung | Buchung und Kategoriezeilen gemeinsam bearbeiten; Restdifferenz sichtbar halten. | In Arbeit | Getrennte ignorierte Vorbereitung mit expliziten EUR-Eingaben, exakten Cent-/Restbeträgen,100-Zeilen-Grenze, Versions-/Identitätsprüfung und Entwurf-vs-Buchen. 14 gemeinsame reine Tests0,901s/95,5% Paketabdeckung einschließlich vollständiger Kindversionen/ausdrücklicher Löschungen; geteiltes Expenses3-Fundament nur vorbereitet/kompiliert, noch keine neue SQL-/HTTP-/UI-Funktion in der Anwendung. [Vertrag](finance-workspace.md). |
 | EX03 | Buchungszustände | Entwurf, gebucht, erstattet und korrigiert mit passenden Aktionen erklären. | Offen | — |
 | EX04 | Gespeicherte Finanzfilter | Person, Kategorie, Empfänger, Zeitraum und Status kombinieren. | Offen | — |
 | EX05 | Belegprüfung | Beleg und Buchung nebeneinander beziehungsweise mobil mit erhaltenem Formularzustand zeigen. | Offen | — |

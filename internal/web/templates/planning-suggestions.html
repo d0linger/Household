@@ -5,7 +5,7 @@
  <form id="suggestion-form"><fieldset id="suggestion-fields" class="form-grid">
   <label class="full">Rezepte eingrenzen<input name="q" type="search" maxlength="300" placeholder="Rezepttitel"></label>
   <label>Portionen für den Vergleich<input name="servings" inputmode="decimal" value="1" required></label>
-  <label>Kochen am<input name="on" type="date" required></label>
+  <label>Kochen am<input name="on" type="date" {{if ne .View "pantry-suggestions"}}required{{end}}>{{if eq .View "pantry-suggestions"}}<small>Leer lassen für heute in der Haushaltszeitzone.</small>{{end}}</label>
   <button class="primary">Auswahl neu bewerten</button>
  </fieldset></form>
  <p id="suggestion-status" role="status">Portionen und Tag prüfen, dann die Auswahl bewerten.</p>

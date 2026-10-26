@@ -29,6 +29,14 @@ type suggestionResponse struct {
 }
 
 func (s *Server) planningSuggestionsAPI(w http.ResponseWriter, r *http.Request) {
+	s.recipeSuggestionsAPI(w, r, "mealplan")
+}
+
+func (s *Server) pantrySuggestionsAPI(w http.ResponseWriter, r *http.Request) {
+	s.recipeSuggestionsAPI(w, r, "pantry")
+}
+
+func (s *Server) recipeSuggestionsAPI(w http.ResponseWriter, r *http.Request, entryModule string) {
 	w.Header().Set("Cache-Control", "private, no-store")
 	s.Store.Gate.RLock()
 	defer s.Store.Gate.RUnlock()
@@ -37,6 +45,8 @@ func (s *Server) planningSuggestionsAPI(w http.ResponseWriter, r *http.Request) 
 		s.fail(w, r, err)
 		return
 	}
+	// The route chooses the authority; request parameters cannot select it.
+	query.EntryModule = entryModule
 	scope, err := suggestionRequestScope(identity(r), query)
 	if err != nil {
 		s.fail(w, r, err)
@@ -94,11 +104,14 @@ func suggestionRequest(r *http.Request) (store.RecipeSuggestionQuery, string, er
 }
 
 func suggestionRequestScope(id auth.Identity, query store.RecipeSuggestionQuery) (string, error) {
+	if query.EntryModule == "" {
+		query.EntryModule = "mealplan"
+	}
 	raw, err := json.Marshal(struct {
 		Household, User, Member, Session, Role string
 		AuthVersion                            int64
-		Search, Servings                       string
-	}{id.HouseholdID, id.UserID, id.MembershipID, id.SessionID, id.Role, id.AuthVersion, query.Search, query.Servings})
+		Search, Servings, EntryModule          string
+	}{id.HouseholdID, id.UserID, id.MembershipID, id.SessionID, id.Role, id.AuthVersion, query.Search, query.Servings, query.EntryModule})
 	return string(raw), err
 }
 
@@ -128,6 +141,7 @@ func (s *Server) readSuggestionCursor(token, scope string) (suggestionCursor, er
 	decoder := json.NewDecoder(bytes.NewReader(raw))
 	decoder.DisallowUnknownFields()
 	if decoder.Decode(&cursor) != nil || decoder.Decode(new(any)) != io.EOF || cursor.Version != 1 ||
+		cursor.Scope.EntryModule != "mealplan" && cursor.Scope.EntryModule != "pantry" ||
 		!value.ValidUUID(cursor.ID) || cursor.Created.IsZero() || cursor.Expires <= time.Now().Unix() ||
 		cursor.Scope.Generation <= 0 || cursor.Scope.RecipesGeneration < 0 || cursor.Scope.PantryGeneration < 0 ||
 		cursor.Scope.RecipesEnabled && cursor.Scope.RecipesGeneration == 0 || cursor.Scope.PantryEnabled && cursor.Scope.PantryGeneration == 0 ||

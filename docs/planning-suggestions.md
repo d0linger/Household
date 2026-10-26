@@ -10,6 +10,8 @@ The public Store reader checks current session/role/auth-version/expiry, module 
 
 ## User contract
 
+PA15 additionally exposes this reader from `/m/pantry/recipe-suggestions`, including when Mealplan is disabled. The selected entry is fixed by the server route and belongs to both signed cursor scopes. Pantry navigation opens the exact evaluated immutable Recipe version with its canonical portions in the existing explicitly physical-stock comparison; it does not invoke the weekly source-review/save workflow. See [current implementation and test scope](pantry-suggestions-verification.md).
+
 Offer independently evaluated recipe alternatives for an explicit positive exact portion amount and household calendar date. Show why each alternative is covered, short or incomplete, which explicit product mappings were used, and which relevant free lots have a use-by date, opening guidance or best-before date. Unknown ingredient amounts or incompatible units must never become zero demand or “fully available.” Opening guidance and best-before dates are not food-safety guarantees; passed use-by dates get their own review state and must not make a recipe a recommended way to use that lot.
 
 Each alternative sees the same current free stock. Two alternatives individually covered by that stock are not thereby covered together. The page states this distinction and the observation time. Choosing a recipe opens the existing explicit immutable-source review; it does not save a meal, reserve stock, create shopping items or consume a lot. Existing demand/source review remains authoritative after selection.

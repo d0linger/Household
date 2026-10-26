@@ -141,7 +141,9 @@ func suggestionDateEvidence(reasons []suggestionDateReason) []suggestionDateReas
 		return a.Kind < b.Kind
 	})
 	if len(out) > 50 {
-		out = out[:50]
+		// Release the complete sorted backing array after retaining the display
+		// sample. A full slice expression would still keep every reason alive.
+		out = append([]suggestionDateReason{}, out[:50]...)
 	}
 	return out
 }

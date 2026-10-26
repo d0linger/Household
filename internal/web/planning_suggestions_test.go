@@ -21,7 +21,7 @@ func TestSuggestionRequestCanonicalAndBounded(t *testing.T) {
 		{"", true}, {"q=%20Soup%20&servings=2.5&on=2026-12-01", true},
 		{"servings=0", false}, {"servings=1.0000001", false}, {"servings=NaN", false},
 		{"on=2026-02-30", false}, {"q=one&q=two", false}, {"cursor=a&cursor=b", false},
-		{"after_id=untrusted", false}, {"q=%zz", false}, {"q=a;b", false},
+		{"after_id=untrusted", false}, {"entry_module=pantry", false}, {"q=%zz", false}, {"q=a;b", false},
 	} {
 		t.Run(tc.query, func(t *testing.T) {
 			t.Parallel()
@@ -50,7 +50,7 @@ func TestSuggestionCursorBindsIdentityRequestAndStrictPayload(t *testing.T) {
 		t.Fatal(err)
 	}
 	cursor := suggestionCursor{Version: 1, Created: time.Now().UTC(), ID: value.UUID(), Expires: time.Now().Add(time.Minute).Unix(),
-		Scope: store.RecipeSuggestionScope{Generation: 1, RecipesGeneration: 2, PantryGeneration: 3, RecipesEnabled: true, PantryEnabled: true,
+		Scope: store.RecipeSuggestionScope{EntryModule: "mealplan", MealplanEnabled: true, Generation: 1, RecipesGeneration: 2, PantryGeneration: 3, RecipesEnabled: true, PantryEnabled: true,
 			Timezone: "Europe/Vienna", Today: "2026-10-26", Search: query.Search, Servings: query.Servings, PlannedOn: query.PlannedOn}}
 	token, err := s.makeSuggestionCursor(cursor, scope)
 	if err != nil {
@@ -69,6 +69,7 @@ func TestSuggestionCursorBindsIdentityRequestAndStrictPayload(t *testing.T) {
 		func(i *auth.Identity, _ *store.RecipeSuggestionQuery) { i.AuthVersion++ },
 		func(_ *auth.Identity, q *store.RecipeSuggestionQuery) { q.Search += "x" },
 		func(_ *auth.Identity, q *store.RecipeSuggestionQuery) { q.Servings = "2.000000" },
+		func(_ *auth.Identity, q *store.RecipeSuggestionQuery) { q.EntryModule = "pantry" },
 	} {
 		otherID, otherQuery := id, query
 		change(&otherID, &otherQuery)
@@ -91,6 +92,7 @@ func TestSuggestionCursorBindsIdentityRequestAndStrictPayload(t *testing.T) {
 		func(c *suggestionCursor) { c.ID = "invalid" },
 		func(c *suggestionCursor) { c.Created = time.Time{} },
 		func(c *suggestionCursor) { c.Scope.Generation = 0 },
+		func(c *suggestionCursor) { c.Scope.EntryModule = "expenses" },
 		func(c *suggestionCursor) { c.Scope.Today = "2026-02-30" },
 	} {
 		bad := cursor

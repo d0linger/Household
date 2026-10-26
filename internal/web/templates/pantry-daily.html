@@ -1,4 +1,4 @@
-{{define "pantry-daily-nav"}}<nav class="entity-tabs" aria-label="Vorräte"><a href="/m/pantry/stock">Bestand</a><a href="/m/pantry/priority">Zuerst verbrauchen</a><a href="/m/pantry/packs">Packungen</a><a href="/m/pantry/barcodes">Barcodes</a></nav>{{end}}
+{{define "pantry-daily-nav"}}<nav class="entity-tabs" aria-label="Vorräte"><a href="/m/pantry/stock">Bestand</a><a href="/m/pantry/priority">Zuerst verbrauchen</a><a href="/m/pantry/recipe-suggestions">Rezeptvorschläge</a><a href="/m/pantry/packs">Packungen</a><a href="/m/pantry/barcodes">Barcodes</a></nav>{{end}}
 {{define "pantry-consume"}}
 <section id="pantry-consume" data-lot="{{.Record.id}}" data-generation="{{with index .States "pantry"}}{{.Generation}}{{end}}" data-writable="{{.User.CanWrite}}">
  {{template "pantry-daily-nav" .}}<h1>Verbrauch prüfen</h1><p id="consume-status" role="status">Charge wird geladen …</p>

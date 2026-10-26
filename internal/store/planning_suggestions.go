@@ -16,6 +16,7 @@ import (
 
 type RecipeSuggestionQuery struct {
 	Search, Servings, PlannedOn string
+	EntryModule                 string
 	AfterCreated                time.Time
 	AfterID                     string
 	ExpectedScope               *RecipeSuggestionScope
@@ -25,6 +26,8 @@ type RecipeSuggestionQuery struct {
 // RecipeSuggestionScope binds paging to the current optional-data identities
 // and household calendar. Every page still evaluates freshly observed stock.
 type RecipeSuggestionScope struct {
+	EntryModule       string `json:"entry_module"`
+	MealplanEnabled   bool   `json:"mealplan_enabled"`
 	Generation        int64  `json:"generation"`
 	RecipesGeneration int64  `json:"recipes_generation"`
 	PantryGeneration  int64  `json:"pantry_generation"`
@@ -62,6 +65,8 @@ type RecipeSuggestion struct {
 }
 
 type RecipeSuggestionPage struct {
+	EntryModule       string             `json:"entry_module"`
+	MealplanEnabled   bool               `json:"mealplan_enabled"`
 	ReadAt            time.Time          `json:"read_at"`
 	Timezone          string             `json:"timezone"`
 	Today             string             `json:"today"`
@@ -82,7 +87,13 @@ type RecipeSuggestionPage struct {
 // RecipeSuggestions evaluates one explicitly bounded page of alternatives.
 // The HTTP caller holds the module lifecycle read gate and signs page cursors.
 func (s *Store) RecipeSuggestions(ctx context.Context, id auth.Identity, query RecipeSuggestionQuery) (RecipeSuggestionPage, error) {
-	out := RecipeSuggestionPage{Candidates: []RecipeSuggestion{}, Search: strings.TrimSpace(query.Search)}
+	if query.EntryModule == "" {
+		query.EntryModule = "mealplan"
+	}
+	out := RecipeSuggestionPage{Candidates: []RecipeSuggestion{}, Search: strings.TrimSpace(query.Search), EntryModule: query.EntryModule}
+	if query.EntryModule != "mealplan" && query.EntryModule != "pantry" {
+		return out, Invalid{"Rezeptvorschläge über Vorrat oder Essensplanung aufrufen"}
+	}
 	if !value.ValidUUID(id.HouseholdID) || !value.ValidUUID(id.UserID) || !value.ValidUUID(id.MembershipID) || !value.ValidUUID(id.SessionID) || id.AuthVersion <= 0 {
 		return out, ErrForbidden
 	}
@@ -160,13 +171,12 @@ func (s *Store) RecipeSuggestions(ctx context.Context, id auth.Identity, query R
 }
 
 func (p RecipeSuggestionPage) Scope() RecipeSuggestionScope {
-	return RecipeSuggestionScope{Generation: p.Generation, RecipesGeneration: p.RecipesGeneration,
+	return RecipeSuggestionScope{EntryModule: p.EntryModule, MealplanEnabled: p.MealplanEnabled, Generation: p.Generation, RecipesGeneration: p.RecipesGeneration,
 		PantryGeneration: p.PantryGeneration, RecipesEnabled: p.RecipesEnabled, PantryEnabled: p.PantryEnabled,
 		Timezone: p.Timezone, Today: p.Today, Search: p.Search, Servings: p.Servings, PlannedOn: p.PlannedOn}
 }
 
 func readSuggestionScope(ctx context.Context, tx pgx.Tx, id auth.Identity, out *RecipeSuggestionPage) error {
-	var mealplanEnabled bool
 	err := tx.QueryRow(ctx, `SELECT h.timezone,transaction_timestamp(),coalesce(mp.state='enabled',false),coalesce(mp.data_generation,0),
  coalesce(rp.state='enabled',false),coalesce(rp.data_generation,0),coalesce(pp.state='enabled',false),coalesce(pp.data_generation,0)
  FROM core.households h JOIN core.memberships m ON m.household_id=h.id AND m.user_id=$2 AND m.id=$3 AND m.role=$4 AND m.inactive_at IS NULL
@@ -177,14 +187,14 @@ func readSuggestionScope(ctx context.Context, tx pgx.Tx, id auth.Identity, out *
  LEFT JOIN core.module_states rp ON rp.household_id=h.id AND rp.module_id='recipes'
  LEFT JOIN core.module_states pp ON pp.household_id=h.id AND pp.module_id='pantry'
  WHERE h.id=$1`, id.HouseholdID, id.UserID, id.MembershipID, id.Role, id.AuthVersion, id.SessionID).Scan(
-		&out.Timezone, &out.ReadAt, &mealplanEnabled, &out.Generation, &out.RecipesEnabled, &out.RecipesGeneration, &out.PantryEnabled, &out.PantryGeneration)
+		&out.Timezone, &out.ReadAt, &out.MealplanEnabled, &out.Generation, &out.RecipesEnabled, &out.RecipesGeneration, &out.PantryEnabled, &out.PantryGeneration)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return ErrForbidden
 	}
 	if err != nil {
 		return err
 	}
-	if !mealplanEnabled {
+	if out.EntryModule == "mealplan" && !out.MealplanEnabled || out.EntryModule == "pantry" && !out.PantryEnabled {
 		return ErrNotFound
 	}
 	return nil

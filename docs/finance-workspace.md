@@ -1,6 +1,8 @@
 # Atomic expense editing and financial visibility
 
-Next preparation: EX02 and EX19. The running MP11/MP12 candidate remains frozen. Only pure normalization exists in ignored `.local/finance-work`; no financial schema, HTTP permission, editor or operational acceptance is added to the application yet. EX01/EX03/EX06/EX09/EX10 remain separate later acceptance items.
+Next preparation: EX02 transaction integrity first, then the complete EX19 selected-access contract. MP11/MP12 is saved as16affdd; PA15 reuses it in the frozen main candidate. Financial work remains in ignored `.local/finance-work`; no new financial schema, HTTP permission, editor or operational acceptance is added to the application yet. EX01/EX03/EX06/EX09/EX10 remain separate later acceptance items.
+
+The first EX02 increment retains the existing explicit household-wide sharing. It does not need a fictitious access-policy revision or new Core visibility tables. Remove AccessVersion from the shared editor DTO; introduce real policy revisions only when the later Core contract exists. The complete selected-access inventory below remains mandatory before any restricted mode is offered.
 
 ## Existing truth
 
@@ -26,6 +28,24 @@ Integrations keep explicit source and destination rights. Restricting a copied e
 
 ## Concurrency, persistence and legacy boundaries
 
+### Additional access-path inventory
+
+The source-only follow-up inventory also covers indirect metadata, background work and historical copies. These are prerequisites for selected financial access; they are not findings against today's explicitly household-shared application. Bootstrap currently exposes identity/module states, not financial totals; keep future badges and aggregates filtered before counting. The general attachment quota error must not reveal private file counts or sizes.
+
+Before financial reminders are offered, replace target-path authority with a typed generation-bound resource/policy reference. Check permitted recipients both at delivery and on every notification read, including titles, links and counts. Revocation must hide delivered notices. Source deletion must not leave an identifying dead link. Minimal outbox/job payloads stay internal; any future status/error/activity UI must check source access before exposing IDs or counts.
+
+OCR and thumbnail results inherit current attachment access. Check source liveness and attachment binding at result commit, and current source/result access before confirmed capture replay. Moving an attachment to a created expense requires conservative policy inheritance and explicit approval of any widened audience. Do not include OCR text or private filenames in diagnostics.
+
+Resource links do not transfer permissions. Check the concrete destination before returning its ID, label, filename or preview. Existing shopping checkout snapshots and fuel sources are independent shared copies; making a copied expense selected does not retroactively hide those facts. An explicit product decision is needed to change those sources.
+
+Core audit rows can expose financial attachment sizes/source IDs, capture result IDs, links and import counts. Filtering only the Expenses module is insufficient. Bind sensitive Core history to an explicit policy before pagination, and retain a denied historical policy identity through source deletion/purge. Missing policy must never mean household-shared. Separate administrative security metadata from financial content.
+
+Purge removes detailed response payloads while retaining only the minimum deduplication identity. Permanent proofs, result counts and historical snapshots still require current visibility before display. Operator backups intentionally contain all data and remain outside application grants.
+
+The smallest safe first increment excludes the new financial editor and financial generic mutations from the existing opt-in IndexedDB queue. That queue stores complete form bodies and displays names/amounts/counts. A later private draft contract needs explicit local storage consent and renewed authorization before display/transmission. Server revocation cannot reliably remove data already downloaded to a device. The existing service worker itself caches only assets and the offline shell.
+
+Required indirect cases include revocation after notification delivery, during OCR and after confirmed capture; a visible source linked to a selected expense; revocation between mutation and replay; deletion/purge with retained audit; and policy/account changes with a local draft present. Reuse the existing capture privacy sentinel/lifecycle test patterns.
+
 The current child guard locks the parent but does not increment its version. Introduce a parent content revision covering every category-line insert/update/delete, or compare complete child identities/versions in addition to parent version. The bundle must prove a complete read set, including deliberate removals, before replacement. A truncated or stale client cannot silently drop unseen lines. Preserve existing posted/oversized legacy records and offer a bounded read/recovery state rather than truncating them.
 
 Lock order is household/module → current access policy/context → entry → sorted bounded children → categories/memberships. Incumbent generic child writes acquire a child before its parent; use bounded NOWAIT contention and compatible guards rather than allowing opposite lock orders to wait indefinitely. New selections require active resources; retained inactive payer/category references remain visibly distinguishable and receive an explicit posting decision.
@@ -36,26 +56,31 @@ Use only new forward migrations. Core contract creation precedes Expenses backfi
 
 ## Implementation sequence
 
-1. Complete MP11/MP12 native/race acceptance without changing its application source.
-2. Finalize pure EUR/header/line and structural visibility normalization; test exact signed differences, limits and no partial usable result after invalid input.
-3. Specify the full financial access-path inventory and explicit responsible-member administration/recovery behavior.
-4. Add generation-bound Core policy/grant/subject contracts with no optional-schema FK.
-5. Add forward Expenses migration for complete parent/child revision integrity and bounded new edits without rewriting posted legacy facts.
-6. Backfill shared legacy access explicitly; test initial and populated upgrades, repeat, readiness tampering and grants.
-7. Implement central current access checks for reads/writes and policy-management operations.
-8. Apply visibility to every generic/search/reference/related/export/report/file/capture/import/audit/replay path before offering selected access.
-9. Implement a bounded current-authorized RR bundle reader with complete child/version evidence.
-10. Implement normalized, parent-first atomic save/post with current access revision and explicit removed-line checks.
-11. Preserve compatible generic writes, fuel/capture/import creation and actual purge under the same guards.
-12. Add permanent minimal operation proofs and current-authorized replay after generic response pruning.
-13. Test stale child edits, post-versus-edit, opposite locks, simultaneous versions and active membership changes.
-14. Force late deferred/projection failures; compare raw entry/children/revision/audit/search/proof state for complete rollback and key reuse.
-15. Exercise two actual users across every visibility path, including revoked access before replay and hidden aggregates/attachments/audit.
-16. Build the local mobile editor: labelled EUR inputs, category rows, exact remaining amount, draft/posted explanation and explicit save/post review.
-17. Test incomplete/negative/mixed allocations, long labels, inactive selections, conflicts and unknown-outcome same-body/key recovery in the browser.
-18. Execute independent interface/documentation review, security/workflow checks, current images/recovery, complete native and meaningful scoped Linux race.
-19. Update README/checklist only from executed evidence; then build EX01 summaries and reliable EX03 correction/refund workflows on this foundation.
-
+1. Preserve the accepted MP11/MP12 and PA15 candidate while preparing the financial increment separately.
+2. Finalize pure EUR/header/line normalization and complete child-set reconciliation; test signed differences, bounds and no usable partial result after error.
+3. Add forward Expenses3 integrity with the household migration barrier, Invoker guards, parent version increments after every App child write and fail-fast opposite lock order in both Go and SQL.
+4. Add exact local readiness, including conditional/column-restricted trigger rejection, each individual privilege and the composite parent FK; preserve74audit policies/48domain tables.
+5. Actually test populated Expenses2 upgrade, legacy101-line preservation, old-writer drain, posted guards, draft cascade and actor-attributed parent/child audit before materializing only named files.
+6. Implement a bounded current-authorized RR bundle reader with complete child/version evidence and a named oversized legacy recovery state.
+7. Implement normalized parent-first atomic shared save/post with complete baseline and explicit removed-line checks.
+8. Preserve compatible generic writes, signed discounts, fuel/capture/import creation and actual purge under the same guards.
+9. Add permanent minimal operation proofs and current-authorized replay after generic response pruning; never return obsolete form payload as current data.
+10. Test stale child edits, post-versus-edit, opposite locks, simultaneous versions and active membership changes.
+11. Force late deferred/projection failures; compare raw entry/children/revision/audit/search/proof state for complete rollback and key reuse.
+12. Build the shared local mobile editor with labelled EUR inputs, category rows, exact remaining amount and explicit draft/save/post review; exclude financial writes from generic device queue.
+13. Test incomplete/negative/mixed allocations, long labels, inactive selections, conflicts and unknown-outcome same-body/key recovery in the browser.
+14. Execute independent interface/documentation review, security/workflow checks, current images/recovery, complete native and meaningful scoped race; accept EX02 only from actual evidence.
+15. Finalize responsible-member administration/recovery behavior and the full financial access-path inventory.
+16. Add generation-bound Core policy/grant/subject contracts with no optional-schema FK; backfill legacy shared access explicitly.
+17. Implement current access checks and real access revisions for shared editor/read/replay/policy-management operations.
+18. Apply visibility before pagination/count/aggregation across every generic/search/reference/related/export/report/file/capture/import/audit/replay path, including indirect history and notifications.
+19. Exercise two actual users across all visibility paths, including revoked access before replay, delivered notifications, running OCR, hidden aggregates/files and retained audit after purge.
+20. Verify upgrade/recovery, current images, complete regression, scoped race, browser/security and independent review before exposing selected access or accepting EX19.
+21. Then build EX01 summaries and reliable EX03 correction/refund workflows; accounts and per-person balances remain separate acceptance items.
 ## Preparation evidence
 
 Nine pure tests pass in the ignored preparation copy(package expenseedit0.843s,95.2% observed package statement coverage). They cover incomplete draft versus explicit post, signed discount/refund behavior, canonical EUR units, no caller mutation, aggregate ranges,100-row bounds, duplicate/stale identities, explicit shared legacy responsibility and bounded canonical selected grants. This is not financial feature, SQL, privacy, browser or runtime acceptance. The source-pattern reviewer only inspected existing code and reported the parent-version and access-path constraints; that reviewer ran no tests.
+
+The subsequent shared preparation has14pure contracts passing(package0.901s,95.5% observed package coverage), plus compile-only integration and affected tagged lint0issues. Complete baseline/current identities and versions detect unseen/removed/edited children independently of parent-version history; removals are explicit, ordered and bounded. Initial preparation compile failed for a missing test-only fixture; the first lint found a capitalized sentinel error. Both are corrected in the successful repeat.
+
+Expenses3 migration/readiness and five PostgreSQL contract sources are prepared only in the ignored export. They have not yet been executed against PostgreSQL. Source review found conditional/UPDATE-OF triggers could fool the first readiness draft; the prepared checker now requires no WHEN/column restriction/arguments and test sources cover both counterexamples. Both Go and SQL parent locks use NOWAIT; App child writes bump the parent while owner restore/purge behavior is preserved. This is source/compile evidence only. Root remains Expenses2 with61migration hashes while PA15 native/race is active.

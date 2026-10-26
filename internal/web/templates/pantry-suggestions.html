@@ -1,0 +1,13 @@
+{{define "pantry-suggestions"}}
+<section id="pantry-suggestions">
+ {{template "pantry-daily-nav" .}}
+ <h1>Rezeptvorschläge aus dem Vorrat</h1>
+ <p>Was lässt sich mit dem freien Vorrat kochen? Vergleiche gespeicherte Rezeptstände und prüfe bekannte Fehlmengen sowie passende Datumsgründe.</p>
+ <p class="fine">Auch ohne aktive Essensplanung verfügbar. Bestehende Reservierungen bleiben berücksichtigt. Es wird nichts reserviert, eingekauft oder verbraucht.</p>
+ <p class="fine">„Physischen Vorrat vergleichen“ öffnet denselben unveränderlichen Rezeptstand mit den gewählten Portionen. Dort wird der physische Bestand frisch verglichen; dieser kann von den hier bewerteten freien Mengen abweichen.</p>
+ {{template "planning-suggestions" .}}
+ <noscript><p>Für die Bewertung ist lokales JavaScript erforderlich. <a href="/m/pantry/stock">Vorratsbestand ansehen</a>.</p></noscript>
+</section>
+<script nonce="{{.Nonce}}" src="{{index .Asset "planning-suggestions.js"}}" defer></script>
+<script nonce="{{.Nonce}}" src="{{index .Asset "pantry-suggestions.js"}}" defer></script>
+{{end}}

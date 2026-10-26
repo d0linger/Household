@@ -213,6 +213,8 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /api/v1/shopping/items/{id}", s.require(s.shoppingItem))
 	mux.Handle("GET /api/v1/shopping/items/{id}/merge-preview", s.require(s.shoppingMergePreview))
 	mux.Handle("GET /m/pantry/stock", s.require(s.pantryPage))
+	mux.Handle("GET /m/pantry/recipe-suggestions", s.require(s.pantrySuggestionsPage))
+	mux.Handle("GET /api/v1/pantry/recipe-suggestions", s.require(s.pantrySuggestionsAPI))
 	mux.Handle("GET /m/pantry/priority", s.require(s.pantryDailyPage))
 	mux.Handle("GET /m/pantry/consume/{lot}", s.require(s.pantryDailyPage))
 	mux.Handle("GET /m/pantry/batches", s.require(s.pantryBatchPage))

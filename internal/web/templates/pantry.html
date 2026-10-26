@@ -1,6 +1,6 @@
 {{define "pantry"}}
 <div class="page-heading"><div><p class="eyebrow">WAS ZU HAUSE IST</p><h1>Vorratsbestand</h1><p class="muted">Produkte, Lagerorte und Chargen im Überblick.</p></div><a class="button" href="/m/pantry/stock_movements">Bestand buchen</a></div>
-<nav class="entity-tabs" aria-label="Bereiche"><a href="/m/pantry/stock" class="current" aria-current="page">Bestand</a><a href="/m/pantry/priority">Zuerst verbrauchen</a>{{if .User.CanWrite}}<a href="/m/pantry/batches">Einlagern / Inventur</a>{{end}}{{range .Module.Entities}}<a href="/m/pantry/{{.ID}}">{{.Title}}</a>{{end}}</nav>
+<nav class="entity-tabs" aria-label="Bereiche"><a href="/m/pantry/stock" class="current" aria-current="page">Bestand</a><a href="/m/pantry/priority">Zuerst verbrauchen</a><a href="/m/pantry/recipe-suggestions">Rezeptvorschläge</a>{{if .User.CanWrite}}<a href="/m/pantry/batches">Einlagern / Inventur</a>{{end}}{{range .Module.Entities}}<a href="/m/pantry/{{.ID}}">{{.Title}}</a>{{end}}</nav>
 <section class="panel pantry-board" id="pantry-board" aria-label="Vorratsübersicht">
 <form id="pantry-filter" class="audit-filters"><label>Produkt suchen<input type="search" name="q" maxlength="300" placeholder="Name des Produkts"></label><label>Bestand am Tagesende<input type="date" name="at" min="1900-01-01"><small>Leer lassen für den aktuellen Bestand.</small></label><button class="primary">Anzeigen</button></form>
 <p id="pantry-status" role="status">Bestand wird geladen …</p>
