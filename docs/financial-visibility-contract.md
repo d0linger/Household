@@ -1,6 +1,6 @@
 # Financial visibility — EX19 implementation contract
 
-This is the next implementation contract, not an available capability. Today's financial records are explicitly household-shared. The EX02 native candidate is frozen separately while this work is prepared in ignored `.local/finance-access-work`. Existing balances, responsibility and access grants are never inferred from payer or creator.
+This is the EX19 implementation contract, not an available selected-access capability. Today's financial records are explicitly household-shared. The Core25/Expenses4 shared-only policy and subject foundation is materialized in development source after isolated preparation; a named database CHECK still prevents selected access. Existing balances, responsibility and access grants are never inferred from payer or creator.
 
 ## Responsibility and recovery decisions
 
@@ -20,6 +20,8 @@ Core owns generation-bound policies, grants and typed subject bindings. Optional
 Sensitive Core history can require more than one source policy. An attachment, link, capture result or audit event must never become readable merely because one endpoint is visible. Bind the complete required policy set and require all relevant rights before displaying metadata. A missing required binding denies access. Separate administrative access-change events contain no financial content.
 
 Policy revision is distinct from entry content version. Lock order is household/current session/module → policy → entry → bounded ordered children → referenced categories/memberships. Existing opposite-order child writes keep bounded NOWAIT failure. Reads use a current authorized snapshot; mutation and replay check current access before returning any resource identity or result.
+
+The final selected-access cutover requires a maintenance window: stop application and worker processes that predate the complete filter contract, confirm their database sessions have ended, apply the final enablement migration, then start the compatible application. An old process can issue unfiltered reads even when a new database barrier exists. A mixed-version rolling deployment is therefore outside this cutover contract. Operator backup and the tested rollback/forward-recovery procedure precede enablement; the shared-only foundation does not lift that barrier.
 
 ## Concrete source integration inventory
 
@@ -67,6 +69,6 @@ The household-wide file quota may still count all stored bytes internally, but i
 21. Test empty and populated upgrades, old-writer drain, deferred rollback and last-editor contention.
 22. Test encrypted restore and actual purge with retained denied history and permanent keys.
 23. Execute current native, meaningful scoped race, browser/keyboard/axe, security and image checks.
-24. Update README/checklist with actual evidence; expose selected access only after all required gates pass.
+24. Update README/checklist with actual evidence, verify the maintenance cutover, and expose selected access only after all required gates pass.
 
-No selected visibility, current policy schema, account rights or operational result is claimed by this document. The source-only inventory was independently checked without tests or database actions.
+The shared-only policy/subject schema is present; selected visibility, account rights and full EX19 acceptance remain unavailable. Executed foundation checks are recorded in [financial-visibility-verification.md](financial-visibility-verification.md). The source-only inventory was independently checked without tests or database actions.

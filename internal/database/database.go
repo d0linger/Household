@@ -197,6 +197,13 @@ func Ready(ctx context.Context, pool *pgxpool.Pool) error {
 	if !expenseOperations {
 		return errors.New("incomplete durable expense operation contract")
 	}
+	var financialBindings bool
+	if err := pool.QueryRow(ctx, "SELECT expenses.financial_bindings_ready()").Scan(&financialBindings); err != nil {
+		return fmt.Errorf("inspect financial identity foundation: %w", err)
+	}
+	if !financialBindings {
+		return errors.New("incomplete financial identity foundation")
+	}
 	return nil
 }
 

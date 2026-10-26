@@ -250,6 +250,8 @@ func TestExpenseEditorIntegrityPopulatedExpenses2AndLegacyWriterUpgrade(t *testi
 	}{
 		{"INSERT INTO core.households(id,name) VALUES($1,'Prior Expenses2 household')", []any{hid}},
 		{"INSERT INTO core.users(id,username,display_name,password_hash) VALUES($1,'prior-expenses','Prior expense author','fixture-no-login')", []any{uid}},
+		{"INSERT INTO core.module_installations(module_id,schema_name,last_seen_build) VALUES('expenses','expenses','historical-fixture')", nil},
+		{"INSERT INTO core.module_states(household_id,module_id,state,data_generation) VALUES($1,'expenses','enabled',5)", []any{hid}},
 		{"INSERT INTO expenses.categories(id,household_id,name,created_by) VALUES($1,$2,'Prior category',$3)", []any{category, hid, uid}},
 		{`INSERT INTO expenses.entries(id,household_id,occurred_on,description,amount_minor,state,posted_at,created_by,version)
  VALUES($1,$4,'2026-10-26','Prior draft',1000000000000,'draft',NULL,$5,7),

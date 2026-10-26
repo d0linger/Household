@@ -175,6 +175,9 @@ func TestExpenseEditPopulatedCore23UpgradePreservesSharedFinancialFacts(t *testi
 		if schema == "core" {
 			version = 23
 		}
+		if schema == "expenses" {
+			version = 3
+		}
 		migratePriorAuditSchema(t, f, schema, version)
 	}
 	hh, user, category, entry := value.UUID(), value.UUID(), value.UUID(), value.UUID()
@@ -185,6 +188,11 @@ func TestExpenseEditPopulatedCore23UpgradePreservesSharedFinancialFacts(t *testi
  SELECT $4,c.household_id,'2026-10-26','Preserved shared financial fact','Original payee',1000000000000,'expense','posted',clock_timestamp(),c.created_by,19 FROM c RETURNING id,household_id,created_by)
  INSERT INTO expenses.entry_lines(household_id,entry_id,category_id,amount_minor,note,created_by,version)
  SELECT e.household_id,e.id,c.id,1000000000000,'Original exact allocation',e.created_by,7 FROM e,c`, hh, user, category, entry); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.owner.Exec(f.ctx, `WITH installation AS(INSERT INTO core.module_installations(module_id,schema_name,last_seen_build)
+	 VALUES('expenses','expenses','historical-fixture') RETURNING module_id)
+	 INSERT INTO core.module_states(household_id,module_id,state,data_generation) SELECT $1,module_id,'disabled',7 FROM installation`, hh); err != nil {
 		t.Fatal(err)
 	}
 	const snapshot = `SELECT jsonb_build_object('entries',(SELECT jsonb_agg(to_jsonb(e) ORDER BY id) FROM expenses.entries e),
@@ -202,7 +210,7 @@ func TestExpenseEditPopulatedCore23UpgradePreservesSharedFinancialFacts(t *testi
 		t.Fatal("Core24 changed historical shared fact or invented values", err)
 	}
 	var proofs, policies int
-	if err := f.owner.QueryRow(f.ctx, "SELECT (SELECT count(*) FROM core.expense_edit_operations),(SELECT count(*) FROM core.audit_policies)").Scan(&proofs, &policies); err != nil || proofs != 0 || policies != 75 {
+	if err := f.owner.QueryRow(f.ctx, "SELECT (SELECT count(*) FROM core.expense_edit_operations),(SELECT count(*) FROM core.audit_policies)").Scan(&proofs, &policies); err != nil || proofs != 0 || policies != 77 {
 		t.Fatal("upgrade fabricated editor proofs or lost audit policy", proofs, policies, err)
 	}
 	if err := database.Ready(f.ctx, f.pool); err != nil {

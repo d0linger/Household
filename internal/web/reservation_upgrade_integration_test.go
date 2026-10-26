@@ -30,6 +30,8 @@ func TestReservationPopulatedPriorUpgrade(t *testing.T) {
 		switch schema {
 		case "core":
 			version = 18
+		case "expenses":
+			version = 3 // Expenses4 requires the later Core25 contract.
 		case "shopping":
 			version = 4 // MP17 Shopping receipts require Core21.
 		case "pantry":

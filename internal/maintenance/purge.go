@@ -131,6 +131,14 @@ func Purge(ctx context.Context, pool *pgxpool.Pool, requestID string) error {
 			return err
 		}
 	}
+	if mid == "expenses" {
+		for _, table := range []string{"financial_subjects", "financial_policies"} {
+			query := "UPDATE " + pgx.Identifier{"core", table}.Sanitize() + " SET retired_at=clock_timestamp(),updated_at=clock_timestamp(),version=version+1 WHERE household_id=$1 AND module_id=$2 AND module_generation=$3 AND retired_at IS NULL"
+			if _, err = tx.Exec(ctx, query, hid, mid, generation); err != nil {
+				return err
+			}
+		}
+	}
 	if _, err = tx.Exec(ctx, "UPDATE core.module_states SET data_generation=data_generation+1,state_version=state_version+1,changed_at=now() WHERE household_id=$1 AND module_id=$2 AND data_generation=$3", hid, mid, generation); err != nil {
 		return err
 	}

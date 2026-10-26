@@ -145,6 +145,8 @@ func TestShoppingCheckoutPopulatedUpgradeAndBounds(t *testing.T) {
 		switch schema {
 		case "core":
 			version = 9
+		case "expenses":
+			version = 3 // Expenses4 requires the later Core25 contract.
 		case "shopping":
 			version = 3
 		case "recipes":
