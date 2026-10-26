@@ -29,7 +29,7 @@ Ein Schema, eine Schaltfläche oder ein Mock allein schließt keinen Punkt ab. B
 
 ## Fortschritt
 
-180 Punkte: **59 verifiziert, 0 implementiert, 1 in Arbeit, 120 offen**. Dieser Zähler wird mit jedem abgeschlossenen Arbeitspaket abgeglichen.
+180 Punkte: **59 verifiziert, 0 implementiert, 2 in Arbeit, 119 offen**. Dieser Zähler wird mit jedem abgeschlossenen Arbeitspaket abgeglichen.
 
 ## Einkaufen
 
@@ -48,7 +48,7 @@ Ein Schema, eine Schaltfläche oder ein Mock allein schließt keinen Punkt ab. B
 | SH11 | Einkauf einlagern | Gekaufte Artikel mit Produkt, Menge, Ort und Datum geprüft in den Vorrat übernehmen. | Verifiziert | Native Gesamtsuite, fokussierte Linux-Race, bestückter Upgrade/Restore; 32 Checkout-Browserchecks/4 axe, Gesamtkette 296; C01–C03 unabhängig abgenommen |
 | SH12 | Belegabgleich | Abgeschlossenen Einkauf mit Beleg verknüpfen und Plan/Ist-Abweichungen prüfen. | Verifiziert | Native Gesamtsuite, fokussierte Linux-Race, bestückter Upgrade/Restore; 32 Checkout-Browserchecks/4 axe, Gesamtkette 296; C01–C03 unabhängig abgenommen |
 | SH13 | Barcode-Erfassung | Kamera oder Scanner nutzen; lokale Zuordnung zuerst, externe Suche nur optional. | Offen | — |
-| SH14 | Nachkaufvorschläge | Lokale Kaufabstände erklären und Vorschläge manuell übernehmen. | Offen | — |
+| SH14 | Nachkaufvorschläge | Lokale Kaufabstände erklären und Vorschläge manuell übernehmen. | In Arbeit | Isolierte Umsetzung mit eigenem Agenten begonnen; tatsächliche Einkaufsabschlüsse als Quelle, erklärbare Kaufabstände und ausdrückliche Übernahme. Datenbank-/Browserabnahme offen. |
 | SH15 | Listenbenachrichtigungen | Abonnements, gebündelte Hinweise und optional konfigurierten Web Push bereitstellen. | Offen | — |
 | SH16 | Live-Aktualisierung | Autorisierte Änderungen ohne Verlust laufender Eingaben und Versionskontrolle nachladen. | Verifiziert | Native + Linux-Race; 33 Expansion-Browserchecks / 2 axe; unabhängige F01–F04-Abnahme bestanden |
 | SH17 | Offline-Leselisten | Ausgewählte Listen ausdrücklich pro Gerät freigeben; Eigentümer, Ablauf und Abmeldung beachten. | Offen | — |

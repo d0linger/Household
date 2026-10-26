@@ -4,7 +4,8 @@ const path = require('node:path');
 const root = path.resolve(__dirname, '..');
 const args = process.argv.slice(2);
 if (args.some(arg => arg !== '--check')) throw Error('Usage: node scripts/update-tasklist.cjs [--check]');
-const source = fs.readFileSync(path.join(root, 'docs/improvements-180.md'), 'utf8');
+const sourceFile = path.join(root, 'docs/improvements-180.md');
+const source = fs.readFileSync(sourceFile, 'utf8');
 const groups = [];
 const items = [];
 let heading = '';
@@ -25,6 +26,14 @@ if (items.length !== 180 || new Set(items.map(item => item.id)).size !== 180) {
   throw Error('The checklist must retain all 180 unique identities');
 }
 const count = status => items.filter(item => item.status === status).length;
+const sourceSummary = `180 Punkte: **${count('Verifiziert')} verifiziert, ${count('Implementiert')} implementiert, ${count('In Arbeit')} in Arbeit, ${count('Offen')} offen${count('Extern offen') ? `, ${count('Extern offen')} extern offen` : ''}**.`;
+const summaryPattern = /^180 Punkte: \*\*.*?\*\*\./m;
+if (!summaryPattern.test(source)) throw Error('Acceptance summary is missing');
+if (args.includes('--check')) {
+  if (!source.includes(sourceSummary)) throw Error('Acceptance summary is stale; run node scripts/update-tasklist.cjs');
+} else if (!source.includes(sourceSummary)) {
+  fs.writeFileSync(sourceFile, source.replace(summaryPattern, sourceSummary));
+}
 const active = items.filter(item => item.status === 'In Arbeit');
 const extraStatuses = ['Implementiert', 'Extern offen'].filter(status => count(status) > 0)
   .map(status => `${count(status)} ${status.toLowerCase()}`);
