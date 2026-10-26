@@ -12,7 +12,7 @@ import (
 // and canonicalize only the former before binding durable request identity.
 func canonicalExpenseBasis(input []expenseedit.LineVersion) ([]expenseedit.LineVersion, error) {
 	if len(input) > expenseedit.LineLimit {
-		return nil, expenseedit.Problems{"lines": "Vollständige Zeilenbasis auf100Einträge begrenzen"}
+		return nil, expenseedit.Problems{"lines": "Vollständige Zeilenbasis auf 100 Einträge begrenzen"}
 	}
 	out := make([]expenseedit.LineVersion, len(input))
 	for index, line := range input {

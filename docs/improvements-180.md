@@ -27,7 +27,7 @@ Ein Schema, eine Schaltfläche oder ein Mock allein schließt keinen Punkt ab. B
 
 ## Fortschritt
 
-180 Punkte: **58 verifiziert, 0 implementiert, 2 in Arbeit, 120 offen**. Dieser Zähler wird mit jedem abgeschlossenen Arbeitspaket abgeglichen.
+180 Punkte: **59 verifiziert, 0 implementiert, 1 in Arbeit, 120 offen**. Dieser Zähler wird mit jedem abgeschlossenen Arbeitspaket abgeglichen.
 
 ## Einkaufen
 
@@ -134,7 +134,7 @@ Ein Schema, eine Schaltfläche oder ein Mock allein schließt keinen Punkt ab. B
 | ID | Verbesserung | Abnahmekriterium | Status | Nachweis |
 |---|---|---|---|---|
 | EX01 | Monatsübersicht | Gebuchte Beträge, Entwürfe und Hauptkategorien getrennt darstellen. | Offen | — |
-| EX02 | Aufgeteilte Erfassung | Buchung und Kategoriezeilen gemeinsam bearbeiten; Restdifferenz sichtbar halten. | In Arbeit | Expenses3/Reader-Fundament als b196d22 mit16Root-DB-Verträgen, Verify17,2%/78Node/63Hashes, Lint/Gosec ohne Befund gesichert. Atomarer Writer und dauerhafte Core24-Belege übernommen: zehn vorbereitete Verträge56,755s plus bestücktes Core23-Upgrade12,454s bestanden; Replay, echte Purge, vollständiger später Rollback, inaktive Referenzen und parallele Versions-/Vorgangskonflikte geprüft. Root:36Hauptverträge284,843s plus zwei bestückte Bestands-Upgrades22,471s bestanden,350Quelldateien unverändert; Verify/64Hashes/Lint/Gosec bestanden; HTTP/UI, Queue-Grenzen und vollständige Feature-Abnahme folgen. [Vertrag](finance-workspace.md). |
+| EX02 | Aufgeteilte Erfassung | Buchung und Kategoriezeilen gemeinsam bearbeiten; Restdifferenz sichtbar halten. | Verifiziert | Gemeinsamer EUR-Editor mit exakter Restdifferenz, atomarem Entwurf/Buchen, vollständiger Versionsbasis, explizitem Entfernen, Konflikt- und Wiederherstellungsablauf. Vollständige native Regression:335Haupttests/74,1% interne Abdeckung;52ausgewählte Linux-Race-Verträge ohne Race-Meldung(Web645,231s);846Browserprüfungen/24Komponenten, davon43Editorprüfungen/zehn saubere axe-Scans/zehn Aufnahmen. Unabhängige UI-Korrekturfreigabe und separate Designprüfung;84Node/64Hashes/Lint/Security/aktueller verschlüsselter Restore bestanden.16echte Geheimniswerte in37Textartefakten/stagedDiff nicht gefunden;356Quelldateien nach Native/Race unverändert. Haushaltsfreigabe bleibt ausdrücklich gemeinsam; EX19 separat. [Nachweise](expense-editor-verification.md). |
 | EX03 | Buchungszustände | Entwurf, gebucht, erstattet und korrigiert mit passenden Aktionen erklären. | Offen | — |
 | EX04 | Gespeicherte Finanzfilter | Person, Kategorie, Empfänger, Zeitraum und Status kombinieren. | Offen | — |
 | EX05 | Belegprüfung | Beleg und Buchung nebeneinander beziehungsweise mobil mit erhaltenem Formularzustand zeigen. | Offen | — |
@@ -151,7 +151,7 @@ Ein Schema, eine Schaltfläche oder ein Mock allein schließt keinen Punkt ab. B
 | EX16 | Finanzberichte | Konten-, Personen-, Kategorien- und Zeitaggregate serverseitig nachvollziehbar berechnen. | Offen | — |
 | EX17 | Kontoabstimmung | Externen Stichtagssaldo vergleichen; keine stillen Ausgleichsbuchungen. | Offen | — |
 | EX18 | Mehrere Währungen | Originalbetrag, Basisbetrag, Kurs, Datum und Rundungsregel unveränderlich nachvollziehen. | Offen | — |
-| EX19 | Finanzsichtbarkeit | Konten- und Datensatzrechte in Suche, Aggregaten, Dateien, Export und Audit anwenden. | In Arbeit | Quelleninventur und isolierte strukturelle Freigabenormalisierung vorbereitet; gemeinsame neun reine Tests bestanden. Aktuelle Anwendung bleibt haushaltsweit geteilt. Core-Verträge und sämtliche Daten-/Such-/Export-/Beleg-/Audit-/Replaypfade noch umzusetzen und tatsächlich zu prüfen. [Vertrag](finance-workspace.md). |
+| EX19 | Finanzsichtbarkeit | Konten- und Datensatzrechte in Suche, Aggregaten, Dateien, Export und Audit anwenden. | In Arbeit | Quelleninventur und isolierte strukturelle Freigabenormalisierung vorbereitet; gemeinsame neun reine Tests bestanden. Aktuelle Anwendung bleibt haushaltsweit geteilt. Konkrete aktuelle Integrationsstellen und Verantwortung/Recovery festgelegt; hash-geprüfte isolierte Vorbereitung angelegt. Core-Verträge und sämtliche Daten-/Such-/Export-/Beleg-/Audit-/Replaypfade noch umzusetzen und tatsächlich zu prüfen. [Vertrag](financial-visibility-contract.md). |
 | EX20 | Buchungsherkunft | Manuell, Bank, Tankung und Beleg über gemeinsame Herkunft und Dublettenschutz verbinden. | Offen | — |
 
 ## Aufgaben

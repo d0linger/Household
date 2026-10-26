@@ -1,6 +1,6 @@
 # Atomic expense editing and financial visibility
 
-EX02 transaction integrity comes first, followed by the complete EX19 selected-access contract. The verified Expenses3/reader foundation is saved as b196d22 after PA15. The atomic shared writer and permanent minimal Core24 operation proof are now materialized from separately tested preparation. Root compatibility passes 36 main contracts (Web284.843s) plus two existing populated census upgrades (Web22.471s); the 350-file source manifest remains unchanged. This does not yet expose a new HTTP editor or selected financial access. EX01/EX03/EX06/EX09/EX10 remain separate later acceptance items.
+EX02 transaction integrity comes first, followed by the complete EX19 selected-access contract. The verified Expenses3/reader foundation is saved as b196d22 after PA15; the atomic shared writer and permanent minimal Core24 operation proof are saved as4904a79. Root backend compatibility passes36main contracts(Web284.843s) plus two existing populated census upgrades(Web22.471s). The shared HTTP/UI editor is locally verified with335main native tests/74.1% internal coverage,846browser checks and the52-contract scoped Linux race; see[its verification record](expense-editor-verification.md). Selected financial access is unavailable. EX01/EX03/EX06/EX09/EX10 remain separate later acceptance items.
 
 The first EX02 increment retains the existing explicit household-wide sharing. It does not need a fictitious access-policy revision or new Core visibility tables. Remove AccessVersion from the shared editor DTO; introduce real policy revisions only when the later Core contract exists. The complete selected-access inventory below remains mandatory before any restricted mode is offered.
 
@@ -64,11 +64,13 @@ Use only new forward migrations. Core contract creation precedes Expenses backfi
 - [x] Current-authorized bounded RR bundle reader, legacy bounds and inactive references.
 - [x] Ten new root PostgreSQL contracts and six existing compatibility contracts actually pass.
 - [x] Atomic shared writer and permanent minimal proof, including replay, late rollback and real purge contracts.
-- [ ] Current-authorized private HTTP endpoints and mobile editor; explicit allocation rest and posting review.
-- [ ] Financial offline-queue exclusion, browser/axe/keyboard and independent interface review.
-- [ ] Fresh final native/scoped-race/security/image/recovery acceptance before EX02 is verified.
+- [x] Current-authorized private HTTP endpoints and mobile editor connected; two HTTP and six exact-value contracts pass. Final interface acceptance remains open.
+- [x] Financial offline-queue exclusion, complete846-check browser chain, editor43checks/ten clean axe scans/ten captures/keyboard and EX02-F1 resolved independent review.
+- [x] Fresh final native/scoped-race/security/image/recovery acceptance; EX02 is locally verified.
 
 The word private for HTTP denotes authenticated, non-cacheable transport; selected financial visibility remains a later EX19 feature.
+
+Current EX02 feature gates and honest execution evidence are tracked in [expense-editor-verification.md](expense-editor-verification.md). The complete current browser/native/scoped-race/security/image/recovery gates and independent correction review pass; EX02 is locally verified. The next selected-access work follows the [concrete path/recovery contract](financial-visibility-contract.md).
 
 ### Ordered implementation work
 

@@ -121,7 +121,18 @@
   dbPromise.catch(() => {});
   async function queueOp(mode, operation) {const db = await dbPromise; return new Promise((resolve,reject) => {const tx = db.transaction('queue',mode); const result = operation(tx.objectStore('queue')); tx.oncomplete = () => resolve(result?.result); tx.onerror = () => reject(tx.error); tx.onabort = () => reject(tx.error);});}
   async function clearQueue() {await queueOp('readwrite', store => store.clear());}
+  function financialMutation(url) {
+    try {const target=new URL(url,location.origin);return target.origin===location.origin&&(/^\/api\/v1\/(?:m\/expenses(?:\/|$)|expenses\/editor(?:\/|$))/.test(target.pathname)||actionTargets(target.pathname).includes('expenses'));}catch{return false;}
+  }
+  function financialRecovery(url) {
+    const target=new URL(url,location.origin),match=target.pathname.match(/^\/api\/v1\/m\/(expenses|fuel)\/(entries|entry_lines|categories|fillups)(?:\/([0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}))?(?:\/actions\/[a-z_]+)?$/i);
+    if(target.origin!==location.origin||!match)return {url:'/m/expenses/entries',label:'Vorhandene Buchungen in neuem Tab prüfen'};
+    const [,module,entity,record]=match;
+    if(module==='expenses'&&entity==='entries')return record?{url:'/m/expenses/editor?entry='+encodeURIComponent(record),label:'Betroffene Buchung in neuem Tab prüfen'}:{url:'/m/expenses/entries',label:'Vorhandene Buchungen in neuem Tab prüfen'};
+    return {url:'/m/'+module+'/'+entity+(record?'/'+encodeURIComponent(record):''),label:module==='fuel'?'Tankvorgang in neuem Tab prüfen':'Betroffenen Stammdatensatz in neuem Tab prüfen'};
+  }
   async function queueMutation(url, method, body, key) {
+    if (financialMutation(url)) throw new Error('Ausgaben werden nicht auf diesem Gerät vorgemerkt. Verbindung wiederherstellen und den unveränderten Vorgang erneut prüfen. Deine Formulareingaben bleiben erhalten.');
     if (!user || localStorage.getItem('household-offline-owner') !== user) throw new Error('Offline-Speicherung ist auf diesem Gerät nicht aktiviert.');
     const entries = await queueOp('readonly', store => store.getAll()); if (entries.length >= 100) throw new Error('Maximal 100 wartende Änderungen. Zuerst synchronisieren.');
     await queueOp('readwrite', store => store.put({key,user,household,url,method,body,format:1,created:new Date().toISOString()}));
@@ -247,7 +258,9 @@
     const box=$('#queue-review');box.replaceChildren();box.textContent='Änderungen werden zur Prüfung geladen …';
     try{
       const bootstrap=await fetch('/api/v1/core/bootstrap',{headers:{Accept:'application/json'}});if(!bootstrap.ok)throw new Error('Bitte erneut anmelden.');
-      const fresh=await bootstrap.json(),entries=await queueOp('readonly',store=>store.getAll()),cache=new Map();box.replaceChildren();
+      const fresh=await bootstrap.json();
+      if(fresh.user?.id!==user||fresh.user?.household_id!==household)throw new Error('Das angemeldete Konto hat gewechselt. Einstellungen nach der Anmeldung neu öffnen.');
+      const entries=await queueOp('readonly',store=>store.getAll()),cache=new Map();box.replaceChildren();
       if(!entries.length){box.textContent='Keine wartenden Änderungen.';return;}
       for(const entry of entries){
         const article=document.createElement('article');article.className='session-row queue-entry';
@@ -257,6 +270,10 @@
         let valid=entry.user===user&&entry.household===household&&entry.format===1&&mid&&fresh.states[mid]?.state==='enabled'&&fresh.states[mid]?.generation===entry.body.generation&&targetsValid;
         let problem='Konto, Modul oder Datenstand geändert. Bitte verwerfen und neu erfassen.';
         if(valid){try{await describeDraft(entry,fresh,cache,article);}catch(error){valid=false;problem=error.message;}}
+        if(valid&&financialMutation(entry.url)){
+          valid=false;problem='Älterer lokaler Finanzentwurf: automatische Übertragung wird nicht mehr unterstützt. Werte prüfen und im gemeinsamen Editor ausdrücklich erfassen oder diesen Entwurf verwerfen.';
+          const recovery=financialRecovery(entry.url),open=document.createElement('a');open.className='button';open.href=recovery.url;open.target='_blank';open.rel='noopener';open.textContent=recovery.label;actions.append(open);
+        }
         if(valid){const send=document.createElement('button');send.className='primary';send.textContent='Geprüft übertragen';send.addEventListener('click',async()=>{send.disabled=true;try{await request(entry.url,entry.method,entry.body,entry.key);await queueOp('readwrite',store=>store.delete(entry.key));article.remove();toast('Änderung übernommen.');}catch(error){toast(error.message+' · Eintrag bleibt zur Prüfung erhalten.');send.disabled=false;}});actions.append(send);}
         else{const p=document.createElement('p');p.textContent=problem;article.append(p);}
         article.append(actions);box.append(article);

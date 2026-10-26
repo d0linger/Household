@@ -54,7 +54,7 @@ func lockExpenseEdit(ctx context.Context, tx pgx.Tx, id auth.Identity, draft exp
 	}
 	rows.Close()
 	if len(candidates) > expenseedit.LineLimit {
-		return nil, "", Invalid{"Mehr als100gespeicherte Zeilen: Einzelverwaltung oder Export prüfen; nichts wird gekürzt."}
+		return nil, "", Invalid{"Mehr als 100 gespeicherte Zeilen: Einzelverwaltung oder Export prüfen; nichts wird gekürzt."}
 	}
 	rows, err = tx.Query(ctx, `SELECT id,version,category_id FROM expenses.entry_lines
  WHERE household_id=$1 AND entry_id=$2 AND id=ANY($3::uuid[]) ORDER BY id FOR UPDATE NOWAIT`, id.HouseholdID, draft.EntryID, candidates)

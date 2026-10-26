@@ -92,10 +92,10 @@ func Normalize(input Input) (Draft, error) {
 		problems["header.occurred_on"] = "Gültiges Buchungsdatum erforderlich"
 	}
 	if !boundedText(out.Header.Description, DescriptionLimit, true) {
-		problems["header.description"] = "Beschreibung mit1bis300Zeichen erforderlich"
+		problems["header.description"] = "Beschreibung mit 1 bis 300 Zeichen erforderlich"
 	}
 	if !boundedText(out.Header.Payee, PayeeLimit, false) {
-		problems["header.payee"] = "Empfänger auf200Zeichen begrenzen"
+		problems["header.payee"] = "Empfänger auf 200 Zeichen begrenzen"
 	}
 	if out.Header.PaidByMembershipID != "" && !value.ValidUUID(out.Header.PaidByMembershipID) {
 		problems["header.paid_by"] = "Gültiges Haushaltsmitglied auswählen oder Zahlenden offen lassen"
@@ -107,7 +107,7 @@ func Normalize(input Input) (Draft, error) {
 	}
 	out.Header.AmountMinor = amount
 	if len(input.Lines) > LineLimit {
-		problems["lines"] = "Höchstens100Kategoriezeilen pro bearbeitbarem Entwurf"
+		problems["lines"] = "Höchstens 100 Kategoriezeilen pro bearbeitbarem Entwurf"
 		return Draft{}, problems
 	}
 	keys, ids := map[string]bool{}, map[string]bool{}
@@ -130,7 +130,7 @@ func Normalize(input Input) (Draft, error) {
 			problems[prefix+"category"] = "Kategorie ausdrücklich auswählen"
 		}
 		if !boundedText(line.Note, NoteLimit, false) {
-			problems[prefix+"note"] = "Zeilenbezeichnung auf300Zeichen begrenzen"
+			problems[prefix+"note"] = "Zeilenbezeichnung auf 300 Zeichen begrenzen"
 		}
 		line.AmountMinor, err = euroMinor(raw.AmountEUR)
 		if err != nil || line.AmountMinor == 0 {
