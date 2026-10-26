@@ -58,7 +58,15 @@ func (s *Store) LockResource(ctx context.Context, tx pgx.Tx, id auth.Identity, m
 	if !ok || !exists || !value.ValidUUID(rid) {
 		return ErrNotFound
 	}
+	if financialEntity(mid, entity) {
+		if err := lockFinancialReplay(ctx, tx, id, entity, rid, financialEdit); err != nil {
+			return err
+		}
+	}
 	lock := " FOR KEY SHARE"
+	if financialEntity(mid, entity) {
+		lock += " NOWAIT"
+	}
 	if e.Immutable {
 		lock = ""
 	}
@@ -330,10 +338,27 @@ func (s *Store) Write(ctx context.Context, id auth.Identity, m module.Descriptor
 		if !bytes.Equal(priorHash, hash[:]) {
 			return nil, ErrConflict
 		}
-		return decode(prior)
+		result, decodeErr := decode(prior)
+		if decodeErr != nil {
+			return nil, decodeErr
+		}
+		if financialEntity(m.ID, e.ID) {
+			if !creating && !strings.EqualFold(String(result["id"]), rid) {
+				return nil, ErrConflict
+			}
+			if err = lockFinancialReplay(ctx, tx, id, e.ID, String(result["id"]), financialEdit); err != nil {
+				return nil, err
+			}
+		}
+		return result, nil
 	}
 	if !errors.Is(err, pgx.ErrNoRows) {
 		return nil, err
+	}
+	if financialEntity(m.ID, e.ID) {
+		if err = financialWriteScope(ctx, tx, id, e.ID, rid, data, creating); err != nil {
+			return nil, err
+		}
 	}
 	current := Record{}
 	if !creating {
@@ -466,6 +491,11 @@ func (s *Store) Delete(ctx context.Context, id auth.Identity, m module.Descripto
 		return err
 	}
 	defer rollback(tx)
+	if financialEntity(m.ID, e.ID) {
+		if err = lockFinancialResource(ctx, tx, id, e.ID, rid); err != nil {
+			return err
+		}
+	}
 	tag, err := tx.Exec(ctx, "DELETE FROM "+pgx.Identifier{m.ID, e.ID}.Sanitize()+" WHERE household_id=$1 AND id=$2 AND version=$3", id.HouseholdID, rid, version)
 	if err != nil {
 		return err

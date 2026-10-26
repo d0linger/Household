@@ -53,10 +53,22 @@ func (s *Store) Action(ctx context.Context, id auth.Identity, m module.Descripto
 		if !bytes.Equal(priorHash, hash[:]) {
 			return nil, ErrConflict
 		}
-		return decode(prior)
+		result, decodeErr := decode(prior)
+		if decodeErr != nil {
+			return nil, decodeErr
+		}
+		if err = financialActionReplay(ctx, tx, id, m.ID, e.ID, rid, action, result); err != nil {
+			return nil, err
+		}
+		return result, nil
 	}
 	if !errors.Is(err, pgx.ErrNoRows) {
 		return nil, err
+	}
+	if financialEntity(m.ID, e.ID) {
+		if err = lockFinancialResource(ctx, tx, id, e.ID, rid); err != nil {
+			return nil, err
+		}
 	}
 	var raw []byte
 	table := pgx.Identifier{m.ID, e.ID}.Sanitize()
@@ -406,13 +418,12 @@ func (s *Store) fuelToExpense(ctx context.Context, tx pgx.Tx, id auth.Identity, 
 	if err != nil {
 		return nil, err
 	}
-	var existing string
-	err = tx.QueryRow(ctx, "SELECT target_id FROM core.resource_links WHERE household_id=$1 AND source_module='fuel' AND source_id=$2 AND relation='fuel_expense'", id.HouseholdID, fill["id"]).Scan(&existing)
-	if err == nil {
-		return Record{"message": "Bereits verknüpft", "expense_id": existing}, nil
-	}
-	if !errors.Is(err, pgx.ErrNoRows) {
+	existing, linked, err := existingFuelExpense(ctx, tx, id, String(fill["id"]))
+	if err != nil {
 		return nil, err
+	}
+	if linked {
+		return Record{"message": "Bereits verknüpft", "expense_id": existing}, nil
 	}
 	category := String(data["category_id"])
 	if !value.ValidUUID(category) {
