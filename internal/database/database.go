@@ -190,6 +190,13 @@ func Ready(ctx context.Context, pool *pgxpool.Pool) error {
 	if !expenseEditing {
 		return errors.New("incomplete expense editor integrity contract")
 	}
+	var expenseOperations bool
+	if err := pool.QueryRow(ctx, "SELECT core.expense_editing_ready()").Scan(&expenseOperations); err != nil {
+		return fmt.Errorf("inspect durable expense operations: %w", err)
+	}
+	if !expenseOperations {
+		return errors.New("incomplete durable expense operation contract")
+	}
 	return nil
 }
 

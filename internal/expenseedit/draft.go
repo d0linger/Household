@@ -23,20 +23,30 @@ func (p Problems) Error() string { return "Bitte die markierten Buchungsfelder p
 
 // HeaderInput uses an explicit euro input, unlike the generic API's numeric cents.
 type HeaderInput struct {
-	OccurredOn, Description, Payee, AmountEUR, Kind, PaidByMembershipID string
+	OccurredOn         string `json:"occurred_on"`
+	Description        string `json:"description"`
+	Payee              string `json:"payee"`
+	AmountEUR          string `json:"amount_eur"`
+	Kind               string `json:"kind"`
+	PaidByMembershipID string `json:"paid_by_membership_id"`
 }
 
 type LineInput struct {
-	Key, ID, CategoryID, AmountEUR, Note string
-	Version                              int64
+	Key        string `json:"key"`
+	ID         string `json:"id"`
+	CategoryID string `json:"category_id"`
+	AmountEUR  string `json:"amount_eur"`
+	Note       string `json:"note"`
+	Version    int64  `json:"version"`
 }
 
 type Input struct {
-	EntryID             string
-	Generation, Version int64
-	Action              string
-	Header              HeaderInput
-	Lines               []LineInput
+	EntryID    string      `json:"entry_id"`
+	Generation int64       `json:"generation"`
+	Version    int64       `json:"version"`
+	Action     string      `json:"action"`
+	Header     HeaderInput `json:"header"`
+	Lines      []LineInput `json:"lines"`
 }
 
 type Header struct {

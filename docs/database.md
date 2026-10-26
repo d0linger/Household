@@ -2,7 +2,7 @@
 
 The embedded [migration files](../internal/database/migrations) are the complete executable schema definition, including every column, default, check, foreign key, index, trigger and grant. This dictionary explains their ownership and invariants. UUIDs identify resources; household-owned records carry `household_id` and attribution. Mutable domain records use optimistic versions; immutable journals and identity links follow their explicit contracts. Audit uses a generated sequence plus a public event UUID.
 
-Current schema checkpoint: Core23, Shopping6, Pantry10, Recipes4, Expenses3 and Mealplan7; other foundation schemas retain their independent histories. The manifest contains63migration files, and readiness classifies74audit policies/48optional-domain tables. Expenses3 adds the [shared editing foundation](finance-workspace.md); its focused preparation tests pass and root compatibility checks are tracked separately. The numbered sections below retain the migration history that introduced each invariant. [Meal participants](planning-participants.md) and [read-only suggestions](planning-suggestions.md) extend that history.
+Current development schema checkpoint: Core24, Shopping6, Pantry10, Recipes4, Expenses3 and Mealplan7; other foundation schemas retain their independent histories. The manifest contains 64 migration files, and readiness classifies 75 audit policies/48 optional-domain tables. Expenses3 adds the verified [shared editing foundation](finance-workspace.md); Core24 adds permanent minimal expense operation proofs, with fresh root regression tracked separately. The numbered sections below retain the migration history that introduced each invariant. [Meal participants](planning-participants.md) and [read-only suggestions](planning-suggestions.md) extend that history.
 
 ## Core schema
 
@@ -26,6 +26,7 @@ Current schema checkpoint: Core23, Shopping6, Pantry10, Recipes4, Expenses3 and 
 | `outbox_events` | Versioned module-generation event written with domain transaction; unique dedupe key |
 | `event_deliveries` | Event/consumer primary key for idempotent local delivery |
 | `idempotency_records` | Household/user/operation/key primary key, request hash, response, source and destination generations and 30-day retention |
+| `expense_edit_operations` | Permanent minimal shared editor acceptance: actor/key uniqueness across generations/actions, request hash, Expenses generation, save/post, source UUID and result version; no optional-schema FK, form or amount. App SELECT/INSERT only; deferred same-transaction effect and exact readiness guards |
 | `resource_links` | Explicit cross-module source/target/relation, household-scoped uniqueness |
 | `module_purge_requests` | Requester, expected generation, verified backup reference, confirmation/expiry/terminal status |
 | `attachments` | Authorized resource pointer, generation, unique opaque storage key, MIME/size/SHA-256 and state |

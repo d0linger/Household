@@ -27,6 +27,7 @@
   "core/000021_planning_purchases.up.sql": "fc5612cc8941de8b7a331523f69be6f0ed62051ea8bbed3cd90a206889379bf5",
   "core/000022_planning_purchase_history_index.up.sql": "404bb43d9312b70c7f826344e381ef11c5d8e0819414a1a8698ba99964fb3f6b",
   "core/000023_planning_participants.up.sql": "d9d32ebfa2c46f75f7fe2d43506eabd62ca0c8a2e947d7b5c7e3ace191a2dc1f",
+  "core/000024_expense_edit_operations.up.sql": "418d9c8deab2c4e52de25e49bcf474e2c4ea49b2d98e03907894dbbe89e1f7db",
   "documents/000001_init.up.sql": "6a33d06f5655f4c7968cb4cdd29a4ae7720a7e7e4b43ef7fdc944932e2cc9c3f",
   "expenses/000001_init.up.sql": "4e9d54248e716f8d95109299ee3bb9606d674d16f8d597ab8a934e4530c8019e",
   "expenses/000002_integrity.down.sql": "bfce30e078d29f61e0d5b7134479e57abc68c396fb1afffef0b63b51f403a763",
