@@ -32,6 +32,9 @@ func TestPlanningParticipantsPopulatedPriorUpgradePreservesIndependentQuantities
 		if schema == "expenses" {
 			version = 3 // Expenses4 requires the later Core25 contract.
 		}
+		if schema == "shopping" {
+			version = 7 // Shopping8 requires Core26 or its approved producer interface.
+		}
 		migratePriorAuditSchema(t, f, schema, version)
 	}
 	hh, user, plan, meal, component := value.UUID(), value.UUID(), value.UUID(), value.UUID(), value.UUID()
@@ -64,7 +67,7 @@ func TestPlanningParticipantsPopulatedPriorUpgradePreservesIndependentQuantities
 		Scan(&mealQuantity, &componentQuantity, &mealMode, &componentMode, &guests, &roster); err != nil || mealQuantity != "1.000001" || componentQuantity != "2.500001" || mealMode != "manual" || componentMode != "independent" || guests != 0 || roster != 0 {
 		t.Fatal("upgrade rewrote old quantities or fabricated participant intent", mealQuantity, componentQuantity, mealMode, componentMode, guests, roster, policies, err)
 	}
-	if err := f.owner.QueryRow(f.ctx, "SELECT count(*) FROM core.audit_policies").Scan(&policies); err != nil || policies != 77 {
+	if err := f.owner.QueryRow(f.ctx, "SELECT count(*) FROM core.audit_policies").Scan(&policies); err != nil || policies != 78 {
 		t.Fatal("owner-only policy census", policies, err)
 	}
 	if err := database.Ready(f.ctx, f.pool); err != nil {

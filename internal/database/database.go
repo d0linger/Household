@@ -120,6 +120,13 @@ func Ready(ctx context.Context, pool *pgxpool.Pool) error {
 	if !repurchase {
 		return errors.New("incomplete shopping history contract")
 	}
+	var barcodes bool
+	if err := pool.QueryRow(ctx, "SELECT shopping.barcode_ready()").Scan(&barcodes); err != nil {
+		return fmt.Errorf("inspect shopping barcode contract: %w", err)
+	}
+	if !barcodes {
+		return errors.New("incomplete shopping barcode contract")
+	}
 	var audited bool
 	if err := pool.QueryRow(ctx, "SELECT core.audit_ready()").Scan(&audited); err != nil {
 		return fmt.Errorf("inspect audit contract: %w", err)

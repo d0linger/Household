@@ -1,0 +1,26 @@
+{{define "shopping-barcode"}}
+<script nonce="{{.Nonce}}" src="{{index .Asset "shopping-barcode.js"}}" defer></script>
+<link rel="stylesheet" href="{{index .Asset "shopping-barcode.css"}}">
+<h1>Barcode prüfen</h1>
+<p><a href="/m/shopping/lists/{{.Record.id}}">Zurück zu {{.Extra.ListName}}</a></p>
+<section class="panel narrow" id="shopping-barcode" data-list="{{.Record.id}}" data-can-write="{{.User.CanWrite}}">
+  <p>Die Suche verwendet nur eigene Produktzuordnungen dieses Haushalts. Es werden keine Bilder oder Codes an externe Dienste gesendet.</p>
+  <form id="barcode-lookup"><label>Barcode eingeben oder mit einem Handscanner erfassen<input name="code" maxlength="64" autocomplete="off" autocapitalize="off" spellcheck="false" required aria-describedby="barcode-identity"></label>
+    <p class="fine" id="barcode-identity">1 bis 64 sichtbare ASCII-Zeichen ohne Leerzeichen. Führende Nullen und Groß-/Kleinschreibung bleiben erhalten; interne Codes sind möglich.</p>
+    <button class="primary">Lokal nachschlagen</button>
+  </form>
+  <details id="barcode-camera"><summary>Mit der Kamera erfassen</summary>
+    <p class="fine">Erst „Kamera starten“ fordert Zugriff an. Ein Treffer füllt nur das Barcode-Feld. Danach lokal nachschlagen und Produkt sowie Menge selbst prüfen. Nach einer Minute stoppt die Kamera.</p>
+    <div class="actions"><button type="button" id="barcode-start">Kamera starten</button><button type="button" id="barcode-stop" disabled>Kamera stoppen</button></div>
+    <video id="barcode-video" width="640" height="360" playsinline muted hidden aria-label="Lokale Barcode-Kameravorschau"></video>
+    <p id="barcode-camera-status" role="status">Manuelle Eingabe funktioniert auch ohne Kamerazugriff.</p>
+  </details>
+  <p id="barcode-status" role="status"></p>
+  <section id="barcode-result" aria-label="Ergebnis der lokalen Suche" hidden></section>
+  {{if .User.CanWrite}}<form id="barcode-map" hidden><h2>Unbekannten Barcode zuordnen</h2><p>Eine bestehende Produktvariante samt Packungsinhalt auswählen und prüfen. Diese Zuordnung ergänzt noch keinen Artikel.</p>
+    <label>Vorhandene Produktvariante<select name="product_id" data-reference="shopping/products" required><option value="">Produkt wählen</option></select></label>
+    <p id="barcode-map-product" role="status"></p><button type="submit" id="barcode-map-save" disabled>Geprüfte Zuordnung speichern</button>
+  </form>{{end}}
+  <noscript><p>Ohne JavaScript Produkte und Artikel über die normale Listenverwaltung auswählen. Die Kamera und lokale Barcode-Suche benötigen JavaScript.</p></noscript>
+</section>
+{{end}}

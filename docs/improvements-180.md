@@ -29,7 +29,7 @@ Ein Schema, eine Schaltfläche oder ein Mock allein schließt keinen Punkt ab. B
 
 ## Fortschritt
 
-180 Punkte: **60 verifiziert, 0 implementiert, 2 in Arbeit, 118 offen**. Dieser Zähler wird mit jedem abgeschlossenen Arbeitspaket abgeglichen.
+180 Punkte: **61 verifiziert, 0 implementiert, 2 in Arbeit, 117 offen**. Dieser Zähler wird mit jedem abgeschlossenen Arbeitspaket abgeglichen.
 
 ## Einkaufen
 
@@ -47,7 +47,7 @@ Ein Schema, eine Schaltfläche oder ein Mock allein schließt keinen Punkt ab. B
 | SH10 | Warenkorbschätzung | Datierte Geschäftspreise verwenden; unbekannte Preise getrennt ausweisen. | Verifiziert | Native Gesamtregression + fokussierte Linux-Race; 27 Katalog-Browserchecks / 2 axe; Security und K01-Abnahme bestanden |
 | SH11 | Einkauf einlagern | Gekaufte Artikel mit Produkt, Menge, Ort und Datum geprüft in den Vorrat übernehmen. | Verifiziert | Native Gesamtsuite, fokussierte Linux-Race, bestückter Upgrade/Restore; 32 Checkout-Browserchecks/4 axe, Gesamtkette 296; C01–C03 unabhängig abgenommen |
 | SH12 | Belegabgleich | Abgeschlossenen Einkauf mit Beleg verknüpfen und Plan/Ist-Abweichungen prüfen. | Verifiziert | Native Gesamtsuite, fokussierte Linux-Race, bestückter Upgrade/Restore; 32 Checkout-Browserchecks/4 axe, Gesamtkette 296; C01–C03 unabhängig abgenommen |
-| SH13 | Barcode-Erfassung | Kamera oder Scanner nutzen; lokale Zuordnung zuerst, externe Suche nur optional. | In Arbeit | Isolierte Umsetzung auf eingefrorenem SH14-Stand begonnen: lokale Barcode-Zuordnung, bewusste Kameraaktivierung und Tastatur-/Scanner-Fallback; tatsächliche Datenbank-/Browserabnahme noch offen. |
+| SH13 | Barcode-Erfassung | Kamera oder Scanner nutzen; lokale Zuordnung zuerst, externe Suche nur optional. | Verifiziert | Shopping8 lokal integriert:15 neue PostgreSQL-Verträge plus Migrationsprobe bestanden;22er-Kompatibilität mit gezielten Fixture-Wiederholungen belegt.95Node/69SQL/Standardprüfung,26teilige Browsersuite und7Linux-Race-Verträge bestanden(Web91,521s),383Quellhashes unverändert; Gosec0Befunde und0erreichbare Go-Schwachstellen. Kamera synthetisch geprüft; Live8100 unverändert. [Nachweise](shopping-barcode.md). |
 | SH14 | Nachkaufvorschläge | Lokale Kaufabstände erklären und Vorschläge manuell übernehmen. | Verifiziert | Commit7c54250; 9 neue + 22 bestehende PostgreSQL-Verträge, 12 Linux-Race-Fälle(Web264.909s), vollständige25-Komponenten-Docker-Browserkette, 86 Node-Fälle, Gosec0 und govulncheck bestanden. docs/shopping-repurchase.md; Live8100 unverändert. |
 | SH15 | Listenbenachrichtigungen | Abonnements, gebündelte Hinweise und optional konfigurierten Web Push bereitstellen. | Offen | — |
 | SH16 | Live-Aktualisierung | Autorisierte Änderungen ohne Verlust laufender Eingaben und Versionskontrolle nachladen. | Verifiziert | Native + Linux-Race; 33 Expansion-Browserchecks / 2 axe; unabhängige F01–F04-Abnahme bestanden |
@@ -123,7 +123,7 @@ Ein Schema, eine Schaltfläche oder ein Mock allein schließt keinen Punkt ab. B
 | PA11 | Zielbestand | Mindest- und Zielbestand unterscheiden; Nachkauf auf Packungen aufrunden. | Verifiziert | Native70,1%, sieben finale PostgreSQL-Verträge, fokussierte Linux-Race; 32 Nachkauf-Browserchecks/sechs axe, Gesamtkette584; Upgrade/Restore und F01 unabhängig abgenommen. |
 | PA12 | Reservierungen | Freien und für Mahlzeiten reservierten Bestand getrennt ausweisen. | Verifiziert | [Abnahme](stock-reservations-verification.md): Core19/Pantry7/Mealplan3,12 DB-Verträge, native70,4%, gezielter Linux-Race322,439s,625 Browserprüfungen,10 saubere axe-Scans und exakter synthetischer Restore. |
 | PA13 | Open Food Facts | Optionalen Adapter mit Quellenangabe und lokalem Cache bereitstellen. | Offen | — |
-| PA14 | Abfallanalyse | Gründe und optional geschätzte Kosten der Verluste auswerten. | Offen | — |
+| PA14 | Abfallanalyse | Gründe und optional geschätzte Kosten der Verluste auswerten. | In Arbeit | Isolierte Umsetzung begonnen: begründete Abfallbuchungen, genaue Mengenanalyse und dauerhafte Wiederholungssicherheit im unveränderlichen Journal; Kosten bleiben ohne belastbare Quelle unbekannt. Datenbank-/Browserabnahme offen. |
 | PA15 | Rezeptvorschläge | Vorhandene und bald fällige Zutaten transparent gewichtet berücksichtigen. | Verifiziert | Unabhängiger Vorratseinstieg mit exaktem freien Bestand/Datumsgründen und gebundenen Cursorn; vollständige native Regression297Haupttests/73,4%,44Webtests im gezielten Linux-Race677,101s.803Browserchecks einschließlich25PA15Checks/7sauberen axe-Scans, frisches UI-ship, separate Designprüfung, aktuelle Images und verschlüsselter synthetischer Restore. [Abnahme](pantry-suggestions-verification.md). |
 | PA16 | Große Bestandslisten | Gefilterte Paginierung und exakte Gesamtsummen ohne 100-Produkte-Grenze anbieten. | Verifiziert | PostgreSQL/Migration/Restore + Linux-Race; Pantry 18 Browserchecks/3 axe; unabhängige DB- und UI-Abnahme bestanden |
 | PA17 | Bestandsprojektion | Transaktionale Salden pflegen und gegen das Bewegungsjournal prüfen. | Verifiziert | PostgreSQL/Migration/Restore + Linux-Race; Pantry 18 Browserchecks/3 axe; unabhängige DB- und UI-Abnahme bestanden |

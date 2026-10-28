@@ -70,6 +70,7 @@ func validateShoppingProduct(ctx context.Context, tx pgx.Tx, id auth.Identity, r
 	err := tx.QueryRow(ctx, `SELECT (pack_quantity<>$3::numeric OR pack_unit<>$4),
 	 EXISTS(SELECT 1 FROM shopping.items WHERE household_id=$1 AND (product_id=$2 OR replacement_product_id=$2))
 	 OR EXISTS(SELECT 1 FROM shopping.price_observations WHERE household_id=$1 AND product_id=$2)
+	 OR EXISTS(SELECT 1 FROM shopping.barcodes WHERE household_id=$1 AND product_id=$2)
 	 FROM shopping.products WHERE household_id=$1 AND id=$2`, id.HouseholdID, rid, data["pack_quantity"], data["pack_unit"]).Scan(&changed, &used)
 	if err != nil {
 		return err

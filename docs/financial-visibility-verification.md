@@ -10,7 +10,7 @@ EX19 remains in progress. Selected financial visibility is unavailable. The fina
 | Expense editor | Final127-contract run126pass/1old-FK-fixture failure; corrected two-contract repeat and ten scoped race contracts pass | Broader current action/delete integration |
 | Post/reverse and audit reader |166-contract compatibility165pass/1editor replacement timeout; original maximum contract passes25.921s(package) after seven redundant indexed UUID joins; separate optimized profile passes38.675s with replacement17.025s | Remaining current integration and scoped race gates; diagnostic timings are not a controlled benchmark |
 | Exact expense deletion | Same-seed four-contract repetition4pass105.792s; remaining28contracts26pass/2fixture-cast failures479.959s; exact one-test-file correction repeats both affected contracts successfully46.346s | Combined current-source acceptance, scoped race and materialization |
-| Fuel conversion and imports | Contracts reviewed; isolated Core32 Fuel source-foundation implementation and direct test sources under review | Actual fresh/upgrade SQL acceptance, conversion/import producers and current replay authorization |
+| Fuel conversion and imports | Corrected408-source Core32 foundation passes3smoke36.034s and11remaining contracts276.673s; Gosec157files/0findings | Core33 conversion/import producers, combined acceptance and Root materialization |
 | Full EX19 | Household-only database barrier remains enforced | Historical classification, selected/account rights, all reader/writer gates and current browser/image/recovery acceptance |
 
 The chronological evidence below preserves failed runs and their exact corrections. A preparation pass is not a claim that its code is installed or that full EX19 is available.

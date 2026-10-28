@@ -43,6 +43,7 @@ jobs:
         env:
           HOUSEHOLD_ENV: development
           HOUSEHOLD_ORIGIN: http://localhost:8101
+          HOUSEHOLD_BROWSER_URL: http://localhost:8101
           HOUSEHOLD_LISTEN: 127.0.0.1:8101
           HOUSEHOLD_DATABASE_URL: postgres://household_app:ci-app-only@localhost:5432/household_test?sslmode=disable
           HOUSEHOLD_CSRF_SECRET: ci-csrf-only-012345678901234567890123456789
@@ -91,5 +92,7 @@ jobs:
             outputs/planning-suggestions-review
             outputs/pantry-suggestions-review
             outputs/expense-editor-review
+            outputs/repurchase-review
+            outputs/barcode-review
             outputs/qa/a11y-hardening.json
           retention-days: 14

@@ -1,12 +1,12 @@
 # Household – Aufgabenliste
 
-Stand: 28.10.2026, 08:07 (Europe/Vienna).
+Stand: 28.10.2026, 10:11 (Europe/Vienna).
 
-**60 / 180 verifiziert und abgehakt · 2 in Arbeit · 118 offen.**
+**61 / 180 verifiziert und abgehakt · 2 in Arbeit · 117 offen.**
 
 Ein Haken bedeutet: umgesetzt und durch ausgeführte Prüfungen belegt. Vorbereitete Änderungen und einzelne bestandene Zwischentests schließen einen Verbesserungspunkt noch nicht ab.
 
-Aktuell in Arbeit: **SH13 – Barcode-Erfassung**, **EX19 – Finanzsichtbarkeit**.
+Aktuell in Arbeit: **PA14 – Abfallanalyse**, **EX19 – Finanzsichtbarkeit**.
 
 Der aktuelle Stand der Finanz-Unteraufgaben und Tests steht in der [laufenden Prüfliste](financial-visibility-verification.md#current-producer-checklist).
 
@@ -14,10 +14,10 @@ Diese Ansicht wird aus der [verbindlichen Liste mit Abnahmekriterien und Nachwei
 
 | Modul | Abgehakt | In Arbeit | Offen |
 |---|---:|---:|---:|
-| Einkaufen | 17 / 20 | 1 | 2 |
+| Einkaufen | 18 / 20 | 0 | 2 |
 | Fahrzeuge und Tanken | 0 / 20 | 0 | 20 |
 | Rezepte | 10 / 20 | 0 | 10 |
-| Vorrat | 16 / 20 | 0 | 4 |
+| Vorrat | 16 / 20 | 1 | 3 |
 | Finanzen | 1 / 20 | 1 | 18 |
 | Aufgaben | 0 / 20 | 0 | 20 |
 | Zähler und Energie | 0 / 20 | 0 | 20 |
@@ -38,7 +38,7 @@ Diese Ansicht wird aus der [verbindlichen Liste mit Abnahmekriterien und Nachwei
 - [x] **SH10 Warenkorbschätzung** — Datierte Geschäftspreise verwenden; unbekannte Preise getrennt ausweisen.
 - [x] **SH11 Einkauf einlagern** — Gekaufte Artikel mit Produkt, Menge, Ort und Datum geprüft in den Vorrat übernehmen.
 - [x] **SH12 Belegabgleich** — Abgeschlossenen Einkauf mit Beleg verknüpfen und Plan/Ist-Abweichungen prüfen.
-- [ ] **SH13 Barcode-Erfassung** — **In Arbeit** — Kamera oder Scanner nutzen; lokale Zuordnung zuerst, externe Suche nur optional.
+- [x] **SH13 Barcode-Erfassung** — Kamera oder Scanner nutzen; lokale Zuordnung zuerst, externe Suche nur optional.
 - [x] **SH14 Nachkaufvorschläge** — Lokale Kaufabstände erklären und Vorschläge manuell übernehmen.
 - [ ] **SH15 Listenbenachrichtigungen** — Abonnements, gebündelte Hinweise und optional konfigurierten Web Push bereitstellen.
 - [x] **SH16 Live-Aktualisierung** — Autorisierte Änderungen ohne Verlust laufender Eingaben und Versionskontrolle nachladen.
@@ -108,7 +108,7 @@ Diese Ansicht wird aus der [verbindlichen Liste mit Abnahmekriterien und Nachwei
 - [x] **PA11 Zielbestand** — Mindest- und Zielbestand unterscheiden; Nachkauf auf Packungen aufrunden.
 - [x] **PA12 Reservierungen** — Freien und für Mahlzeiten reservierten Bestand getrennt ausweisen.
 - [ ] **PA13 Open Food Facts** — Optionalen Adapter mit Quellenangabe und lokalem Cache bereitstellen.
-- [ ] **PA14 Abfallanalyse** — Gründe und optional geschätzte Kosten der Verluste auswerten.
+- [ ] **PA14 Abfallanalyse** — **In Arbeit** — Gründe und optional geschätzte Kosten der Verluste auswerten.
 - [x] **PA15 Rezeptvorschläge** — Vorhandene und bald fällige Zutaten transparent gewichtet berücksichtigen.
 - [x] **PA16 Große Bestandslisten** — Gefilterte Paginierung und exakte Gesamtsummen ohne 100-Produkte-Grenze anbieten.
 - [x] **PA17 Bestandsprojektion** — Transaktionale Salden pflegen und gegen das Bewegungsjournal prüfen.

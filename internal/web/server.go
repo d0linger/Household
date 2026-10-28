@@ -212,6 +212,9 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /api/v1/shopping/lists/{id}/items", s.require(s.shoppingItems))
 	mux.Handle("GET /api/v1/shopping/lists/{id}/repurchase", s.require(s.shoppingRepurchase))
 	mux.Handle("POST /api/v1/shopping/lists/{id}/repurchase", s.require(s.shoppingRepurchase))
+	mux.Handle("GET /m/shopping/lists/{id}/barcode", s.require(s.shoppingBarcodePage))
+	mux.Handle("GET /api/v1/shopping/lists/{id}/barcode", s.require(s.shoppingBarcodeAPI))
+	mux.Handle("POST /api/v1/shopping/lists/{id}/barcode/{intent}", s.require(s.shoppingBarcodeAPI))
 	mux.Handle("GET /m/shopping/lists/{id}/checkout", s.require(s.shoppingCheckoutPage))
 	mux.Handle("GET /api/v1/shopping/lists/{id}/checkout", s.require(s.shoppingCheckout))
 	mux.Handle("POST /api/v1/shopping/lists/{id}/checkout", s.require(s.shoppingCheckout))
@@ -310,7 +313,7 @@ func (s *Server) middleware(next http.Handler) http.Handler {
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("X-Frame-Options", "DENY")
 		w.Header().Set("Referrer-Policy", "same-origin")
-		w.Header().Set("Permissions-Policy", "camera=(self), microphone=(), geolocation=(), payment=()")
+		w.Header().Set("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=()")
 		w.Header().Set("Content-Security-Policy", "default-src 'none'; script-src 'nonce-"+nonce+"'; style-src 'self'; img-src 'self' blob:; font-src 'self'; connect-src 'self'; worker-src 'self'; manifest-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
 		w.Header().Set("Cache-Control", "no-store")
 		if s.Cfg.Production {

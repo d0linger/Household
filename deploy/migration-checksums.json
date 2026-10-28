@@ -66,5 +66,6 @@
   "shopping/000004_checkout.up.sql": "5877578c9f26ded254f43889c013e3308438a61a036a6e5b0d7e4b482a112a20",
   "shopping/000005_planning_purchases.up.sql": "aa6d100e1f7404c323aa56c03bfd1d5ded957efd8b8d7d150577b0fa67871e27",
   "shopping/000006_planning_destination_completion.up.sql": "e801f05694093c25561329b35091719165fb59a34c6adba0e905dc0bcec5e228",
-  "shopping/000007_repurchase_history.up.sql": "d18c0a69692fcd0670356df0dfaafe5f94b199d513677c2717b49c2c7015b1fb"
+  "shopping/000007_repurchase_history.up.sql": "d18c0a69692fcd0670356df0dfaafe5f94b199d513677c2717b49c2c7015b1fb",
+  "shopping/000008_local_barcodes.up.sql": "3cfa815266efcae0452662b1ed4973f3bf1b73adc170f4a60bbfa3f4c5916361"
 }
