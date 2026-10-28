@@ -1,6 +1,6 @@
 # Financial visibility — EX19 implementation evidence
 
-EX19 remains in progress. Selected financial visibility is unavailable. Accepted development source is Core26/Expenses4 at source checkpoint839ff73:369source/dependency files and67migration files. Later producer changes remain isolated preparations; live8100 has not been upgraded. Historical shared-editor evidence at390036a (335main native tests,74.1% internal coverage,52scoped race contracts and846browser checks) belongs to that earlier source and does not verify the later preparations.
+EX19 remains in progress. Selected financial visibility is unavailable. The financial foundation remains Core26/Expenses4 from source checkpoint839ff73. Development source now also includes the independently verified SH14 increment on Shopping7:375source/dependency files and68migration files. The explicit SH14 source bridge preserves all67 previous migration files. Later financial producer changes remain isolated preparations; live8100 has not been upgraded. Historical shared-editor evidence at390036a (335main native tests,74.1% internal coverage,52scoped race contracts and846browser checks) belongs to that earlier source and does not verify the later preparations.
 
 ## Current producer checklist
 
@@ -9,11 +9,25 @@ EX19 remains in progress. Selected financial visibility is unavailable. Accepted
 | Capture/worker and manual producers | Recorded SQL, actual workflow, compatibility and focused race campaigns; subsequent editor preparation repairs reproduced missing-proof gaps | Combined current-source acceptance and materialization |
 | Expense editor | Final127-contract run126pass/1old-FK-fixture failure; corrected two-contract repeat and ten scoped race contracts pass | Broader current action/delete integration |
 | Post/reverse and audit reader |166-contract compatibility165pass/1editor replacement timeout; original maximum contract passes25.921s(package) after seven redundant indexed UUID joins; separate optimized profile passes38.675s with replacement17.025s | Remaining current integration and scoped race gates; diagnostic timings are not a controlled benchmark |
-| Exact expense deletion | Editor preimage gap reproduced19.951s; exact corrected test passes25.562s,403hashes unchanged; first four delete contracts2pass/2fail76.691s; narrowly reviewed real-maintenance distinction frozen as8db282c2 | Same-seed four-contract repetition, three new identity/liveness regressions and remaining23contracts |
-| Fuel conversion and imports | Source-contract research in progress | Complete typed source/result proof and current replay authorization |
+| Exact expense deletion | Same-seed four-contract repetition4pass105.792s; remaining28contracts26pass/2fixture-cast failures479.959s; exact one-test-file correction repeats both affected contracts successfully46.346s | Combined current-source acceptance, scoped race and materialization |
+| Fuel conversion and imports | Contracts reviewed; isolated Core32 Fuel source-foundation implementation and direct test sources under review | Actual fresh/upgrade SQL acceptance, conversion/import producers and current replay authorization |
 | Full EX19 | Household-only database barrier remains enforced | Historical classification, selected/account rights, all reader/writer gates and current browser/image/recovery acceptance |
 
 The chronological evidence below preserves failed runs and their exact corrections. A preparation pass is not a claim that its code is installed or that full EX19 is available.
+
+### Checked preparation substeps
+
+These checkboxes record executed preparation checks, separately from completion of the EX19 feature.
+
+- [x] Reproduce and correct audit pagination at the original SQL deadline, including denied rows before the visible limit.
+- [x] Reproduce the editor removal preimage substitution and pass the unchanged control/denial regression after correction.
+- [x] Pass the original maximum100-line editor replacement/post and atomic overflow contract after the measured SQL correction.
+- [x] Pass actual App deletion with zero, one and100cascading children and repeated migration/readiness.
+- [x] Pass the current-deleter/immutable-creator, owner-definer denial and genuine-owner restore regressions.
+- [x] Pass the two independent attachment/derivative authorization contracts after correcting only their UUID fixture casts.
+- [ ] Complete the new combined source, scoped race and materialization gates.
+- [ ] Complete Fuel/import producer and all selected financial access contracts.
+- [ ] Complete current-source browser, image and recovery acceptance for full EX19.
 
 ## Isolated shared-only foundation
 
@@ -199,3 +213,8 @@ At the user's direction, SH14 local repurchase suggestions starts as a separate 
 The optimized editor diagnostic passes38.675s with404frozen source hashes unchanged(manifest ee1eaa51600f493901ae22fd4369170ae4694c676ee37f8b88a2efbe4e40eee9). Its actual create/replacement phases are8705ms/17025ms; the completion self-time delta is6812.071ms versus8353.177ms in the earlier separate diagnostic. These are noisy separate diagnostic runs, not a controlled speedup benchmark; neither nested times nor phase results are added. A direct database check confirms0retained track_functions role settings after the runner resets them. The original uninstrumented maximum contract and its403-source manifest are independently reconciled as passed.
 
 The cascade correction freezes403sources as8db282c2d94b1773490eb43a3959f9cf6b591564aab8080703e0152d8b039fd6, changing only forward Core31 and its direct SQL test file. Both guard_financial_identity and deferred check_financial_identity_complete now use the established inline real-maintenance predicate; their original bodies are otherwise byte-identical and both definitions are readiness-pinned. The deferred change also prevents an App-in-owner-definer from forcing SET CONSTRAINTS IMMEDIATE to accept an invalid live-source tombstone. No helper EXECUTE grant or App business-write role is widened. Three new source regressions cover distinct creator/deleter, owner-definer immutable/liveness denial and genuine-owner restored facts; a separate non-owner SET ROLE positive is not claimed. Source compilation2.810s, non-database Web2.209s and tagged serialized lint0issues pass. Actual same-seed smoke is running; all71prior SQL and369Root source hashes remain unchanged.
+
+
+The403-source cascade correction passes all four original smoke contracts105.792s with original seed1793037354021336000 and every source hash unchanged. The subsequent28-contract campaign finishes26pass/2fail479.959s. Both failures occur in the same independently scoped artifact fixture: PostgreSQL resolves untyped UNION set_id/household_id parameters to text and rejects them42804 before the target authorization call. A separate403-source copy(manifest c6380f55f60a9c9e12d9b3c5f8d46ee943495dd38d453e9287465f365b6208e1) changes only two SELECT branches in one test helper to explicit uuid casts; all402other sources and72SQL migration bytes remain unchanged. Both affected actual attachment/derivative denial contracts repeat successfully46.346s with the same seed. The26/2broad result is retained, not relabelled. The current-deleter/creator, App-owner-definer immutable/deferred liveness, genuine owner restore, exact preimage and original maximum editor cases all passed in the recorded28campaign.
+
+SH14 separately freezes375native sources as e91e79fb8e1cf51b90ee7df53f19b3d2d09c69d9e4bd503473ff931d334489d8, with13declared source/metadata targets and67prior SQL hashes unchanged. The only new migration is Shopping7. All nine actual PostgreSQL repurchase contracts pass116.526s(seed1793037354021336000), including populated forward upgrade, exact Ready drift, bounded/malformed history refusal, actual manual/idempotent add, authorization, late rollback and concurrency. A22-contract existing Shopping/checkout/application compatibility campaign is running before browser acceptance. No SH14 source is materialized or checklist point closed yet.

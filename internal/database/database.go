@@ -113,6 +113,13 @@ func Ready(ctx context.Context, pool *pgxpool.Pool) error {
 			return fmt.Errorf("incompatible schema %s", schema)
 		}
 	}
+	var repurchase bool
+	if err := pool.QueryRow(ctx, "SELECT shopping.repurchase_ready()").Scan(&repurchase); err != nil {
+		return fmt.Errorf("inspect shopping history contract: %w", err)
+	}
+	if !repurchase {
+		return errors.New("incomplete shopping history contract")
+	}
 	var audited bool
 	if err := pool.QueryRow(ctx, "SELECT core.audit_ready()").Scan(&audited); err != nil {
 		return fmt.Errorf("inspect audit contract: %w", err)

@@ -210,6 +210,8 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /api/v1/core/reference-options/{module}/{entity}", s.require(s.referenceOptions))
 	mux.Handle("GET /api/v1/core/reference-options/{module}/{entity}/{id}", s.require(s.referenceOptions))
 	mux.Handle("GET /api/v1/shopping/lists/{id}/items", s.require(s.shoppingItems))
+	mux.Handle("GET /api/v1/shopping/lists/{id}/repurchase", s.require(s.shoppingRepurchase))
+	mux.Handle("POST /api/v1/shopping/lists/{id}/repurchase", s.require(s.shoppingRepurchase))
 	mux.Handle("GET /m/shopping/lists/{id}/checkout", s.require(s.shoppingCheckoutPage))
 	mux.Handle("GET /api/v1/shopping/lists/{id}/checkout", s.require(s.shoppingCheckout))
 	mux.Handle("POST /api/v1/shopping/lists/{id}/checkout", s.require(s.shoppingCheckout))
