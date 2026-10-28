@@ -56,6 +56,7 @@
   "pantry/000008_planning_bindings.up.sql": "e77bf3bd4100ea6dcaadf8136e2368e38fcdfbd558484d803d247c406e7fc9e5",
   "pantry/000009_planning_purchases.up.sql": "82c4b5b6fac141fe837f2cd75f8d0de30132f3958db7411f1178f9498b1de6a1",
   "pantry/000010_planning_purchase_detach.up.sql": "315b09fc76522a31f2ce036ee3a2adc571142e1fd18064fa5ac6aea3f0542f89",
+  "pantry/000011_waste_analysis.up.sql": "a0dc49b5c8c2081dd4d1ae4d12d0bb4fae364bbb32d00833d7bcc0df0cc6a1ad",
   "recipes/000001_init.up.sql": "24d68a5070f402d2fa56ef7d9e5fde395a72648e66125f61c7294b63f8eb77e5",
   "recipes/000002_versions.up.sql": "b8a47a5826268b1a9f0ac061a70f23df27b13c714657c74dd6cb4864f700f25d",
   "recipes/000003_cooking.up.sql": "099d591baf90206c06da86ab2ef82d23e09649522ec9b732c9f14d553fce4494",

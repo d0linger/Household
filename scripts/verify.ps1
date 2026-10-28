@@ -15,7 +15,7 @@ try {
     if($LASTEXITCODE -ne 0){throw 'Coverage report failed'}
     go mod verify
     if($LASTEXITCODE -ne 0){throw 'Module verification failed'}
-    node --test scripts/quality-tools.test.cjs scripts/shopping-input.test.cjs scripts/shopping-checkout.test.cjs scripts/recipe-workspace.test.cjs scripts/cooking.test.cjs scripts/planning.test.cjs scripts/planning-suggestions.test.cjs scripts/planning-purchases.test.cjs scripts/pantry-daily.test.cjs scripts/ingredient-pantry.test.cjs scripts/cooking-stock.test.cjs scripts/pantry-batches.test.cjs scripts/expense-editor.test.cjs scripts/shopping-repurchase.test.cjs scripts/shopping-barcode.test.cjs
+    node --test scripts/quality-tools.test.cjs scripts/shopping-input.test.cjs scripts/shopping-checkout.test.cjs scripts/recipe-workspace.test.cjs scripts/cooking.test.cjs scripts/planning.test.cjs scripts/planning-suggestions.test.cjs scripts/planning-purchases.test.cjs scripts/pantry-daily.test.cjs scripts/ingredient-pantry.test.cjs scripts/cooking-stock.test.cjs scripts/pantry-batches.test.cjs scripts/expense-editor.test.cjs scripts/shopping-repurchase.test.cjs scripts/shopping-barcode.test.cjs scripts/pantry-waste.test.cjs
     if($LASTEXITCODE -ne 0){throw 'Quality tool tests failed'}
     node scripts/check-workflows.cjs
     if($LASTEXITCODE -ne 0){throw 'Workflow policy failed'}

@@ -1,7 +1,7 @@
-{{define "pantry-daily-nav"}}<nav class="entity-tabs" aria-label="Vorräte"><a href="/m/pantry/stock">Bestand</a><a href="/m/pantry/priority">Zuerst verbrauchen</a><a href="/m/pantry/recipe-suggestions">Rezeptvorschläge</a><a href="/m/pantry/packs">Packungen</a><a href="/m/pantry/barcodes">Barcodes</a></nav>{{end}}
+{{define "pantry-daily-nav"}}<nav class="entity-tabs" aria-label="Vorräte"><a href="/m/pantry/stock">Bestand</a><a href="/m/pantry/priority">Zuerst verbrauchen</a><a href="/m/pantry/waste">Abfallanalyse</a><a href="/m/pantry/recipe-suggestions">Rezeptvorschläge</a><a href="/m/pantry/packs">Packungen</a><a href="/m/pantry/barcodes">Barcodes</a></nav>{{end}}
 {{define "pantry-consume"}}
 <section id="pantry-consume" data-lot="{{.Record.id}}" data-generation="{{with index .States "pantry"}}{{.Generation}}{{end}}" data-writable="{{.User.CanWrite}}">
- {{template "pantry-daily-nav" .}}<h1>Verbrauch prüfen</h1><p id="consume-status" role="status">Charge wird geladen …</p>
+ {{template "pantry-daily-nav" .}}<h1>Verbrauch prüfen</h1><p><a href="/m/pantry/lots/{{.Record.id}}/waste">Verlust dieser Charge erfassen</a></p><p id="consume-status" role="status">Charge wird geladen …</p>
  <div id="consume-error" class="notice error" role="alert" tabindex="-1" hidden></div>
  <div class="actions"><button type="button" id="consume-refresh">Aktuellen Bestand laden</button><button type="button" id="consume-retry" hidden>Dieselbe Buchung erneut prüfen</button></div>
  <section class="panel" aria-labelledby="consume-lot-title"><h2 id="consume-lot-title">Ausgewählte Charge</h2><div id="consume-lot"></div><p id="consume-opening" class="notice" hidden></p><div id="consume-links" class="actions"></div></section>

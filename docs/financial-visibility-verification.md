@@ -1,6 +1,6 @@
 # Financial visibility — EX19 implementation evidence
 
-EX19 remains in progress. Selected financial visibility is unavailable. The financial foundation remains Core26/Expenses4 from source checkpoint839ff73. Development source now also includes the independently verified SH14 increment on Shopping7:375source/dependency files and68migration files. The explicit SH14 source bridge preserves all67 previous migration files. Later financial producer changes remain isolated preparations; live8100 has not been upgraded. Historical shared-editor evidence at390036a (335main native tests,74.1% internal coverage,52scoped race contracts and846browser checks) belongs to that earlier source and does not verify the later preparations.
+EX19 remains in progress. Selected financial visibility is unavailable. The financial foundation remains Core26/Expenses4 from source checkpoint839ff73. Independently verified SH14/SH13 use Shopping8(checkpointfd39841); development source now also contains PA14 with its final browser/race gates pending:394source/dependency files and70migration files. Explicit source bridges preserve prior SQL. Later financial producer changes remain isolated preparations; live8100 has not been upgraded. Historical shared-editor evidence at390036a (335main native tests,74.1% internal coverage,52scoped race contracts and846browser checks) belongs to that earlier source and does not verify the later preparations.
 
 ## Current producer checklist
 
@@ -10,7 +10,7 @@ EX19 remains in progress. Selected financial visibility is unavailable. The fina
 | Expense editor | Final127-contract run126pass/1old-FK-fixture failure; corrected two-contract repeat and ten scoped race contracts pass | Broader current action/delete integration |
 | Post/reverse and audit reader |166-contract compatibility165pass/1editor replacement timeout; original maximum contract passes25.921s(package) after seven redundant indexed UUID joins; separate optimized profile passes38.675s with replacement17.025s | Remaining current integration and scoped race gates; diagnostic timings are not a controlled benchmark |
 | Exact expense deletion | Same-seed four-contract repetition4pass105.792s; remaining28contracts26pass/2fixture-cast failures479.959s; exact one-test-file correction repeats both affected contracts successfully46.346s | Combined current-source acceptance, scoped race and materialization |
-| Fuel conversion and imports | Corrected408-source Core32 foundation passes3smoke36.034s and11remaining contracts276.673s; Gosec157files/0findings | Core33 conversion/import producers, combined acceptance and Root materialization |
+| Fuel conversion and imports | Corrected408-source Core32 foundation passes3smoke36.034s and11remaining contracts276.673s; Gosec157files/0findings. Exact private barcode catalog correction separately passes4combined contracts. Frozen413-source Core33 smoke2pass/1Get timeout78.061s; direct actual App SQL producer and repeated migration pass | Measure and correct the exact first post-commit reader query at unchanged deadlines; remaining13conversion contracts, compatibility, combined acceptance and materialization |
 | Full EX19 | Household-only database barrier remains enforced | Historical classification, selected/account rights, all reader/writer gates and current browser/image/recovery acceptance |
 
 The chronological evidence below preserves failed runs and their exact corrections. A preparation pass is not a claim that its code is installed or that full EX19 is available.
@@ -25,6 +25,8 @@ These checkboxes record executed preparation checks, separately from completion 
 - [x] Pass actual App deletion with zero, one and100cascading children and repeated migration/readiness.
 - [x] Pass the current-deleter/immutable-creator, owner-definer denial and genuine-owner restore regressions.
 - [x] Pass the two independent attachment/derivative authorization contracts after correcting only their UUID fixture casts.
+- [x] Pass all14manual Fuel-source Core32 contracts and four actual Core32/Shopping8 catalog/composition cases on their recorded exact freezes.
+- [ ] Resolve the actual Core33 first post-create read timeout before accepting conversion; its original2pass/1fail smoke remains retained.
 - [ ] Complete the new combined source, scoped race and materialization gates.
 - [ ] Complete Fuel/import producer and all selected financial access contracts.
 - [ ] Complete current-source browser, image and recovery acceptance for full EX19.

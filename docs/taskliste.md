@@ -1,12 +1,12 @@
 # Household – Aufgabenliste
 
-Stand: 28.10.2026, 10:11 (Europe/Vienna).
+Stand: 28.10.2026, 11:15 (Europe/Vienna).
 
-**61 / 180 verifiziert und abgehakt · 2 in Arbeit · 117 offen.**
+**62 / 180 verifiziert und abgehakt · 2 in Arbeit · 116 offen.**
 
 Ein Haken bedeutet: umgesetzt und durch ausgeführte Prüfungen belegt. Vorbereitete Änderungen und einzelne bestandene Zwischentests schließen einen Verbesserungspunkt noch nicht ab.
 
-Aktuell in Arbeit: **PA14 – Abfallanalyse**, **EX19 – Finanzsichtbarkeit**.
+Aktuell in Arbeit: **FU01 – Fahrzeugübersicht**, **EX19 – Finanzsichtbarkeit**.
 
 Der aktuelle Stand der Finanz-Unteraufgaben und Tests steht in der [laufenden Prüfliste](financial-visibility-verification.md#current-producer-checklist).
 
@@ -15,9 +15,9 @@ Diese Ansicht wird aus der [verbindlichen Liste mit Abnahmekriterien und Nachwei
 | Modul | Abgehakt | In Arbeit | Offen |
 |---|---:|---:|---:|
 | Einkaufen | 18 / 20 | 0 | 2 |
-| Fahrzeuge und Tanken | 0 / 20 | 0 | 20 |
+| Fahrzeuge und Tanken | 0 / 20 | 1 | 19 |
 | Rezepte | 10 / 20 | 0 | 10 |
-| Vorrat | 16 / 20 | 1 | 3 |
+| Vorrat | 17 / 20 | 0 | 3 |
 | Finanzen | 1 / 20 | 1 | 18 |
 | Aufgaben | 0 / 20 | 0 | 20 |
 | Zähler und Energie | 0 / 20 | 0 | 20 |
@@ -49,7 +49,7 @@ Diese Ansicht wird aus der [verbindlichen Liste mit Abnahmekriterien und Nachwei
 
 ## Fahrzeuge und Tanken
 
-- [ ] **FU01 Fahrzeugübersicht** — Letzte Tankung, Kilometerstand, Verbrauch und anstehende Termine je Fahrzeug anzeigen.
+- [ ] **FU01 Fahrzeugübersicht** — **In Arbeit** — Letzte Tankung, Kilometerstand, Verbrauch und anstehende Termine je Fahrzeug anzeigen.
 - [ ] **FU02 Tank-Schnellerfassung** — Persönliche Vorgaben für Fahrzeug, aktive Serie und Station verwenden.
 - [ ] **FU03 Preisberechnung** — Zwei Werte aus Menge, Preis und Summe exakt zum dritten ergänzen; Rundungsabweichungen zeigen.
 - [ ] **FU04 Verbrauch erklären** — Fehlende Auswertung mit strukturiertem Grund und nächstem Handlungsschritt erklären.
@@ -108,7 +108,7 @@ Diese Ansicht wird aus der [verbindlichen Liste mit Abnahmekriterien und Nachwei
 - [x] **PA11 Zielbestand** — Mindest- und Zielbestand unterscheiden; Nachkauf auf Packungen aufrunden.
 - [x] **PA12 Reservierungen** — Freien und für Mahlzeiten reservierten Bestand getrennt ausweisen.
 - [ ] **PA13 Open Food Facts** — Optionalen Adapter mit Quellenangabe und lokalem Cache bereitstellen.
-- [ ] **PA14 Abfallanalyse** — **In Arbeit** — Gründe und optional geschätzte Kosten der Verluste auswerten.
+- [x] **PA14 Abfallanalyse** — Gründe und optional geschätzte Kosten der Verluste auswerten.
 - [x] **PA15 Rezeptvorschläge** — Vorhandene und bald fällige Zutaten transparent gewichtet berücksichtigen.
 - [x] **PA16 Große Bestandslisten** — Gefilterte Paginierung und exakte Gesamtsummen ohne 100-Produkte-Grenze anbieten.
 - [x] **PA17 Bestandsprojektion** — Transaktionale Salden pflegen und gegen das Bewegungsjournal prüfen.

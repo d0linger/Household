@@ -205,7 +205,7 @@ func (s *Store) List(ctx context.Context, id auth.Identity, m module.Descriptor,
 	if m.ID == "recipes" && e.ID == "recipes" && strings.HasPrefix(query, "#") {
 		where = " AND EXISTS(SELECT 1 FROM recipes.recipe_tags rt JOIN recipes.tags tag ON tag.household_id=rt.household_id AND tag.id=rt.tag_id WHERE rt.household_id=t.household_id AND rt.recipe_id=t.id AND lower(tag.name)=lower($6))"
 		tag := strings.TrimPrefix(query, "#")
-		rows, err := s.Pool.Query(ctx, "SELECT to_jsonb(t) FROM "+table+" t WHERE household_id=$1 AND ($2='' OR "+primary+"::text ILIKE $3)"+where+" ORDER BY "+order+" LIMIT $4 OFFSET $5", id.HouseholdID, "", "", limit, offset, tag)
+		rows, err := s.Pool.Query(ctx, "SELECT "+pantryMovementRecordJSON(m.ID, e.ID)+" FROM "+table+" t WHERE household_id=$1 AND ($2='' OR "+primary+"::text ILIKE $3)"+where+" ORDER BY "+order+" LIMIT $4 OFFSET $5", id.HouseholdID, "", "", limit, offset, tag)
 		if err != nil {
 			return nil, err
 		}
@@ -224,7 +224,7 @@ func (s *Store) List(ctx context.Context, id auth.Identity, m module.Descriptor,
 		}
 		return list, rows.Err()
 	}
-	rows, err := s.Pool.Query(ctx, "SELECT to_jsonb(t) FROM "+table+" t WHERE household_id=$1 AND ($2='' OR "+primary+"::text ILIKE $3)"+where+" ORDER BY "+order+" LIMIT $4 OFFSET $5", id.HouseholdID, query, "%"+query+"%", limit, offset)
+	rows, err := s.Pool.Query(ctx, "SELECT "+pantryMovementRecordJSON(m.ID, e.ID)+" FROM "+table+" t WHERE household_id=$1 AND ($2='' OR "+primary+"::text ILIKE $3)"+where+" ORDER BY "+order+" LIMIT $4 OFFSET $5", id.HouseholdID, query, "%"+query+"%", limit, offset)
 	if err != nil {
 		return nil, fmt.Errorf("list %s.%s: %w", m.ID, e.ID, err)
 	}
@@ -252,7 +252,7 @@ func (s *Store) Get(ctx context.Context, id auth.Identity, m module.Descriptor, 
 		return s.getFinancial(ctx, id, e, rid)
 	}
 	var raw []byte
-	err := s.Pool.QueryRow(ctx, "SELECT to_jsonb(t) FROM "+pgx.Identifier{m.ID, e.ID}.Sanitize()+" t WHERE household_id=$1 AND id=$2", id.HouseholdID, rid).Scan(&raw)
+	err := s.Pool.QueryRow(ctx, "SELECT "+pantryMovementRecordJSON(m.ID, e.ID)+" FROM "+pgx.Identifier{m.ID, e.ID}.Sanitize()+" t WHERE household_id=$1 AND id=$2", id.HouseholdID, rid).Scan(&raw)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -355,6 +355,9 @@ func (s *Store) Write(ctx context.Context, id auth.Identity, m module.Descriptor
 	if !errors.Is(err, pgx.ErrNoRows) {
 		return nil, err
 	}
+	if m.ID == "pantry" && e.ID == "stock_movements" && creating && String(data["reason"]) == "waste" {
+		return nil, Invalid{"Abfall über Vorrat → Abfall buchen; bereits gebuchte Vorgänge im Verlauf prüfen"}
+	}
 	if financialEntity(m.ID, e.ID) {
 		if err = financialWriteScope(ctx, tx, id, e.ID, rid, data, creating); err != nil {
 			return nil, err
@@ -435,10 +438,10 @@ func save(ctx context.Context, tx pgx.Tx, id auth.Identity, m module.Descriptor,
 	table := pgx.Identifier{m.ID, e.ID}.Sanitize()
 	var result []byte
 	if creating {
-		query := "INSERT INTO " + table + " AS t (id,household_id,created_by," + strings.Join(columns, ",") + ") SELECT $1::uuid,$2::uuid,$3::uuid," + strings.Join(names, ",") + " FROM jsonb_to_record($4::jsonb) AS x(" + strings.Join(types, ",") + ") RETURNING to_jsonb(t)"
+		query := "INSERT INTO " + table + " AS t (id,household_id,created_by," + strings.Join(columns, ",") + ") SELECT $1::uuid,$2::uuid,$3::uuid," + strings.Join(names, ",") + " FROM jsonb_to_record($4::jsonb) AS x(" + strings.Join(types, ",") + ") RETURNING " + pantryMovementRecordJSON(m.ID, e.ID)
 		err = tx.QueryRow(ctx, query, rid, id.HouseholdID, id.UserID, raw).Scan(&result)
 	} else {
-		query := "UPDATE " + table + " AS t SET (" + strings.Join(columns, ",") + ")=(SELECT " + strings.Join(names, ",") + " FROM jsonb_to_record($4::jsonb) AS x(" + strings.Join(types, ",") + ")),updated_at=now(),version=version+1 WHERE id=$1 AND household_id=$2 AND version=$3 RETURNING to_jsonb(t)"
+		query := "UPDATE " + table + " AS t SET (" + strings.Join(columns, ",") + ")=(SELECT " + strings.Join(names, ",") + " FROM jsonb_to_record($4::jsonb) AS x(" + strings.Join(types, ",") + ")),updated_at=now(),version=version+1 WHERE id=$1 AND household_id=$2 AND version=$3 RETURNING " + pantryMovementRecordJSON(m.ID, e.ID)
 		err = tx.QueryRow(ctx, query, rid, id.HouseholdID, version, raw).Scan(&result)
 	}
 	if errors.Is(err, pgx.ErrNoRows) {
