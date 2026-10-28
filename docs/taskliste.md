@@ -1,12 +1,12 @@
 # Household – Aufgabenliste
 
-Stand: 28.10.2026, 08:00 (Europe/Vienna).
+Stand: 28.10.2026, 08:07 (Europe/Vienna).
 
-**59 / 180 verifiziert und abgehakt · 3 in Arbeit · 118 offen.**
+**60 / 180 verifiziert und abgehakt · 2 in Arbeit · 118 offen.**
 
 Ein Haken bedeutet: umgesetzt und durch ausgeführte Prüfungen belegt. Vorbereitete Änderungen und einzelne bestandene Zwischentests schließen einen Verbesserungspunkt noch nicht ab.
 
-Aktuell in Arbeit: **SH13 – Barcode-Erfassung**, **SH14 – Nachkaufvorschläge**, **EX19 – Finanzsichtbarkeit**.
+Aktuell in Arbeit: **SH13 – Barcode-Erfassung**, **EX19 – Finanzsichtbarkeit**.
 
 Der aktuelle Stand der Finanz-Unteraufgaben und Tests steht in der [laufenden Prüfliste](financial-visibility-verification.md#current-producer-checklist).
 
@@ -14,7 +14,7 @@ Diese Ansicht wird aus der [verbindlichen Liste mit Abnahmekriterien und Nachwei
 
 | Modul | Abgehakt | In Arbeit | Offen |
 |---|---:|---:|---:|
-| Einkaufen | 16 / 20 | 2 | 2 |
+| Einkaufen | 17 / 20 | 1 | 2 |
 | Fahrzeuge und Tanken | 0 / 20 | 0 | 20 |
 | Rezepte | 10 / 20 | 0 | 10 |
 | Vorrat | 16 / 20 | 0 | 4 |
@@ -39,7 +39,7 @@ Diese Ansicht wird aus der [verbindlichen Liste mit Abnahmekriterien und Nachwei
 - [x] **SH11 Einkauf einlagern** — Gekaufte Artikel mit Produkt, Menge, Ort und Datum geprüft in den Vorrat übernehmen.
 - [x] **SH12 Belegabgleich** — Abgeschlossenen Einkauf mit Beleg verknüpfen und Plan/Ist-Abweichungen prüfen.
 - [ ] **SH13 Barcode-Erfassung** — **In Arbeit** — Kamera oder Scanner nutzen; lokale Zuordnung zuerst, externe Suche nur optional.
-- [ ] **SH14 Nachkaufvorschläge** — **In Arbeit** — Lokale Kaufabstände erklären und Vorschläge manuell übernehmen.
+- [x] **SH14 Nachkaufvorschläge** — Lokale Kaufabstände erklären und Vorschläge manuell übernehmen.
 - [ ] **SH15 Listenbenachrichtigungen** — Abonnements, gebündelte Hinweise und optional konfigurierten Web Push bereitstellen.
 - [x] **SH16 Live-Aktualisierung** — Autorisierte Änderungen ohne Verlust laufender Eingaben und Versionskontrolle nachladen.
 - [ ] **SH17 Offline-Leselisten** — Ausgewählte Listen ausdrücklich pro Gerät freigeben; Eigentümer, Ablauf und Abmeldung beachten.
