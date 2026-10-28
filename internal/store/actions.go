@@ -18,6 +18,9 @@ import (
 )
 
 func (s *Store) Action(ctx context.Context, id auth.Identity, m module.Descriptor, e module.Entity, rid, action, key, requestID string, in Mutation) (Record, error) {
+	if m.ID == "fuel" {
+		return s.fuelModuleLegacyAction(ctx, id, e.ID, rid, action, key, requestID, in)
+	}
 	ctx = audit.WithRequest(audit.WithActor(ctx, id.UserID, id.HouseholdID), requestID)
 	if !value.ValidUUID(rid) || !value.ValidUUID(key) {
 		return nil, Invalid{"gültige Vorgangs-ID erforderlich"}

@@ -1,6 +1,6 @@
 # Checkliste: 180 genehmigte Verbesserungen
 
-Stand: 2026-10-26. Auftrag: alle 180 Vorschläge aus dem Modulvergleich implementieren und gründlich testen.
+Stand: 2026-10-28. Auftrag: alle 180 Vorschläge aus dem Modulvergleich implementieren und gründlich testen.
 
 **[Aufgabenliste mit abgehakten Punkten öffnen](taskliste.md)**. Die Checkboxansicht wird bei Statusänderungen mit `node scripts/update-tasklist.cjs` aus dieser verbindlichen Nachweisliste aktualisiert.
 
@@ -29,7 +29,9 @@ Ein Schema, eine Schaltfläche oder ein Mock allein schließt keinen Punkt ab. B
 
 ## Fortschritt
 
-180 Punkte: **62 verifiziert, 0 implementiert, 2 in Arbeit, 116 offen**. Dieser Zähler wird mit jedem abgeschlossenen Arbeitspaket abgeglichen.
+180 Punkte: **82 verifiziert, 0 implementiert, 0 in Arbeit, 98 offen**. Dieser Zähler wird mit jedem abgeschlossenen Arbeitspaket abgeglichen.
+
+Abgenommener Modulblock: **Fahrzeuge & Tanken (FU01–FU20)** – vollständige Implementierung und gemeinsame lokale Tests/Fehlerbehebung abgeschlossen. [Modulplan](fuel-module-plan.md). Der nächste Modulblock wird vor seiner Umsetzung vollständig zusammengefasst.
 
 ## Einkaufen
 
@@ -60,26 +62,26 @@ Ein Schema, eine Schaltfläche oder ein Mock allein schließt keinen Punkt ab. B
 
 | ID | Verbesserung | Abnahmekriterium | Status | Nachweis |
 |---|---|---|---|---|
-| FU01 | Fahrzeugübersicht | Letzte Tankung, Kilometerstand, Verbrauch und anstehende Termine je Fahrzeug anzeigen. | In Arbeit | Isolierte Umsetzung auf verifiziertem383-Stand begonnen:17Dateipfade, Fuel2 mit optionalen manuellen Terminen, genaue Verbrauchsintervalle und eindeutige/unbekannte Zählerzustände. Keine automatischen Wartungs- oder Finanzfreigaben. Abnahme folgt. |
-| FU02 | Tank-Schnellerfassung | Persönliche Vorgaben für Fahrzeug, aktive Serie und Station verwenden. | Offen | — |
-| FU03 | Preisberechnung | Zwei Werte aus Menge, Preis und Summe exakt zum dritten ergänzen; Rundungsabweichungen zeigen. | Offen | — |
-| FU04 | Verbrauch erklären | Fehlende Auswertung mit strukturiertem Grund und nächstem Handlungsschritt erklären. | Offen | — |
-| FU05 | Verbrauchsdiagramme | Verbrauch und Kosten filtern; zugängliche Datentabelle ergänzen. | Offen | — |
-| FU06 | Weitere Fahrzeugkosten | Wartung, Versicherung und Reifen mit Ausgaben verknüpfen, ohne doppelte Buchung. | Offen | — |
-| FU07 | Wartungstermine | Datum oder Kilometerstand lösen nachvollziehbare Fälligkeit aus. | Offen | — |
-| FU08 | Gesamtkosten pro Kilometer | Kostenumfang, Zeitraum und verwendete Fahrstrecke offen ausweisen. | Offen | — |
-| FU09 | Elektro-Ladevorgänge | kWh, Ladeort, Kosten und optional Ladezustand getrennt vom Fahrverbrauch verwalten. | Offen | — |
-| FU10 | Fahrtenbuch | Manuelle Fahrten mit Zweck erfassen und exportieren; keine steuerliche Zertifizierung behaupten. | Offen | — |
-| FU11 | Tankdatenimport | Fuelio-, Drivvo- und Spritmonitor-CSV anhand dokumentierter Profile prüfen und deduplizieren. | Offen | — |
-| FU12 | Tankbeleg-Erkennung | Datum, Menge und Betrag aus OCR als prüfbare Vorschläge mit Herkunft anzeigen. | Offen | — |
-| FU13 | Kilometerfoto | Erkannten Kilometerstand mit vorherigem Stand abgleichen und bestätigen lassen. | Offen | — |
-| FU14 | Wartung als Aufgabe | Fällige Wartung über einen deduplizierten Kernvertrag mit Aufgaben verknüpfen. | Offen | — |
-| FU15 | Fahrzeugdokumente | Fahrzeug und berechtigte Dokumente über Kernverknüpfungen verbinden. | Offen | — |
-| FU16 | Große Tankhistorie | Zeitfenster und Cursor ohne Verlust benötigter Randtankungen über 10.000 Zeilen auswerten. | Offen | — |
-| FU17 | Verbrauchssegmente | Abgeleitete Segmente versioniert berechnen und nach relevanten Änderungen invalidieren. | Offen | — |
-| FU18 | Tachowechsel | Alte Serie beenden und neue mit Datum und Anfangsstand geführt beginnen. | Offen | — |
-| FU19 | Kraftstoffeinheiten | Kraftstoff und Mengenart verbindlich auf Liter, Kilogramm oder kWh abstimmen. | Offen | — |
-| FU20 | Ausreißerhinweise | Konfigurierbare Plausibilitätsgrenzen erklären; Originalwerte nicht automatisch ändern. | Offen | — |
+| FU01 | Fahrzeugübersicht | Letzte Tankung, Kilometerstand, Verbrauch und anstehende Termine je Fahrzeug anzeigen. | Verifiziert | Gesamter FU01–FU20-Block lokal abgenommen: eigener Funktionsworkflow,70native/87Linux-Race-Verträge,20Workflows/1031Prüfungen,6echteOCR-Quellen,Backup/Restore/Purge und28Browserkomponenten/908Prüfungen. [Abnahme und Grenzen](fuel-module-validation.md#lokale-gesamtabnahme-fu0120). |
+| FU02 | Tank-Schnellerfassung | Persönliche Vorgaben für Fahrzeug, aktive Serie und Station verwenden. | Verifiziert | Gesamter FU01–FU20-Block lokal abgenommen: eigener Funktionsworkflow,70native/87Linux-Race-Verträge,20Workflows/1031Prüfungen,6echteOCR-Quellen,Backup/Restore/Purge und28Browserkomponenten/908Prüfungen. [Abnahme und Grenzen](fuel-module-validation.md#lokale-gesamtabnahme-fu0120). |
+| FU03 | Preisberechnung | Zwei Werte aus Menge, Preis und Summe exakt zum dritten ergänzen; Rundungsabweichungen zeigen. | Verifiziert | Gesamter FU01–FU20-Block lokal abgenommen: eigener Funktionsworkflow,70native/87Linux-Race-Verträge,20Workflows/1031Prüfungen,6echteOCR-Quellen,Backup/Restore/Purge und28Browserkomponenten/908Prüfungen. [Abnahme und Grenzen](fuel-module-validation.md#lokale-gesamtabnahme-fu0120). |
+| FU04 | Verbrauch erklären | Fehlende Auswertung mit strukturiertem Grund und nächstem Handlungsschritt erklären. | Verifiziert | Gesamter FU01–FU20-Block lokal abgenommen: eigener Funktionsworkflow,70native/87Linux-Race-Verträge,20Workflows/1031Prüfungen,6echteOCR-Quellen,Backup/Restore/Purge und28Browserkomponenten/908Prüfungen. [Abnahme und Grenzen](fuel-module-validation.md#lokale-gesamtabnahme-fu0120). |
+| FU05 | Verbrauchsdiagramme | Verbrauch und Kosten filtern; zugängliche Datentabelle ergänzen. | Verifiziert | Gesamter FU01–FU20-Block lokal abgenommen: eigener Funktionsworkflow,70native/87Linux-Race-Verträge,20Workflows/1031Prüfungen,6echteOCR-Quellen,Backup/Restore/Purge und28Browserkomponenten/908Prüfungen. [Abnahme und Grenzen](fuel-module-validation.md#lokale-gesamtabnahme-fu0120). |
+| FU06 | Weitere Fahrzeugkosten | Wartung, Versicherung und Reifen mit Ausgaben verknüpfen, ohne doppelte Buchung. | Verifiziert | Gesamter FU01–FU20-Block lokal abgenommen: eigener Funktionsworkflow,70native/87Linux-Race-Verträge,20Workflows/1031Prüfungen,6echteOCR-Quellen,Backup/Restore/Purge und28Browserkomponenten/908Prüfungen. [Abnahme und Grenzen](fuel-module-validation.md#lokale-gesamtabnahme-fu0120). |
+| FU07 | Wartungstermine | Datum oder Kilometerstand lösen nachvollziehbare Fälligkeit aus. | Verifiziert | Gesamter FU01–FU20-Block lokal abgenommen: eigener Funktionsworkflow,70native/87Linux-Race-Verträge,20Workflows/1031Prüfungen,6echteOCR-Quellen,Backup/Restore/Purge und28Browserkomponenten/908Prüfungen. [Abnahme und Grenzen](fuel-module-validation.md#lokale-gesamtabnahme-fu0120). |
+| FU08 | Gesamtkosten pro Kilometer | Kostenumfang, Zeitraum und verwendete Fahrstrecke offen ausweisen. | Verifiziert | Gesamter FU01–FU20-Block lokal abgenommen: eigener Funktionsworkflow,70native/87Linux-Race-Verträge,20Workflows/1031Prüfungen,6echteOCR-Quellen,Backup/Restore/Purge und28Browserkomponenten/908Prüfungen. [Abnahme und Grenzen](fuel-module-validation.md#lokale-gesamtabnahme-fu0120). |
+| FU09 | Elektro-Ladevorgänge | kWh, Ladeort, Kosten und optional Ladezustand getrennt vom Fahrverbrauch verwalten. | Verifiziert | Gesamter FU01–FU20-Block lokal abgenommen: eigener Funktionsworkflow,70native/87Linux-Race-Verträge,20Workflows/1031Prüfungen,6echteOCR-Quellen,Backup/Restore/Purge und28Browserkomponenten/908Prüfungen. [Abnahme und Grenzen](fuel-module-validation.md#lokale-gesamtabnahme-fu0120). |
+| FU10 | Fahrtenbuch | Manuelle Fahrten mit Zweck erfassen und exportieren; keine steuerliche Zertifizierung behaupten. | Verifiziert | Gesamter FU01–FU20-Block lokal abgenommen: eigener Funktionsworkflow,70native/87Linux-Race-Verträge,20Workflows/1031Prüfungen,6echteOCR-Quellen,Backup/Restore/Purge und28Browserkomponenten/908Prüfungen. [Abnahme und Grenzen](fuel-module-validation.md#lokale-gesamtabnahme-fu0120). |
+| FU11 | Tankdatenimport | Fuelio-, Drivvo- und Spritmonitor-CSV anhand dokumentierter Profile prüfen und deduplizieren. | Verifiziert | Gesamter FU01–FU20-Block lokal abgenommen: eigener Funktionsworkflow,70native/87Linux-Race-Verträge,20Workflows/1031Prüfungen,6echteOCR-Quellen,Backup/Restore/Purge und28Browserkomponenten/908Prüfungen. [Abnahme und Grenzen](fuel-module-validation.md#lokale-gesamtabnahme-fu0120). |
+| FU12 | Tankbeleg-Erkennung | Datum, Menge und Betrag aus OCR als prüfbare Vorschläge mit Herkunft anzeigen. | Verifiziert | Gesamter FU01–FU20-Block lokal abgenommen: eigener Funktionsworkflow,70native/87Linux-Race-Verträge,20Workflows/1031Prüfungen,6echteOCR-Quellen,Backup/Restore/Purge und28Browserkomponenten/908Prüfungen. [Abnahme und Grenzen](fuel-module-validation.md#lokale-gesamtabnahme-fu0120). |
+| FU13 | Kilometerfoto | Erkannten Kilometerstand mit vorherigem Stand abgleichen und bestätigen lassen. | Verifiziert | Gesamter FU01–FU20-Block lokal abgenommen: eigener Funktionsworkflow,70native/87Linux-Race-Verträge,20Workflows/1031Prüfungen,6echteOCR-Quellen,Backup/Restore/Purge und28Browserkomponenten/908Prüfungen. [Abnahme und Grenzen](fuel-module-validation.md#lokale-gesamtabnahme-fu0120). |
+| FU14 | Wartung als Aufgabe | Fällige Wartung über einen deduplizierten Kernvertrag mit Aufgaben verknüpfen. | Verifiziert | Gesamter FU01–FU20-Block lokal abgenommen: eigener Funktionsworkflow,70native/87Linux-Race-Verträge,20Workflows/1031Prüfungen,6echteOCR-Quellen,Backup/Restore/Purge und28Browserkomponenten/908Prüfungen. [Abnahme und Grenzen](fuel-module-validation.md#lokale-gesamtabnahme-fu0120). |
+| FU15 | Fahrzeugdokumente | Fahrzeug und berechtigte Dokumente über Kernverknüpfungen verbinden. | Verifiziert | Gesamter FU01–FU20-Block lokal abgenommen: eigener Funktionsworkflow,70native/87Linux-Race-Verträge,20Workflows/1031Prüfungen,6echteOCR-Quellen,Backup/Restore/Purge und28Browserkomponenten/908Prüfungen. [Abnahme und Grenzen](fuel-module-validation.md#lokale-gesamtabnahme-fu0120). |
+| FU16 | Große Tankhistorie | Zeitfenster und Cursor ohne Verlust benötigter Randtankungen über 10.000 Zeilen auswerten. | Verifiziert | Gesamter FU01–FU20-Block lokal abgenommen: eigener Funktionsworkflow,70native/87Linux-Race-Verträge,20Workflows/1031Prüfungen,6echteOCR-Quellen,Backup/Restore/Purge und28Browserkomponenten/908Prüfungen. [Abnahme und Grenzen](fuel-module-validation.md#lokale-gesamtabnahme-fu0120). |
+| FU17 | Verbrauchssegmente | Abgeleitete Segmente versioniert berechnen und nach relevanten Änderungen invalidieren. | Verifiziert | Gesamter FU01–FU20-Block lokal abgenommen: eigener Funktionsworkflow,70native/87Linux-Race-Verträge,20Workflows/1031Prüfungen,6echteOCR-Quellen,Backup/Restore/Purge und28Browserkomponenten/908Prüfungen. [Abnahme und Grenzen](fuel-module-validation.md#lokale-gesamtabnahme-fu0120). |
+| FU18 | Tachowechsel | Alte Serie beenden und neue mit Datum und Anfangsstand geführt beginnen. | Verifiziert | Gesamter FU01–FU20-Block lokal abgenommen: eigener Funktionsworkflow,70native/87Linux-Race-Verträge,20Workflows/1031Prüfungen,6echteOCR-Quellen,Backup/Restore/Purge und28Browserkomponenten/908Prüfungen. [Abnahme und Grenzen](fuel-module-validation.md#lokale-gesamtabnahme-fu0120). |
+| FU19 | Kraftstoffeinheiten | Kraftstoff und Mengenart verbindlich auf Liter, Kilogramm oder kWh abstimmen. | Verifiziert | Gesamter FU01–FU20-Block lokal abgenommen: eigener Funktionsworkflow,70native/87Linux-Race-Verträge,20Workflows/1031Prüfungen,6echteOCR-Quellen,Backup/Restore/Purge und28Browserkomponenten/908Prüfungen. [Abnahme und Grenzen](fuel-module-validation.md#lokale-gesamtabnahme-fu0120). |
+| FU20 | Ausreißerhinweise | Konfigurierbare Plausibilitätsgrenzen erklären; Originalwerte nicht automatisch ändern. | Verifiziert | Gesamter FU01–FU20-Block lokal abgenommen: eigener Funktionsworkflow,70native/87Linux-Race-Verträge,20Workflows/1031Prüfungen,6echteOCR-Quellen,Backup/Restore/Purge und28Browserkomponenten/908Prüfungen. [Abnahme und Grenzen](fuel-module-validation.md#lokale-gesamtabnahme-fu0120). |
 
 ## Rezepte
 
@@ -89,7 +91,7 @@ Ein Schema, eine Schaltfläche oder ein Mock allein schließt keinen Punkt ab. B
 | RE02 | Kochmodus | Aktuellen Schritt, abgehakte Zutaten, Fortschritt und optional Wake Lock anbieten. | Verifiziert | Native Gesamtsuite, Linux-Race, Upgrade/Restore; 38 Koch-Browserchecks/4 axe, Gesamtkette371; DB-Prüfung ohne Befund, CK01 und Dokumentation abgenommen |
 | RE03 | Portionen im Kochmodus | Mengen exakt skalieren, ohne das Originalrezept zu ändern. | Verifiziert | Native Gesamtsuite, Linux-Race, Upgrade/Restore; 38 Koch-Browserchecks/4 axe, Gesamtkette371; DB-Prüfung ohne Befund, CK01 und Dokumentation abgenommen |
 | RE04 | Dauerhafte Küchentimer | Mehrere beschriftete Timer über Navigation und Neuladen hinweg wiederherstellen. | Verifiziert | Native Gesamtsuite, Linux-Race, Upgrade/Restore; 38 Koch-Browserchecks/4 axe, Gesamtkette371; DB-Prüfung ohne Befund, CK01 und Dokumentation abgenommen |
-| RE05 | Rezeptfilter | Dauer, Tags, Zutaten und letzte Zubereitung kombinieren und Ansichten speichern. | Offen | — |
+| RE05 | Rezeptfilter | Dauer, Tags, Zutaten und letzte Zubereitung kombinieren und Ansichten speichern. | Offen | Zurückgestellt gemäß strikt modulweiser Umsetzung. Vorhandene Quellen und Prüfnachweise bleiben erhalten; Fortsetzung nach vollständiger Abnahme von Fahrzeuge & Tanken. Isolierte16-Dateipfade-Umsetzung auf404-Stand begonnen: begrenzte kombinierte Filter, belastbare Kochhistorie und ausdrücklich gerätelokale persönliche Ansichten mit atomarer IndexedDB-Speicherung. Keine serverübergreifende Synchronisation behauptet; Abnahme folgt. |
 | RE06 | Geprüfter Rezeptimport | Strukturierte Dateien und Schema.org-Rezepte vor Übernahme prüfen. | Offen | — |
 | RE07 | Zutatenkatalog | Aliase normalisieren und Vorratsprodukte ausdrücklich zuordnen. | Verifiziert | Native Gesamtsuite68,3 %, Linux-Race201,979s, finale12 DB-/Upgradeverträge91,149s;29 Browserchecks/5axe, Gesamtkette481; Restore, DB-, UI- und Dokumentationsabnahme bestanden. |
 | RE08 | Versionen und Varianten | Rezeptstände und abgeleitete Varianten unabhängig vom Audit erhalten. | Verifiziert | Native Gesamtsuite + fokussierte Korrekturprüfung, Linux-Race, Upgrade/Restore; 37 Rezept-Browserchecks/4 axe, Gesamtkette333; RW01 unabhängig abgenommen |
@@ -153,7 +155,7 @@ Ein Schema, eine Schaltfläche oder ein Mock allein schließt keinen Punkt ab. B
 | EX16 | Finanzberichte | Konten-, Personen-, Kategorien- und Zeitaggregate serverseitig nachvollziehbar berechnen. | Offen | — |
 | EX17 | Kontoabstimmung | Externen Stichtagssaldo vergleichen; keine stillen Ausgleichsbuchungen. | Offen | — |
 | EX18 | Mehrere Währungen | Originalbetrag, Basisbetrag, Kurs, Datum und Rundungsregel unveränderlich nachvollziehen. | Offen | — |
-| EX19 | Finanzsichtbarkeit | Konten- und Datensatzrechte in Suche, Aggregaten, Dateien, Export und Audit anwenden. | In Arbeit | Core26-Grundlage verifiziert; private Freigaben bleiben gesperrt. Capture/Manual/Editor/Buchen/Storno/Löschen bestehen die dokumentierten Einzel-, Kompatibilitäts- und Race-Prüfungen nach gezielten Korrekturen. Fuel-Core32:14Verträge sowie4echteBarcode-Kompositionsfälle bestanden. Core33:2von3Einstiegstests bestanden, ersterLesezugriff läuft ins10sSQL-Limit; Messung/Korrektur läuft. Gemeinsame Abnahme, Kontenrechte und vollständige EX19-Freigabe offen. [Laufende Prüfliste](financial-visibility-verification.md#current-producer-checklist). |
+| EX19 | Finanzsichtbarkeit | Konten- und Datensatzrechte in Suche, Aggregaten, Dateien, Export und Audit anwenden. | Offen | Zurückgestellt gemäß strikt modulweiser Umsetzung. Vorhandene Quellen und Prüfnachweise bleiben erhalten; Fortsetzung nach vollständiger Abnahme von Fahrzeuge & Tanken. Core26-Grundlage verifiziert; private Freigaben bleiben gesperrt. Capture/Manual/Editor/Buchen/Storno/Löschen bestehen die dokumentierten Einzel-, Kompatibilitäts- und Race-Prüfungen nach gezielten Korrekturen. Fuel-Core32:14Verträge sowie4echteBarcode-Kompositionsfälle bestanden. Core33:2von3Einstiegstests bestanden, ersterLesezugriff läuft ins10sSQL-Limit; Messung/Korrektur läuft. Gemeinsame Abnahme, Kontenrechte und vollständige EX19-Freigabe offen. [Laufende Prüfliste](financial-visibility-verification.md#current-producer-checklist). |
 | EX20 | Buchungsherkunft | Manuell, Bank, Tankung und Beleg über gemeinsame Herkunft und Dublettenschutz verbinden. | Offen | — |
 
 ## Aufgaben

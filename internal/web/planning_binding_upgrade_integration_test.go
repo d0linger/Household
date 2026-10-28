@@ -18,6 +18,9 @@ func TestPlanningIngredientBindingPopulatedPriorUpgrade(t *testing.T) {
 	}
 	for _, schema := range database.Schemas {
 		version := uint(database.ExpectedVersion(schema))
+		if schema == "fuel" {
+			version = 2 // Keep the actual predecessor compatible with Core19.
+		}
 		switch schema {
 		case "core":
 			version = 19

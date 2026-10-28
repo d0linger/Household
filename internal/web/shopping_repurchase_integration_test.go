@@ -199,11 +199,15 @@ func TestShoppingRepurchaseBudgetAndMalformedPairingProduceNoPartialHistory(t *t
 
 func TestShoppingRepurchasePopulatedUpgradePreservesHistoryAndExactReady(t *testing.T) {
 	f := newIntegrationFixture(t)
+	fuelModuleUpgradePriorCatalog(t, f)
 	_, list, _ := repurchaseFixture(t, f)
 	var before string
 	if err := f.owner.QueryRow(f.ctx, "SELECT jsonb_agg(to_jsonb(c)-'history_bytes' ORDER BY c.id)::text FROM shopping.checkouts c").Scan(&before); err != nil {
 		t.Fatal(err)
 	}
+	// Restore Shopping7 under the genuine Fuel2/Core26 audit predecessor;
+	// otherwise rerunning Shopping8 would collide with its still-present table.
+	barcodeRestoreShopping7(t, f)
 	for _, query := range []string{"DROP FUNCTION shopping.repurchase_ready()", "DROP INDEX shopping.checkouts_history", "DROP INDEX shopping.items_repurchase_product", "ALTER TABLE shopping.checkouts DROP COLUMN history_bytes", "UPDATE shopping.schema_migrations SET version=6"} {
 		if _, err := f.owner.Exec(f.ctx, query); err != nil {
 			t.Fatal(err)

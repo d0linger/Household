@@ -38,10 +38,11 @@ type State struct {
 }
 type Record = map[string]any
 type Store struct {
-	Pool     *pgxpool.Pool
-	Modules  []module.Descriptor
-	snapshot atomic.Value
-	Gate     sync.RWMutex
+	FuelOCREnabled bool
+	Pool           *pgxpool.Pool
+	Modules        []module.Descriptor
+	snapshot       atomic.Value
+	Gate           sync.RWMutex
 }
 type Mutation struct {
 	Data              map[string]json.RawMessage `json:"data"`
@@ -306,6 +307,9 @@ func checkSession(ctx context.Context, tx pgx.Tx, id auth.Identity) error {
 }
 
 func (s *Store) Write(ctx context.Context, id auth.Identity, m module.Descriptor, e module.Entity, rid, key, requestID string, in Mutation) (Record, error) {
+	if m.ID == "fuel" {
+		return s.fuelModuleLegacyWrite(ctx, id, e, rid, key, requestID, in)
+	}
 	ctx = audit.WithRequest(audit.WithActor(ctx, id.UserID, id.HouseholdID), requestID)
 	creating := rid == ""
 	if !creating && (!value.ValidUUID(rid) || e.Immutable) {
@@ -482,6 +486,9 @@ func (s *Store) afterWrite(ctx context.Context, tx pgx.Tx, id auth.Identity, m m
 }
 
 func (s *Store) Delete(ctx context.Context, id auth.Identity, m module.Descriptor, e module.Entity, rid string, version, generation int64, requestID string) error {
+	if m.ID == "fuel" {
+		return s.fuelModuleLegacyDelete(ctx, id, e.ID, rid, version, generation, requestID)
+	}
 	ctx = audit.WithRequest(audit.WithActor(ctx, id.UserID, id.HouseholdID), requestID)
 	if e.Immutable {
 		return ErrForbidden

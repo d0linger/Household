@@ -1,24 +1,22 @@
 # Household – Aufgabenliste
 
-Stand: 28.10.2026, 11:15 (Europe/Vienna).
+Stand: 28.10.2026, 20:44 (Europe/Vienna).
 
-**62 / 180 verifiziert und abgehakt · 2 in Arbeit · 116 offen.**
+**82 / 180 verifiziert und abgehakt · 0 in Arbeit · 98 offen.**
 
 Ein Haken bedeutet: umgesetzt und durch ausgeführte Prüfungen belegt. Vorbereitete Änderungen und einzelne bestandene Zwischentests schließen einen Verbesserungspunkt noch nicht ab.
 
-Aktuell in Arbeit: **FU01 – Fahrzeugübersicht**, **EX19 – Finanzsichtbarkeit**.
-
-Der aktuelle Stand der Finanz-Unteraufgaben und Tests steht in der [laufenden Prüfliste](financial-visibility-verification.md#current-producer-checklist).
+Derzeit ist kein Punkt als „In Arbeit“ markiert.
 
 Diese Ansicht wird aus der [verbindlichen Liste mit Abnahmekriterien und Nachweisen](improvements-180.md) erzeugt. Aktualisieren: `node scripts/update-tasklist.cjs`.
 
 | Modul | Abgehakt | In Arbeit | Offen |
 |---|---:|---:|---:|
 | Einkaufen | 18 / 20 | 0 | 2 |
-| Fahrzeuge und Tanken | 0 / 20 | 1 | 19 |
+| Fahrzeuge und Tanken | 20 / 20 | 0 | 0 |
 | Rezepte | 10 / 20 | 0 | 10 |
 | Vorrat | 17 / 20 | 0 | 3 |
-| Finanzen | 1 / 20 | 1 | 18 |
+| Finanzen | 1 / 20 | 0 | 19 |
 | Aufgaben | 0 / 20 | 0 | 20 |
 | Zähler und Energie | 0 / 20 | 0 | 20 |
 | Dokumente | 0 / 20 | 0 | 20 |
@@ -49,26 +47,26 @@ Diese Ansicht wird aus der [verbindlichen Liste mit Abnahmekriterien und Nachwei
 
 ## Fahrzeuge und Tanken
 
-- [ ] **FU01 Fahrzeugübersicht** — **In Arbeit** — Letzte Tankung, Kilometerstand, Verbrauch und anstehende Termine je Fahrzeug anzeigen.
-- [ ] **FU02 Tank-Schnellerfassung** — Persönliche Vorgaben für Fahrzeug, aktive Serie und Station verwenden.
-- [ ] **FU03 Preisberechnung** — Zwei Werte aus Menge, Preis und Summe exakt zum dritten ergänzen; Rundungsabweichungen zeigen.
-- [ ] **FU04 Verbrauch erklären** — Fehlende Auswertung mit strukturiertem Grund und nächstem Handlungsschritt erklären.
-- [ ] **FU05 Verbrauchsdiagramme** — Verbrauch und Kosten filtern; zugängliche Datentabelle ergänzen.
-- [ ] **FU06 Weitere Fahrzeugkosten** — Wartung, Versicherung und Reifen mit Ausgaben verknüpfen, ohne doppelte Buchung.
-- [ ] **FU07 Wartungstermine** — Datum oder Kilometerstand lösen nachvollziehbare Fälligkeit aus.
-- [ ] **FU08 Gesamtkosten pro Kilometer** — Kostenumfang, Zeitraum und verwendete Fahrstrecke offen ausweisen.
-- [ ] **FU09 Elektro-Ladevorgänge** — kWh, Ladeort, Kosten und optional Ladezustand getrennt vom Fahrverbrauch verwalten.
-- [ ] **FU10 Fahrtenbuch** — Manuelle Fahrten mit Zweck erfassen und exportieren; keine steuerliche Zertifizierung behaupten.
-- [ ] **FU11 Tankdatenimport** — Fuelio-, Drivvo- und Spritmonitor-CSV anhand dokumentierter Profile prüfen und deduplizieren.
-- [ ] **FU12 Tankbeleg-Erkennung** — Datum, Menge und Betrag aus OCR als prüfbare Vorschläge mit Herkunft anzeigen.
-- [ ] **FU13 Kilometerfoto** — Erkannten Kilometerstand mit vorherigem Stand abgleichen und bestätigen lassen.
-- [ ] **FU14 Wartung als Aufgabe** — Fällige Wartung über einen deduplizierten Kernvertrag mit Aufgaben verknüpfen.
-- [ ] **FU15 Fahrzeugdokumente** — Fahrzeug und berechtigte Dokumente über Kernverknüpfungen verbinden.
-- [ ] **FU16 Große Tankhistorie** — Zeitfenster und Cursor ohne Verlust benötigter Randtankungen über 10.000 Zeilen auswerten.
-- [ ] **FU17 Verbrauchssegmente** — Abgeleitete Segmente versioniert berechnen und nach relevanten Änderungen invalidieren.
-- [ ] **FU18 Tachowechsel** — Alte Serie beenden und neue mit Datum und Anfangsstand geführt beginnen.
-- [ ] **FU19 Kraftstoffeinheiten** — Kraftstoff und Mengenart verbindlich auf Liter, Kilogramm oder kWh abstimmen.
-- [ ] **FU20 Ausreißerhinweise** — Konfigurierbare Plausibilitätsgrenzen erklären; Originalwerte nicht automatisch ändern.
+- [x] **FU01 Fahrzeugübersicht** — Letzte Tankung, Kilometerstand, Verbrauch und anstehende Termine je Fahrzeug anzeigen.
+- [x] **FU02 Tank-Schnellerfassung** — Persönliche Vorgaben für Fahrzeug, aktive Serie und Station verwenden.
+- [x] **FU03 Preisberechnung** — Zwei Werte aus Menge, Preis und Summe exakt zum dritten ergänzen; Rundungsabweichungen zeigen.
+- [x] **FU04 Verbrauch erklären** — Fehlende Auswertung mit strukturiertem Grund und nächstem Handlungsschritt erklären.
+- [x] **FU05 Verbrauchsdiagramme** — Verbrauch und Kosten filtern; zugängliche Datentabelle ergänzen.
+- [x] **FU06 Weitere Fahrzeugkosten** — Wartung, Versicherung und Reifen mit Ausgaben verknüpfen, ohne doppelte Buchung.
+- [x] **FU07 Wartungstermine** — Datum oder Kilometerstand lösen nachvollziehbare Fälligkeit aus.
+- [x] **FU08 Gesamtkosten pro Kilometer** — Kostenumfang, Zeitraum und verwendete Fahrstrecke offen ausweisen.
+- [x] **FU09 Elektro-Ladevorgänge** — kWh, Ladeort, Kosten und optional Ladezustand getrennt vom Fahrverbrauch verwalten.
+- [x] **FU10 Fahrtenbuch** — Manuelle Fahrten mit Zweck erfassen und exportieren; keine steuerliche Zertifizierung behaupten.
+- [x] **FU11 Tankdatenimport** — Fuelio-, Drivvo- und Spritmonitor-CSV anhand dokumentierter Profile prüfen und deduplizieren.
+- [x] **FU12 Tankbeleg-Erkennung** — Datum, Menge und Betrag aus OCR als prüfbare Vorschläge mit Herkunft anzeigen.
+- [x] **FU13 Kilometerfoto** — Erkannten Kilometerstand mit vorherigem Stand abgleichen und bestätigen lassen.
+- [x] **FU14 Wartung als Aufgabe** — Fällige Wartung über einen deduplizierten Kernvertrag mit Aufgaben verknüpfen.
+- [x] **FU15 Fahrzeugdokumente** — Fahrzeug und berechtigte Dokumente über Kernverknüpfungen verbinden.
+- [x] **FU16 Große Tankhistorie** — Zeitfenster und Cursor ohne Verlust benötigter Randtankungen über 10.000 Zeilen auswerten.
+- [x] **FU17 Verbrauchssegmente** — Abgeleitete Segmente versioniert berechnen und nach relevanten Änderungen invalidieren.
+- [x] **FU18 Tachowechsel** — Alte Serie beenden und neue mit Datum und Anfangsstand geführt beginnen.
+- [x] **FU19 Kraftstoffeinheiten** — Kraftstoff und Mengenart verbindlich auf Liter, Kilogramm oder kWh abstimmen.
+- [x] **FU20 Ausreißerhinweise** — Konfigurierbare Plausibilitätsgrenzen erklären; Originalwerte nicht automatisch ändern.
 
 ## Rezepte
 
@@ -136,7 +134,7 @@ Diese Ansicht wird aus der [verbindlichen Liste mit Abnahmekriterien und Nachwei
 - [ ] **EX16 Finanzberichte** — Konten-, Personen-, Kategorien- und Zeitaggregate serverseitig nachvollziehbar berechnen.
 - [ ] **EX17 Kontoabstimmung** — Externen Stichtagssaldo vergleichen; keine stillen Ausgleichsbuchungen.
 - [ ] **EX18 Mehrere Währungen** — Originalbetrag, Basisbetrag, Kurs, Datum und Rundungsregel unveränderlich nachvollziehen.
-- [ ] **EX19 Finanzsichtbarkeit** — **In Arbeit** — Konten- und Datensatzrechte in Suche, Aggregaten, Dateien, Export und Audit anwenden.
+- [ ] **EX19 Finanzsichtbarkeit** — Konten- und Datensatzrechte in Suche, Aggregaten, Dateien, Export und Audit anwenden.
 - [ ] **EX20 Buchungsherkunft** — Manuell, Bank, Tankung und Beleg über gemeinsame Herkunft und Dublettenschutz verbinden.
 
 ## Aufgaben

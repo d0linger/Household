@@ -10,6 +10,8 @@ import (
 
 	"household/internal/audit"
 	"household/internal/config"
+	"household/internal/modules"
+	"household/internal/store"
 	"household/internal/value"
 
 	"github.com/jackc/pgx/v5"
@@ -67,6 +69,13 @@ func (w *Worker) Tick(ctx context.Context) error {
 	}
 	if err := w.files(ctx); err != nil {
 		return err
+	}
+	fuelStore := store.New(w.Pool, modules.Registry())
+	if err := fuelStore.FuelModuleHousekeeping(ctx, 1); err != nil {
+		return fmt.Errorf("fuel projections: %w", err)
+	}
+	if err := fuelStore.FuelModuleCaptureHousekeeping(ctx, w.Cfg.OCREnabled, w.fuelOCR); err != nil {
+		return fmt.Errorf("fuel capture: %w", err)
 	}
 	for range 10 {
 		if err := w.job(ctx); err != nil {

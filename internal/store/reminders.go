@@ -9,6 +9,11 @@ import (
 )
 
 func scheduleReminder(ctx context.Context, tx pgx.Tx, id auth.Identity, mid, entity string, r Record, generation int64) error {
+	if mid == "fuel" && entity == "vehicles" && r["archived_at"] != nil && String(r["archived_at"]) != "" {
+		_, err := tx.Exec(ctx, `UPDATE core.reminders SET state='cancelled',cancelled_at=clock_timestamp() WHERE household_id=$1
+ AND module_id='fuel' AND resource_type='vehicles' AND resource_id=$2 AND state='pending'`, id.HouseholdID, r["id"])
+		return err
+	}
 	date, kind, recipient := "", "", ""
 	days := int64(0)
 	switch mid + "/" + entity {

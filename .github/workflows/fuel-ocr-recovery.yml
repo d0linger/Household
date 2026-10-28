@@ -1,0 +1,180 @@
+# Dedicated actual OCR/recovery workflow; execution evidence is recorded separately.
+name: Fuel OCR and real recovery
+on:
+  pull_request:
+  push:
+    branches: [main, dev]
+  workflow_dispatch:
+permissions: {contents: read}
+concurrency:
+  group: fuel-ocr-recovery-${{ github.ref }}
+  cancel-in-progress: true
+defaults:
+  run:
+    shell: pwsh
+jobs:
+  fuel-ocr-recovery:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    env:
+      FUEL_CI_RUN: ${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with: {persist-credentials: false}
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with: {go-version-file: go.mod, cache: true}
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with: {node-version: '24', cache: npm}
+      - name: Install isolated browser dependencies and verify pure guards
+        run: |
+          $ErrorActionPreference='Stop'
+          if($PSVersionTable.PSVersion -lt [version]'7.4'){throw 'PowerShell7.4+ required'}
+          npm ci --ignore-scripts
+          if($LASTEXITCODE){throw 'npm installation failed'}
+          npx playwright install --with-deps chromium
+          if($LASTEXITCODE){throw 'Chromium installation failed'}
+          node --test scripts/fuel-browser-contracts.test.cjs
+          if($LASTEXITCODE){throw 'Pure evidence guards failed'}
+      - name: Initialize job-owned secrets and exact isolated PostgreSQL
+        run: |
+          $ErrorActionPreference='Stop'
+          if($env:FUEL_CI_RUN -notmatch '^[0-9]+-[0-9]+$'){throw 'Invalid CI identity'}
+          if((Test-Path -LiteralPath '.local/secrets') -or (Test-Path -LiteralPath '.env')){throw 'Preserve existing credentials/configuration'}
+          $existing=@(docker ps -a --format '{{.Names}}')
+          if($LASTEXITCODE -or $existing -contains 'household-tests-db-1'){throw 'Test database name already owned or Docker unavailable'}
+          $networks=@(docker network ls --format '{{.Name}}')
+          if($LASTEXITCODE -or $networks -contains 'household-tests_default'){throw 'Test network already owned or Docker unavailable'}
+          New-Item -ItemType Directory -Path '.local' -Force | Out-Null
+          [IO.File]::WriteAllText((Join-Path $PWD '.local/fuel-browser-ci-owned.json'),(@{ci=$env:FUEL_CI_RUN}|ConvertTo-Json))
+          sh scripts/initialize.sh --development
+          if($LASTEXITCODE){throw 'Fresh secret initialization failed'}
+          [IO.File]::SetUnixFileMode((Join-Path $PWD '.local/secrets'),[IO.UnixFileMode]448)
+          foreach($name in @('postgres_password','owner_password','app_password')){
+            [IO.File]::SetUnixFileMode((Join-Path $PWD ".local/secrets/$name"),[IO.UnixFileMode]292)
+          }
+          $override=@{services=@{db=@{labels=@{'household.fuel.browser.ci'=$env:FUEL_CI_RUN}}};networks=@{default=@{labels=@{'household.fuel.browser.ci'=$env:FUEL_CI_RUN}}}}
+          $override | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath '.local/fuel-browser-ci-compose.json' -Encoding utf8
+          docker compose -f compose.test.yaml -f .local/fuel-browser-ci-compose.json up -d --wait db
+          if($LASTEXITCODE){throw 'Job-owned isolated database did not become healthy'}
+      - name: Record full actual Fuel native campaign
+        id: native
+        run: |
+          $ErrorActionPreference='Stop'
+          function Read-Private([string]$name){return [IO.File]::ReadAllText((Join-Path $PWD ".local/secrets/$name")).TrimEnd("`r","`n")}
+          $owner=[uri]::EscapeDataString((Read-Private 'owner_password'))
+          $app=[uri]::EscapeDataString((Read-Private 'app_password'))
+          $env:HOUSEHOLD_REQUIRE_INTEGRATION='1'
+          $env:HOUSEHOLD_TEST_OWNER_URL="postgres://household_owner:${owner}@127.0.0.1:55434/household_test?sslmode=disable"
+          $env:HOUSEHOLD_TEST_APP_URL="postgres://household_app:${app}@127.0.0.1:55434/household_test?sslmode=disable"
+          try {
+            node scripts/fuel-browser-contracts.cjs record-native $PWD outputs/fuel-browser-native/module
+            if($LASTEXITCODE){throw 'Full real Fuel native campaign failed'}
+          } finally {
+            Remove-Item Env:HOUSEHOLD_TEST_OWNER_URL,Env:HOUSEHOLD_TEST_APP_URL,Env:HOUSEHOLD_REQUIRE_INTEGRATION -ErrorAction SilentlyContinue
+          }
+          $pin=(Get-FileHash -LiteralPath outputs/fuel-browser-native/module-source-manifest.json -Algorithm SHA256).Hash.ToLowerInvariant()
+          "sha256=$pin" >> $env:GITHUB_OUTPUT
+      - name: Build current non-root OCR runtime and real backup toolbox
+        id: images
+        env:
+          NATIVE_PIN: ${{ steps.native.outputs.sha256 }}
+        run: |
+          $ErrorActionPreference='Stop'
+          if($env:NATIVE_PIN -notmatch '^[a-f0-9]{64}$'){throw 'Native source pin missing'}
+          docker build --target ocr --label "household.source-manifest-sha256=$env:NATIVE_PIN" --iidfile .local/fuel-ci-runtime.iid .
+          if($LASTEXITCODE){throw 'Current OCR image build failed'}
+          docker build -f deploy/backup/Dockerfile --label "household.source-manifest-sha256=$env:NATIVE_PIN" --iidfile .local/fuel-ci-backup.iid .
+          if($LASTEXITCODE){throw 'Current backup image build failed'}
+          foreach($name in @('runtime','backup')){
+            $id=[IO.File]::ReadAllText((Join-Path $PWD ".local/fuel-ci-$name.iid")).Trim()
+            if($id -notmatch '^sha256:[a-f0-9]{64}$'){throw 'Immutable image ID missing'}
+            "$name=$id" >> $env:GITHUB_OUTPUT
+          }
+      - name: Run all20 human workflows with six actual OCR sources and real recovery
+        env:
+          NATIVE_PIN: ${{ steps.native.outputs.sha256 }}
+          RUNTIME_ID: ${{ steps.images.outputs.runtime }}
+          BACKUP_ID: ${{ steps.images.outputs.backup }}
+        run: |
+          pwsh -NoProfile -File scripts/run-fuel-module-browser.ps1 `
+            -RuntimeImageId $env:RUNTIME_ID -BackupImageId $env:BACKUP_ID `
+            -NativeSummary outputs/fuel-browser-native/module-summary.json `
+            -NativeSourceManifest outputs/fuel-browser-native/module-source-manifest.json `
+            -NativeManifestSha256 $env:NATIVE_PIN -ResetIsolatedDatabase -CIRun $env:FUEL_CI_RUN
+          if($LASTEXITCODE){throw 'Actual OCR/recovery browser acceptance failed'}
+      - name: Remove only resources labelled for this exact CI run
+        if: always()
+        run: |
+          $ErrorActionPreference='Stop'
+          if($env:FUEL_CI_RUN -notmatch '^[0-9]+-[0-9]+$'){throw 'Invalid cleanup identity'}
+          $failed=$false
+          foreach($kind in @('container','volume')){
+            $names=if($kind -eq 'container'){@(docker ps -a --filter "label=household.fuel.browser.ci=$env:FUEL_CI_RUN" --format '{{.Names}}')}else{@(docker volume ls --filter "label=household.fuel.browser.ci=$env:FUEL_CI_RUN" --format '{{.Name}}')}
+            if($LASTEXITCODE){throw 'Cannot prove Docker cleanup inventory'}
+            foreach($name in $names){
+              if($name -eq 'household-tests-db-1' -and $kind -eq 'container'){continue}
+              if($name -notmatch '^household-fuel-browser-([a-f0-9]{32})-(app|toolbox|restore|uploads|work|repository)$'){$failed=$true;continue}
+              $run=$Matches[1]
+              $label=if($kind -eq 'container'){docker inspect $name --format '{{index .Config.Labels "household.fuel.browser.run"}}'}else{docker volume inspect $name --format '{{index .Labels "household.fuel.browser.run"}}'}
+              if($LASTEXITCODE){$failed=$true;continue}
+              $guard=node scripts/fuel-browser-contracts.cjs cleanup $name $label $run $kind
+              if($LASTEXITCODE -or !(($guard|ConvertFrom-Json).owned)){$failed=$true;continue}
+              if($kind -eq 'container'){docker stop --time 10 $name | Out-Null;docker rm $name | Out-Null}else{docker volume rm $name | Out-Null}
+              if($LASTEXITCODE){$failed=$true}
+            }
+          }
+          $label=docker inspect household-tests-db-1 --format '{{index .Config.Labels "household.fuel.browser.ci"}}|{{index .Config.Labels "com.docker.compose.project"}}|{{index .Config.Labels "com.docker.compose.service"}}' 2>$null
+          if($LASTEXITCODE -eq 0){
+            if($label -ne "$($env:FUEL_CI_RUN)|household-tests|db"){throw 'Source cleanup ownership differs'}
+            docker stop --time 10 household-tests-db-1 | Out-Null
+            docker rm household-tests-db-1 | Out-Null
+            if($LASTEXITCODE){$failed=$true}
+          }
+          $network=docker network inspect household-tests_default --format '{{index .Labels "household.fuel.browser.ci"}}|{{len .Containers}}' 2>$null
+          if($LASTEXITCODE -eq 0){
+            if($network -ne "$($env:FUEL_CI_RUN)|0"){throw 'Network is not exact job-owned and empty'}
+            docker network rm household-tests_default | Out-Null
+            if($LASTEXITCODE){$failed=$true}
+          }
+          if($failed){throw 'Some labelled cleanup resources could not be removed; deny success'}
+          $marker=Join-Path $PWD '.local/fuel-browser-ci-owned.json'
+          if(Test-Path -LiteralPath $marker){
+            if(((Get-Content -LiteralPath $marker -Raw)|ConvertFrom-Json).ci -ne $env:FUEL_CI_RUN){throw 'Private cleanup owner differs'}
+            foreach($relative in @('.local/secrets','.env','.local/fuel-browser-ci-compose.json','.local/fuel-ci-runtime.iid','.local/fuel-ci-backup.iid')){
+              $target=[IO.Path]::GetFullPath((Join-Path $PWD $relative))
+              if(!$target.StartsWith($PWD.Path+[IO.Path]::DirectorySeparatorChar,[StringComparison]::Ordinal)){throw 'Cleanup target leaves checkout'}
+              if(Test-Path -LiteralPath $target){
+                if((Get-Item -LiteralPath $target -Force).Attributes -band [IO.FileAttributes]::ReparsePoint){throw 'Private cleanup refuses links'}
+                Remove-Item -LiteralPath $target -Recurse -Force
+              }
+            }
+            Remove-Item -LiteralPath $marker -Force
+          }
+      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        if: always()
+        with:
+          name: fuel-ocr-recovery-evidence
+          retention-days: 14
+          if-no-files-found: warn
+          path: |
+            outputs/fuel-module-review/browser-report.json
+            outputs/fuel-module-review/workflow-progress.json
+            outputs/fuel-module-review/import-review-observer.json
+            outputs/fuel-module-review/fuel-module-*.png
+            outputs/fuel-module-review/failure.png
+            outputs/fuel-module-review/ocr-*.input.*
+            outputs/fuel-module-review/ocr-*.canonical.*
+            outputs/fuel-module-review/ocr-source-evidence.json
+            outputs/fuel-module-review/*.csv
+            outputs/fuel-module-review/standalone-*/standalone-report.json
+            outputs/fuel-module-review/standalone-*/controller-report.json
+            outputs/fuel-module-review/standalone-*/browser-source-manifest.json
+            outputs/fuel-module-review/standalone-*/fixture.log
+            outputs/fuel-module-review/standalone-*/controller-stdout.log
+            outputs/fuel-module-review/standalone-*/controller-stderr.log
+            outputs/fuel-module-review/standalone-*/driver-stdout.log
+            outputs/fuel-module-review/standalone-*/driver-stderr.log
+            outputs/fuel-browser-native/module-summary.json
+            outputs/fuel-browser-native/module-source-manifest.json
+            outputs/fuel-browser-native/module.jsonl
+            outputs/fuel-browser-native/module-stderr.log

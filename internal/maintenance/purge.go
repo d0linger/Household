@@ -22,7 +22,7 @@ func Purge(ctx context.Context, pool *pgxpool.Pool, requestID string) error {
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	var role string
-	if err = tx.QueryRow(ctx, "SELECT current_user").Scan(&role); err != nil {
+	if err = tx.QueryRow(ctx, "SELECT session_user").Scan(&role); err != nil {
 		return err
 	}
 	if role != "household_owner" {
@@ -53,7 +53,7 @@ func Purge(ctx context.Context, pool *pgxpool.Pool, requestID string) error {
 	if !known {
 		return errors.New("module is not compiled into this release")
 	}
-	rows, err := tx.Query(ctx, "SELECT tablename FROM pg_tables WHERE schemaname=$1 AND tablename NOT IN('schema_migrations','fuel_types') ORDER BY tablename", mid)
+	rows, err := tx.Query(ctx, "SELECT tablename FROM pg_tables WHERE schemaname=$1 AND tablename NOT IN('schema_migrations','fuel_types') AND NOT($1='fuel' AND tablename IN('module_operations','module_effects','legacy_operation_fences')) ORDER BY tablename", mid)
 	if err != nil {
 		return err
 	}
@@ -125,6 +125,13 @@ func Purge(ctx context.Context, pool *pgxpool.Pool, requestID string) error {
 	}
 	if _, err = tx.Exec(ctx, query); err != nil {
 		return err
+	}
+	if mid == "fuel" {
+		// The generation fence survives, but purged names, notes, OCR and other
+		// historical business payloads must not remain in response receipts.
+		if _, err = tx.Exec(ctx, `UPDATE fuel.module_operations SET result=NULL,result_sha256=NULL WHERE household_id=$1`, hid); err != nil {
+			return err
+		}
 	}
 	for _, query := range []string{"DELETE FROM core.alert_states WHERE household_id=$1 AND module_id=$2", "DELETE FROM core.capture_jobs WHERE household_id=$1 AND module_id=$2", "UPDATE core.attachments SET state='purged' WHERE household_id=$1 AND module_id=$2", "DELETE FROM core.search_documents WHERE household_id=$1 AND module_id=$2", "DELETE FROM core.reminders WHERE household_id=$1 AND module_id=$2", "DELETE FROM core.notifications WHERE household_id=$1 AND module_id=$2", "DELETE FROM core.jobs WHERE household_id=$1 AND module_id=$2", "DELETE FROM core.outbox_events WHERE household_id=$1 AND module_id=$2", "DELETE FROM core.idempotency_records WHERE household_id=$1 AND (module_id=$2 OR target_generations ? $2)", "DELETE FROM core.import_batches WHERE household_id=$1 AND module_id=$2", "DELETE FROM core.resource_links WHERE household_id=$1 AND (source_module=$2 OR target_module=$2)", "DELETE FROM core.ingredient_product_bindings WHERE household_id=$1 AND ($2='recipes' OR $2='pantry')"} {
 		if _, err = tx.Exec(ctx, query, hid, mid); err != nil {

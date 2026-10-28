@@ -563,6 +563,7 @@ func barcodeRestoreShopping7(t *testing.T, f *integrationFixture) {
 
 func TestShoppingBarcodePopulatedUpgradePreservesPriorCatalogueAndAudits(t *testing.T) {
 	f := newIntegrationFixture(t)
+	fuelModuleUpgradePriorCatalog(t, f)
 	list, product, _ := barcodeFixture(t, f)
 	_, _ = auditCreate(t, f, "shopping", "items", store.Record{"list_id": list, "name": "Prior product item", "product_id": product["id"], "quantity": "1", "unit_code": "piece"})
 	var before, after string
@@ -627,6 +628,7 @@ func TestShoppingBarcodeReadyRejectsCatalogGuardAndPolicyDrift(t *testing.T) {
 
 func TestShoppingBarcodeUnsupportedProducerCoreRefusesAtomicUpgrade(t *testing.T) {
 	f := newIntegrationFixture(t)
+	fuelModuleUpgradePriorCatalog(t, f)
 	barcodeRestoreShopping7(t, f)
 	var actualVersion int
 	if err := f.owner.QueryRow(f.ctx, "SELECT version FROM core.schema_migrations").Scan(&actualVersion); err != nil {
@@ -660,6 +662,7 @@ func TestShoppingBarcodeUnsupportedProducerCoreRefusesAtomicUpgrade(t *testing.T
 
 func TestShoppingBarcodeNewerCoreRequiresExactPrivateAuditMarker(t *testing.T) {
 	f := newIntegrationFixture(t)
+	fuelModuleUpgradePriorCatalog(t, f)
 	barcodeRestoreShopping7(t, f)
 	var actualVersion int
 	var markerExists bool

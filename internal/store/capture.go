@@ -24,6 +24,9 @@ func (s *Store) ConfirmCapture(ctx context.Context, id auth.Identity, captureID,
 	if err != nil {
 		return "", "", "", err
 	}
+	if mid == "fuel" {
+		return "", "", "", Invalid{"Fahrzeugbeleg über Fahrzeuge → Belegerkennung mit Quellenprüfung übernehmen"}
+	}
 	m, ok := s.Module(mid)
 	e, exists := m.Entity(entity)
 	if !ok || !exists {

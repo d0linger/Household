@@ -38,6 +38,7 @@
   "expenses/000003_editor_integrity.up.sql": "cce758269a6df22f6f6aef9d00f34d4d8f930589e9fbc380044893ba6be1e787",
   "expenses/000004_financial_subjects.up.sql": "657b98c10b2a1e0372f374743c1a913b567f82c856b3da7c3b4fc1bc9c40f5c4",
   "fuel/000001_init.up.sql": "9b63c9cfe8fe05bd3d839566ccf586240a3d4d3730cc5555fccc0bb29f99817e",
+  "fuel/000002_vehicle_overview.up.sql": "d9eeeef166f26c217ba88351211841d8b5735bdf18e8b208da5117aadce4c83d",
   "mealplan/000001_init.up.sql": "f6e35e44c2f1f8f37b1b903d31e115d83329cea4daabf9fadf19ec8226db2ba5",
   "mealplan/000002_workspace.up.sql": "9420d181093b5d37eee88553614e38804c603df786f0374349778678fd75b223",
   "mealplan/000003_reservation_source.up.sql": "e111970d3ee58fa2a4b6acb4eb75c124345ffbda77942ed9aca315a1cbf67eaf",
@@ -68,5 +69,8 @@
   "shopping/000005_planning_purchases.up.sql": "aa6d100e1f7404c323aa56c03bfd1d5ded957efd8b8d7d150577b0fa67871e27",
   "shopping/000006_planning_destination_completion.up.sql": "e801f05694093c25561329b35091719165fb59a34c6adba0e905dc0bcec5e228",
   "shopping/000007_repurchase_history.up.sql": "d18c0a69692fcd0670356df0dfaafe5f94b199d513677c2717b49c2c7015b1fb",
-  "shopping/000008_local_barcodes.up.sql": "3cfa815266efcae0452662b1ed4973f3bf1b73adc170f4a60bbfa3f4c5916361"
+  "shopping/000008_local_barcodes.up.sql": "3cfa815266efcae0452662b1ed4973f3bf1b73adc170f4a60bbfa3f4c5916361",
+  "fuel/000003_module_facts.up.sql": "02df2f32bf502207d2d4e945ed50b99b9bfaf637766f247cad60e56e9fa3d079",
+  "fuel/000004_module_operations.up.sql": "4705280911984579ab46d2a44a5f13f1fcc47a75ef1248a45202611a568f480f",
+  "fuel/000005_module_readiness.up.sql": "34f732357fc120560a31f994f5f607dd56093ede5066909f2393d9edfd6eeaea"
 }

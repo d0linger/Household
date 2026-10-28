@@ -18,5 +18,5 @@ CMD ["serve"]
 
 FROM runtime AS ocr
 USER root
-RUN apk add --no-cache tesseract-ocr tesseract-ocr-data-deu tesseract-ocr-data-eng
+RUN apk add --no-cache tesseract-ocr tesseract-ocr-data-deu tesseract-ocr-data-eng poppler-utils
 USER 10001:10001

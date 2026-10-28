@@ -101,6 +101,7 @@ func New(ctx context.Context, pool *pgxpool.Pool, cfg config.Config, mods []modu
 		return nil, err
 	}
 	s := &Server{Cfg: cfg, Pool: pool, Auth: a, Store: store.New(pool, mods), Log: log, assets: map[string]string{}, imageSlots: make(chan struct{}, 2)}
+	s.Store.FuelOCREnabled = cfg.OCREnabled
 	if err = s.Store.LoadStates(ctx); err != nil {
 		return nil, err
 	}
@@ -119,6 +120,9 @@ func New(ctx context.Context, pool *pgxpool.Pool, cfg config.Config, mods []modu
 	s.templates, err = template.New("household").Funcs(template.FuncMap{"text": store.String, "qty": formatQuantity, "choice": formatChoice, "prev": func(v any) int64 { return store.Int(v) - 1 }, "next": func(v any) int64 { return store.Int(v) + 1 }, "integer": store.Int, "money": formatMoney, "formValue": formValue, "isTrue": func(v any) bool { b, _ := v.(bool); return b }, "selected": func(a, b any) bool { return store.String(a) == store.String(b) }, "enabled": func(states map[string]store.State, id string) bool { return states[id].State == "enabled" }, "moduleURL": func(m module.Descriptor) string {
 		if m.ID == "pantry" {
 			return "/m/pantry/stock"
+		}
+		if m.ID == "fuel" {
+			return "/m/fuel/workspace/overview"
 		}
 		return "/m/" + m.ID + "/" + m.Entities[0].ID
 	}, "dict": dict, "icon": func(asset map[string]string, name string) string { return asset["icons.svg"] + "#" + name }}).ParseFS(files, "templates/*.html")
@@ -221,6 +225,22 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /api/v1/shopping/items/{id}", s.require(s.shoppingItem))
 	mux.Handle("GET /api/v1/shopping/items/{id}/merge-preview", s.require(s.shoppingMergePreview))
 	mux.Handle("GET /m/pantry/stock", s.require(s.pantryPage))
+	mux.Handle("GET /m/fuel/overview", s.require(s.fuelOverviewPage))
+	mux.Handle("GET /api/v1/fuel/overview", s.require(s.fuelOverviewAPI))
+	mux.Handle("GET /m/fuel/workspace/{pane}", s.require(s.fuelModulePage))
+	mux.Handle("GET /api/v1/fuel/module", s.require(s.fuelModuleWorkspaceAPI))
+	mux.Handle("GET /api/v1/fuel/module/records/{entity}/{id}", s.require(s.fuelModuleRecordAPI))
+	mux.Handle("GET /api/v1/fuel/module/export", s.require(s.fuelModuleExportAPI))
+	mux.Handle("POST /api/v1/fuel/module/preview", s.require(s.fuelModulePreviewAPI))
+	mux.Handle("POST /api/v1/fuel/module/execute", s.require(s.fuelModuleExecuteAPI))
+	mux.Handle("GET /api/v1/fuel/module/operations/{key}", s.require(s.fuelModuleOperationStatusAPI))
+	mux.Handle("POST /api/v1/fuel/module/operations/{key}/abandon", s.require(s.fuelModuleAbandonAPI))
+	for _, entity := range []string{"charging_sessions", "trips", "odometer_observations", "vehicle_costs", "maintenance_plans", "maintenance_events"} {
+		mux.Handle("GET /m/fuel/"+entity+"/{id}", s.require(func(w http.ResponseWriter, r *http.Request) {
+			r.SetPathValue("entity", entity)
+			s.fuelModuleFactPage(w, r)
+		}))
+	}
 	mux.Handle("GET /m/pantry/recipe-suggestions", s.require(s.pantrySuggestionsPage))
 	mux.Handle("GET /api/v1/pantry/recipe-suggestions", s.require(s.pantrySuggestionsAPI))
 	mux.Handle("GET /m/pantry/priority", s.require(s.pantryDailyPage))

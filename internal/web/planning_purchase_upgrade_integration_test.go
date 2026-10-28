@@ -17,7 +17,7 @@ func TestPlanningPurchasePopulatedPriorUpgrade(t *testing.T) {
 	if err := resetIntegrationSchemas(f.ctx, f.owner); err != nil {
 		t.Fatal(err)
 	}
-	prior := map[string]uint{"core": 20, "shopping": 4, "pantry": 8, "mealplan": 4, "expenses": 3}
+	prior := map[string]uint{"core": 20, "shopping": 4, "fuel": 2, "pantry": 8, "mealplan": 4, "expenses": 3}
 	for _, schema := range database.Schemas {
 		version := uint(database.ExpectedVersion(schema))
 		if pinned, ok := prior[schema]; ok {

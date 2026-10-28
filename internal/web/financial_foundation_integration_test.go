@@ -221,6 +221,12 @@ func financialPriorFixture(t *testing.T, withGeneration bool) *integrationFixtur
 	}
 	for _, schema := range database.Schemas {
 		version := uint(database.ExpectedVersion(schema))
+		if schema == "fuel" {
+			version = 2 // Fuel5 requires Core26; this fixture begins at Core24.
+		}
+		if schema == "shopping" {
+			version = 7 // Shopping8 likewise requires Core26.
+		}
 		if schema == "core" {
 			version = 24
 		}

@@ -8,6 +8,83 @@ const {createHash} = require('node:crypto');
 const {summarize} = require('./check-coverage.cjs');
 const {inspect} = require('./check-oci.cjs');
 const {checkActions} = require('./check-workflows.cjs');
+const {parseDocument} = require('yaml');
+const {resolveBrowserPrivateRoot} = require('./browser-private-root.cjs');
+
+async function privateBrowserFixture(t) {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'household-browser-root-test-'));
+  t.after(async () => {
+    if (path.dirname(root) !== os.tmpdir() || !path.basename(root).startsWith('household-browser-root-test-')) throw Error('Unsafe private browser fixture cleanup');
+    await fs.rm(root, {recursive: true, force: true});
+  });
+  return root;
+}
+
+test('browser private root preserves the default and uses an existing restricted directory for actual session children', async t => {
+  const root = await privateBrowserFixture(t);
+  const local = resolveBrowserPrivateRoot(root);
+  assert.equal(local, await fs.realpath(path.join(root, '.local')));
+  assert.equal(resolveBrowserPrivateRoot(root, ''), local);
+  const restricted = path.join(local, 'restricted-run');
+  await fs.mkdir(restricted);
+  const selected = resolveBrowserPrivateRoot(root, restricted);
+  assert.equal(selected, await fs.realpath(restricted));
+  const child = await fs.mkdtemp(path.join(selected, 'browser-auth-'));
+  await fs.writeFile(path.join(child, 'state.json'), '{"synthetic":true}');
+  assert.equal(path.dirname(await fs.realpath(child)), selected);
+  assert.equal(await fs.readFile(path.join(child, 'state.json'), 'utf8'), '{"synthetic":true}');
+});
+
+test('browser private root rejects missing, file and outside roots without creating an explicit directory', async t => {
+  const root = await privateBrowserFixture(t), local = resolveBrowserPrivateRoot(root);
+  const missing = path.join(local, 'not-created');
+  assert.throws(() => resolveBrowserPrivateRoot(root, missing), /ENOENT/);
+  await assert.rejects(fs.stat(missing), {code: 'ENOENT'});
+  const file = path.join(local, 'regular-file');
+  await fs.writeFile(file, 'synthetic');
+  assert.throws(() => resolveBrowserPrivateRoot(root, file), /existing directory/);
+  assert.throws(() => resolveBrowserPrivateRoot(root, root), /inside workspace/);
+  assert.throws(() => resolveBrowserPrivateRoot(root, 3), /Invalid/);
+});
+
+test('browser private root refuses actual junction or symlink escapes from selected and default roots', async t => {
+  const root = await privateBrowserFixture(t), local = resolveBrowserPrivateRoot(root);
+  const outside = path.join(root, 'outside-local');
+  await fs.mkdir(outside);
+  const link = path.join(local, 'escape');
+  await fs.symlink(outside, link, process.platform === 'win32' ? 'junction' : 'dir');
+  assert.throws(() => resolveBrowserPrivateRoot(root, link), /inside workspace/);
+  const nested = path.join(root, 'nested-workspace');
+  await fs.mkdir(nested);
+  await fs.symlink(outside, path.join(nested, '.local'), process.platform === 'win32' ? 'junction' : 'dir');
+  assert.throws(() => resolveBrowserPrivateRoot(nested), /leaves the workspace/);
+});
+
+test('all explicit Node entry points cover every current pure test suite exactly once', async () => {
+  const root = path.resolve(__dirname, '..');
+  const sources = (await fs.readdir(__dirname, {withFileTypes: true}))
+    .filter(entry => entry.isFile() && /^[a-z0-9-]+\.test\.cjs$/.test(entry.name))
+    .map(entry => 'scripts/' + entry.name).sort();
+  assert.ok(sources.length > 0, 'the pure test inventory must not be empty');
+  const packageJSON = JSON.parse(await fs.readFile(path.join(root, 'package.json'), 'utf8'));
+  const verify = await fs.readFile(path.join(root, 'scripts/verify.ps1'), 'utf8');
+  const workflow = parseDocument(await fs.readFile(path.join(root, '.github/workflows/quality.yml'), 'utf8'));
+  assert.equal(workflow.errors.length, 0, 'quality workflow must be valid YAML');
+  const steps = workflow.toJS().jobs.WorkflowAndSecrets.steps;
+  const commands = [
+    ['npm test', packageJSON.scripts.test],
+    ['verify.ps1', verify],
+    ['quality WorkflowAndSecrets', steps.map(step => step.run || '').join('\n')]
+  ];
+  for (const [name, text] of commands) {
+    const lists = [...text.matchAll(/^\s*node --test ([^\r\n]+)$/gm)];
+    assert.equal(lists.length, 1, name + ' must have one explicit Node test invocation');
+    const paths = lists[0][1].trim().split(/\s+/);
+    assert.ok(paths.every(file => /^scripts\/[a-z0-9-]+\.test\.cjs$/.test(file)), name + ' must name concrete test sources');
+    assert.equal(new Set(paths).size, paths.length, name + ' must not repeat a test source');
+    assert.deepEqual(paths.sort(), sources, name + ' must not omit or invent a pure test suite');
+  }
+});
 
 test('workflow guard rejects movable tags and privileged PR triggers', () => {
   assert.deepEqual(checkActions(`- uses: actions/checkout@${'a'.repeat(40)} # immutable\n- uses: ./local-action`), []);

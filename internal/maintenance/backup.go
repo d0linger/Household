@@ -421,6 +421,11 @@ func VerifyRestore(ctx context.Context, pool *pgxpool.Pool, cfg config.Config, s
 		return err
 	}
 	defer restored.Close()
+	if manifest.Schemas["shopping"] == 8 {
+		if err = normalizeRestoreBarcodeConstraint(ctx, restored); err != nil {
+			return err
+		}
+	}
 	if err = database.Ready(ctx, restored); err != nil {
 		return err
 	}

@@ -47,6 +47,7 @@ const lines = [
   `**${summary.join(' · ')}.**`, '',
   'Ein Haken bedeutet: umgesetzt und durch ausgeführte Prüfungen belegt. Vorbereitete Änderungen und einzelne bestandene Zwischentests schließen einen Verbesserungspunkt noch nicht ab.', '',
   active.length ? `Aktuell in Arbeit: ${active.map(item => `**${item.id} – ${item.title}**`).join(', ')}.` : 'Derzeit ist kein Punkt als „In Arbeit“ markiert.', '',
+  ...(source.includes('Aktueller Modulblock: **Fahrzeuge & Tanken (FU01–FU20)**') ? ['**Aktueller Modulblock: Fahrzeuge & Tanken (FU01–FU20).** Erst vollständige Implementierung, danach gemeinsame Tests und Fehlerbehebung. Der nächste Modulblock beginnt nach bestandener Gesamtabnahme. [Modulplan und Phasencheckliste](fuel-module-plan.md).', ''] : []),
   ...(active.some(item => item.id === 'EX19') ? ['Der aktuelle Stand der Finanz-Unteraufgaben und Tests steht in der [laufenden Prüfliste](financial-visibility-verification.md#current-producer-checklist).', ''] : []),
   'Diese Ansicht wird aus der [verbindlichen Liste mit Abnahmekriterien und Nachweisen](improvements-180.md) erzeugt. Aktualisieren: `node scripts/update-tasklist.cjs`.', '',
   '| Modul | Abgehakt | In Arbeit | Offen |', '|---|---:|---:|---:|'

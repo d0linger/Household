@@ -14,6 +14,9 @@ import (
 
 // ConfirmImport commits every row together; retrying a confirmed batch is harmless.
 func (s *Store) ConfirmImport(ctx context.Context, id auth.Identity, m module.Descriptor, e module.Entity, batchID, requestID string, generation int64) error {
+	if m.ID == "fuel" {
+		return Invalid{"Fahrzeugdaten über Fahrzeuge → Import mit Zeilenvorschau und dauerhaftem Vorgangsschlüssel übernehmen"}
+	}
 	ctx = audit.WithRequest(audit.WithActor(ctx, id.UserID, id.HouseholdID), requestID)
 	if !value.ValidUUID(batchID) {
 		return ErrNotFound

@@ -5,10 +5,13 @@ package web
 import (
 	"context"
 	"errors"
+	"os"
 	"strings"
 	"testing"
 	"time"
 
+	"household/internal/audit"
+	"household/internal/database"
 	"household/internal/store"
 	"household/internal/value"
 
@@ -246,23 +249,196 @@ func TestFinancialMutationFuelDeniedOrAmbiguousExistingTargetNeverCreatesSecondE
 				_, err = f.owner.Exec(f.ctx, `INSERT INTO core.resource_links(household_id,source_module,source_type,source_id,target_module,target_type,target_id,relation)
  VALUES($1,'fuel','fillups',$2,'expenses','categories',$3,'fuel_expense')`, f.identity.HouseholdID, fill["id"], category["id"])
 			case "deleted source":
-				err = f.app.Store.Delete(f.ctx, f.identity, m, e, store.String(fill["id"]), store.Int(fill["version"]), in.Generation, value.UUID())
+				protected := financialFuelCompatibilitySnapshot(t, f)
+				proofs := fuelModuleCoreNativeSnapshot(t, f)
+				if err = f.app.Store.Delete(f.ctx, f.identity, m, e, store.String(fill["id"]), store.Int(fill["version"]), in.Generation, value.UUID()); err == nil ||
+					financialFuelCompatibilitySnapshot(t, f) != protected || fuelModuleCoreNativeSnapshot(t, f) != proofs {
+					t.Fatal("public linked-source deletion must preserve original facts and accepted proofs", err)
+				}
+				// An owner-only same-generation restore fault removes the source;
+				// it is not permission for the public API to delete linked facts.
+				financialFuelCompatibilityRemoveSource(t, f, store.String(fill["id"]))
+				err = nil
 			}
 			if err != nil {
 				t.Fatal(err)
 			}
-			before := financialMutationSnapshot(t, f)
-			if got, err := f.app.Store.Action(f.ctx, f.identity, m, e, store.String(fill["id"]), "expense", value.UUID(), value.UUID(), in); !errors.Is(err, store.ErrNotFound) || got != nil || financialMutationSnapshot(t, f) != before {
-				t.Fatal("denied or ambiguous existing fuel link fell through to new entry", got, err)
-			}
-			if damage == "retired" || damage == "deleted source" {
-				if got, err := f.app.Store.Action(f.ctx, f.identity, m, e, store.String(fill["id"]), "expense", key, value.UUID(), in); !errors.Is(err, store.ErrNotFound) || got != nil || financialMutationSnapshot(t, f) != before {
-					t.Fatal("fuel action replay returned denied target", got, err)
+			before := financialFuelCompatibilitySnapshot(t, f)
+			beforeProofs := fuelModuleCoreNativeSnapshot(t, f)
+			got, actionErr := f.app.Store.Action(f.ctx, f.identity, m, e, store.String(fill["id"]), "expense", value.UUID(), value.UUID(), in)
+			switch damage {
+			case "wrong type", "ambiguous":
+				// The current durable binding is authoritative over a malformed
+				// secondary graph, provided its exact target is still authorized.
+				if actionErr != nil || store.String(got["expense_id"]) != store.String(first["expense_id"]) ||
+					store.String(got["binding_id"]) != store.String(first["binding_id"]) || store.String(got["id"]) != store.String(fill["id"]) {
+					t.Fatal("valid durable binding was replaced or exposed a different target", got, actionErr)
+				}
+			case "retired":
+				if !errors.Is(actionErr, store.ErrNotFound) || got != nil {
+					t.Fatal("new key exposed a currently denied financial target", got, actionErr)
+				}
+			case "deleted source":
+				if !errors.Is(actionErr, store.ErrConflict) || got != nil {
+					t.Fatal("new key recreated a missing source or exposed a new expense", got, actionErr)
 				}
 			}
+			if financialFuelCompatibilitySnapshot(t, f) != before {
+				t.Fatal("target reuse/refusal changed business facts or projections")
+			}
+			if (damage == "retired" || damage == "deleted source") && fuelModuleCoreNativeSnapshot(t, f) != beforeProofs {
+				t.Fatal("refused new intent left a private operation or other effect")
+			}
+			beforeProofs = fuelModuleCoreNativeSnapshot(t, f)
+			got, actionErr = f.app.Store.Action(f.ctx, f.identity, m, e, store.String(fill["id"]), "expense", key, value.UUID(), in)
+			if damage == "retired" {
+				if !errors.Is(actionErr, store.ErrNotFound) || got != nil {
+					t.Fatal("historical receipt exposed a currently denied financial target", got, actionErr)
+				}
+			} else if actionErr != nil || store.String(got["expense_id"]) != store.String(first["expense_id"]) ||
+				store.String(got["binding_id"]) != store.String(first["binding_id"]) || store.String(got["operation_id"]) != store.String(first["operation_id"]) {
+				t.Fatal("historical accepted receipt changed identity or recreated a missing source", got, actionErr)
+			}
+			if financialFuelCompatibilitySnapshot(t, f) != before || fuelModuleCoreNativeSnapshot(t, f) != beforeProofs {
+				t.Fatal("historical receipt replay changed business facts")
+			}
+			var entries, links, bindings int
+			if err = f.owner.QueryRow(f.ctx, `SELECT (SELECT count(*) FROM expenses.entries),
+ (SELECT count(*) FROM core.resource_links WHERE relation='fuel_expense'),
+ (SELECT count(*) FROM fuel.integration_bindings WHERE source_id=$1 AND relation='fuel_expense')`, fill["id"]).Scan(&entries, &links, &bindings); err != nil || entries != 1 || bindings != 1 || links != map[string]int{"retired": 1, "wrong type": 1, "ambiguous": 2, "deleted source": 0}[damage] {
+				t.Fatal("durable reuse/refusal created another financial identity", entries, links, bindings, err)
+			}
+		})
+	}
+}
+
+func financialFuelCompatibilitySnapshot(t *testing.T, f *integrationFixture) string {
+	t.Helper()
+	var source string
+	if err := f.owner.QueryRow(f.ctx, `SELECT jsonb_build_object(
+ 'vehicles',(SELECT coalesce(jsonb_agg(to_jsonb(v) ORDER BY id),'[]') FROM fuel.vehicles v WHERE household_id=$1),
+ 'series',(SELECT coalesce(jsonb_agg(to_jsonb(s) ORDER BY id),'[]') FROM fuel.odometer_series s WHERE household_id=$1),
+ 'fillups',(SELECT coalesce(jsonb_agg(to_jsonb(f) ORDER BY id),'[]') FROM fuel.fillups f WHERE household_id=$1),
+ 'bindings',(SELECT coalesce(jsonb_agg(to_jsonb(b) ORDER BY id),'[]') FROM fuel.integration_bindings b WHERE household_id=$1))::text`,
+		f.identity.HouseholdID).Scan(&source); err != nil {
+		t.Fatal("Fuel business snapshot", err)
+	}
+	return source + "\n" + financialMutationSnapshot(t, f)
+}
+
+func financialFuelCompatibilityRemoveSource(t *testing.T, f *integrationFixture, fill string) {
+	t.Helper()
+	tx, err := f.owner.Begin(f.ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		cleanup, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		_ = tx.Rollback(cleanup)
+	}()
+	if _, err = tx.Exec(f.ctx, "DELETE FROM fuel.fillups WHERE household_id=$1 AND id=$2", f.identity.HouseholdID, fill); err != nil {
+		t.Fatal("owner prior-source removal", err)
+	}
+	if _, err = tx.Exec(f.ctx, "DELETE FROM core.resource_links WHERE household_id=$1 AND source_module='fuel' AND source_type='fillups' AND source_id=$2", f.identity.HouseholdID, fill); err != nil {
+		t.Fatal("owner prior-link removal", err)
+	}
+	if err = tx.Commit(f.ctx); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestFinancialMutationFuelLegacyOnlyMalformedTargetNeverCreatesSecondEntry(t *testing.T) {
+	for _, damage := range []string{"retired", "wrong type", "ambiguous", "deleted source"} {
+		t.Run(damage, func(t *testing.T) {
+			f := newIntegrationFixture(t)
+			fuelModuleUpgradePriorCatalog(t, f)
+			category, _ := auditCreate(t, f, "expenses", "categories", store.Record{"name": "Genuine Fuel2 legacy category"})
+			input := expenseEditNewInput(t, f, store.String(category["id"]))
+			input.Action, input.Header.AmountEUR, input.Lines[0].AmountEUR = "post", "20.00", "20.00"
+			posted, err := f.app.Store.SaveExpense(f.ctx, f.identity, value.UUID(), value.UUID(), input)
+			if err != nil {
+				t.Fatal("real posted legacy-link target", err)
+			}
+			vehicle, series, fill := value.UUID(), value.UUID(), value.UUID()
+			ctx := audit.WithRequest(audit.WithActor(f.ctx, f.identity.UserID, f.identity.HouseholdID), value.UUID())
+			tx, err := f.app.Store.BeginMutation(ctx, f.identity, "fuel", f.app.Store.States()["fuel"].Generation)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer func() {
+				cleanup, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+				defer cancel()
+				_ = tx.Rollback(cleanup)
+			}()
+			// Actual prior Fuel2 schema and App authority seed prior source facts
+			// and its one legacy Core link. Modern private tables do not exist.
+			if _, err = tx.Exec(ctx, `INSERT INTO fuel.vehicles(id,household_id,name,fuel_type,created_by)
+ VALUES($1,$2,'Genuine prior Fuel2 source','diesel',$3)`, vehicle, f.identity.HouseholdID, f.identity.UserID); err != nil {
+				t.Fatal(err)
+			}
+			if _, err = tx.Exec(ctx, `INSERT INTO fuel.odometer_series(id,household_id,vehicle_id,started_on,initial_reading,reason,created_by)
+ VALUES($1,$2,$3,'2026-01-01',0,'Prior original counter',$4)`, series, f.identity.HouseholdID, vehicle, f.identity.UserID); err != nil {
+				t.Fatal(err)
+			}
+			if _, err = tx.Exec(ctx, `INSERT INTO fuel.fillups(id,household_id,vehicle_id,odometer_series_id,occurred_on,
+ fuel_type,odometer,quantity,total_minor,unit_price,station,full_tank,notes,created_by)
+ VALUES($1,$2,$3,$4,'2026-10-26','diesel',100,10,2000,2,'Prior station',true,'Prior original fact',$5)`, fill, f.identity.HouseholdID, vehicle, series, f.identity.UserID); err != nil {
+				t.Fatal(err)
+			}
+			if _, err = tx.Exec(ctx, `INSERT INTO core.resource_links(household_id,source_module,source_type,source_id,target_module,target_type,target_id,relation)
+ VALUES($1,'fuel','fillups',$2,'expenses','entries',$3,'fuel_expense')`, f.identity.HouseholdID, fill, posted.EntryID); err != nil {
+				t.Fatal(err)
+			}
+			if err = tx.Commit(ctx); err != nil {
+				t.Fatal(err)
+			}
+			switch damage {
+			case "retired":
+				_, err = f.owner.Exec(f.ctx, "UPDATE core.financial_policies SET retired_at=clock_timestamp() WHERE resource_id=$1", posted.EntryID)
+			case "wrong type":
+				_, err = f.owner.Exec(f.ctx, "UPDATE core.resource_links SET target_type='categories' WHERE source_id=$1 AND relation='fuel_expense'", fill)
+			case "ambiguous":
+				_, err = f.owner.Exec(f.ctx, `INSERT INTO core.resource_links(household_id,source_module,source_type,source_id,target_module,target_type,target_id,relation)
+ VALUES($1,'fuel','fillups',$2,'expenses','categories',$3,'fuel_expense')`, f.identity.HouseholdID, fill, category["id"])
+			case "deleted source":
+				// Clearly labeled owner/prior restore fault, with no fake modern
+				// operations or deletion of modern binding rows.
+				financialFuelCompatibilityRemoveSource(t, f, fill)
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err = database.Migrate(f.ctx, os.Getenv("HOUSEHOLD_TEST_OWNER_URL")); err != nil {
+				t.Fatal("normal Fuel2-to-current migration", err)
+			}
+			if err = database.Ready(f.ctx, f.pool); err != nil {
+				t.Fatal("actual upgraded readiness", err)
+			}
+			var bindings, operations int
+			if err = f.owner.QueryRow(f.ctx, "SELECT (SELECT count(*) FROM fuel.integration_bindings),(SELECT count(*) FROM fuel.module_operations)").Scan(&bindings, &operations); err != nil || bindings != 0 || operations != 0 {
+				t.Fatal("prior fixture fabricated a modern authoritative binding/operation", bindings, operations, err)
+			}
+			m, _ := f.app.Store.Module("fuel")
+			e, _ := m.Entity("fillups")
+			in := auditMutation(t, f, "fuel", store.Record{"category_id": category["id"]}, 1)
+			in.TargetGenerations = map[string]int64{"expenses": f.app.Store.States()["expenses"].Generation}
+			before := financialFuelCompatibilitySnapshot(t, f)
+			proofs := fuelModuleCoreNativeSnapshot(t, f)
+			got, actionErr := f.app.Store.Action(f.ctx, f.identity, m, e, fill, "expense", value.UUID(), value.UUID(), in)
+			want := store.ErrNotFound
+			if damage == "deleted source" {
+				want = store.ErrConflict
+			}
+			if !errors.Is(actionErr, want) || got != nil || financialFuelCompatibilitySnapshot(t, f) != before || fuelModuleCoreNativeSnapshot(t, f) != proofs {
+				t.Fatal("legacy-only invalid target created an entry/binding or leaked a receipt", got, actionErr)
+			}
 			var entries, links int
-			if err = f.owner.QueryRow(f.ctx, "SELECT (SELECT count(*) FROM expenses.entries),(SELECT count(*) FROM core.resource_links WHERE relation='fuel_expense')").Scan(&entries, &links); err != nil || entries != 1 || links != map[string]int{"retired": 1, "wrong type": 1, "ambiguous": 2, "deleted source": 0}[damage] {
-				t.Fatal("fuel denial created a duplicate financial identity", entries, links, err)
+			if err = f.owner.QueryRow(f.ctx, `SELECT (SELECT count(*) FROM expenses.entries),
+ (SELECT count(*) FROM core.resource_links WHERE relation='fuel_expense'),
+ (SELECT count(*) FROM fuel.integration_bindings),(SELECT count(*) FROM fuel.module_operations)`).Scan(&entries, &links, &bindings, &operations); err != nil ||
+				entries != 1 || bindings != 0 || operations != 0 || links != map[string]int{"retired": 1, "wrong type": 1, "ambiguous": 2, "deleted source": 0}[damage] {
+				t.Fatal("legacy-only denial produced a second financial identity", entries, links, bindings, operations, err)
 			}
 		})
 	}

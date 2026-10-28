@@ -3,7 +3,6 @@ package database
 
 import (
 	"context"
-	"database/sql"
 	"embed"
 	"errors"
 	"fmt"
@@ -18,7 +17,7 @@ import (
 	"github.com/golang-migrate/migrate/v4/source/iofs"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
-	_ "github.com/jackc/pgx/v5/stdlib"
+	"github.com/jackc/pgx/v5/stdlib"
 )
 
 //go:embed migrations/*/*.sql
@@ -52,6 +51,11 @@ func Open(ctx context.Context, dsn string, max int32) (*pgxpool.Pool, error) {
 }
 
 func Migrate(ctx context.Context, dsn string) error {
+	migrationConfig, err := pgx.ParseConfig(dsn)
+	if err != nil {
+		return fmt.Errorf("parse migration configuration: %w", err)
+	}
+	migrationConfig.ConnectTimeout = 5 * time.Second
 	lock, err := pgx.Connect(ctx, dsn)
 	if err != nil {
 		return fmt.Errorf("connect migration lock: %w", err)
@@ -69,10 +73,10 @@ func Migrate(ctx context.Context, dsn string) error {
 		if e != nil {
 			return fmt.Errorf("open migrations %s: %w", schema, e)
 		}
-		db, e := sql.Open("pgx/v5", dsn)
-		if e != nil {
-			return fmt.Errorf("open migration connection: %w", e)
-		}
+		// Metadata deparsing must match the SECURITY DEFINER readiness functions,
+		// regardless of an operator's connection search_path. Each physical
+		// migration connection needs this; the advisory-lock connection is separate.
+		db := stdlib.OpenDB(*migrationConfig, stdlib.OptionAfterConnect(migrationSearchPath))
 		driver, e := migratepgx.WithInstance(db, &migratepgx.Config{SchemaName: schema, StatementTimeout: time.Minute})
 		if e != nil {
 			_ = db.Close()
@@ -101,6 +105,19 @@ func Migrate(ctx context.Context, dsn string) error {
 	return nil
 }
 
+func migrationSearchPath(ctx context.Context, conn *pgx.Conn) error {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	if _, err := conn.Exec(ctx, "SET search_path=pg_catalog"); err != nil {
+		// pgx stdlib does not close a connection rejected by AfterConnect.
+		cleanup, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		_ = conn.Close(cleanup)
+		return fmt.Errorf("initialize migration schema resolution: %w", err)
+	}
+	return nil
+}
+
 func Ready(ctx context.Context, pool *pgxpool.Pool) error {
 	for _, schema := range Schemas {
 		var version int
@@ -114,6 +131,20 @@ func Ready(ctx context.Context, pool *pgxpool.Pool) error {
 		}
 	}
 	var repurchase bool
+	var fuelOverview bool
+	if err := pool.QueryRow(ctx, "SELECT fuel.overview_ready()").Scan(&fuelOverview); err != nil {
+		return fmt.Errorf("inspect vehicle overview contract: %w", err)
+	}
+	if !fuelOverview {
+		return errors.New("incomplete vehicle overview contract")
+	}
+	var fuelModule bool
+	if err := pool.QueryRow(ctx, "SELECT fuel.module_ready()").Scan(&fuelModule); err != nil {
+		return fmt.Errorf("inspect vehicle module contract: %w", err)
+	}
+	if !fuelModule {
+		return errors.New("incomplete vehicle module contract")
+	}
 	if err := pool.QueryRow(ctx, "SELECT shopping.repurchase_ready()").Scan(&repurchase); err != nil {
 		return fmt.Errorf("inspect shopping history contract: %w", err)
 	}

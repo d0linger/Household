@@ -1,0 +1,5 @@
+'use strict';
+const{test}=require('node:test'),assert=require('node:assert/strict'),{display,reason,intervalText}=require('../internal/web/static/fuel-overview.js');
+test('decimal text stays exact beyond binary precision and retains meaningful zero',()=>{assert.equal(display('9007199254.740993'),'9007199254,740993');assert.equal(display('0.000000'),'0');assert.equal(display('0.000001'),'0,000001');});
+test('unknown consumption reasons are explicit and never become zero consumption',()=>{for(const code of['missing_fill','ambiguous_order','overlapping_series','history_limit','no_full_anchor','fuel_changed'])assert(reason(code).length>20);assert(!reason('unknown').includes('0 l'));});
+test('historical interval describes its actual boundaries and exact amount',()=>{assert.equal(intervalText(null),null);const text=intervalText({historical:true,from:'2026-01-01',to:'2026-02-01',quantity:'25.000001',distance:'500.000000',unit:'kg/100 km'});assert(text.includes('historisch'));assert(text.includes('2026-01-01 bis 2026-02-01'));assert(text.includes('25,000001 kg auf 500 km'));assert(text.includes('gerundet'));});

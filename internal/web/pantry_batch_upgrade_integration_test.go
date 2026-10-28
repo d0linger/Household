@@ -65,6 +65,9 @@ func TestPantryBatchPopulatedPriorUpgrade(t *testing.T) {
 	}
 	for _, schema := range database.Schemas {
 		v := uint(database.ExpectedVersion(schema))
+		if schema == "fuel" {
+			v = 2 // Keep the actual predecessor compatible with Core16.
+		}
 		if schema == "core" {
 			v = 16
 		}
