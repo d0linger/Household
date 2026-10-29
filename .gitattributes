@@ -3,3 +3,5 @@
 *.jpg binary
 *.jpeg binary
 *.zip binary
+# Immutable migration checksums cover raw bytes; disable Git EOL conversion.
+internal/database/migrations/** -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol

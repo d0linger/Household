@@ -21,6 +21,9 @@ x-app: &app
     HOUSEHOLD_NAME: ${HOUSEHOLD_NAME:-Mein Haushalt}
     HOUSEHOLD_UPLOAD_DIR: /data/uploads
     HOUSEHOLD_TRUSTED_PROXIES: ${HOUSEHOLD_TRUSTED_PROXIES:-}
+    HOUSEHOLD_OFF_ENABLED: ${HOUSEHOLD_OFF_ENABLED:-false}
+    HOUSEHOLD_OFF_USER_AGENT: ${HOUSEHOLD_OFF_USER_AGENT:-}
+    HOUSEHOLD_OFF_STAGING: ${HOUSEHOLD_OFF_STAGING:-false}
     GOMEMLIMIT: 400MiB
   secrets: [app_database_url,csrf_secret,encryption_key,rate_secret,bootstrap_password]
   networks: [database,frontend]

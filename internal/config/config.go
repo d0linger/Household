@@ -15,25 +15,28 @@ import (
 )
 
 type Config struct {
-	Listen          string
-	Origin          string
-	DatabaseURL     string
-	CSRFSecret      string
-	EncryptionKey   string
-	RateSecret      string
-	AdminUsername   string
-	AdminPassword   string
-	HouseholdName   string
-	UploadDir       string
-	Production      bool
-	TrustedProxies  []*net.IPNet
-	MaxConnections  int32
-	SessionIdle     time.Duration
-	SessionAbsolute time.Duration
-	UploadQuota     int64
-	OCRCommand      string
-	OCREnabled      bool
-	MetricsToken    string
+	Listen             string
+	Origin             string
+	DatabaseURL        string
+	CSRFSecret         string
+	EncryptionKey      string
+	RateSecret         string
+	AdminUsername      string
+	AdminPassword      string
+	HouseholdName      string
+	UploadDir          string
+	Production         bool
+	TrustedProxies     []*net.IPNet
+	MaxConnections     int32
+	SessionIdle        time.Duration
+	SessionAbsolute    time.Duration
+	UploadQuota        int64
+	OCRCommand         string
+	OCREnabled         bool
+	FoodFactsEnabled   bool
+	FoodFactsUserAgent string
+	FoodFactsStaging   bool
+	MetricsToken       string
 }
 
 var hostnameLabel = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$`)
@@ -66,6 +69,30 @@ func Load() (Config, error) {
 		c.OCREnabled, err = strconv.ParseBool(raw)
 		if err != nil {
 			return Config{}, errors.New("invalid OCR setting")
+		}
+	}
+	if raw := os.Getenv("HOUSEHOLD_OFF_ENABLED"); raw != "" {
+		c.FoodFactsEnabled, err = strconv.ParseBool(raw)
+		if err != nil {
+			return Config{}, errors.New("invalid Open Food Facts setting")
+		}
+	}
+	if raw := os.Getenv("HOUSEHOLD_OFF_STAGING"); raw != "" {
+		c.FoodFactsStaging, err = strconv.ParseBool(raw)
+		if err != nil {
+			return Config{}, errors.New("invalid Open Food Facts staging setting")
+		}
+	}
+	if c.FoodFactsStaging && c.Production {
+		return Config{}, errors.New("open food facts staging requires development mode")
+	}
+	c.FoodFactsUserAgent = strings.TrimSpace(os.Getenv("HOUSEHOLD_OFF_USER_AGENT"))
+	if len(c.FoodFactsUserAgent) > 256 {
+		return Config{}, errors.New("open food facts User-Agent exceeds 256 bytes")
+	}
+	for _, character := range c.FoodFactsUserAgent {
+		if character < 32 || character > 126 {
+			return Config{}, errors.New("open food facts User-Agent requires printable ASCII")
 		}
 	}
 	for name, target := range map[string]*string{"HOUSEHOLD_DATABASE_URL": &c.DatabaseURL, "HOUSEHOLD_CSRF_SECRET": &c.CSRFSecret, "HOUSEHOLD_ENCRYPTION_KEY": &c.EncryptionKey, "HOUSEHOLD_RATE_SECRET": &c.RateSecret, "HOUSEHOLD_ADMIN_PASSWORD": &c.AdminPassword, "HOUSEHOLD_METRICS_TOKEN": &c.MetricsToken} {

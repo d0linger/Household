@@ -7,7 +7,7 @@ const HouseholdPantryValues=(()=>{
  function amount(mode,raw,balance,pack,base,integers){const stock=micro(balance,24);let n;
   if(mode==='half'){if(stock%2n)throw Error('Die Hälfte benötigt mehr als sechs Nachkommastellen. Eigene Menge wählen.');n=stock/2n;}
   else if(mode==='amount')n=micro(raw);
-  else if(mode==='pack'){if(!pack||pack.disabled)throw Error('Aktive Packung wählen.');const units={piece:['count',1n],g:['mass',1n],kg:['mass',1000n],ml:['volume',1n],l:['volume',1000n]},a=units[pack.unit],b=units[base];if(!a||!b||a[0]!==b[0])throw Error('Packung und Basiseinheit sind nicht kompatibel.');const numerator=micro(raw)*micro(pack.quantity)*a[1],denominator=scale*b[1];if(numerator%denominator)throw Error('Packungsmenge benötigt mehr als sechs Nachkommastellen.');n=numerator/denominator;}
+  else if(mode==='pack'){if(!pack||pack.disabled)throw Error('Aktive Packung wählen.');const units={piece:['count',1n],portion:['serving',1n],g:['mass',1n],kg:['mass',1000n],ml:['volume',1n],l:['volume',1000n]},a=units[pack.unit],b=units[base];if(!a||!b||a[0]!==b[0])throw Error('Packung und Basiseinheit sind nicht kompatibel.');const numerator=micro(raw)*micro(pack.quantity)*a[1],denominator=scale*b[1];if(numerator%denominator)throw Error('Packungsmenge benötigt mehr als sechs Nachkommastellen.');n=numerator/denominator;}
   else throw Error('Verbrauchsart wählen.');
   if(n<=0n||n>=limit||integers&&n%scale)throw Error('Menge muss positiv, im Wertebereich und gegebenenfalls ganzzahlig sein.');if(n>stock)throw Error('Menge übersteigt den angezeigten Bestand.');return{quantity:decimal(n),after:decimal(stock-n)};
  }
@@ -18,7 +18,7 @@ if(typeof module!=='undefined')module.exports=HouseholdPantryValues;
 if(typeof document!=='undefined')(()=>{
  'use strict';const root=document.querySelector('#pantry-consume');if(!root)return;
  const $=s=>root.querySelector(s),form=$('#consume-form'),fields=form.elements,url='/api/v1/pantry/lots/'+root.dataset.lot+'/consume',writable=root.dataset.writable==='true';
- const {amount,display}=HouseholdPantryValues,unit=v=>v==='piece'?'Stück':v,date=v=>v?String(v).slice(0,10).split('-').reverse().join('.'):'unbekannt';
+ const {amount,display}=HouseholdPantryValues,unit=v=>v==='piece'?'Stück':v==='portion'?'Portionen':v,date=v=>v?String(v).slice(0,10).split('-').reverse().join('.'):'unbekannt';
  const node=(tag,text,cls)=>{const n=document.createElement(tag);if(text!==undefined)n.textContent=text;if(cls)n.className=cls;return n;},link=(text,path)=>{const a=node('a',text);a.href=path;return a;};
  let source,busy=false,pending=null,review=null,conflict=false,undo=null,dirty=false;
  function say(text){$('#consume-status').textContent=text;}

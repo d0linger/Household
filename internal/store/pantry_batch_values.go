@@ -84,7 +84,7 @@ func normalizePantryBatchDraft(in PantryBatchDraftInput) (PantryBatchDraftInput,
 				return in, Invalid{"Datumsentwurf auf zehn Zeichen begrenzen"}
 			}
 		}
-		if line.Unit != "" && line.Unit != "piece" && line.Unit != "g" && line.Unit != "kg" && line.Unit != "ml" && line.Unit != "l" {
+		if line.Unit != "" && line.Unit != "piece" && line.Unit != "portion" && line.Unit != "g" && line.Unit != "kg" && line.Unit != "ml" && line.Unit != "l" {
 			return in, Invalid{"Unterstützte Mengen- oder Packungseinheit auswählen"}
 		}
 		if line.AfterOpenSource != "" && line.AfterOpenSource != "user" && line.AfterOpenSource != "manufacturer" {

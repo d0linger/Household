@@ -5,13 +5,37 @@
   const previous=$('#pantry-previous'),next=$('#pantry-next'),refresh=$('#pantry-refresh');
   const node=(tag,text)=>{const el=document.createElement(tag);if(text!==undefined)el.textContent=text;return el;};
   const qty=value=>String(value??'0').replace(/(\.\d*?)0+$/,'$1').replace(/\.$/,'').replace('.',',');
-  const unit=code=>code==='piece'?'Stück':code;
+  const unit=code=>code==='piece'?'Stück':code==='portion'?'Portionen':code;
   const date=value=>value?String(value).slice(0,10).split('-').reverse().join('.'):'';
   const moment=(value,zone)=>new Intl.DateTimeFormat('de-AT',{dateStyle:'medium',timeStyle:'short',timeZone:zone}).format(new Date(value))+' ('+zone+')';
   let query='',day='',cursor='',nextCursor='',history=[],loading=false,sequence=0;
   const initial=new URLSearchParams(location.search);form.elements.q.value=initial.get('q')||'';form.elements.at.value=initial.get('at')||'';
   async function get(url){const response=await fetch(url,{headers:{Accept:'application/json'}});const data=await response.json();if(!response.ok)throw Error(data.error||'Bestand konnte nicht geladen werden.');return data;}
   function link(label,url){const a=node('a',label);a.href=url;return a;}
+  function provenanceFor(product){
+    const details=node('details'),title=node('summary','Herkunft von Produktinformationen'),content=node('div'),notice=node('p'),retry=node('button','Herkunft erneut laden');
+    notice.setAttribute('role','status');retry.type='button';retry.hidden=true;details.append(title,content,notice,retry);
+    let loading=false,loaded=false,request=0;
+    async function load(){
+      if(loading)return;loading=true;retry.disabled=true;notice.textContent='Gespeicherte Herkunft wird aktuell geprüft …';const ticket=++request;
+      try{
+        const fresh=await get('/api/v1/pantry/extensions/context'),scope=fresh.context;
+        if(scope.user_id!==document.body.dataset.user||scope.household_id!==document.body.dataset.household)throw Error('Konto geändert. Vorratsübersicht mit aktueller Anmeldung neu öffnen.');
+        const result=await get('/api/v1/pantry/extensions/food-facts/provenance/'+product.id+'?generation='+scope.generation);
+        if(ticket!==request)return;if(!Array.isArray(result.sources)||typeof result.more!=='boolean')throw Error('Quellenübersicht erneut laden.');
+        content.replaceChildren();
+        for(const source of result.sources){
+          const article=node('article');article.className='pantry-lot';
+          article.append(node('h3','Originalquelle: Open Food Facts'),node('p','Code: '+source.code+' · Quelle: '+source.provider),node('p','Quellenseite: '+source.url),node('p','Quellenname: '+(source.name||'nicht angegeben')+' · Marke: '+(source.brand||'nicht angegeben')),node('p','Originale Packungsbeschreibung: '+(source.pack_description||'nicht angegeben')),node('p','Abgerufen: '+new Date(source.fetched_at).toLocaleString('de-AT')+' · Datenbanklizenz: '+source.database_license+' · Inhaltslizenz: '+source.contents_license));
+          content.append(article);
+        }
+        loaded=true;retry.hidden=false;notice.textContent=result.sources.length?(result.more?'Neueste 20 Herkunftseinträge; weitere ältere Angaben sind vorhanden. Keine vollständige Historie.':'Alle aktuell gespeicherten Herkunftseinträge für dieses Produkt geladen.'):'Keine gespeicherte externe Herkunft. Eigene Produktangaben bleiben unabhängig davon Vorratsdaten.';
+      }catch(error){content.replaceChildren();notice.textContent=error.message+' Ohne aktuelle Prüfung werden keine Quellenangaben angezeigt.';retry.hidden=false;}
+      finally{loading=false;retry.disabled=false;}
+    }
+    details.addEventListener('toggle',()=>{if(details.open&&!loaded)void load();});retry.addEventListener('click',()=>void load());
+    return details;
+  }
   function lotsFor(product,at,search){
     const details=node('details'),heading=node('summary','Chargen anzeigen · '+product.lot_count),list=node('div'),message=node('p'),more=node('button','Weitere Chargen');
     details.className='pantry-lots';details.append(heading,list,message,more);more.type='button';more.hidden=true;message.setAttribute('role','status');
@@ -21,7 +45,7 @@
         for(const row of page.records){const article=node('article');article.className='pantry-lot';const label=String(row.name||'').trim()||'Charge vom '+date(row.received_on)+' · '+row.location;article.append(link(label,'/m/pantry/lots/'+row.id),node('p',qty(row.stock)+' '+unit(product.unit)+' · '+row.location));
           const dates=[['Erhalten',row.received_on],['Mindestens haltbar bis',row.best_before_on],['Zu verbrauchen bis',row.use_by_on],['Geöffnet',row.opened_on]].filter(([,value])=>value).map(([label,value])=>label+': '+date(value));
           article.append(node('p',dates.join(' · ')));if(Number(row.later_corrections)>0)article.append(node('p',row.later_corrections+' spätere Korrekturbuchung(en). Letzte: '+moment(row.latest_correction_at,page.timezone)),link('Korrekturen im Chargenjournal prüfen','/m/pantry/lots/'+row.id));
-          if(!at&&row.reserved!=null)article.append(node('p','Reserviert: '+qty(row.reserved)+' · frei in aktiven Chargen: '+qty(row.free)+' · Unterdeckung: '+qty(row.undercovered)+' '+unit(product.unit)));if(!at)article.append(link('Verbrauch prüfen','/m/pantry/consume/'+row.id));list.append(article);
+          if(!at&&row.reserved!=null)article.append(node('p','Reserviert: '+qty(row.reserved)+' · frei in aktiven Chargen: '+qty(row.free)+' · Unterdeckung: '+qty(row.undercovered)+' '+unit(product.unit)));if(!at)article.append(link('Verbrauch prüfen','/m/pantry/consume/'+row.id));if(product.unit==='portion')article.append(document.createTextNode(' · '),link('Zubereitungsangaben prüfen','/m/pantry/leftovers/'+row.id));list.append(article);
         }
         loaded=true;lotCursor=page.next_cursor;more.hidden=!lotCursor;more.textContent='Weitere Chargen';message.textContent=list.children.length?list.children.length+' Chargen geladen.':'Noch keine Chargen an diesem Stichtag.';
       }catch(error){message.textContent=error.message+' Erneut laden ist möglich.';more.textContent='Chargen erneut laden';more.hidden=false;}
@@ -43,7 +67,7 @@
         article.append(node('p',locations||'Kein belegter Lagerort'));if(dates.length)article.append(node('p',dates.join(' · ')));if(product.minimum!==null)article.append(node('p','Mindestbestand: '+qty(product.minimum)+' '+unit(product.unit)));
         if(!day&&product.reserved!=null)article.append(node('p','Reserviert: '+qty(product.reserved)+' · frei in aktiven Chargen: '+qty(product.free)+' · Unterdeckung: '+qty(product.undercovered)+' '+unit(product.unit)));if(product.target!==null&&product.target!==undefined)article.append(node('p',(day?'Aktueller Zielbestand: ':'Zielbestand: ')+qty(product.target)+' '+unit(product.unit)));if(!day)article.append(link('Nachkauf prüfen','/m/pantry/replenish/'+product.id));
         if(product.archived)article.append(node('p','Produkt archiviert'));if(Number(product.later_corrections)>0)article.append(node('p',product.later_corrections+' spätere Korrekturbuchung(en); zuletzt '+moment(product.latest_correction_at,data.timezone)+'. Mengen hier bleiben am Stichtag.'));
-        article.append(lotsFor(product,day,query));container.append(article);
+        article.append(provenanceFor(product),lotsFor(product,day,query));container.append(article);
       }
       if(!data.products.length)container.append(node('p','Keine Produkte gefunden. Suchbegriff oder Stichtag anpassen.'));
       previous.hidden=!history.length;next.hidden=!nextCursor;status.textContent=data.products.length+' von '+data.total+' Produkten auf dieser Seite. Mengen werden nicht zwischen unterschiedlichen Einheiten addiert.';

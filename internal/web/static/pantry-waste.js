@@ -14,7 +14,7 @@ if(typeof document!=='undefined')(()=>{
  const writable=root.dataset.writable==='true',lotID=root.dataset.lot;
  let busy=false,pending=null,review=null,source=null,dirty=false,conflict=false,undo=null,filterDirty=false;
  const labels={unknown:'Nicht bekannt / nicht angegeben',expired:'Verbrauchsdatum überschritten',spoiled:'Verdorben',damaged:'Beschädigt',overbought:'Zu viel eingekauft',preparation:'Bei der Zubereitung übrig',other:'Anderer Grund'};
- const unit=u=>u==='piece'?'Stück':u;
+ const unit=u=>u==='piece'?'Stück':u==='portion'?'Portionen':u;
  const node=(tag,text,cls)=>{const e=document.createElement(tag);if(text!==undefined)e.textContent=text;if(cls)e.className=cls;return e;};
  const link=(title,url)=>{const a=node('a',title,'button');a.href=url;return a;};
  const date=(at,zone)=>new Intl.DateTimeFormat('de-AT',{dateStyle:'medium',timeStyle:'short',...(zone?{timeZone:zone}:{})}).format(new Date(at));

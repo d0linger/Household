@@ -1,12 +1,14 @@
 # Household – Aufgabenliste
 
-Stand: 28.10.2026, 20:44 (Europe/Vienna).
+Stand: 29.10.2026, 01:37 (Europe/Vienna).
 
-**82 / 180 verifiziert und abgehakt · 0 in Arbeit · 98 offen.**
+**85 / 180 verifiziert und abgehakt · 0 in Arbeit · 95 offen.**
 
 Ein Haken bedeutet: umgesetzt und durch ausgeführte Prüfungen belegt. Vorbereitete Änderungen und einzelne bestandene Zwischentests schließen einen Verbesserungspunkt noch nicht ab.
 
 Derzeit ist kein Punkt als „In Arbeit“ markiert.
+
+**Vorrat vollständig lokal abgenommen: 20 / 20 Punkte.** PA10, PA13 und PA19 sind nach nativen Tests, eigenständigem Browserlauf, echtem Restore/Purge und vollständiger 28-Komponenten-Regression abgehakt. [Modulplan](pantry-module-plan.md) · [Abnahmenachweise](pantry-module-validation.md).
 
 Diese Ansicht wird aus der [verbindlichen Liste mit Abnahmekriterien und Nachweisen](improvements-180.md) erzeugt. Aktualisieren: `node scripts/update-tasklist.cjs`.
 
@@ -15,7 +17,7 @@ Diese Ansicht wird aus der [verbindlichen Liste mit Abnahmekriterien und Nachwei
 | Einkaufen | 18 / 20 | 0 | 2 |
 | Fahrzeuge und Tanken | 20 / 20 | 0 | 0 |
 | Rezepte | 10 / 20 | 0 | 10 |
-| Vorrat | 17 / 20 | 0 | 3 |
+| Vorrat | 20 / 20 | 0 | 0 |
 | Finanzen | 1 / 20 | 0 | 19 |
 | Aufgaben | 0 / 20 | 0 | 20 |
 | Zähler und Energie | 0 / 20 | 0 | 20 |
@@ -102,16 +104,16 @@ Diese Ansicht wird aus der [verbindlichen Liste mit Abnahmekriterien und Nachwei
 - [x] **PA07 Mehrere Barcodes** — Produkt- und Packungsvarianten mehrere eindeutige Barcodes zuordnen.
 - [x] **PA08 Geöffnete Haltbarkeit** — Nutzer- oder Herstellerangaben mit Herkunft als Hinweis anzeigen.
 - [x] **PA09 FEFO-Vorschlag** — Passende Chargen nach Datum vorschlagen; manuelle Auswahl und Datumsarten erhalten.
-- [ ] **PA10 Gekochte Reste** — Rezeptbezug, Portionen, Zubereitung und Lagerort erfassen.
+- [x] **PA10 Gekochte Reste** — Rezeptbezug, Portionen, Zubereitung und Lagerort erfassen.
 - [x] **PA11 Zielbestand** — Mindest- und Zielbestand unterscheiden; Nachkauf auf Packungen aufrunden.
 - [x] **PA12 Reservierungen** — Freien und für Mahlzeiten reservierten Bestand getrennt ausweisen.
-- [ ] **PA13 Open Food Facts** — Optionalen Adapter mit Quellenangabe und lokalem Cache bereitstellen.
+- [x] **PA13 Open Food Facts** — Optionalen Adapter mit Quellenangabe und lokalem Cache bereitstellen.
 - [x] **PA14 Abfallanalyse** — Gründe und optional geschätzte Kosten der Verluste auswerten.
 - [x] **PA15 Rezeptvorschläge** — Vorhandene und bald fällige Zutaten transparent gewichtet berücksichtigen.
 - [x] **PA16 Große Bestandslisten** — Gefilterte Paginierung und exakte Gesamtsummen ohne 100-Produkte-Grenze anbieten.
 - [x] **PA17 Bestandsprojektion** — Transaktionale Salden pflegen und gegen das Bewegungsjournal prüfen.
 - [x] **PA18 Verbrauchskonflikte** — Verbleibende Menge nach gleichzeitiger Buchung zeigen; kein blindes Wiederholen.
-- [ ] **PA19 Offline-Scans** — Scans als lokale Entwürfe prüfen; Offline-Daten sind keine Bestandsautorität.
+- [x] **PA19 Offline-Scans** — Scans als lokale Entwürfe prüfen; Offline-Daten sind keine Bestandsautorität.
 - [x] **PA20 Historischer Bestand** — Bestand zum Stichtag aus Bewegungen rekonstruieren und Korrekturzeitpunkte zeigen.
 
 ## Finanzen

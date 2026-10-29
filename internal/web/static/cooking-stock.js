@@ -4,7 +4,7 @@ const HouseholdCookingStock = (() => {
  function amount(raw,positive=true){const m=String(raw).trim().replace(',','.').match(positive?/^(\d{1,12})(?:\.(\d{1,6}))?$/:/^(\d{1,30})(?:\.(\d{1,6}))?$/);if(!m)throw Error('Menge mit höchstens sechs Nachkommastellen eingeben.');const n=BigInt(m[1])*scale+BigInt((m[2]||'').padEnd(6,'0'));if(positive&&(n>=10n**18n||n<=0n))throw Error('Positive Menge innerhalb des zulässigen Bereichs erforderlich.');return n;}
  function decimal(n){return (n/scale)+'.'+(n%scale).toString().padStart(6,'0');}
  function suggestion(row,unit,base,servings){
-  try{const units={piece:['count',1n],g:['mass',1n],kg:['mass',1000n],ml:['volume',1n],l:['volume',1000n]},a=units[row.unit_code],b=units[unit];if(!a||!b||a[0]!==b[0])return null;let n=amount(row.quantity)*amount(servings)*a[1],d=amount(base)*b[1]*scale;const gcd=(x,y)=>y?gcd(y,x%y):x,g=gcd(n,d);n/=g;d/=g;const rounded=(n*scale*2n+d)/(2n*d);return {rational:n+'/'+d,value:decimal(rounded),approximate:rounded*d!==n*scale,below:rounded===0n};}catch{return null;}
+  try{const units={piece:['count',1n],portion:['serving',1n],g:['mass',1n],kg:['mass',1000n],ml:['volume',1n],l:['volume',1000n]},a=units[row.unit_code],b=units[unit];if(!a||!b||a[0]!==b[0])return null;let n=amount(row.quantity)*amount(servings)*a[1],d=amount(base)*b[1]*scale;const gcd=(x,y)=>y?gcd(y,x%y):x,g=gcd(n,d);n/=g;d/=g;const rounded=(n*scale*2n+d)/(2n*d);return {rational:n+'/'+d,value:decimal(rounded),approximate:rounded*d!==n*scale,below:rounded===0n};}catch{return null;}
  }
  function aggregate(decisions){const totals=new Map();for(const d of decisions)if(d.action==='consume')for(const a of d.allocations){const next=(totals.get(a.lot.id)||0n)+amount(a.quantity);if(next>=10n**18n)throw Error('Gemeinsame Chargenmenge überschreitet den Wertebereich.');totals.set(a.lot.id,next);}return totals;}
  return {amount,decimal,suggestion,aggregate};
@@ -12,7 +12,7 @@ const HouseholdCookingStock = (() => {
 if(typeof module!=='undefined')module.exports=HouseholdCookingStock;
 if(typeof document!=='undefined')(() => {
  const root=document.querySelector('#cooking-stock');if(!root)return;
- const $=s=>root.querySelector(s),{amount,decimal,suggestion,aggregate}=HouseholdCookingStock,writable=root.dataset.writable==='true',unit=v=>v==='piece'?'Stück':v;
+ const $=s=>root.querySelector(s),{amount,decimal,suggestion,aggregate}=HouseholdCookingStock,writable=root.dataset.writable==='true',unit=v=>v==='piece'?'Stück':v==='portion'?'Portionen':v;
  const node=(tag,text,cls)=>{const n=document.createElement(tag);if(text!==undefined)n.textContent=text;if(cls)n.className=cls;return n;},link=(text,url)=>{const n=node('a',text);n.href=url;return n;};
  const path='/api/v1/cooking/history/'+root.dataset.history+'/stock',draft=new Map(),lotStates=new Map();
  let preview,position=0,busy=false,pending=null,review=null,productCursor='',lotCursor='',lotProduct='',candidates=new Map(),complete=false;

@@ -48,8 +48,19 @@ func (s *Server) offline(w http.ResponseWriter, r *http.Request) {
 	p.View = "offline"
 	s.render(w, r, p)
 }
+
+// offlinePantryScans serves the same public, data-free shell to every caller.
+// Device drafts are opened only by local explicit consent, never embedded here.
+func (s *Server) offlinePantryScans(w http.ResponseWriter, r *http.Request) {
+	nonce, _ := r.Context().Value(nonceKey).(string)
+	p := Page{Title: "Offline-Scans", View: "pantry-scans", Nonce: nonce, Asset: s.assets}
+	w.Header().Set("Cache-Control", "public,max-age=0,must-revalidate")
+	pantryScanCameraHeaders(w, r)
+	s.render(w, r, p)
+}
+
 func (s *Server) serviceWorker(w http.ResponseWriter, r *http.Request) {
-	list := []string{"/offline"}
+	list := []string{"/offline", "/offline/scans"}
 	for _, url := range s.assets {
 		list = append(list, url)
 	}
@@ -65,8 +76,8 @@ self.addEventListener('install',event=>event.waitUntil(caches.open(CACHE).then(c
 self.addEventListener('message',event=>{if(event.data?.type==='ACTIVATE')self.skipWaiting();});
 self.addEventListener('activate',event=>event.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(key=>key.startsWith('household-')&&key!==CACHE).map(key=>caches.delete(key)))).then(()=>self.clients.claim())));
 self.addEventListener('fetch',event=>{const url=new URL(event.request.url);if(event.request.method!=='GET'||url.origin!==self.location.origin)return;
-if(ASSETS.includes(url.pathname)&&url.pathname!=='/offline'){event.respondWith(caches.open(CACHE).then(cache=>cache.match(event.request).then(hit=>hit||fetch(event.request))));return;}
-if(event.request.mode==='navigate'){event.respondWith(fetch(event.request).catch(()=>caches.open(CACHE).then(cache=>cache.match('/offline'))));}});
+if(ASSETS.includes(url.pathname)&&url.pathname!=='/offline'&&url.pathname!=='/offline/scans'){event.respondWith(caches.open(CACHE).then(cache=>cache.match(event.request).then(hit=>hit||fetch(event.request))));return;}
+if(event.request.mode==='navigate'){const fallback=['/offline/scans','/m/pantry/scans'].includes(url.pathname)?'/offline/scans':'/offline';event.respondWith(fetch(event.request).catch(()=>caches.open(CACHE).then(cache=>cache.match(fallback))));}});
 `, version, raw)
 	s.writeBytes(w, r, []byte(body))
 }

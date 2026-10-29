@@ -230,6 +230,9 @@ func financialPriorFixture(t *testing.T, withGeneration bool) *integrationFixtur
 		if schema == "core" {
 			version = 24
 		}
+		if schema == "pantry" {
+			version = 11 // Preserve the genuine pre-Core26/Fuel5 extension predecessor.
+		}
 		if schema == "expenses" {
 			version = 3
 		}

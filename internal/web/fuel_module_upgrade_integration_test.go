@@ -37,6 +37,8 @@ func fuelModuleUpgradePriorCatalog(t *testing.T, f *integrationFixture, fuelVers
 			version = 8
 		case "fuel":
 			version = priorFuel
+		case "pantry":
+			version = 11 // Pantry12 requires the later accepted Fuel5/Core26 audit catalog.
 		}
 		migratePriorAuditSchema(t, f, schema, version)
 	}

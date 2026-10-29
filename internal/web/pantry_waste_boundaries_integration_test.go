@@ -121,11 +121,25 @@ func TestPantryWasteSignedPagesDetectWholeScopeAndIdentityChanges(t *testing.T) 
 
 func TestPantryWastePotentialRowAndByteBudgetsFailClosed(t *testing.T) {
 	f := newIntegrationFixture(t)
-	lid, p := wasteSeed(t, f, "report limits")
-	if _, err := f.pool.Exec(f.ctx, `INSERT INTO pantry.stock_movements(household_id,lot_id,quantity_delta,reason,created_by)
- SELECT $1,$2,-0.000001,'waste',$3 FROM generate_series(1,10001) g`, f.identity.HouseholdID, lid, f.identity.UserID); err != nil {
-		t.Fatal(err)
+	seedWaste := func(lot string, count int) {
+		t.Helper()
+		for offset := 0; offset < count; offset += 1000 {
+			batch := min(1000, count-offset)
+			tag, err := f.pool.Exec(f.ctx, `INSERT INTO pantry.stock_movements(household_id,lot_id,quantity_delta,reason,created_by)
+ SELECT $1,$2,-0.000001,'waste',$3 FROM generate_series(1,$4::integer) g`, f.identity.HouseholdID, lot, f.identity.UserID, batch)
+			if err != nil || tag.RowsAffected() != int64(batch) {
+				t.Fatal("bounded actual audited waste fixture batch", offset, batch, tag.RowsAffected(), err)
+			}
+		}
+		var actual int
+		if err := f.pool.QueryRow(f.ctx, `SELECT count(*) FROM pantry.stock_movements
+ WHERE household_id=$1 AND lot_id=$2 AND created_by=$3 AND reason='waste' AND quantity_delta=-0.000001`,
+			f.identity.HouseholdID, lot, f.identity.UserID).Scan(&actual); err != nil || actual != count {
+			t.Fatal("actual audited waste fixture count differs", actual, count, err)
+		}
 	}
+	lid, p := wasteSeed(t, f, "report limits")
+	seedWaste(lid, 10001)
 	scope, err := f.app.Store.PantryWasteContext(f.ctx, f.identity)
 	if err != nil {
 		t.Fatal(err)
@@ -146,10 +160,7 @@ func TestPantryWastePotentialRowAndByteBudgetsFailClosed(t *testing.T) {
 		t.Fatal(err)
 	}
 	auditCreate(t, f, "pantry", "stock_movements", store.Record{"lot_id": secondID, "quantity_delta": "1", "reason": "receive"})
-	if _, err = f.pool.Exec(f.ctx, `INSERT INTO pantry.stock_movements(household_id,lot_id,quantity_delta,reason,created_by)
- SELECT $1,$2,-0.000001,'waste',$3 FROM generate_series(1,3000) g`, f.identity.HouseholdID, secondID, f.identity.UserID); err != nil {
-		t.Fatal(err)
-	}
+	seedWaste(secondID, 3000)
 	scope, err = f.app.Store.PantryWasteContext(f.ctx, f.identity)
 	if err != nil {
 		t.Fatal(err)
@@ -233,15 +244,9 @@ func TestPantryWasteDirectAppProofShapeAndImmutability(t *testing.T) {
 
 func TestPantryWastePopulatedPantry10UpgradePreservesUnknownJournal(t *testing.T) {
 	f := newIntegrationFixture(t)
-	// Rebuild only this disposable independent module using the actual prior
-	// runner. No synthetic version stamp or reconstructed dropped-column catalog.
-	if _, err := f.owner.Exec(f.ctx, "DROP SCHEMA pantry CASCADE"); err != nil {
-		t.Fatal(err)
-	}
-	migratePriorAuditSchema(t, f, "pantry", 10)
-	if _, err := f.owner.Exec(f.ctx, "SELECT core.install_audit_triggers()"); err != nil {
-		t.Fatal(err)
-	}
+	// Recreate the complete real predecessor. Dropping Pantry alone would
+	// retain Pantry12's forward global audit census and extension policies.
+	pantryExtensionsPriorCatalog(t, f, 10)
 	lid, _ := wasteSeed(t, f, "legacy upgrade")
 	legacy := value.UUID()
 	if _, err := f.pool.Exec(f.ctx, "INSERT INTO pantry.stock_movements(id,household_id,lot_id,quantity_delta,reason,note,created_by) VALUES($1,$2,$3,-0.1,'waste','Original historical note',$4)", legacy, f.identity.HouseholdID, lid, f.identity.UserID); err != nil {

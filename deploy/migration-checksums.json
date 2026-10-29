@@ -72,5 +72,6 @@
   "shopping/000008_local_barcodes.up.sql": "3cfa815266efcae0452662b1ed4973f3bf1b73adc170f4a60bbfa3f4c5916361",
   "fuel/000003_module_facts.up.sql": "02df2f32bf502207d2d4e945ed50b99b9bfaf637766f247cad60e56e9fa3d079",
   "fuel/000004_module_operations.up.sql": "4705280911984579ab46d2a44a5f13f1fcc47a75ef1248a45202611a568f480f",
-  "fuel/000005_module_readiness.up.sql": "34f732357fc120560a31f994f5f607dd56093ede5066909f2393d9edfd6eeaea"
+  "fuel/000005_module_readiness.up.sql": "34f732357fc120560a31f994f5f607dd56093ede5066909f2393d9edfd6eeaea",
+  "pantry/000012_prepared_food_and_capture.up.sql": "660278a1917b2cd440f4d1172c05df07c1287ea11ca0e47c72878fb627854b1b"
 }

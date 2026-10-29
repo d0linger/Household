@@ -38,7 +38,10 @@ const must=(value,name)=>{if(!value)throw Error(name);report.checks.push(name);}
   await page.getByRole('button',{name:'Vorherige Produkte',exact:true}).click();await page.locator('#pantry-status').getByText(/50 von/).waitFor();
   await page.getByLabel('Produkt suchen').fill(fixture.group);await page.getByRole('button',{name:'Anzeigen',exact:true}).click();await page.locator('#pantry-status').getByText(/3 von 3/).waitFor();
   must(await page.locator('#pantry-summary').innerText().then(text=>text.includes('9007199254,741 g')&&text.includes('0 kg')&&text.includes('0 l')),'Exact total strings and separate quantity units are displayed');
-  const product=page.locator('[data-pantry-product="'+fixture.tea.id+'"]');await product.locator('summary').focus();await page.keyboard.press('Enter');await product.getByText('2 Chargen geladen.',{exact:true}).waitFor();
+  const product=page.locator('[data-pantry-product="'+fixture.tea.id+'"]'),lotDetails=product.locator('details.pantry-lots'),lotToggle=product.locator('details.pantry-lots > summary');
+  must(await lotDetails.count()===1&&await lotToggle.count()===1&&!(await lotDetails.evaluate(el=>el.open)),'Product has one initially collapsed lot disclosure');
+  await lotToggle.focus();must(await lotToggle.evaluate(el=>el===document.activeElement),'Keyboard focus reaches the actual lot disclosure');
+  await page.keyboard.press('Enter');await lotDetails.getByText('2 Chargen geladen.',{exact:true}).waitFor();must(await lotDetails.evaluate(el=>el.open),'Enter opens the focused lot disclosure');
   must(await product.getByRole('link',{name:'Angebrochene Packung',exact:true}).count()===1,'Keyboard disclosure loads named lot details');
   must(await product.innerText().then(text=>text.includes('Mindestens haltbar bis: 20.01.2027')&&text.includes('Zu verbrauchen bis: 22.01.2027')&&text.includes('Geöffnet: 02.01.2026')),'Best-before, use-by and opened dates keep distinct labels');
   const before=await page.locator('#pantry-products').innerText();await page.route('**/api/v1/pantry/stock?**',route=>route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({error:'Prüfverbindung unterbrochen'})}));
@@ -47,7 +50,7 @@ const must=(value,name)=>{if(!value)throw Error(name);report.checks.push(name);}
   // A legacy SQL/import row can have no notes although the current form requires
   // a label. Exercise that API representation without changing production rules.
   await page.route('**/api/v1/pantry/products/*/lots?**',async route=>{const response=await route.fetch(),data=await response.json();if(data.records.length)data.records[0].name='';await route.fulfill({response,json:data});});
-  await product.locator('summary').click();await product.getByText('2 Chargen geladen.',{exact:true}).waitFor();
+  must(!(await lotDetails.evaluate(el=>el.open)),'Refreshed lot disclosure starts collapsed');await lotToggle.click();await lotDetails.getByText('2 Chargen geladen.',{exact:true}).waitFor();
   must(await product.getByRole('link',{name:/^Charge vom 03.01.2026 · Kühlschrank/}).count()===1,'A legacy empty lot label has a named accessible detail link');
   await page.unroute('**/api/v1/pantry/products/*/lots?**');
   async function capture(name){await page.evaluate(async()=>{scrollTo(0,0);await new Promise(requestAnimationFrame);});const file=path.join(output,name+'.png');await page.screenshot({path:file,fullPage:true,animations:'disabled'});report.screenshots.push(file);const result=await new AxeBuilder({page}).withTags(['wcag2a','wcag2aa','wcag21aa']).analyze();report.accessibility.push({name,violations:result.violations});must(!result.violations.length,'Accessibility '+name);}

@@ -1,6 +1,6 @@
 # Checkliste: 180 genehmigte Verbesserungen
 
-Stand: 2026-10-28. Auftrag: alle 180 Vorschläge aus dem Modulvergleich implementieren und gründlich testen.
+Stand: 2026-10-29. Auftrag: alle 180 Vorschläge aus dem Modulvergleich implementieren und gründlich testen.
 
 **[Aufgabenliste mit abgehakten Punkten öffnen](taskliste.md)**. Die Checkboxansicht wird bei Statusänderungen mit `node scripts/update-tasklist.cjs` aus dieser verbindlichen Nachweisliste aktualisiert.
 
@@ -29,9 +29,11 @@ Ein Schema, eine Schaltfläche oder ein Mock allein schließt keinen Punkt ab. B
 
 ## Fortschritt
 
-180 Punkte: **82 verifiziert, 0 implementiert, 0 in Arbeit, 98 offen**. Dieser Zähler wird mit jedem abgeschlossenen Arbeitspaket abgeglichen.
+180 Punkte: **85 verifiziert, 0 implementiert, 0 in Arbeit, 95 offen**. Dieser Zähler wird mit jedem abgeschlossenen Arbeitspaket abgeglichen.
 
-Abgenommener Modulblock: **Fahrzeuge & Tanken (FU01–FU20)** – vollständige Implementierung und gemeinsame lokale Tests/Fehlerbehebung abgeschlossen. [Modulplan](fuel-module-plan.md). Der nächste Modulblock wird vor seiner Umsetzung vollständig zusammengefasst.
+Abgenommener Modulblock: **Fahrzeuge & Tanken (FU01–FU20)** – vollständige Implementierung und gemeinsame lokale Tests/Fehlerbehebung abgeschlossen. [Modulplan](fuel-module-plan.md).
+
+Abgenommener Modulblock: **Vorrat (PA10/PA13/PA19)** – vollständig implementiert und gemeinsam lokal abgenommen:157native,102eigenständigeBrowserprüfungen,14echteRecovery-Schritte sowie28-Komponenten-Regression mit912Checks. [Modulplan](pantry-module-plan.md) · [Prüfergebnisse und Abnahmegrenzen](pantry-module-validation.md).
 
 ## Einkaufen
 
@@ -121,16 +123,16 @@ Abgenommener Modulblock: **Fahrzeuge & Tanken (FU01–FU20)** – vollständige 
 | PA07 | Mehrere Barcodes | Produkt- und Packungsvarianten mehrere eindeutige Barcodes zuordnen. | Verifiziert | Native Gesamtsuite67,2 %, Linux-Race259,069s, bestücktes Upgrade/Restore, direkte50/100-Grenzen; Vorrat35Browserchecks/5axe, Gesamtkette448; DB-, UI- und Dokumentationsabnahme bestanden. |
 | PA08 | Geöffnete Haltbarkeit | Nutzer- oder Herstellerangaben mit Herkunft als Hinweis anzeigen. | Verifiziert | Native Gesamtsuite67,2 %, Linux-Race259,069s, bestücktes Upgrade/Restore, direkte50/100-Grenzen; Vorrat35Browserchecks/5axe, Gesamtkette448; DB-, UI- und Dokumentationsabnahme bestanden. |
 | PA09 | FEFO-Vorschlag | Passende Chargen nach Datum vorschlagen; manuelle Auswahl und Datumsarten erhalten. | Verifiziert | Native Gesamtsuite67,2 %, Linux-Race259,069s, bestücktes Upgrade/Restore, direkte50/100-Grenzen; Vorrat35Browserchecks/5axe, Gesamtkette448; DB-, UI- und Dokumentationsabnahme bestanden. |
-| PA10 | Gekochte Reste | Rezeptbezug, Portionen, Zubereitung und Lagerort erfassen. | Offen | — |
+| PA10 | Gekochte Reste | Rezeptbezug, Portionen, Zubereitung und Lagerort erfassen. | Verifiziert | Portionen/20Behälter, Kochmengenlimit/Quelleneinmaligkeit, dauerhafteBelege und mehrfacheUmlagerungsherkunft geprüft. Native157/157, Browser102/4Axe, echte19-Tabellen-Recovery14/14 sowie28-Komponenten-Regression912Checks bestanden; frühererRace114 exakt abgegrenzt. [Nachweise](pantry-module-validation.md). |
 | PA11 | Zielbestand | Mindest- und Zielbestand unterscheiden; Nachkauf auf Packungen aufrunden. | Verifiziert | Native70,1%, sieben finale PostgreSQL-Verträge, fokussierte Linux-Race; 32 Nachkauf-Browserchecks/sechs axe, Gesamtkette584; Upgrade/Restore und F01 unabhängig abgenommen. |
 | PA12 | Reservierungen | Freien und für Mahlzeiten reservierten Bestand getrennt ausweisen. | Verifiziert | [Abnahme](stock-reservations-verification.md): Core19/Pantry7/Mealplan3,12 DB-Verträge, native70,4%, gezielter Linux-Race322,439s,625 Browserprüfungen,10 saubere axe-Scans und exakter synthetischer Restore. |
-| PA13 | Open Food Facts | Optionalen Adapter mit Quellenangabe und lokalem Cache bereitstellen. | Offen | — |
+| PA13 | Open Food Facts | Optionalen Adapter mit Quellenangabe und lokalem Cache bereitstellen. | Verifiziert | LokaleZuordnung zuerst; echter ausdrücklicher regulärerOFFAbruf, geprüfteatomareAnlage, dauerhafterBeleg/Status und3lizenzierteCSVExporte bestanden. Budget429/Leserechte/Bounds native, echterRestore und28-Komponenten-Regression912Checks; Staging502 separat. [Nachweise](pantry-module-validation.md). |
 | PA14 | Abfallanalyse | Gründe und optional geschätzte Kosten der Verluste auswerten. | Verifiziert | Pantry11 integriert:15neuePostgreSQL-Verträge,20bestehendeKompatibilitäts- und6gemeinsameBarcode-Verträge bestanden.99Node,70SQL-Prüfsummen,27teiligeBrowsersuite(PA14:31Prüfungen/4saubereAxe-Scans) und11Linux-Race-Verträge bestanden(Web71,831s);394Quellhashes unverändert. Gosec150Dateien/0Befunde. UnbelegteKosten bleiben unbekannt; Live8100 unverändert. [Nachweise](pantry-waste.md). |
 | PA15 | Rezeptvorschläge | Vorhandene und bald fällige Zutaten transparent gewichtet berücksichtigen. | Verifiziert | Unabhängiger Vorratseinstieg mit exaktem freien Bestand/Datumsgründen und gebundenen Cursorn; vollständige native Regression297Haupttests/73,4%,44Webtests im gezielten Linux-Race677,101s.803Browserchecks einschließlich25PA15Checks/7sauberen axe-Scans, frisches UI-ship, separate Designprüfung, aktuelle Images und verschlüsselter synthetischer Restore. [Abnahme](pantry-suggestions-verification.md). |
 | PA16 | Große Bestandslisten | Gefilterte Paginierung und exakte Gesamtsummen ohne 100-Produkte-Grenze anbieten. | Verifiziert | PostgreSQL/Migration/Restore + Linux-Race; Pantry 18 Browserchecks/3 axe; unabhängige DB- und UI-Abnahme bestanden |
 | PA17 | Bestandsprojektion | Transaktionale Salden pflegen und gegen das Bewegungsjournal prüfen. | Verifiziert | PostgreSQL/Migration/Restore + Linux-Race; Pantry 18 Browserchecks/3 axe; unabhängige DB- und UI-Abnahme bestanden |
 | PA18 | Verbrauchskonflikte | Verbleibende Menge nach gleichzeitiger Buchung zeigen; kein blindes Wiederholen. | Verifiziert | Native Gesamtsuite67,2 %, Linux-Race259,069s, bestücktes Upgrade/Restore, direkte50/100-Grenzen; Vorrat35Browserchecks/5axe, Gesamtkette448; DB-, UI- und Dokumentationsabnahme bestanden. |
-| PA19 | Offline-Scans | Scans als lokale Entwürfe prüfen; Offline-Daten sind keine Bestandsautorität. | Offen | — |
+| PA19 | Offline-Scans | Scans als lokale Entwürfe prüfen; Offline-Daten sind keine Bestandsautorität. | Verifiziert | Offline-Neustart,7-TagePruning/nullzusätzlichePUTs, gleicheIDStatusklärung, separate500gBuchung,100Zeilen/Epochengrenze,TabOptout, echteLogout-Rohdatenlöschung undGenerationssperre bestanden. Native157, Node197, Browser102/4Axe, Recovery14 und28-Komponenten-Regression912Checks. [Nachweise](pantry-module-validation.md). |
 | PA20 | Historischer Bestand | Bestand zum Stichtag aus Bewegungen rekonstruieren und Korrekturzeitpunkte zeigen. | Verifiziert | PostgreSQL/Migration/Restore + Linux-Race; Pantry 18 Browserchecks/3 axe; unabhängige DB- und UI-Abnahme bestanden |
 
 ## Finanzen

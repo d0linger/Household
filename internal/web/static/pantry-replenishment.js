@@ -2,7 +2,7 @@
   'use strict';
   const board=document.querySelector('#replenish-board');if(!board)return;
   const $=selector=>board.querySelector(selector),node=(tag,text)=>{const el=document.createElement(tag);if(text!==undefined)el.textContent=text;return el;};
-  const qty=v=>String(v??'0').replace(/(\.\d*?)0+$/,'$1').replace(/\.$/,'').replace('.',','),unit=v=>v==='piece'?'Stück':v;
+  const qty=v=>String(v??'0').replace(/(\.\d*?)0+$/,'$1').replace(/\.$/,'').replace('.',','),unit=v=>v==='piece'?'Stück':v==='portion'?'Portionen':v;
   const product=board.dataset.product,owner=document.body.dataset.user,household=document.body.dataset.household;
   const pack=$('#replenish-pack'),form=$('#replenish-form'),shopping=$('#replenish-shopping'),review=$('#replenish-review-section');
   let current=null,boot=null,pending=null,busy=false,uncertain=false;

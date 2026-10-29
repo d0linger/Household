@@ -26,6 +26,7 @@ import (
 	"household/internal/auth"
 	"household/internal/config"
 	"household/internal/database"
+	"household/internal/foodfacts"
 	"household/internal/module"
 	"household/internal/store"
 	"household/internal/value"
@@ -87,6 +88,15 @@ func New(ctx context.Context, pool *pgxpool.Pool, cfg config.Config, mods []modu
 	if err := module.ValidateRegistry(mods); err != nil {
 		return nil, err
 	}
+	provider, err := foodfacts.New(foodfacts.Config{
+		Enabled:     cfg.FoodFactsEnabled,
+		UserAgent:   cfg.FoodFactsUserAgent,
+		Staging:     cfg.FoodFactsStaging,
+		Development: !cfg.Production,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("configure optional product source: %w", err)
+	}
 	a, err := auth.New(pool, cfg)
 	if err != nil {
 		return nil, err
@@ -102,6 +112,7 @@ func New(ctx context.Context, pool *pgxpool.Pool, cfg config.Config, mods []modu
 	}
 	s := &Server{Cfg: cfg, Pool: pool, Auth: a, Store: store.New(pool, mods), Log: log, assets: map[string]string{}, imageSlots: make(chan struct{}, 2)}
 	s.Store.FuelOCREnabled = cfg.OCREnabled
+	s.Store.FoodFacts = provider
 	if err = s.Store.LoadStates(ctx); err != nil {
 		return nil, err
 	}
@@ -225,6 +236,24 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /api/v1/shopping/items/{id}", s.require(s.shoppingItem))
 	mux.Handle("GET /api/v1/shopping/items/{id}/merge-preview", s.require(s.shoppingMergePreview))
 	mux.Handle("GET /m/pantry/stock", s.require(s.pantryPage))
+	mux.Handle("GET /m/pantry/leftovers", s.require(s.pantryExtensionPage))
+	mux.Handle("GET /m/pantry/leftovers/{lot}", s.require(s.pantryExtensionPage))
+	mux.Handle("GET /m/pantry/food-facts", s.require(s.pantryExtensionPage))
+	mux.Handle("GET /m/pantry/scans", s.require(s.pantryExtensionPage))
+	mux.HandleFunc("GET /offline/scans", s.offlinePantryScans)
+	mux.Handle("GET /api/v1/pantry/extensions/context", s.require(s.pantryExtensionsContextAPI))
+	mux.Handle("GET /api/v1/pantry/leftovers/context", s.require(s.pantryLeftoversAPI))
+	mux.Handle("GET /api/v1/pantry/lots/{lot}/prepared", s.require(s.pantryPreparedLotAPI))
+	mux.Handle("POST /api/v1/pantry/leftovers/preview", s.require(s.pantryLeftoversAPI))
+	mux.Handle("POST /api/v1/pantry/leftovers/execute", s.require(s.pantryLeftoversAPI))
+	mux.Handle("GET /api/v1/pantry/leftovers/operations/{key}", s.require(s.pantryLeftoversAPI))
+	mux.Handle("POST /api/v1/pantry/leftovers/operations/{key}/abandon", s.require(s.pantryLeftoversAPI))
+	mux.Handle("POST /api/v1/pantry/extensions/food-facts/lookup", s.require(s.pantryFoodFactsAPI))
+	mux.Handle("POST /api/v1/pantry/extensions/food-facts/preview", s.require(s.pantryFoodFactsAPI))
+	mux.Handle("POST /api/v1/pantry/extensions/food-facts/execute", s.require(s.pantryFoodFactsAPI))
+	mux.Handle("GET /api/v1/pantry/extensions/food-facts/operations/{key}", s.require(s.pantryFoodFactsAPI))
+	mux.Handle("POST /api/v1/pantry/extensions/food-facts/operations/{key}/abandon", s.require(s.pantryFoodFactsAPI))
+	mux.Handle("GET /api/v1/pantry/extensions/food-facts/provenance/{product}", s.require(s.pantryFoodFactsAPI))
 	mux.Handle("GET /m/fuel/overview", s.require(s.fuelOverviewPage))
 	mux.Handle("GET /api/v1/fuel/overview", s.require(s.fuelOverviewAPI))
 	mux.Handle("GET /m/fuel/workspace/{pane}", s.require(s.fuelModulePage))
@@ -624,7 +653,7 @@ func formatChoice(v any) string {
 	if raw == "" {
 		return "Keine Angabe"
 	}
-	labels := map[string]string{"piece": "Stück", "available": "Verfügbar", "unavailable": "Nicht verfügbar", "substituted": "Ersatz gewählt", "diesel": "Diesel", "petrol": "Benzin", "lpg": "LPG", "cng": "CNG", "receive": "Zugang", "consume": "Verbrauch", "waste": "Entsorgung", "adjust": "Korrektur", "expense": "Ausgabe", "refund": "Erstattung", "dinner": "Abendessen", "lunch": "Mittagessen", "breakfast": "Frühstück", "snack": "Zwischenmahlzeit", "actual": "Abgelesen", "estimated": "Geschätzt"}
+	labels := map[string]string{"piece": "Stück", "portion": "Portionen", "available": "Verfügbar", "unavailable": "Nicht verfügbar", "substituted": "Ersatz gewählt", "diesel": "Diesel", "petrol": "Benzin", "lpg": "LPG", "cng": "CNG", "receive": "Zugang", "consume": "Verbrauch", "waste": "Entsorgung", "adjust": "Korrektur", "expense": "Ausgabe", "refund": "Erstattung", "dinner": "Abendessen", "lunch": "Mittagessen", "breakfast": "Frühstück", "snack": "Zwischenmahlzeit", "actual": "Abgelesen", "estimated": "Geschätzt"}
 	if label, ok := labels[raw]; ok {
 		return label
 	}

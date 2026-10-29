@@ -1,6 +1,6 @@
 (()=>{
  'use strict';const root=document.querySelector('#pantry-priority');if(!root)return;const $=s=>root.querySelector(s),form=$('#priority-filter'),rows=$('#priority-rows'),prev=$('#priority-previous'),next=$('#priority-next'),refresh=$('#priority-refresh');
- const node=(tag,text,cls)=>{const n=document.createElement(tag);if(text!==undefined)n.textContent=text;if(cls)n.className=cls;return n;},link=(text,url)=>{const a=node('a',text);a.href=url;return a;},unit=v=>v==='piece'?'Stück':v,qty=v=>String(v).replace(/(\.\d*?)0+$/,'$1').replace(/\.$/,'').replace('.',','),date=v=>String(v).slice(0,10).split('-').reverse().join('.');
+ const node=(tag,text,cls)=>{const n=document.createElement(tag);if(text!==undefined)n.textContent=text;if(cls)n.className=cls;return n;},link=(text,url)=>{const a=node('a',text);a.href=url;return a;},unit=v=>v==='piece'?'Stück':v==='portion'?'Portionen':v,qty=v=>String(v).replace(/(\.\d*?)0+$/,'$1').replace(/\.$/,'').replace('.',','),date=v=>String(v).slice(0,10).split('-').reverse().join('.');
  let active={q:'',product:''},cursor='',following='',trail=[],busy=false;const params=new URLSearchParams(location.search);form.elements.q.value=params.get('q')||'';const initialProduct=params.get('product')||'';
  const values=()=>({q:form.elements.q.value.trim(),product:form.elements.product.value});
  async function api(url){const r=await fetch(url,{headers:{Accept:'application/json'}}),data=await r.json();if(!r.ok)throw Error(data.error||'Daten konnten nicht geladen werden.');return data;}

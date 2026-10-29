@@ -15,6 +15,7 @@ import (
 
 	"household/internal/audit"
 	"household/internal/auth"
+	"household/internal/foodfacts"
 	"household/internal/module"
 	"household/internal/value"
 
@@ -39,6 +40,7 @@ type State struct {
 type Record = map[string]any
 type Store struct {
 	FuelOCREnabled bool
+	FoodFacts      foodfacts.Provider
 	Pool           *pgxpool.Pool
 	Modules        []module.Descriptor
 	snapshot       atomic.Value

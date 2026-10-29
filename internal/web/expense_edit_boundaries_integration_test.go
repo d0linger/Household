@@ -178,6 +178,9 @@ func TestExpenseEditPopulatedCore23UpgradePreservesSharedFinancialFacts(t *testi
 		if schema == "core" {
 			version = 23
 		}
+		if schema == "pantry" {
+			version = 11 // Pantry12 requires the later Core26/Fuel5 audit predecessor.
+		}
 		if schema == "expenses" {
 			version = 3
 		}
@@ -216,7 +219,7 @@ func TestExpenseEditPopulatedCore23UpgradePreservesSharedFinancialFacts(t *testi
 		t.Fatal("Core24 changed historical shared fact or invented values", err)
 	}
 	var proofs, policies int
-	if err := f.owner.QueryRow(f.ctx, "SELECT (SELECT count(*) FROM core.expense_edit_operations),(SELECT count(*) FROM core.audit_policies)").Scan(&proofs, &policies); err != nil || proofs != 0 || policies != 89 {
+	if err := f.owner.QueryRow(f.ctx, "SELECT (SELECT count(*) FROM core.expense_edit_operations),(SELECT count(*) FROM core.audit_policies)").Scan(&proofs, &policies); err != nil || proofs != 0 || policies != 95 {
 		t.Fatal("upgrade fabricated editor proofs or lost audit policy", proofs, policies, err)
 	}
 	if err := database.Ready(f.ctx, f.pool); err != nil {

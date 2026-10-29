@@ -233,7 +233,7 @@ func summarizePantryWaste(rows []PantryWasteRow, point PantryWastePoint, sourceF
 }
 
 func pantryWasteUnit(unit string) bool {
-	return unit == "piece" || unit == "g" || unit == "kg" || unit == "ml" || unit == "l"
+	return unit == "piece" || unit == "portion" || unit == "g" || unit == "kg" || unit == "ml" || unit == "l"
 }
 
 // The proof is internal operation evidence, not part of public journal records.

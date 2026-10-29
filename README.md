@@ -4,6 +4,8 @@ Development follows a strict module gate: summarize the whole module, implement 
 
 The [Vehicles/Fuel specification](docs/fuel-module.md) documents twelve workspaces, exact values, durable retries, local OCR and its API boundary. Local acceptance passes70current native contracts,87selected Linux race contracts,20real browser workflows/1031checks, six actual OCR sources, real encrypted backup/restore/purge and the existing28-component browser chain/908checks. [Executed evidence and limits](docs/fuel-module-validation.md) preserve earlier failures. Live8100, hosted CI and Linux browser/recovery portability remain unchanged or unverified; no complete current repository coverage is inferred.
 
+The [Pantry completion block](docs/pantry-module-plan.md) is locally accepted: cooked leftovers (PA10), optional Open Food Facts suggestions (PA13) and device-local offline scan drafts (PA19). Validation includes 157 native tests, 102 standalone browser checks, 14 real encrypted recovery/purge stages and the complete 28-component browser regression with 912 checks. [Executed evidence and acceptance boundaries](docs/pantry-module-validation.md) identify the exact tested sources. Pantry is 20/20 verified; the overall checklist is 85 verified / 0 in progress / 95 open.
+
 **Project progress:** [task list with checked items](docs/taskliste.md) · [acceptance criteria and executed evidence for all 180 improvements](docs/improvements-180.md). Regenerate the task list after status changes with `node scripts/update-tasklist.cjs`.
 
 A self-hosted, mobile-first household PWA. Go serves the embedded interface and JSON API; PostgreSQL stores normalized module data. Docker Compose runs the application, an isolated database, and a one-shot migration service. No frontend CDN, cloud account, paid license, remote font, or external script is required.
@@ -121,11 +123,16 @@ For a Shopping8 restore, the maintenance owner preserves the migration-pinned ba
 | `HOUSEHOLD_DB_MAX_CONNECTIONS` | 2–100, default 10 |
 | `HOUSEHOLD_UPLOAD_DIR` | Private file directory, `/data/uploads` in Docker |
 | `HOUSEHOLD_OCR_ENABLED` | Off unless the OCR image/profile is selected |
+| `HOUSEHOLD_OFF_ENABLED` | Optional server-side product suggestions, default `false` |
+| `HOUSEHOLD_OFF_USER_AGENT` | Explicit application/version and operator contact; missing means not configured |
+| `HOUSEHOLD_OFF_STAGING` | Fixed OFF staging service, development only; default `false` |
 | `HOUSEHOLD_METRICS_TOKEN_FILE` | Optional secret for `/metrics` via `X-Metrics-Token` |
 
 Secret settings accept either their plain environment form or `_FILE`, never both. Keep the encryption key with recoverable backups; replacing it without re-encrypting existing secrets breaks TOTP recovery.
 
 The origin is normalized to browser form (lowercase host, no trailing root slash or default port). Paths, queries, fragments and invalid ports are rejected; international DNS names use ASCII/punycode. Maintenance database URLs must explicitly specify user, host, port and database. Set `sslmode` explicitly so PostgreSQL tools and application connections use the intended TLS policy; see [maintenance connection rules](docs/operations.md#backups).
+
+The in-progress OFF adapter uses only the fixed production or explicit development staging APIv3 service; it accepts no custom upstream URL. The browser contacts Household only. Local Pantry aliases win, and an external request needs explicit consent and a suitable GTIN. Product name, brand and pack text remain reviewed suggestions with ODbL/DbCL attribution; the complete retrieved proposal and selected-field markers remain as historical provenance after adoption. There are no external images, uploads, automatic stock entries or shelf-life claims. Global persistent request budget, cache limits and current authority rechecks are implemented and under joint module testing, not yet operationally accepted.
 
 ## Develop and verify
 
@@ -142,6 +149,8 @@ Go **1.27.3** or newer is required. The Docker builders are pinned to an immutab
 The integration script starts a separate disposable PostgreSQL container on `127.0.0.1:55434`, validates both database roles and the actual database, and resets only compiled schemas in `household_test` before/after each fixture. `HOUSEHOLD_REQUIRE_INTEGRATION=1` prevents missing URLs silently skipping CI tests. Browser checks prepare their own data through the real API on port 8101. Run database and browser suites sequentially:
 
 Each ordinary fixture runs all migrations once against fresh schemas and performs real authentication. `TestIntegrationMigrationRepeatAndAuditRepair` separately verifies repeatability, readiness and privileged audit-trigger repair; historical populated-upgrade regressions remain separate. Phase timings and the bounded local comparison are documented in [test-fixture-performance.md](docs/test-fixture-performance.md). No schema cache is used.
+
+Migration checksums pin exact SQL bytes. Git attributes disable newline conversion within `internal/database/migrations/`; preserve this rule so Windows staging and Linux checkouts keep the verified migration bytes unchanged.
 
 ```powershell
 ./scripts/run-review-server.ps1

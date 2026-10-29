@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"household/internal/audit"
+	"household/internal/database"
 	"household/internal/modules"
 	"household/internal/value"
 
@@ -53,7 +54,7 @@ func Purge(ctx context.Context, pool *pgxpool.Pool, requestID string) error {
 	if !known {
 		return errors.New("module is not compiled into this release")
 	}
-	rows, err := tx.Query(ctx, "SELECT tablename FROM pg_tables WHERE schemaname=$1 AND tablename NOT IN('schema_migrations','fuel_types') AND NOT($1='fuel' AND tablename IN('module_operations','module_effects','legacy_operation_fences')) ORDER BY tablename", mid)
+	rows, err := tx.Query(ctx, "SELECT tablename FROM pg_tables WHERE schemaname=$1 AND tablename NOT IN('schema_migrations','fuel_types') AND NOT($1='fuel' AND tablename IN('module_operations','module_effects','legacy_operation_fences')) AND NOT($1='pantry' AND tablename IN('leftover_operations','foodfacts_operations')) ORDER BY tablename", mid)
 	if err != nil {
 		return err
 	}
@@ -131,6 +132,23 @@ func Purge(ctx context.Context, pool *pgxpool.Pool, requestID string) error {
 		// historical business payloads must not remain in response receipts.
 		if _, err = tx.Exec(ctx, `UPDATE fuel.module_operations SET result=NULL,result_sha256=NULL WHERE household_id=$1`, hid); err != nil {
 			return err
+		}
+	}
+	if mid == "pantry" {
+		var version int
+		var dirty bool
+		if err = tx.QueryRow(ctx, "SELECT version,dirty FROM pantry.schema_migrations").Scan(&version, &dirty); err != nil {
+			return err
+		}
+		if dirty || version > database.ExpectedVersion("pantry") {
+			return errors.New("unsupported pantry schema for maintenance deletion")
+		}
+		if version >= 12 {
+			// The exact owner/operator contract removes historical response text
+			// while retaining minimal keys and completed cooking-source fences.
+			if _, err = tx.Exec(ctx, "SELECT pantry.clear_extension_responses($1)", hid); err != nil {
+				return err
+			}
 		}
 	}
 	for _, query := range []string{"DELETE FROM core.alert_states WHERE household_id=$1 AND module_id=$2", "DELETE FROM core.capture_jobs WHERE household_id=$1 AND module_id=$2", "UPDATE core.attachments SET state='purged' WHERE household_id=$1 AND module_id=$2", "DELETE FROM core.search_documents WHERE household_id=$1 AND module_id=$2", "DELETE FROM core.reminders WHERE household_id=$1 AND module_id=$2", "DELETE FROM core.notifications WHERE household_id=$1 AND module_id=$2", "DELETE FROM core.jobs WHERE household_id=$1 AND module_id=$2", "DELETE FROM core.outbox_events WHERE household_id=$1 AND module_id=$2", "DELETE FROM core.idempotency_records WHERE household_id=$1 AND (module_id=$2 OR target_generations ? $2)", "DELETE FROM core.import_batches WHERE household_id=$1 AND module_id=$2", "DELETE FROM core.resource_links WHERE household_id=$1 AND (source_module=$2 OR target_module=$2)", "DELETE FROM core.ingredient_product_bindings WHERE household_id=$1 AND ($2='recipes' OR $2='pantry')"} {

@@ -500,5 +500,8 @@ func (s *Store) transferStock(ctx context.Context, tx pgx.Tx, id auth.Identity, 
 		return err
 	}
 	_, err = tx.Exec(ctx, "INSERT INTO pantry.stock_movements(household_id,lot_id,quantity_delta,reason,correlation_id,created_by) VALUES($1,$2,-$3::numeric,'transfer',$4,$5),($1,$6,$3::numeric,'transfer',$4,$5)", id.HouseholdID, lot["id"], quantity.FloatString(6), correlation, id.UserID, newID)
-	return err
+	if err != nil {
+		return err
+	}
+	return recordPreparedTransfer(ctx, tx, id, String(lot["id"]), newID, correlation, quantity.FloatString(6), generation)
 }

@@ -30,14 +30,30 @@ func (s *Server) exportCSV(w http.ResponseWriter, r *http.Request) {
 	var buf bytes.Buffer
 	writer := csv.NewWriter(&buf)
 	header := []string{}
+	withPantrySources := m.ID == "pantry" && (e.ID == "products" || e.ID == "packs" || e.ID == "barcodes")
 	for _, f := range e.Fields {
 		header = append(header, f.Name)
+	}
+	if withPantrySources {
+		header = append(header, "source_provenance")
 	}
 	if err = writer.Write(header); err != nil {
 		s.fail(w, r, err)
 		return
 	}
 	emit := func(rows []store.Record) error {
+		var sources map[string]string
+		if withPantrySources && len(rows) != 0 {
+			ids := make([]string, 0, len(rows))
+			for _, row := range rows {
+				ids = append(ids, store.String(row["id"]))
+			}
+			var sourceErr error
+			sources, sourceErr = s.Store.PantryFoodFactsExportSources(r.Context(), identity(r), e.ID, ids)
+			if sourceErr != nil {
+				return sourceErr
+			}
+		}
 		for _, row := range rows {
 			line := make([]string, 0, len(e.Fields))
 			for _, f := range e.Fields {
@@ -47,6 +63,13 @@ func (s *Server) exportCSV(w http.ResponseWriter, r *http.Request) {
 				}
 				line = append(line, v)
 			}
+			if withPantrySources {
+				provenance := sources[store.String(row["id"])]
+				if provenance == "" {
+					provenance = "[]"
+				}
+				line = append(line, provenance)
+			}
 			if err := writer.Write(line); err != nil {
 				return err
 			}
@@ -55,7 +78,7 @@ func (s *Server) exportCSV(w http.ResponseWriter, r *http.Request) {
 		if err := writer.Error(); err != nil {
 			return err
 		}
-		if m.ID == "expenses" && buf.Len() > 16<<20 {
+		if (m.ID == "expenses" || withPantrySources) && buf.Len() > 16<<20 {
 			return store.Invalid{Message: "Export überschreitet die unterstützte Ausgabegröße; Betreiber-Sicherung verwenden"}
 		}
 		return nil
@@ -128,8 +151,12 @@ func (s *Server) importCSV(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	allowed := map[string]bool{}
+	pantrySources := m.ID == "pantry" && (e.ID == "products" || e.ID == "packs" || e.ID == "barcodes")
 	for _, f := range e.Fields {
 		allowed[f.Name] = true
+	}
+	if pantrySources {
+		allowed["source_provenance"] = true
 	}
 	seen := map[string]bool{}
 	for _, h := range header {
@@ -156,13 +183,25 @@ func (s *Server) importCSV(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		data := map[string]json.RawMessage{}
+		sourceMessage := ""
 		for i, v := range line {
+			if pantrySources && header[i] == "source_provenance" {
+				// A CSV cannot create trusted provider provenance. Preserve an
+				// attributed export as evidence; fresh adoption has its own review.
+				if strings.TrimSpace(v) != "" && strings.TrimSpace(v) != "[]" {
+					sourceMessage = "Herkunftsmetadaten sind ein schreibgeschützter Quellenauszug. Datei als Nachweis bewahren; Produktdaten über die Quellenprüfung übernehmen."
+				}
+				continue
+			}
 			b, _ := json.Marshal(v)
 			data[header[i]] = b
 		}
 		_, validation := e.Normalize(data, false)
 		message := ""
-		if validation != nil {
+		if sourceMessage != "" {
+			message = sourceMessage
+			failures++
+		} else if validation != nil {
 			message = validation.Error()
 			failures++
 		}

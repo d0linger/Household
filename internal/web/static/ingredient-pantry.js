@@ -7,7 +7,7 @@ const HouseholdIngredientDisplay = (() => {
 })();
 if(typeof module !== 'undefined')module.exports=HouseholdIngredientDisplay;
 if(typeof document !== 'undefined')(() => {
- const {amount,reasons}=HouseholdIngredientDisplay,unit=v=>v==='piece'?'Stück':v;
+ const {amount,reasons}=HouseholdIngredientDisplay,unit=v=>v==='piece'?'Stück':v==='portion'?'Portionen':v;
  const node=(tag,text,cls)=>{const n=document.createElement(tag);if(text!==undefined)n.textContent=text;if(cls)n.className=cls;return n;};
  const link=(text,path)=>{const n=node('a',text);n.href=path;return n;};
  async function api(path,options){const response=await fetch(path,options);let data;try{data=await response.json();}catch{throw Error('Antwort konnte nicht gelesen werden. Dieselbe Anfrage erneut prüfen.');}if(!response.ok){const e=Error(data.error||'Anfrage fehlgeschlagen');e.status=response.status;throw e;}return data;}

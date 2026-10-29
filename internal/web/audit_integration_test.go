@@ -36,7 +36,7 @@ func TestAuditTrailContract(t *testing.T) {
 			AND NOT(t.schemaname='pantry' AND t.tablename='lot_balances')
 			AND NOT(t.schemaname='fuel' AND t.tablename=ANY($2::text[]))`,
 			[]string{"shopping", "fuel", "recipes", "pantry", "expenses", "chores", "meters", "documents", "mealplan"}, privateFuel).Scan(&missing, &domainTables)
-		if err != nil || missing != 0 || domainTables != 60 {
+		if err != nil || missing != 0 || domainTables != 66 {
 			t.Fatalf("domain coverage: missing=%d tables=%d error=%v", missing, domainTables, err)
 		}
 		// Dedicated API tables remain audited business facts. Only the exact
@@ -49,6 +49,16 @@ func TestAuditTrailContract(t *testing.T) {
  (SELECT count(*) FROM core.audit_policies WHERE schema_name='fuel' AND table_name=ANY($2::text[]))`, authoritativeFuel, privateFuel).
 			Scan(&fuelTables, &fuelPolicies, &privateTables, &privatePolicies); err != nil || fuelTables != 14 || fuelPolicies != 14 || privateTables != 8 || privatePolicies != 0 {
 			t.Fatalf("Fuel classification: facts=%d policies=%d private=%d privatePolicies=%d error=%v", fuelTables, fuelPolicies, privateTables, privatePolicies, err)
+		}
+		pantryExtensions := []string{"leftover_operations", "prepared_lots", "prepared_transfers", "foodfacts_cache", "foodfacts_operations", "foodfacts_provenance"}
+		var extensionTables, extensionPolicies int
+		var redacted bool
+		if err = f.owner.QueryRow(f.ctx, `SELECT
+ (SELECT count(*) FROM pg_tables WHERE schemaname='pantry' AND tablename=ANY($1::text[])),
+ count(*),coalesce(bool_and(label_column IS NULL AND NOT(safe_columns && ARRAY['name','dish_name','label','location_name','result','source_snapshot','request_hash','payload_sha256','selected_fields']::text[])),false)
+ FROM core.audit_policies WHERE schema_name='pantry' AND table_name=ANY($1::text[])`, pantryExtensions).
+			Scan(&extensionTables, &extensionPolicies, &redacted); err != nil || extensionTables != 6 || extensionPolicies != 6 || !redacted {
+			t.Fatalf("Pantry extension classification: tables=%d policies=%d redacted=%t error=%v", extensionTables, extensionPolicies, redacted, err)
 		}
 		var ready bool
 		if err = f.pool.QueryRow(f.ctx, "SELECT core.audit_ready()").Scan(&ready); err != nil || !ready {

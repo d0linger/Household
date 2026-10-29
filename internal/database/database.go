@@ -208,6 +208,13 @@ func Ready(ctx context.Context, pool *pgxpool.Pool) error {
 	if !waste {
 		return errors.New("incomplete waste analysis contract")
 	}
+	var preparedCapture bool
+	if err := pool.QueryRow(ctx, "SELECT pantry.prepared_capture_ready()").Scan(&preparedCapture); err != nil {
+		return fmt.Errorf("inspect prepared food and scan contract: %w", err)
+	}
+	if !preparedCapture {
+		return errors.New("incomplete prepared food and scan contract")
+	}
 	if err := pool.QueryRow(ctx, "SELECT core.meal_reservations_ready()").Scan(&reservations); err != nil {
 		return fmt.Errorf("inspect meal reservation contract: %w", err)
 	}
