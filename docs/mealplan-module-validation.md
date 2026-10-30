@@ -1,6 +1,6 @@
 # Mealplan module validation
 
-MP08/13/15/19 source gate closed30 October2026, after the complete module plan and full parallel implementation. Overall feature status remains97verified/4inprogress/79open. This ledger starts before tests; no unit/native/browser/security/recovery pass is inferred from source review.
+MP08/13/15/19 are jointly verified locally; Mealplan is20/20 and the authoritative task list is101verified/0inprogress/79open. The whole source gate preceded tests on30October2026. The ledger preserves that chronology and every original failure; no unit/native/browser/security/recovery pass is inferred from source review. The actual85-file implementation checkpoint is `acfe08fb533222693044d2cf2c4d27ea3dc0d607`; no push or live deployment occurred.
 
 ## Frozen source and independent review
 
@@ -22,7 +22,7 @@ Prepared sources include13budget/autoplan unit mains and5native mains, eight lef
 | Vet/lint/Gosec/vulnerability/dependency checks | A5F11-gate static/security acceptance below; current607taggedVet/formatting/unrestrictedLint pass, Lint0issues76.375s. Exact607lineage differs from accepted209only in three integration-test files. No later scanner run is inferred from source equality. |
 | Non-root Docker/Compose and actual mobile/desktop browser | Runtime/OCR/backup209images built and inspected UID10001/source labels; three Compose configurations validate without starting production services. Real staged209browser87checks/eight clean Axe/eight inspected PNGs passed. Fresh complete30-component regression also passed1,066checks/151clean Axe scans/163saved PNGs; all eight current Mealplan views were inspected again. |
 | Encrypted populated restore/purge/independence | Real staged209recovery17/17 passed: exact populated restore/audit100/three keys, actual restored calendar/revocation, App denial/Owner purge/generation fence/independent rows and verified owned cleanup. Synthetic operator and empty-upload limits are disclosed below. |
-| Exact source/evidence replay / staged secret scan / local checkpoint | Full30source/report/PNG replay and FinalE's exact native-source/event/coverage replay passed. The sole passing integration-test addition is transferred with all606preimages unchanged. Actual114-file clean raw mirroring and five-root private cleanup pass; six frozen source archives intentionally remain. Independent functional joint acceptance passes; exact indexed scan and local checkpoints remain pending. |
+| Exact source/evidence replay / staged secret scan / local checkpoint | Full30source/report/PNG replay, FinalE's exact native-source/event/coverage replay and functional joint acceptance pass. Actual114-file clean raw mirror/five-root private cleanup pass; six frozen source archives remain. Exact809-blob scan reports0findings/index unchanged;85SQL files and81predecessor bytes are proven, and the actual85-file main checkpoint is acfe08f. Separate final documentation-only packaging follows. |
 
 ## First actual runs and corrections
 
@@ -160,8 +160,9 @@ were separately hash/reparse/process/own-resource checked and removed without
 changing those reports. The superseded stage1 empty uploads volume was separately
 label/empty/reference checked and removed; `superseded-upload-cleanup.json` records
 verified absence without changing its original report or current browser resources.
-Complete native union/coverage, final module evidence and the local checkpoint remain open. Overall status stays
-97verified/4inprogress/79open until joint module acceptance.
+At that earlier browser boundary, native union/coverage, final module evidence
+and the local checkpoint remained open; the status was97/4/79. Their subsequent
+actual results follow below.
 
 ### Fresh complete30-component browser acceptance
 
@@ -310,9 +311,9 @@ Evidence under `outputs/mealplan-module-validation/`:
 `finalD-whole5-root-ledger-proof.json`; and
 `ordinary651-root-composition-proof.json` SHA
 `de44b34a62fd8db69f564645e56f769110b4027d9b3754bfde8e6b200e516807`.
-At that historical FinalD boundary Root stays606. Overall status stays97/4/79
-until joint source/evidence/cleanup acceptance. Checklist116remains open until
-all180improvements are complete.
+At that historical FinalD boundary Root stayed606and overall status stayed
+97/4/79until joint source/evidence/cleanup acceptance. Checklist116remains open
+until all180improvements are complete.
 
 ### Actual FinalE targeted race, independent replay and sole-test transfer
 
@@ -423,11 +424,11 @@ the Cleanup-only independent source-peer report SHA is
 `cc8d0540c86d00738f288acb25abcd591c8daef3a124f264cfcf63e74f68f547`.
 
 The subsequent independent joint reconciliation passes as recorded below.
-Feature/count closure, staged packaging and local checkpoint remain separate
-gates. Overall status stays97/4/79;116stays open until all180improvements are
-complete.
+At this retention boundary, feature/count closure, packaging and the main
+checkpoint remained separate gates. Their actual completion follows below;
+116still requires all180improvements.
 
-### Functional joint acceptance passed; exact packaging remains pending
+### Functional joint acceptance and separate packaging sequence
 
 The independent FILE-only joint report records
 `PASS-functional-joint-acceptance` for MP08/13/15/19 with no material functional
@@ -443,8 +444,43 @@ historical E helper, runtime or deleted private credentials.
 Report: `outputs/mealplan-module-validation/joint-acceptance-c37d3fcfaf694066a6412871e8c12927.json`,
 SHA`bca63809a449582ae2abd13ffbd61ed85221027babe7ca05b7cc86f2064a2bf1`.
 
-Root separately owns the exact indexed-blob secret/immutable-SQL scan and actual
-functional checkpoint. Only after those gates will the documentation/count
-checkpoint mark four features verified and change97/4/79to101/0/79. Neither
-commit nor count transition is claimed here; checklist112–115remain pending.
-Checklist116continues to require completion of all180improvements.
+Root keeps the exact indexed-blob secret/immutable-SQL scan and actual functional
+checkpoint separate from that independent verdict. Their subsequent actual
+results and count closure follow next. Checklist116continues to require all180.
+
+### Exact indexed scan, actual main checkpoint and four-feature closure
+
+The first packaging scan reports one false positive in English schema prose.
+Root preserves its redacted failed report and changes only that sentence to the
+precise SHA-256 capability-digest terminology. No scanner exclusion, rule change,
+application behavior or secret is introduced. Correction proof
+`staged-prose-finding-correction.json` has SHA
+`d9cd37c6f400d321122af2b41bc1f641504d82d8cd5345336ab8912ac306bb4a`.
+
+The complete approved repeat scans809exact indexed blobs with zero findings and
+proves the index unchanged. All85raw SQL files are pinned and all81released
+predecessor bytes remain exact. The deferred Finance draft is unchanged and
+unstaged. Root then actually records85paths in main checkpoint
+`acfe08fb533222693044d2cf2c4d27ea3dc0d607`, tree
+`5cc7aaa1ae68dc62dde661e20c5b6891e3bca00a`, directly after402ee6c.
+No push, live8100 deployment or hosted-CI execution occurs.
+
+The fresh final packaging Node repeat also passes275tests, zero failures,
+cancellations or skips. Its log is `node-final-package-approved.txt` SHA
+`4dfbf17c978954e026c61f86befd35740100c753b80d3c24a7ceac8876322a98`.
+This supplements, rather than replaces, the retained source-qualified Go/native,
+browser/recovery and static evidence above.
+
+Only after the independent joint verdict, exact index scan and actual main
+checkpoint are MP08/13/15/19 jointly checked. Mealplan is20/20; the regenerated
+authoritative task list is101verified/0inprogress/79open. Checklist110–115are
+complete on these actual facts. Root's final documentation-only scan/checkpoint
+is a separate subsequent packaging step and is not claimed already executed
+here. Checklist116remains open until all180improvements are complete.
+
+Evidence under `outputs/mealplan-module-validation/`:
+`staged-scan-9d09898dd35149c992aebbce04839598/summary.json` SHA
+`8371fdbab5603b82752510ca321ec61921bd13a8eb45cada9841973321979369`;
+`main-checkpoint-record.json` SHA
+`4d8d29198e0aad28755e1367a572c515756e2c51ca20af401b555cb0ba612507`;
+and `node-final-package-result.json` retain actual exit0 and log linkage.

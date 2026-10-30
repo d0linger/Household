@@ -1,6 +1,6 @@
 # Mealplan completion: MP08, MP13, MP15, MP19
 
-Status: complete module scope published before behavior implementation, 30 October 2026. Recipes is accepted20/20 at0227996; this block starts from402ee6c. The original publication claimed no execution result. Actual Phase3 browser, recovery, qualified native results and private raw cleanup are recorded below and in `docs/mealplan-module-validation.md`. Independent functional joint acceptance passes; exact indexed scan, functional checkpoint and later count/documentation checkpoint remain open. Overall status stays97verified/4inprogress/79open until Root closes those gates.
+Status: MP08/13/15/19 are jointly verified locally; Mealplan is20/20 and the authoritative task list is101verified/0inprogress/79open. The complete scope was published before implementation on30October2026, from402ee6c. Actual source-qualified tests, browser/recovery, private raw cleanup and independent joint acceptance are recorded in `docs/mealplan-module-validation.md`. Exact indexed scan passes and the85-file main checkpoint is `acfe08fb533222693044d2cf2c4d27ea3dc0d607`; final documentation-only packaging follows separately. No push or live deployment.
 
 ## Full change summary
 
@@ -198,10 +198,10 @@ Budget details expand into known/stale/unknown ingredient rows and day/meal tota
 ### Phase4 — acceptance and immediate continuation
 
 - [x] 111 Record actual passes, original failures, corrections and limits. The validation ledger records qualified651+fresh3/21+Push3/7, actual browser/recovery/pricing, exact current-source lineage and final raw-retention outcomes without rewriting failed originals.
-- [ ] 112 Jointly mark four features verified only after module acceptance. Functional joint reconciliation passes; Root's exact indexed scan and actual functional checkpoint must complete before the later documentation/count closure.
-- [ ] 113 Regenerate checked task list to101verified/0inprogress/79open. Requires the112closure after Root's first checkpoint; current master remains97/4/79 until that separate transition.
-- [ ] 114 Perform exact staged-blob secret scan and immutable SQL proof.
-- [ ] 115 Save local module checkpoint without push or live deployment.
+- [x] 112 Jointly mark four features verified only after module acceptance. Independent functional joint acceptance, exact indexed scan and actual main checkpoint pass; MP08/13/15/19are jointly verified, Mealplan20/20.
+- [x] 113 Regenerate checked task list to101verified/0inprogress/79open. Root updates the authoritative improvements list and regenerated task view only after the actual85-file main checkpoint.
+- [x] 114 Perform exact staged-blob secret scan and immutable SQL proof. Approved repeat scans809indexed blobs with0findings/index unchanged;85SQL files and all81released predecessor bytes are exact. The preserved initial schema-prose false positive is corrected only by precise terminology, with no scanner-rule exclusion.
+- [x] 115 Save local module checkpoint without push or live deployment. Actual main checkpoint `acfe08fb533222693044d2cf2c4d27ea3dc0d607` contains85paths/tree5cc7aaa1; recordSHA`4d8d29198e0aad28755e1367a572c515756e2c51ca20af401b555cb0ba612507`. Separate final documentation-only packaging follows; no second checkpoint is inferred.
 - [ ] 116 Continue Finance, then Chores, Meters and Documents until180complete.
 
 ## Standards and evidence policy

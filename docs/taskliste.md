@@ -1,14 +1,14 @@
 # Household – Aufgabenliste
 
-Stand: 30.10.2026, 22:15 (Europe/Vienna).
+Stand: 30.10.2026, 22:26 (Europe/Vienna).
 
-**97 / 180 verifiziert und abgehakt · 4 in Arbeit · 79 offen.**
+**101 / 180 verifiziert und abgehakt · 0 in Arbeit · 79 offen.**
 
 Ein Haken bedeutet: umgesetzt und durch ausgeführte Prüfungen belegt. Vorbereitete Änderungen und einzelne bestandene Zwischentests schließen einen Verbesserungspunkt noch nicht ab.
 
-Aktuell in Arbeit: **MP08 – Geplante Reste**, **MP13 – Wochenbudget**, **MP15 – Essens-Kalender**, **MP19 – Regelbasierter Autoplan**.
+Derzeit ist kein Punkt als „In Arbeit“ markiert.
 
-**Aktueller Modulblock: Essensplanung.** Geplante Reste, Wochenbudget, Kalender und Autoplan sind umgesetzt und funktional abgenommen. Der genaue Git-Index-Geheimnisscan und der lokale Checkpoint werden abgeschlossen. Der [Modulplan mit116Checkboxen](mealplan-module-plan.md) zeigt die abgehakten Unteraufgaben.
+**Essensplanung vollständig lokal abgenommen: 20 / 20 Punkte.** Geplante Reste, Wochenbudget, Kalender und Autoplan sind nach nativen Tests, Browserprüfung und verschlüsseltem Restore/Purge gemeinsam abgehakt. [Modulplan](mealplan-module-plan.md) · [Abnahmenachweise und Grenzen](mealplan-module-validation.md).
 
 **Vorrat vollständig lokal abgenommen: 20 / 20 Punkte.** PA10, PA13 und PA19 sind nach nativen Tests, eigenständigem Browserlauf, echtem Restore/Purge und vollständiger 28-Komponenten-Regression abgehakt. [Modulplan](pantry-module-plan.md) · [Abnahmenachweise](pantry-module-validation.md).
 
@@ -26,7 +26,7 @@ Diese Ansicht wird aus der [verbindlichen Liste mit Abnahmekriterien und Nachwei
 | Aufgaben | 0 / 20 | 0 | 20 |
 | Zähler und Energie | 0 / 20 | 0 | 20 |
 | Dokumente | 0 / 20 | 0 | 20 |
-| Essensplanung | 16 / 20 | 4 | 0 |
+| Essensplanung | 20 / 20 | 0 | 0 |
 
 ## Einkaufen
 
@@ -221,16 +221,16 @@ Diese Ansicht wird aus der [verbindlichen Liste mit Abnahmekriterien und Nachwei
 - [x] **MP05 Planungsstatus** — Offen, geplant, eingekauft, gekocht und abgesagt nachvollziehbar verwalten.
 - [x] **MP06 Teilnehmer und Gäste** — Portionen ableiten und manuell überschreibbar halten.
 - [x] **MP07 Wochenvorlagen** — Neue Wochen ohne alte Erledigungshistorie oder falsche Links aus Vorlage erzeugen.
-- [ ] **MP08 Geplante Reste** — **In Arbeit** — Erwartete Restportionen mit Folgemahlzeit verknüpfen und vom realen Bestand unterscheiden.
+- [x] **MP08 Geplante Reste** — Erwartete Restportionen mit Folgemahlzeit verknüpfen und vom realen Bestand unterscheiden.
 - [x] **MP09 Mehrere Komponenten** — Beilagen und Hauptgerichte mit eigenen Portionen und gemeinsamer Bedarfsvorschau planen.
 - [x] **MP10 Zeitbudget** — Vorbereitung und Kochen pro Tag berechnen; Parallelität nur ausdrücklich annehmen.
 - [x] **MP11 Vorratsbasierte Vorschläge** — Verfügbarkeit anhand ausdrücklicher Produktzuordnungen bewerten.
 - [x] **MP12 Verfallsorientierte Planung** — Geöffnete und bald fällige Produkte mit erklärbarem Grund priorisieren.
-- [ ] **MP13 Wochenbudget** — **In Arbeit** — Geschätzte Kosten und Alternativen mit fehlenden Preisen anzeigen.
+- [x] **MP13 Wochenbudget** — Geschätzte Kosten und Alternativen mit fehlenden Preisen anzeigen.
 - [x] **MP14 Differenzieller Bedarf** — Freien, reservierten und bereits vorgemerkten Bestand korrekt vom Bedarf abziehen.
-- [ ] **MP15 Essens-Kalender** — **In Arbeit** — ICS mit stabilen Kennungen, Aktualisierung und widerrufbaren Feeds anbieten.
+- [x] **MP15 Essens-Kalender** — ICS mit stabilen Kennungen, Aktualisierung und widerrufbaren Feeds anbieten.
 - [x] **MP16 Rezeptstand im Plan** — Verwendete Rezeptversion erhalten und Änderungen zur bewussten Übernahme anzeigen.
 - [x] **MP17 Wiederholbare Einkaufsübernahme** — Bedarf über Plan-, Komponenten- und Zutatenidentität aktualisieren statt duplizieren.
 - [x] **MP18 Reservierungen freigeben** — Bei Verschieben, Absage und Ablauf versionsgeprüft freigeben.
-- [ ] **MP19 Regelbasierter Autoplan** — **In Arbeit** — Gewichtete Kriterien erklären und jede Mahlzeit austauschbar lassen; kein KI-Zwang.
+- [x] **MP19 Regelbasierter Autoplan** — Gewichtete Kriterien erklären und jede Mahlzeit austauschbar lassen; kein KI-Zwang.
 - [x] **MP20 Gebündelte Wochendaten** — Autorisierte Wochenansicht mit Versionen, verzögerten Bildern und gezielten Updates laden.
