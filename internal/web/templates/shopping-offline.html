@@ -1,0 +1,60 @@
+{{define "shopping-offline"}}
+<link rel="stylesheet" href="{{index .Asset "shopping-extensions.css"}}">
+<section id="shopping-offline" class="shopping-extension" data-shopping-offline>
+ <a href="/">Zu Household</a><h1>Einkaufslisten offline lesen</h1>
+ <p class="se-intro">Nur ausdrücklich gespeicherte Lesekopien dieses privaten Geräts. Kein Abhaken, Bearbeiten oder automatisches Übertragen. Die Kopien sind nicht verschlüsselt und können Artikelnotizen und angezeigte Zuständigkeiten enthalten.</p>
+ <p>Höchstens zehn Listen, zusammen 1.000 Artikel und 2 MiB Listendaten. Kopien sind höchstens sieben Tage lesbar. Abgelaufene Daten werden beim nächsten Zugriff bereinigt.</p>
+ <p id="so-status" role="status">Eigene Lesekopien ausdrücklich öffnen oder online neu auswählen.</p>
+ <div id="so-error" class="notice error" role="alert" tabindex="-1" hidden></div>
+ <div class="se-actions"><button id="so-open" type="button">Eigene gespeicherte Listen öffnen</button><button id="so-connect" type="button">Online anmelden und Listen auswählen</button><a class="button" href="/settings">Geräteeinstellungen</a><button id="so-reset" class="subtle" type="button">Alle Shopping-Lesekopien auf diesem Gerät löschen</button></div>
+ <section id="so-session" class="notice" hidden><h2>Neue Sitzung oder Berechtigung</h2><p>Frühere Inhalte werden erst nach vollständigem aktuellem Abruf wieder freigegeben. Die ursprüngliche Laufzeit wird durch bloßes Öffnen nicht verlängert.</p><label class="check-label"><input id="so-reauth-consent" type="checkbox">Alle bisherigen eigenen Listen einschließlich Notizen und Zuständigkeiten vollständig neu abrufen und auf diesem Gerät ersetzen.</label><button id="so-reauthorize" type="button">Alle eigenen Kopien vollständig neu prüfen</button></section>
+ <section id="so-generation" class="notice" hidden><h2>Früherer Einkaufsstand</h2><p>Alte Kopien werden nicht mit einer neuen Modul-Generation verbunden. Alte Gerätekopien ausdrücklich löschen und danach neu auswählen.</p><button id="so-discard" type="button" class="danger">Alte Shopping-Lesekopien löschen</button></section>
+ <section id="so-selection" class="panel" data-shopping-private hidden>
+  <h2 tabindex="-1" id="so-selection-title">Aktuelle Listen ausdrücklich wählen</h2>
+  <label>Einkaufslisten suchen<input id="so-search" type="search" maxlength="300" autocomplete="off"></label><div class="se-actions"><button id="so-find" type="button">Listen suchen</button><button id="so-options-more" type="button" hidden>Weitere Treffer</button></div>
+  <div id="so-options" class="se-rows"></div><p id="so-selection-count" role="status"></p>
+  <label class="check-label"><input id="so-consent" type="checkbox">Diese vollständigen Listen einschließlich Artikelnotizen und angezeigter Zuständigkeiten auf diesem privaten Gerät speichern.</label>
+  <button id="so-save" type="button" class="primary">Gewählte Listen vollständig speichern</button>
+ </section>
+ <section id="so-library" class="panel" data-shopping-private hidden><h2 tabindex="-1" id="so-library-title">Gespeicherte Lesekopien</h2><p id="so-budget" class="se-count"></p><div id="so-stored" class="se-rows"></div></section>
+ <section id="so-view" class="panel" data-shopping-private hidden>
+  <h2 id="so-title" tabindex="-1"></h2><p class="notice">Gespeicherte Lesekopie · Serverstand nicht bestätigt. Angezeigte Erledigungen und Verfügbarkeiten gelten nur für diesen gespeicherten Stand.</p>
+  <p id="so-asof" class="se-time"></p><p id="so-expiry" class="se-time"></p><p id="so-flags"></p>
+  <label>Nur diese gespeicherte Liste durchsuchen<input id="so-filter" type="search" maxlength="300"></label>
+  <div id="so-items" class="se-rows"></div><p id="so-page-note" role="status"></p>
+  <div class="se-actions"><button id="so-previous" type="button" hidden>Vorherige gespeicherte Artikel</button><button id="so-next" type="button" hidden>Weitere gespeicherte Artikel</button></div>
+  <div class="se-actions"><a id="so-online" class="button" href="/">Aktuelle Liste online öffnen</a><button id="so-refresh-current" type="button">Diese Kopie aktuell neu abrufen</button><button id="so-delete-current" class="danger" type="button">Nur diese Gerätekopie löschen</button><button id="so-back" type="button">Zur gespeicherten Übersicht</button></div>
+ </section>
+ <noscript><p>Die ausdrücklich freigegebenen Geräte-Lesekopien benötigen das mitgelieferte JavaScript. Online bleiben die normalen Einkaufslisten verfügbar.</p></noscript>
+</section><script nonce="{{.Nonce}}" src="{{index .Asset "shopping-offline.js"}}" defer></script>
+{{end}}
+
+{{define "shopping-push-controls"}}
+<section class="shopping-extension se-device" data-shopping-push aria-label="Gerätehinweise verwalten">
+ <h3>Hinweise auf diesem Gerät</h3><p>Gerätehinweise sind optional. Auf dem Sperrbildschirm stehen nur allgemeine Einkaufshinweise, keine Listen- oder Artikelnamen. Berechtigung und Serverregistrierung bestätigen keine tatsächliche Anzeige.</p>
+ <p data-push-server>Serverkonfiguration wird geprüft …</p><p data-push-permission></p><p data-push-local></p><p data-push-status role="status"></p>
+ <div class="se-actions"><button type="button" data-push-enable disabled>Dieses Gerät ausdrücklich verbinden</button><button type="button" data-push-refresh>Aktuellen Gerätestatus prüfen</button><button type="button" data-push-clear class="subtle">Lokale Browserverbindung entfernen</button></div>
+ <div data-push-devices class="se-rows"></div>
+</section>
+{{end}}
+
+{{define "shopping-watch-controls"}}
+<details class="shopping-extension se-personal" data-shopping-watch="{{.Record.id}}">
+ <summary>Persönliche Listenhinweise</summary><p>Änderungen anderer Haushaltsmitglieder werden gebündelt. Eigene Änderungen und reine Einkaufsstatus-Meldungen erzeugen keine Inhaltsmitteilung.</p>
+ <p data-watch-status role="status">Persönlichen Stand ausdrücklich laden.</p><div data-watch-error class="notice error" role="alert" tabindex="-1" hidden></div>
+ <button type="button" data-watch-load>Aktuellen Hinweisstatus laden</button>
+ <form data-watch-form data-shopping-private hidden>
+  <fieldset data-watch-fields><label class="check-label"><input type="checkbox" data-watch-enabled>Änderungen dieser Liste in der App melden</label><label class="check-label"><input type="checkbox" data-watch-push>Zusätzlich Gerätehinweise für diese Liste wünschen</label><label>Hinweise pausieren<select data-watch-mute><option value="">Aktuelle Pause: Änderung ausdrücklich wählen</option><option value="0">Nicht stummschalten</option><option value="3600">Für 60 Minuten stummschalten</option><option value="86400">Für 24 Stunden stummschalten</option><option value="604800">Für sieben Tage stummschalten</option></select></label><p data-watch-effective></p><button type="submit" class="primary" data-watch-save>Persönliche Hinweise speichern</button></fieldset>
+ </form>
+ {{template "shopping-push-controls" .}}
+</details>
+{{end}}
+
+{{define "shopping-inline-offline"}}
+<details class="shopping-extension se-personal" data-shopping-save-list="{{.Record.id}}">
+ <summary>Diese Liste offline lesen</summary><p>Eine vollständige Lesekopie einschließlich Artikelnotizen und angezeigter Zuständigkeiten wird unverschlüsselt auf diesem Gerät gespeichert. Keine gesonderten Preisfelder, Bilder oder Bearbeitungsanfragen; eigene Notizen können beliebige persönliche Angaben enthalten. Es wird nichts automatisch übertragen.</p>
+ <label class="check-label"><input type="checkbox" data-offline-consent>Diese Liste auf diesem privaten Gerät ausdrücklich zum Lesen speichern.</label>
+ <div class="se-actions"><button type="button" data-offline-save>Vollständige Lesekopie speichern</button><button type="button" data-offline-reauthorize hidden>Alle eigenen Kopien vollständig neu prüfen</button><a class="button" href="/offline/shopping">Gespeicherte Listen öffnen</a></div><p data-offline-status role="status"></p>
+ <p><a href="/settings">Gerätefreigabe und gespeicherte Kopien verwalten</a></p>
+</details>
+{{end}}

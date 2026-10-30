@@ -1,8 +1,8 @@
 # Household – Aufgabenliste
 
-Stand: 29.10.2026, 01:37 (Europe/Vienna).
+Stand: 30.10.2026, 09:13 (Europe/Vienna).
 
-**85 / 180 verifiziert und abgehakt · 0 in Arbeit · 95 offen.**
+**87 / 180 verifiziert und abgehakt · 0 in Arbeit · 93 offen.**
 
 Ein Haken bedeutet: umgesetzt und durch ausgeführte Prüfungen belegt. Vorbereitete Änderungen und einzelne bestandene Zwischentests schließen einen Verbesserungspunkt noch nicht ab.
 
@@ -14,7 +14,7 @@ Diese Ansicht wird aus der [verbindlichen Liste mit Abnahmekriterien und Nachwei
 
 | Modul | Abgehakt | In Arbeit | Offen |
 |---|---:|---:|---:|
-| Einkaufen | 18 / 20 | 0 | 2 |
+| Einkaufen | 20 / 20 | 0 | 0 |
 | Fahrzeuge und Tanken | 20 / 20 | 0 | 0 |
 | Rezepte | 10 / 20 | 0 | 10 |
 | Vorrat | 20 / 20 | 0 | 0 |
@@ -40,9 +40,9 @@ Diese Ansicht wird aus der [verbindlichen Liste mit Abnahmekriterien und Nachwei
 - [x] **SH12 Belegabgleich** — Abgeschlossenen Einkauf mit Beleg verknüpfen und Plan/Ist-Abweichungen prüfen.
 - [x] **SH13 Barcode-Erfassung** — Kamera oder Scanner nutzen; lokale Zuordnung zuerst, externe Suche nur optional.
 - [x] **SH14 Nachkaufvorschläge** — Lokale Kaufabstände erklären und Vorschläge manuell übernehmen.
-- [ ] **SH15 Listenbenachrichtigungen** — Abonnements, gebündelte Hinweise und optional konfigurierten Web Push bereitstellen.
+- [x] **SH15 Listenbenachrichtigungen** — Abonnements, gebündelte Hinweise und optional konfigurierten Web Push bereitstellen.
 - [x] **SH16 Live-Aktualisierung** — Autorisierte Änderungen ohne Verlust laufender Eingaben und Versionskontrolle nachladen.
-- [ ] **SH17 Offline-Leselisten** — Ausgewählte Listen ausdrücklich pro Gerät freigeben; Eigentümer, Ablauf und Abmeldung beachten.
+- [x] **SH17 Offline-Leselisten** — Ausgewählte Listen ausdrücklich pro Gerät freigeben; Eigentümer, Ablauf und Abmeldung beachten.
 - [x] **SH18 Konfliktprüfung** — Eigene und aktuelle Werte verständlich vergleichen und bewusst erneut speichern.
 - [x] **SH19 Suchbare Auswahl** — Referenzen jenseits von 100 Einträgen mit Suche und stabiler Cursor-Paginierung auswählen.
 - [x] **SH20 Atomarer Abschluss** — Einkauf, Bestand und Belege mit wiederholbarer Operation ohne Doppelbuchung abschließen.

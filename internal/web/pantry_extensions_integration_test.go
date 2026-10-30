@@ -103,16 +103,46 @@ func TestPantryExtensionsServiceWorkerCachesOnlyNeutralScanShell(t *testing.T) {
 	if err = json.Unmarshal(match[1], &paths); err != nil {
 		t.Fatal(err)
 	}
-	neutral := false
+	neutral, shoppingNeutral := false, false
 	for _, path := range paths {
 		if path == "/offline/scans" {
 			neutral = true
 		}
-		if path != "/offline" && path != "/offline/scans" && !strings.HasPrefix(path, "/assets/") {
+		if path == "/offline/shopping" {
+			shoppingNeutral = true
+		}
+		if path != "/offline" && path != "/offline/scans" && path != "/offline/shopping" && !strings.HasPrefix(path, "/assets/") {
 			t.Fatal("private data entered public asset cache", path)
 		}
 	}
 	if !neutral {
 		t.Fatal("offline restart has no neutral scan document")
+	}
+	if !shoppingNeutral {
+		t.Fatal("offline restart has no exact neutral Shopping document")
+	}
+	for _, caller := range []struct {
+		name, token string
+	}{{"anonymous", ""}, {"current administrator", f.token}} {
+		t.Run(caller.name, func(t *testing.T) {
+			response, raw, requestErr := f.request(http.MethodGet, "/offline/shopping", caller.token, "", "", nil, nil)
+			if requestErr != nil || response.StatusCode != http.StatusOK {
+				t.Fatal("neutral Shopping document unavailable", requestErr)
+			}
+			if !strings.Contains(response.Header.Get("Cache-Control"), "public") || len(response.Cookies()) != 0 {
+				t.Fatal("neutral Shopping document set private cache state or a cookie")
+			}
+			text := string(raw)
+			for _, required := range []string{`data-user=""`, `data-household=""`, `<meta name="csrf-token" content="">`, `data-shopping-offline`} {
+				if !strings.Contains(text, required) {
+					t.Fatal("Shopping shell did not retain empty identity/CSRF fields and its neutral view")
+				}
+			}
+			for _, private := range []string{f.identity.UserID, f.identity.HouseholdID, f.identity.SessionID, f.identity.MembershipID, f.identity.Username, f.token, f.app.Auth.CSRF(f.token, "session")} {
+				if private != "" && strings.Contains(text, private) {
+					t.Fatal("Shopping shell included fixture identity or credentials")
+				}
+			}
+		})
 	}
 }

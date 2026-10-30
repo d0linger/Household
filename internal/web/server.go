@@ -30,6 +30,7 @@ import (
 	"household/internal/module"
 	"household/internal/store"
 	"household/internal/value"
+	"household/internal/webpush"
 
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -50,6 +51,7 @@ type Server struct {
 	Pool       *pgxpool.Pool
 	Auth       *auth.Service
 	Store      *store.Store
+	Push       *webpush.Service
 	Log        *slog.Logger
 	templates  *template.Template
 	assets     map[string]string
@@ -101,6 +103,11 @@ func New(ctx context.Context, pool *pgxpool.Pool, cfg config.Config, mods []modu
 	if err != nil {
 		return nil, err
 	}
+	records := store.New(pool, mods)
+	push, err := webpush.New(pool, a, records, cfg, log)
+	if err != nil {
+		return nil, fmt.Errorf("configure optional push service: %w", err)
+	}
 	ids := []string{}
 	enabled := map[string]bool{}
 	for _, m := range mods {
@@ -110,7 +117,7 @@ func New(ctx context.Context, pool *pgxpool.Pool, cfg config.Config, mods []modu
 	if err = a.Bootstrap(ctx, ids, enabled); err != nil {
 		return nil, err
 	}
-	s := &Server{Cfg: cfg, Pool: pool, Auth: a, Store: store.New(pool, mods), Log: log, assets: map[string]string{}, imageSlots: make(chan struct{}, 2)}
+	s := &Server{Cfg: cfg, Pool: pool, Auth: a, Store: records, Push: push, Log: log, assets: map[string]string{}, imageSlots: make(chan struct{}, 2)}
 	s.Store.FuelOCREnabled = cfg.OCREnabled
 	s.Store.FoodFacts = provider
 	if err = s.Store.LoadStates(ctx); err != nil {
@@ -149,6 +156,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /sw.js", s.serviceWorker)
 	mux.HandleFunc("GET /manifest.webmanifest", s.manifest)
 	mux.HandleFunc("GET /offline", s.offline)
+	mux.HandleFunc("GET /offline/shopping", s.offlineShopping)
 	mux.HandleFunc("GET /login", s.loginPage)
 	mux.HandleFunc("POST /login", s.login)
 	mux.Handle("GET /{$}", s.require(s.home))
@@ -306,6 +314,15 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /m/recipes/catalog/{catalog}", s.require(s.ingredientPage))
 	mux.Handle("GET /m/recipes/recipes/{id}/pantry", s.require(s.ingredientPage))
 	mux.Handle("POST /api/v1/core/preferences", s.require(s.preferences))
+	mux.Handle("GET /api/v1/shopping/extensions/context", s.require(s.shoppingExtensionsContextAPI))
+	mux.Handle("GET /api/v1/shopping/lists/{id}/notification-preferences", s.require(s.shoppingNotificationPreferenceAPI))
+	mux.Handle("PUT /api/v1/shopping/lists/{id}/notification-preferences", s.require(s.shoppingNotificationPreferenceAPI))
+	mux.Handle("GET /api/v1/shopping/notification-preferences", s.require(s.shoppingNotificationOverviewAPI))
+	mux.Handle("POST /api/v1/shopping/offline-snapshots", s.require(s.shoppingOfflineSnapshotAPI))
+	mux.Handle("GET /api/v1/core/push/context", s.require(s.pushContextAPI))
+	mux.Handle("GET /api/v1/core/push/subscriptions", s.require(s.pushSubscriptionsAPI))
+	mux.Handle("POST /api/v1/core/push/subscriptions", s.require(s.pushSubscriptionsAPI))
+	mux.Handle("DELETE /api/v1/core/push/subscriptions/{id}", s.require(s.pushDisableAPI))
 	mux.Handle("GET /m/{module}/{entity}", s.require(s.modulePage))
 	mux.Handle("GET /m/{module}/reports", s.require(s.reportPage))
 	mux.Handle("GET /m/{module}/{entity}/{id}", s.require(s.detailPage))

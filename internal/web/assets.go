@@ -59,8 +59,15 @@ func (s *Server) offlinePantryScans(w http.ResponseWriter, r *http.Request) {
 	s.render(w, r, p)
 }
 
+func (s *Server) offlineShopping(w http.ResponseWriter, r *http.Request) {
+	nonce, _ := r.Context().Value(nonceKey).(string)
+	p := Page{Title: "Offline-Einkaufslisten", View: "shopping-offline", Nonce: nonce, Asset: s.assets}
+	w.Header().Set("Cache-Control", "public,max-age=0,must-revalidate")
+	s.render(w, r, p)
+}
+
 func (s *Server) serviceWorker(w http.ResponseWriter, r *http.Request) {
-	list := []string{"/offline", "/offline/scans"}
+	list := []string{"/offline", "/offline/scans", "/offline/shopping"}
 	for _, url := range s.assets {
 		list = append(list, url)
 	}
@@ -76,8 +83,14 @@ self.addEventListener('install',event=>event.waitUntil(caches.open(CACHE).then(c
 self.addEventListener('message',event=>{if(event.data?.type==='ACTIVATE')self.skipWaiting();});
 self.addEventListener('activate',event=>event.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(key=>key.startsWith('household-')&&key!==CACHE).map(key=>caches.delete(key)))).then(()=>self.clients.claim())));
 self.addEventListener('fetch',event=>{const url=new URL(event.request.url);if(event.request.method!=='GET'||url.origin!==self.location.origin)return;
-if(ASSETS.includes(url.pathname)&&url.pathname!=='/offline'&&url.pathname!=='/offline/scans'){event.respondWith(caches.open(CACHE).then(cache=>cache.match(event.request).then(hit=>hit||fetch(event.request))));return;}
-if(event.request.mode==='navigate'){const fallback=['/offline/scans','/m/pantry/scans'].includes(url.pathname)?'/offline/scans':'/offline';event.respondWith(fetch(event.request).catch(()=>caches.open(CACHE).then(cache=>cache.match(fallback))));}});
+if(ASSETS.includes(url.pathname)&&!['/offline','/offline/scans','/offline/shopping'].includes(url.pathname)){event.respondWith(caches.open(CACHE).then(cache=>cache.match(event.request).then(hit=>hit||fetch(event.request))));return;}
+if(event.request.mode==='navigate'){const fallback=['/offline/scans','/m/pantry/scans'].includes(url.pathname)?'/offline/scans':url.pathname==='/offline/shopping'||url.pathname.startsWith('/m/shopping/')?'/offline/shopping':'/offline';event.respondWith(fetch(event.request).catch(()=>caches.open(CACHE).then(cache=>cache.match(fallback))));}});
 `, version, raw)
+	pushSource, err := files.ReadFile("static/push-worker.js")
+	if err != nil {
+		http.Error(w, "Service Worker unavailable", http.StatusInternalServerError)
+		return
+	}
+	body += fmt.Sprintf("\nconst PUSH_ICON=%q;\n", s.assets["icon-192.png"]) + string(pushSource)
 	s.writeBytes(w, r, []byte(body))
 }

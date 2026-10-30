@@ -13,6 +13,7 @@ import (
 	"household/internal/modules"
 	"household/internal/store"
 	"household/internal/value"
+	"household/internal/webpush"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -22,6 +23,7 @@ type Worker struct {
 	Pool *pgxpool.Pool
 	Log  *slog.Logger
 	Cfg  config.Config
+	Push *webpush.Service
 	scan directoryScan
 }
 
@@ -50,7 +52,12 @@ func (w *Worker) Run(ctx context.Context) {
 
 // Close releases the current orphan-directory cursor. Run calls it on shutdown;
 // callers using Tick directly must call Close after their final cycle.
-func (w *Worker) Close() error { return w.scan.close() }
+func (w *Worker) Close() error {
+	if w.Push != nil {
+		w.Push.Close()
+	}
+	return w.scan.close()
+}
 
 func (w *Worker) Tick(ctx context.Context) error {
 	ctx = audit.WithRequest(audit.WithSystem(ctx, "worker"), value.UUID())
@@ -65,6 +72,9 @@ func (w *Worker) Tick(ctx context.Context) error {
 		return err
 	}
 	if err := w.outbox(ctx); err != nil {
+		return err
+	}
+	if err := w.shoppingNotifications(ctx); err != nil {
 		return err
 	}
 	if err := w.files(ctx); err != nil {
@@ -165,6 +175,12 @@ func (w *Worker) job(ctx context.Context) (jobErr error) {
 	}
 	if kind == "thumbnail" {
 		return w.thumbnail(ctx, id, lease)
+	}
+	if kind == store.ShoppingDigestJobKind {
+		return store.New(w.Pool, modules.Registry()).CompleteShoppingNotificationJob(ctx, id, lease)
+	}
+	if kind == store.ShoppingPushJobKind {
+		return w.shoppingPush(ctx, id, lease)
 	}
 	tx, err := audit.Begin(ctx, w.Pool)
 	if err != nil {

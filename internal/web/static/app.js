@@ -16,6 +16,15 @@
   let deferredInstall, worker, pendingDelete;
   let toastTimer;
   function toast(message) {const box = $('#toast'); box.textContent = message; box.hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => box.hidden = true, 6000);}
+  async function clearPrivateDeviceData(includePush=false){
+    const reset=device=>{try{return device&&typeof device.reset==='function'?Promise.resolve(device.reset()):Promise.reject(Error('Gerätebereinigung ist nicht verfügbar.'));}catch(error){return Promise.reject(error);}};
+    const pending=[clearQueue(),reset(window.HouseholdPantryDevice),reset(window.HouseholdShoppingDevice)];
+    if(includePush)pending.push(reset(window.HouseholdPushDevice));
+    const bounded=promise=>{let timer;return Promise.race([Promise.resolve(promise),new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error('Gerätebereinigung wurde nicht rechtzeitig bestätigt.')),6500);})]).finally(()=>clearTimeout(timer));};
+    const settled=await Promise.allSettled(pending.map(bounded));
+    if(settled.some(result=>result.status==='rejected'))throw Error('Lokale Gerätedaten konnten nicht vollständig gelöscht werden. Gerätespeicher prüfen.');
+  }
+  try{if(sessionStorage.getItem('household-device-cleanup-warning')){sessionStorage.removeItem('household-device-cleanup-warning');toast('Lokale Gerätedaten konnten nicht vollständig gelöscht werden. Gerätespeicher prüfen.');}}catch{}
   function connection() {const box = $('#connection'); box.hidden = navigator.onLine; box.textContent = 'Offline · Änderungen erst nach erneuter Verbindung und Prüfung übertragen.';}
   addEventListener('online', connection); addEventListener('offline', connection); connection();
   try {const theme = localStorage.getItem('household-theme'); if (theme === 'light' || theme === 'dark') document.documentElement.dataset.theme = theme;} catch {}
@@ -180,7 +189,7 @@
   const preferences = $('#preferences');
   if(preferences){try{preferences.elements.theme.value=localStorage.getItem('household-theme')||'system';preferences.elements.offline.checked=localStorage.getItem('household-offline-owner')===user;}catch{}
     preferences.addEventListener('submit',async event=>{event.preventDefault();const theme=preferences.elements.theme.value,offline=preferences.elements.offline.checked;
-      try{const response=await fetch('/api/v1/core/preferences',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf()},body:JSON.stringify({theme,offline})});if(!response.ok)throw new Error('Einstellungen konnten nicht gespeichert werden.');localStorage.setItem('household-theme',theme);if(theme==='system')delete document.documentElement.dataset.theme;else document.documentElement.dataset.theme=theme;if(offline)localStorage.setItem('household-offline-owner',user);else{localStorage.removeItem('household-offline-owner');await Promise.all([clearQueue(),window.HouseholdPantryDevice?.reset()]);}toast('Geräteeinstellungen gespeichert.');}catch(error){toast(error.message);}
+      try{const response=await fetch('/api/v1/core/preferences',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf()},body:JSON.stringify({theme,offline})});if(!response.ok)throw new Error('Einstellungen konnten nicht gespeichert werden.');localStorage.setItem('household-theme',theme);if(theme==='system')delete document.documentElement.dataset.theme;else document.documentElement.dataset.theme=theme;if(offline)localStorage.setItem('household-offline-owner',user);else{localStorage.removeItem('household-offline-owner');await clearPrivateDeviceData();}toast('Geräteeinstellungen gespeichert.');}catch(error){toast(error.message);}
     });
   }
   const choiceText=value=>({piece:'Stück',portion:'Portionen',available:'Verfügbar',unavailable:'Nicht verfügbar',substituted:'Ersatz gewählt',diesel:'Diesel',petrol:'Benzin',lpg:'LPG',cng:'CNG',receive:'Zugang',consume:'Verbrauch',waste:'Entsorgung',adjust:'Korrektur',expense:'Ausgabe',refund:'Erstattung',dinner:'Abendessen',lunch:'Mittagessen',breakfast:'Frühstück',snack:'Zwischenmahlzeit',actual:'Abgelesen',estimated:'Geschätzt'})[value]||String(value);
@@ -283,8 +292,8 @@
   // Explicit recipe drafts share logout/account isolation with the offline queue.
   function clearRecipeDrafts(all=false){try{for(const key of Object.keys(localStorage)){if(!key.startsWith('household-recipe-draft:'))continue;let draft;try{draft=JSON.parse(localStorage.getItem(key));}catch{}if(all||!draft||(user&&(draft.owner!==user||draft.household!==document.body.dataset.household))||!Number.isFinite(draft.expires)||draft.expires<=Date.now())localStorage.removeItem(key);}for(const key of Object.keys(sessionStorage)){if(!key.startsWith('household-pantry-pending:'))continue;let locator;try{locator=JSON.parse(sessionStorage.getItem(key));}catch{}if(all||!locator||user&&(locator.user!==user||locator.household!==household))sessionStorage.removeItem(key);}}catch{}}
   clearRecipeDrafts();
-  $('#logout-form')?.addEventListener('submit',async event=>{event.preventDefault();clearRecipeDrafts(true);try{localStorage.removeItem('household-offline-owner');}catch{}try{await Promise.all([clearQueue(),window.HouseholdPantryDevice?.reset()]);}catch{}event.target.submit();});
-  if(user){try{const owner=localStorage.getItem('household-offline-owner');if(owner&&owner!==user){clearQueue().catch(()=>{});localStorage.removeItem('household-offline-owner');}window.HouseholdPantryDevice?.observe(user,household).catch(()=>{});}catch{}}
+  $('#logout-form')?.addEventListener('submit',async event=>{event.preventDefault();clearRecipeDrafts(true);try{localStorage.removeItem('household-offline-owner');}catch{}try{await clearPrivateDeviceData(true);}catch{try{sessionStorage.setItem('household-device-cleanup-warning','1');}catch{}}event.target.submit();});
+  if(user){try{const owner=localStorage.getItem('household-offline-owner');if(owner&&owner!==user){clearPrivateDeviceData(true).catch(error=>toast(error.message));localStorage.removeItem('household-offline-owner');}for(const device of [window.HouseholdPantryDevice,window.HouseholdShoppingDevice,window.HouseholdPushDevice])device?.observe(user,household).catch(error=>toast(error.message));}catch{}}
   if($('#queue-count'))queueOp('readonly',store=>store.count()).then(count=>$('#queue-count').textContent=count?`${count} Änderungen warten auf Prüfung nach der Anmeldung.`:'').catch(()=>{});
   const attachmentList=$('[data-attachments]');
   if(attachmentList)fetch(attachmentList.dataset.attachments,{headers:{Accept:'application/json'}}).then(r=>r.ok?r.json():[]).then(rows=>{for(const row of rows){const li=document.createElement('li');const a=document.createElement('a');a.href='/attachments/'+row.id;a.textContent=row.name;a.target='_blank';a.rel='noopener';if(row.preview){const img=document.createElement('img');img.src='/attachments/'+row.id+'/preview';img.alt='';img.width=96;img.height=96;img.loading='lazy';a.prepend(img);}li.append(a);attachmentList.append(li);}}).catch(()=>{});

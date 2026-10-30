@@ -404,7 +404,7 @@ func (s *Store) Write(ctx context.Context, id auth.Identity, m module.Descriptor
 	if err != nil {
 		return nil, err
 	}
-	if err = s.afterWrite(ctx, tx, id, m, e, result, in.Generation); err != nil {
+	if err = s.afterWrite(shoppingProducerBefore(ctx, m, e, current), tx, id, m, e, result, in.Generation); err != nil {
 		return nil, err
 	}
 	if err = Audit(ctx, tx, id, m.ID, e.ID, rid, "record_write", requestID); err != nil {
@@ -476,11 +476,11 @@ func (s *Store) afterWrite(ctx context.Context, tx pgx.Tx, id auth.Identity, m m
 		return err
 	}
 	event := value.UUID()
-	payload, err := json.Marshal(map[string]any{"entity": e.ID, "id": r["id"]})
+	payload, eventVersion, err := shoppingEventPayload(ctx, m.ID, e.ID, r)
 	if err != nil {
 		return err
 	}
-	_, err = tx.Exec(ctx, "INSERT INTO core.outbox_events(id,household_id,module_id,module_generation,event_type,actor_user_id,payload,dedupe_key) VALUES($1::uuid,$2,$3,$4,'record_changed',$5,$6,$1::uuid::text)", event, id.HouseholdID, m.ID, generation, id.UserID, payload)
+	_, err = tx.Exec(ctx, "INSERT INTO core.outbox_events(id,household_id,module_id,module_generation,event_type,event_version,actor_user_id,payload,dedupe_key,created_at) VALUES($1::uuid,$2,$3,$4,'record_changed',$5,$6,$7,$1::uuid::text,CASE WHEN $3='shopping' THEN clock_timestamp() ELSE transaction_timestamp() END)", event, id.HouseholdID, m.ID, generation, eventVersion, id.UserID, payload)
 	if err != nil {
 		return err
 	}
@@ -508,12 +508,30 @@ func (s *Store) Delete(ctx context.Context, id auth.Identity, m module.Descripto
 			return err
 		}
 	}
+	var shoppingBefore Record
+	if m.ID == "shopping" && (e.ID == "items" || e.ID == "lists") {
+		var raw []byte
+		if err = tx.QueryRow(ctx, "SELECT to_jsonb(t) FROM "+pgx.Identifier{m.ID, e.ID}.Sanitize()+" t WHERE household_id=$1 AND id=$2 AND version=$3 FOR UPDATE", id.HouseholdID, rid, version).Scan(&raw); errors.Is(err, pgx.ErrNoRows) {
+			return ErrConflict
+		} else if err != nil {
+			return err
+		}
+		shoppingBefore, err = decode(raw)
+		if err != nil {
+			return err
+		}
+	}
 	tag, err := tx.Exec(ctx, "DELETE FROM "+pgx.Identifier{m.ID, e.ID}.Sanitize()+" WHERE household_id=$1 AND id=$2 AND version=$3", id.HouseholdID, rid, version)
 	if err != nil {
 		return err
 	}
 	if tag.RowsAffected() != 1 {
 		return ErrConflict
+	}
+	if shoppingBefore != nil {
+		if err = emitShoppingDeletion(ctx, tx, id, e.ID, shoppingBefore, generation); err != nil {
+			return err
+		}
 	}
 	if err = cleanupDeletedIngredientBinding(ctx, tx, id, m.ID, e.ID, rid); err != nil {
 		return err

@@ -1,6 +1,8 @@
 {{define "shopping-board"}}
+<link rel="stylesheet" href="{{index .Asset "shopping-extensions.css"}}">
 <script nonce="{{.Nonce}}" src="{{index .Asset "shopping-input.js"}}" defer></script><script nonce="{{.Nonce}}" src="{{index .Asset "shopping.js"}}" defer></script>
 <script nonce="{{.Nonce}}" src="{{index .Asset "shopping-repurchase.js"}}" defer></script>
+<script nonce="{{.Nonce}}" src="{{index .Asset "shopping-notifications.js"}}" defer></script><script nonce="{{.Nonce}}" src="{{index .Asset "shopping-offline.js"}}" defer></script>
 <section class="panel shopping-board" data-shopping-list="{{.Record.id}}" data-generation="{{with index .States "shopping"}}{{.Generation}}{{end}}" data-can-write="{{.User.CanWrite}}" data-is-admin="{{eq .User.Role "admin"}}">
   <div class="section-heading"><h2 id="shopping-list-title">{{.Record.name}}</h2><label class="check-label"><input type="checkbox" id="shopping-mode">Einkaufsmodus</label></div>
   {{if .Record.is_template}}<p class="notice">Vorlage · Artikel hier vorbereiten. <a href="#shopping-copy-form">Neue Einkaufsliste erstellen</a>; ihr Einkaufsverlauf bleibt unabhängig.</p>{{end}}
@@ -43,6 +45,7 @@
   {{end}}
   <button type="button" id="shopping-more" hidden>Weitere Artikel laden</button>
   <p id="shopping-page-note" class="fine"></p>
+  <div aria-label="Persönliche Listenfreigaben">{{template "shopping-watch-controls" .}}{{template "shopping-inline-offline" .}}</div>
   {{if and .User.CanWrite (not .Record.archived_at) (not .Record.is_template)}}
   <details id="shopping-merge"><summary>Artikel kontrolliert zusammenführen</summary>
     <p class="fine">Zwei offene Positionen dieser Seite wählen. Die erste bleibt erhalten. Produkt, Ersatz, Gruppe, Notiz und Zuständigkeit müssen übereinstimmen; Mengen werden exakt in die Einheit der ersten Position umgerechnet.</p>

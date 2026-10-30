@@ -164,6 +164,13 @@ func Purge(ctx context.Context, pool *pgxpool.Pool, requestID string) error {
 			}
 		}
 	}
+	if mid == "shopping" {
+		// Personal Shopping watch consent belongs to this data generation. Other
+		// independently owned settings and global push devices remain untouched.
+		if _, err = tx.Exec(ctx, "UPDATE core.module_states SET settings=settings-'shopping_notify_v1' WHERE household_id=$1 AND module_id='shopping' AND data_generation=$2", hid, generation); err != nil {
+			return err
+		}
+	}
 	if _, err = tx.Exec(ctx, "UPDATE core.module_states SET data_generation=data_generation+1,state_version=state_version+1,changed_at=now() WHERE household_id=$1 AND module_id=$2 AND data_generation=$3", hid, mid, generation); err != nil {
 		return err
 	}

@@ -265,7 +265,7 @@ func (s *Store) Action(ctx context.Context, id auth.Identity, m module.Descripto
 		return nil, err
 	}
 	if result["id"] != nil {
-		if err = s.afterWrite(ctx, tx, id, m, e, result, in.Generation); err != nil {
+		if err = s.afterWrite(shoppingProducerBefore(ctx, m, e, record), tx, id, m, e, result, in.Generation); err != nil {
 			return nil, err
 		}
 	}

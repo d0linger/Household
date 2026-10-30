@@ -1,6 +1,6 @@
 # Checkliste: 180 genehmigte Verbesserungen
 
-Stand: 2026-10-29. Auftrag: alle 180 Vorschläge aus dem Modulvergleich implementieren und gründlich testen.
+Stand: 2026-10-30. Auftrag: alle 180 Vorschläge aus dem Modulvergleich implementieren und gründlich testen.
 
 **[Aufgabenliste mit abgehakten Punkten öffnen](taskliste.md)**. Die Checkboxansicht wird bei Statusänderungen mit `node scripts/update-tasklist.cjs` aus dieser verbindlichen Nachweisliste aktualisiert.
 
@@ -29,11 +29,13 @@ Ein Schema, eine Schaltfläche oder ein Mock allein schließt keinen Punkt ab. B
 
 ## Fortschritt
 
-180 Punkte: **85 verifiziert, 0 implementiert, 0 in Arbeit, 95 offen**. Dieser Zähler wird mit jedem abgeschlossenen Arbeitspaket abgeglichen.
+180 Punkte: **87 verifiziert, 0 implementiert, 0 in Arbeit, 93 offen**. Dieser Zähler wird mit jedem abgeschlossenen Arbeitspaket abgeglichen.
 
 Abgenommener Modulblock: **Fahrzeuge & Tanken (FU01–FU20)** – vollständige Implementierung und gemeinsame lokale Tests/Fehlerbehebung abgeschlossen. [Modulplan](fuel-module-plan.md).
 
 Abgenommener Modulblock: **Vorrat (PA10/PA13/PA19)** – vollständig implementiert und gemeinsam lokal abgenommen:157native,102eigenständigeBrowserprüfungen,14echteRecovery-Schritte sowie28-Komponenten-Regression mit912Checks. [Modulplan](pantry-module-plan.md) · [Prüfergebnisse und Abnahmegrenzen](pantry-module-validation.md).
+
+Abgenommener Modulblock: **Einkaufen (SH15/SH17)** – vollständiger Umfang und128chronologischeSchritte vor Umsetzung veröffentlicht. Beide Erweiterungen wurden danach gemeinsam implementiert, geprüft und nach echten Browserfehlern korrigiert. Aktuelle lokale Modulabnahme: Go247, Node245,24frische native Haupttests,37eigenständige Browserchecks,11Recovery-Stufen und28-Komponenten-Regression mit912Checks/135Axe. [Modulplan](shopping-module-plan.md) · [Nachweise und Grenzen](shopping-module-validation.md).
 
 ## Einkaufen
 
@@ -53,9 +55,9 @@ Abgenommener Modulblock: **Vorrat (PA10/PA13/PA19)** – vollständig implementi
 | SH12 | Belegabgleich | Abgeschlossenen Einkauf mit Beleg verknüpfen und Plan/Ist-Abweichungen prüfen. | Verifiziert | Native Gesamtsuite, fokussierte Linux-Race, bestückter Upgrade/Restore; 32 Checkout-Browserchecks/4 axe, Gesamtkette 296; C01–C03 unabhängig abgenommen |
 | SH13 | Barcode-Erfassung | Kamera oder Scanner nutzen; lokale Zuordnung zuerst, externe Suche nur optional. | Verifiziert | Shopping8 lokal integriert:15 neue PostgreSQL-Verträge plus Migrationsprobe bestanden;22er-Kompatibilität mit gezielten Fixture-Wiederholungen belegt.95Node/69SQL/Standardprüfung,26teilige Browsersuite und7Linux-Race-Verträge bestanden(Web91,521s),383Quellhashes unverändert; Gosec0Befunde und0erreichbare Go-Schwachstellen. Kamera synthetisch geprüft; Live8100 unverändert. [Nachweise](shopping-barcode.md). |
 | SH14 | Nachkaufvorschläge | Lokale Kaufabstände erklären und Vorschläge manuell übernehmen. | Verifiziert | Commit7c54250; 9 neue + 22 bestehende PostgreSQL-Verträge, 12 Linux-Race-Fälle(Web264.909s), vollständige25-Komponenten-Docker-Browserkette, 86 Node-Fälle, Gosec0 und govulncheck bestanden. docs/shopping-repurchase.md; Live8100 unverändert. |
-| SH15 | Listenbenachrichtigungen | Abonnements, gebündelte Hinweise und optional konfigurierten Web Push bereitstellen. | Offen | — |
+| SH15 | Listenbenachrichtigungen | Abonnements, gebündelte Hinweise und optional konfigurierten Web Push bereitstellen. | Verifiziert | Aktuelle527Quellen42c:24frische native Haupttests,37eigenständige Browserchecks,11Recovery-Stufen und vollständige28-Komponenten-Regression912/135Axe; kontrollierte verschlüsselte Push-Protokolltests und44Linux-Race-Haupttests auf Go-quellgleichem Vorstand. Optionaler Web Push ist standardmäßig aus; reale Hersteller-/Gerätezustellung wurde nicht behauptet. [Abnahme](shopping-module-validation.md). |
 | SH16 | Live-Aktualisierung | Autorisierte Änderungen ohne Verlust laufender Eingaben und Versionskontrolle nachladen. | Verifiziert | Native + Linux-Race; 33 Expansion-Browserchecks / 2 axe; unabhängige F01–F04-Abnahme bestanden |
-| SH17 | Offline-Leselisten | Ausgewählte Listen ausdrücklich pro Gerät freigeben; Eigentümer, Ablauf und Abmeldung beachten. | Offen | — |
+| SH17 | Offline-Leselisten | Ausgewählte Listen ausdrücklich pro Gerät freigeben; Eigentümer, Ablauf und Abmeldung beachten. | Verifiziert | Aktuelle527Quellen42c: Reader-Opt-in und vollständige102-Artikel-Kopie, echter Offline-Neustart ohne Schreibzugriff, neue Sitzung/Generation, Ablauf, Opt-out und Logout mit roher IndexedDB-Prüfung;37Browserchecks/3Axe0,11Recovery-Stufen,28-Komponenten-Regression912/135Axe. Grenzen10Listen/1000Artikel/2MiB/7Tage; keine sofortige Remote-Widerrufserkennung offline behauptet. [Abnahme](shopping-module-validation.md). |
 | SH18 | Konfliktprüfung | Eigene und aktuelle Werte verständlich vergleichen und bewusst erneut speichern. | Verifiziert | Native + Linux-Race; 33 Expansion-Browserchecks / 2 axe; unabhängige F01–F04-Abnahme bestanden |
 | SH19 | Suchbare Auswahl | Referenzen jenseits von 100 Einträgen mit Suche und stabiler Cursor-Paginierung auswählen. | Verifiziert | Native + Linux-Race; 33 Expansion-Browserchecks / 2 axe; unabhängige F01–F04-Abnahme bestanden |
 | SH20 | Atomarer Abschluss | Einkauf, Bestand und Belege mit wiederholbarer Operation ohne Doppelbuchung abschließen. | Verifiziert | Native Gesamtsuite, fokussierte Linux-Race, bestückter Upgrade/Restore; 32 Checkout-Browserchecks/4 axe, Gesamtkette 296; C01–C03 unabhängig abgenommen |

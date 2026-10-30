@@ -36,6 +36,9 @@ type Config struct {
 	FoodFactsEnabled   bool
 	FoodFactsUserAgent string
 	FoodFactsStaging   bool
+	WebPushEnabled     bool
+	WebPushPrivateKey  string
+	WebPushContact     string
 	MetricsToken       string
 }
 
@@ -94,6 +97,9 @@ func Load() (Config, error) {
 		if character < 32 || character > 126 {
 			return Config{}, errors.New("open food facts User-Agent requires printable ASCII")
 		}
+	}
+	if err = loadWebPush(&c); err != nil {
+		return Config{}, err
 	}
 	for name, target := range map[string]*string{"HOUSEHOLD_DATABASE_URL": &c.DatabaseURL, "HOUSEHOLD_CSRF_SECRET": &c.CSRFSecret, "HOUSEHOLD_ENCRYPTION_KEY": &c.EncryptionKey, "HOUSEHOLD_RATE_SECRET": &c.RateSecret, "HOUSEHOLD_ADMIN_PASSWORD": &c.AdminPassword, "HOUSEHOLD_METRICS_TOKEN": &c.MetricsToken} {
 		*target, err = secret(name)

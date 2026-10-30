@@ -38,6 +38,9 @@ func run(log *slog.Logger) error {
 		fmt.Println("Household 0.1.0")
 		return nil
 	}
+	if command == "push-keygen" {
+		return runPushKeygen(os.Args[2:])
+	}
 	if command == "healthcheck" {
 		client := &http.Client{Timeout: 3 * time.Second}
 		response, err := client.Get("http://127.0.0.1:8080/health/ready")
@@ -148,7 +151,7 @@ func run(log *slog.Logger) error {
 		return a.RecoverPassword(ctx, os.Args[2], cfg.AdminPassword, len(os.Args) == 4)
 	}
 	if command != "serve" {
-		return errors.New("unknown command; use serve, migrate, healthcheck, recover, or version")
+		return errors.New("unknown command; use serve, migrate, healthcheck, recover, version, or push-keygen")
 	}
 	if err = database.Ready(ctx, pool); err != nil {
 		return err
@@ -157,8 +160,9 @@ func run(log *slog.Logger) error {
 	if err != nil {
 		return err
 	}
+	defer app.Push.Close()
 	server := &http.Server{Addr: cfg.Listen, Handler: app.Handler(), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 30 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 90 * time.Second, MaxHeaderBytes: 16 << 10}
-	background := &worker.Worker{Pool: pool, Log: log, Cfg: cfg}
+	background := &worker.Worker{Pool: pool, Log: log, Cfg: cfg, Push: app.Push}
 	workerDone := make(chan struct{})
 	go func() { defer close(workerDone); background.Run(ctx) }()
 	defer func() { stop(); <-workerDone }()

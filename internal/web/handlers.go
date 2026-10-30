@@ -667,24 +667,46 @@ func (s *Server) searchAPI(w http.ResponseWriter, r *http.Request) {
 func (s *Server) notifications(w http.ResponseWriter, r *http.Request) {
 	p := s.page(r, "Mitteilungen")
 	p.View = "notifications"
-	rows, err := s.Pool.Query(r.Context(), "SELECT id,title,coalesce(target_path,''),read_at IS NOT NULL FROM core.notifications n WHERE user_id=$1 AND dismissed_at IS NULL AND (module_id IS NULL OR EXISTS(SELECT 1 FROM core.module_states m WHERE m.household_id=n.household_id AND m.module_id=n.module_id AND m.state='enabled')) ORDER BY created_at DESC LIMIT 100", identity(r).UserID)
+	rows, err := s.Pool.Query(r.Context(), "SELECT id,title,coalesce(target_path,''),read_at IS NOT NULL,kind FROM core.notifications n WHERE user_id=$1 AND household_id=$2 AND dismissed_at IS NULL AND (module_id IS NULL OR EXISTS(SELECT 1 FROM core.module_states m WHERE m.household_id=n.household_id AND m.module_id=n.module_id AND m.state='enabled')) ORDER BY created_at DESC LIMIT 100", identity(r).UserID, identity(r).HouseholdID)
 	if err != nil {
 		s.fail(w, r, err)
 		return
 	}
 	defer rows.Close()
+	type candidate struct {
+		id, title, target, kind string
+		read                    bool
+	}
+	var candidates []candidate
 	for rows.Next() {
-		var id, title, target string
+		var id, title, target, kind string
 		var read bool
-		if err = rows.Scan(&id, &title, &target, &read); err != nil {
+		if err = rows.Scan(&id, &title, &target, &read, &kind); err != nil {
 			s.fail(w, r, err)
 			return
 		}
-		p.Records = append(p.Records, store.Record{"id": id, "title": title, "url": target, "read": read})
+		candidates = append(candidates, candidate{id, title, target, kind, read})
 	}
 	if err = rows.Err(); err != nil {
 		s.fail(w, r, err)
 		return
+	}
+	// Release the cursor before per-notice authority queries, including with a
+	// single-connection pool. New Shopping targets are rebuilt from current state.
+	rows.Close()
+	for _, notice := range candidates {
+		if notice.kind == "shopping_list_changed_v1" {
+			projection, projectionErr := s.Store.ShoppingNotificationProjection(r.Context(), identity(r), notice.id)
+			if errors.Is(projectionErr, store.ErrNotFound) || errors.Is(projectionErr, store.ErrForbidden) || errors.Is(projectionErr, store.ErrConflict) {
+				continue
+			}
+			if projectionErr != nil {
+				s.fail(w, r, projectionErr)
+				return
+			}
+			notice.id, notice.title, notice.target = projection.ID, projection.Title, projection.TargetPath
+		}
+		p.Records = append(p.Records, store.Record{"id": notice.id, "title": notice.title, "url": notice.target, "read": notice.read})
 	}
 	s.render(w, r, p)
 }

@@ -1,0 +1,13 @@
+# Optional only: docker compose -f compose.yaml -f compose.webpush.yaml up -d --build
+# Create the private key first with household push-keygen; never commit it.
+services:
+  app:
+    environment:
+      HOUSEHOLD_WEB_PUSH_ENABLED: ${HOUSEHOLD_WEB_PUSH_ENABLED:-false}
+      HOUSEHOLD_WEB_PUSH_VAPID_PRIVATE_KEY_FILE: /run/secrets/web_push_private_key
+      HOUSEHOLD_WEB_PUSH_VAPID_CONTACT: ${HOUSEHOLD_WEB_PUSH_VAPID_CONTACT:-}
+    secrets:
+      - web_push_private_key
+secrets:
+  web_push_private_key:
+    file: .local/secrets/web_push_private_key

@@ -108,6 +108,9 @@ func (s *Store) applyPlanningPurchaseScope(ctx context.Context, tx pgx.Tx, id au
 			if tag.RowsAffected() != 1 {
 				return nil, ErrConflict
 			}
+			if err = emitShoppingDeletion(ctx, tx, id, "items", item, in.ShoppingGeneration); err != nil {
+				return nil, err
+			}
 			itemAfter, removed = nil, true
 		case "create", "update":
 			if err := s.afterWrite(ctx, tx, id, m, e, item, in.ShoppingGeneration); err != nil {
