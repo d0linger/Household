@@ -17,7 +17,7 @@ func TestPlanningPurchasePopulatedPriorUpgrade(t *testing.T) {
 	if err := resetIntegrationSchemas(f.ctx, f.owner); err != nil {
 		t.Fatal(err)
 	}
-	prior := map[string]uint{"core": 20, "shopping": 4, "fuel": 2, "pantry": 8, "mealplan": 4, "expenses": 3}
+	prior := map[string]uint{"core": 20, "shopping": 4, "fuel": 2, "recipes": 4, "pantry": 8, "mealplan": 4, "expenses": 3}
 	for _, schema := range database.Schemas {
 		version := uint(database.ExpectedVersion(schema))
 		if pinned, ok := prior[schema]; ok {
@@ -57,10 +57,34 @@ func TestPlanningPurchasePopulatedPriorUpgrade(t *testing.T) {
 	plan, _ := auditCreate(t, f, "mealplan", "plans", store.Record{"name": "Existing mapped plan", "starts_on": day, "ends_on": day})
 	meal, _ := auditCreate(t, f, "mealplan", "meals", store.Record{"plan_id": plan["id"], "title": "Existing mapped recipe", "planned_on": day, "kind": "recipe", "status": "planned", "servings": "3"})
 	pid, mid := store.String(plan["id"]), store.String(meal["id"])
-	recipe := recipeInput(t, f)
-	recipe.Data = recipeData(t, store.Record{"title": "Existing immutable source", "base_servings": "2"})
-	recipe.Ingredients = []store.RecipeRow{{Key: value.UUID(), Data: recipeData(t, store.Record{"name": "Existing mapped ingredient", "quantity": "0.25", "unit_code": "kg"})}}
-	rid := recipeSave(t, f, "", recipe)
+	// Seed the actual Recipes4 write shape in one transaction. The current
+	// editor writes Recipes5 metadata and cannot create a historical fixture.
+	rid := value.UUID()
+	ctx := audit.WithRequest(audit.WithActor(f.ctx, f.identity.UserID, f.identity.HouseholdID), value.UUID())
+	seed, err := audit.Begin(ctx, f.pool)
+	if err != nil {
+		t.Fatal("begin prior recipe write", err)
+	}
+	defer func() { _ = seed.Rollback(f.ctx) }()
+	if _, err = seed.Exec(ctx, `INSERT INTO recipes.recipes
+ (id,household_id,title,base_servings,created_by)
+ VALUES($1,$2,'Existing immutable source',2,$3)`, rid, f.identity.HouseholdID, f.identity.UserID); err != nil {
+		t.Fatal("prior recipe metadata", err)
+	}
+	if _, err = seed.Exec(ctx, `INSERT INTO recipes.ingredients
+ (household_id,recipe_id,position,name,quantity,unit_code,created_by)
+ VALUES($1,$2,1,'Existing mapped ingredient',0.25,'kg',$3)`, f.identity.HouseholdID, rid, f.identity.UserID); err != nil {
+		t.Fatal("prior recipe exact ingredient", err)
+	}
+	if _, err = seed.Exec(ctx, `INSERT INTO recipes.steps
+ (household_id,recipe_id,position,instruction,timer_seconds,created_by)
+ VALUES($1,$2,1,'Mix everything',NULL,$3),($1,$2,2,'Wait',90,$3)`,
+		f.identity.HouseholdID, rid, f.identity.UserID); err != nil {
+		t.Fatal("prior recipe ordered steps", err)
+	}
+	if err = seed.Commit(ctx); err != nil {
+		t.Fatal("commit prior immutable recipe version", err)
+	}
 	source, err := f.app.Store.PlanningSource(f.ctx, f.identity, rid)
 	if err != nil {
 		t.Fatal(err)
@@ -68,7 +92,6 @@ func TestPlanningPurchasePopulatedPriorUpgrade(t *testing.T) {
 	// Seed the real prior-schema client contract. The current weekly Store reads
 	// Mealplan7 participant fields and must not be run against historical Mealplan4.
 	cid := value.UUID()
-	ctx := audit.WithRequest(audit.WithActor(f.ctx, f.identity.UserID, f.identity.HouseholdID), value.UUID())
 	if _, err = audit.Exec(ctx, f.pool, `INSERT INTO mealplan.components(id,household_id,meal_id,position,servings,source_recipe_id,source_version_id,source_generation,source_revision,snapshot,created_by)
  SELECT $1,$2,$3,0,3,v.recipe_id,v.id,$5,v.revision,v.snapshot,$6 FROM recipes.versions v WHERE v.household_id=$2 AND v.id=$4`,
 		cid, f.identity.HouseholdID, mid, source["source_version_id"], store.Int(source["source_generation"]), f.identity.UserID); err != nil {

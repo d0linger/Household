@@ -204,7 +204,9 @@ func (w *Worker) job(ctx context.Context) (jobErr error) {
 		}
 		return tx.Commit(ctx)
 	}
-	for _, query := range []string{"DELETE FROM core.rate_limit_buckets WHERE window_end<now()-interval '1 day'", "DELETE FROM core.sessions WHERE absolute_expires_at<now()-interval '7 days' OR revoked_at<now()-interval '7 days'", "DELETE FROM core.auth_challenges WHERE expires_at<now()-interval '1 day'", "DELETE FROM core.idempotency_records WHERE expires_at<now()", "DELETE FROM core.capture_jobs WHERE expires_at<now() AND state<>'confirmed'", "DELETE FROM core.import_batches WHERE created_at<now()-interval '30 days' AND state='preview'"} {
+	for _, query := range []string{"DELETE FROM core.rate_limit_buckets WHERE window_end<now()-interval '1 day'", "DELETE FROM core.sessions WHERE absolute_expires_at<now()-interval '7 days' OR revoked_at<now()-interval '7 days'", "DELETE FROM core.auth_challenges WHERE expires_at<now()-interval '1 day'", "DELETE FROM core.idempotency_records WHERE expires_at<now()", "DELETE FROM core.capture_jobs WHERE expires_at<now() AND state<>'confirmed'", `DELETE FROM core.import_batches WHERE id IN(
+ SELECT id FROM core.import_batches WHERE purpose='recipe_review' AND expires_at<=clock_timestamp()
+ ORDER BY expires_at,id LIMIT 100 FOR UPDATE SKIP LOCKED)`, "DELETE FROM core.import_batches WHERE created_at<now()-interval '30 days' AND state='preview'"} {
 		if _, err = tx.Exec(ctx, query); err != nil {
 			return fmt.Errorf("housekeeping: %w", err)
 		}

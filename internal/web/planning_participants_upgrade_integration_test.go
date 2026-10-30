@@ -23,6 +23,9 @@ func TestPlanningParticipantsPopulatedPriorUpgradePreservesIndependentQuantities
 	}
 	for _, schema := range database.Schemas {
 		version := uint(database.ExpectedVersion(schema))
+		if schema == "recipes" {
+			version = 4 // Recipes5 belongs to the later Core27 expansion.
+		}
 		if schema == "fuel" {
 			version = 2 // Preserve the genuine prior Core22 installation.
 		}

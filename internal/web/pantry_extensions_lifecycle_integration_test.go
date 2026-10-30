@@ -29,7 +29,14 @@ func pantryExtensionsPriorCatalog(t *testing.T, f *integrationFixture, pantryVer
 	}
 	for _, schema := range database.Schemas {
 		version := uint(database.ExpectedVersion(schema))
-		if schema == "pantry" {
+		switch schema {
+		case "core":
+			version = 26
+		case "fuel":
+			version = 5
+		case "recipes":
+			version = 4
+		case "pantry":
 			version = pantryVersion
 		}
 		migratePriorAuditSchema(t, f, schema, version)

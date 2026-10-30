@@ -172,6 +172,9 @@ func TestExpenseEditPopulatedCore23UpgradePreservesSharedFinancialFacts(t *testi
 	}
 	for _, schema := range database.Schemas {
 		version := uint(database.ExpectedVersion(schema))
+		if schema == "recipes" {
+			version = 4 // Recipes5 belongs to the later Core27 expansion.
+		}
 		if schema == "fuel" {
 			version = 2 // Fuel3–5 require the later Core26 catalog.
 		}

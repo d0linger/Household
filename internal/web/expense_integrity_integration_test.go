@@ -233,7 +233,14 @@ func TestExpenseEditorIntegrityPopulatedExpenses2AndLegacyWriterUpgrade(t *testi
 	}
 	for _, schema := range database.Schemas {
 		version := uint(database.ExpectedVersion(schema))
-		if schema == "expenses" {
+		switch schema {
+		case "core":
+			version = 26
+		case "fuel":
+			version = 5
+		case "recipes":
+			version = 4
+		case "expenses":
 			version = 2
 		}
 		migratePriorAuditSchema(t, f, schema, version)

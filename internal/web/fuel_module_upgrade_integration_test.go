@@ -37,6 +37,8 @@ func fuelModuleUpgradePriorCatalog(t *testing.T, f *integrationFixture, fuelVers
 			version = 8
 		case "fuel":
 			version = priorFuel
+		case "recipes":
+			version = 4 // Recipes5 belongs to the later Core27 expansion.
 		case "pantry":
 			version = 11 // Pantry12 requires the later accepted Fuel5/Core26 audit catalog.
 		}
@@ -154,7 +156,7 @@ func TestFuelModuleNativePopulatedFuel2UpgradeRetainsFactsAndOldIntentFences(t *
 	}
 	for range 2 {
 		if err = database.Migrate(f.ctx, os.Getenv("HOUSEHOLD_TEST_OWNER_URL")); err != nil {
-			t.Fatal("Fuel2 to Fuel5 migration/repetition", err)
+			t.Fatal("Fuel2 to Fuel6 migration/repetition", err)
 		}
 		if err = database.Ready(f.ctx, f.pool); err != nil {
 			t.Fatal("upgraded application not ready", err)
@@ -170,7 +172,7 @@ func TestFuelModuleNativePopulatedFuel2UpgradeRetainsFactsAndOldIntentFences(t *
  (SELECT version FROM fuel.schema_migrations),
  (SELECT count(*) FROM fuel.fillups WHERE household_id=$1 AND quantity_unit='l' AND currency_code='EUR' AND source_kind='manual' AND source_job_id IS NULL)`,
 		f.identity.HouseholdID, f.identity.UserID, generation, oldKey).Scan(&fences, &operations, &effects, &fuelVersion, &goodDimensions)
-	if err != nil || fences != 1 || operations != 0 || effects != 0 || fuelVersion != 5 || goodDimensions != 2 {
+	if err != nil || fences != 1 || operations != 0 || effects != 0 || fuelVersion != 6 || goodDimensions != 2 {
 		t.Fatal("upgrade fabricated producer proof or failed minimal legacy fences/dimensions", fences, operations, effects, fuelVersion, goodDimensions, err)
 	}
 	if _, err = f.owner.Exec(f.ctx, "DELETE FROM core.idempotency_records WHERE module_id='fuel'"); err != nil {

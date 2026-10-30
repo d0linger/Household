@@ -403,7 +403,12 @@ func (s *Store) recipeToShopping(ctx context.Context, tx pgx.Tx, id auth.Identit
 				}
 				unit = target
 			}
-			quantity = scaled.FloatString(6)
+			printed := scaled.FloatString(6)
+			exact, ok := new(big.Rat).SetString(printed)
+			if !ok || exact.Cmp(scaled) != 0 {
+				return Invalid{"Zutatenmenge ist mit sechs Nachkommastellen nicht exakt; Portionen oder Einheit ändern"}
+			}
+			quantity = printed
 		}
 		r, err := save(ctx, tx, id, m, e, value.UUID(), Record{"list_id": listID, "name": x.Name, "quantity": quantity, "unit_code": unit, "note": x.Note, "group_name": "Aus Rezept: " + String(recipe["title"])}, true, 0)
 		if err != nil {

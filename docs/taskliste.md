@@ -1,8 +1,8 @@
 # Household – Aufgabenliste
 
-Stand: 30.10.2026, 09:13 (Europe/Vienna).
+Stand: 30.10.2026, 16:48 (Europe/Vienna).
 
-**87 / 180 verifiziert und abgehakt · 0 in Arbeit · 93 offen.**
+**97 / 180 verifiziert und abgehakt · 0 in Arbeit · 83 offen.**
 
 Ein Haken bedeutet: umgesetzt und durch ausgeführte Prüfungen belegt. Vorbereitete Änderungen und einzelne bestandene Zwischentests schließen einen Verbesserungspunkt noch nicht ab.
 
@@ -10,13 +10,15 @@ Derzeit ist kein Punkt als „In Arbeit“ markiert.
 
 **Vorrat vollständig lokal abgenommen: 20 / 20 Punkte.** PA10, PA13 und PA19 sind nach nativen Tests, eigenständigem Browserlauf, echtem Restore/Purge und vollständiger 28-Komponenten-Regression abgehakt. [Modulplan](pantry-module-plan.md) · [Abnahmenachweise](pantry-module-validation.md).
 
+**Rezepte vollständig lokal abgenommen: 20 / 20 Punkte.** Alle zehn Erweiterungen sind nach nativer Komposition, Linux-Race, eigener und vollständiger Browserprüfung sowie echtem Restore/Purge gemeinsam abgehakt. [Modulplan](recipes-module-plan.md) · [Abnahmenachweise und Grenzen](recipes-module-validation.md).
+
 Diese Ansicht wird aus der [verbindlichen Liste mit Abnahmekriterien und Nachweisen](improvements-180.md) erzeugt. Aktualisieren: `node scripts/update-tasklist.cjs`.
 
 | Modul | Abgehakt | In Arbeit | Offen |
 |---|---:|---:|---:|
 | Einkaufen | 20 / 20 | 0 | 0 |
 | Fahrzeuge und Tanken | 20 / 20 | 0 | 0 |
-| Rezepte | 10 / 20 | 0 | 10 |
+| Rezepte | 20 / 20 | 0 | 0 |
 | Vorrat | 20 / 20 | 0 | 0 |
 | Finanzen | 1 / 20 | 0 | 19 |
 | Aufgaben | 0 / 20 | 0 | 20 |
@@ -76,22 +78,22 @@ Diese Ansicht wird aus der [verbindlichen Liste mit Abnahmekriterien und Nachwei
 - [x] **RE02 Kochmodus** — Aktuellen Schritt, abgehakte Zutaten, Fortschritt und optional Wake Lock anbieten.
 - [x] **RE03 Portionen im Kochmodus** — Mengen exakt skalieren, ohne das Originalrezept zu ändern.
 - [x] **RE04 Dauerhafte Küchentimer** — Mehrere beschriftete Timer über Navigation und Neuladen hinweg wiederherstellen.
-- [ ] **RE05 Rezeptfilter** — Dauer, Tags, Zutaten und letzte Zubereitung kombinieren und Ansichten speichern.
-- [ ] **RE06 Geprüfter Rezeptimport** — Strukturierte Dateien und Schema.org-Rezepte vor Übernahme prüfen.
+- [x] **RE05 Rezeptfilter** — Dauer, Tags, Zutaten und letzte Zubereitung kombinieren und Ansichten speichern.
+- [x] **RE06 Geprüfter Rezeptimport** — Strukturierte Dateien und Schema.org-Rezepte vor Übernahme prüfen.
 - [x] **RE07 Zutatenkatalog** — Aliase normalisieren und Vorratsprodukte ausdrücklich zuordnen.
 - [x] **RE08 Versionen und Varianten** — Rezeptstände und abgeleitete Varianten unabhängig vom Audit erhalten.
-- [ ] **RE09 Zutatenersatz** — Austauschregeln mit Mengenhinweisen anzeigen und manuell wählen.
+- [x] **RE09 Zutatenersatz** — Austauschregeln mit Mengenhinweisen anzeigen und manuell wählen.
 - [x] **RE10 Kochhistorie** — Tatsächliche Portionen, Bewertung und Notizen einer Zubereitung speichern.
 - [x] **RE11 Vorratsabgleich** — Verfügbare Mengen, Fehlmengen und unbekannte Zuordnungen getrennt anzeigen.
 - [x] **RE12 Vorrat nach Kochen** — Verbrauch mit Mengen und Chargenauswahl prüfen und atomar buchen.
-- [ ] **RE13 Portionskosten** — Geschätzte Kosten mit Preisalter, Quellen und fehlenden Preisen anzeigen.
-- [ ] **RE14 Nährwerte und Allergene** — Strukturierte Angaben mit Quelle und Vollständigkeit; unbekannt bleibt unbekannt.
-- [ ] **RE15 Portabler Austausch** — Household-JSON und ausgewählte Tandoor-, Mealie- und Paprika-Profile dokumentiert unterstützen.
+- [x] **RE13 Portionskosten** — Geschätzte Kosten mit Preisalter, Quellen und fehlenden Preisen anzeigen.
+- [x] **RE14 Nährwerte und Allergene** — Strukturierte Angaben mit Quelle und Vollständigkeit; unbekannt bleibt unbekannt.
+- [x] **RE15 Portabler Austausch** — Household-JSON und ausgewählte Tandoor-, Mealie- und Paprika-Profile dokumentiert unterstützen.
 - [x] **RE16 Gebündelte Rezeptdaten** — Details mit begrenzten Abfragen statt einer Abfrage pro Zutat laden.
-- [ ] **RE17 Offline-Rezepte** — Ausgewählte Rezepte mit begrenzten Bildern ausdrücklich lokal speichern und löschen.
-- [ ] **RE18 Kücheneinheiten** — TL/EL umrechnen; Masse/Volumen nur mit bekannter zutatenbezogener Dichte.
-- [ ] **RE19 Sicherer URL-Import** — SSRF, Weiterleitungen, Größen und HTML begrenzen; Importarbeit isolieren.
-- [ ] **RE20 Rezept-Dubletten** — URL und Inhaltsfingerabdruck vergleichen; Zusammenführung immer prüfen lassen.
+- [x] **RE17 Offline-Rezepte** — Ausgewählte Rezepte mit begrenzten Bildern ausdrücklich lokal speichern und löschen.
+- [x] **RE18 Kücheneinheiten** — TL/EL umrechnen; Masse/Volumen nur mit bekannter zutatenbezogener Dichte.
+- [x] **RE19 Sicherer URL-Import** — SSRF, Weiterleitungen, Größen und HTML begrenzen; Importarbeit isolieren.
+- [x] **RE20 Rezept-Dubletten** — URL und Inhaltsfingerabdruck vergleichen; Zusammenführung immer prüfen lassen.
 
 ## Vorrat
 

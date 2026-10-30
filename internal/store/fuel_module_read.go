@@ -34,7 +34,7 @@ func fuelModuleFullExport(ctx context.Context) bool {
 	return full
 }
 
-// Fuel remains an explicitly manual, nonfinancial domain at Core26. Admitting
+// Fuel remains a manual domain at Core 26 and recipe-only Core 27. Admitting
 // future financial-derived physical records requires the central visibility
 // contract; merely removing prices from this response would not authorize them.
 func fuelModuleScope(ctx context.Context, tx pgx.Tx, id auth.Identity) (FuelModuleContext, error) {
@@ -56,7 +56,7 @@ func fuelModuleScope(ctx context.Context, tx pgx.Tx, id auth.Identity) (FuelModu
  LEFT JOIN fuel.household_state state ON state.household_id=h.id
  LEFT JOIN fuel.user_settings settings ON settings.household_id=h.id AND settings.user_id=u.id AND settings.generation=ms.data_generation
  WHERE h.id=$1
- AND(SELECT count(*)=1 AND bool_and(version=26 AND NOT dirty) FROM core.schema_migrations)`,
+ AND(SELECT count(*)=1 AND bool_and(version IN(26,27) AND NOT dirty) FROM core.schema_migrations)`,
 		id.HouseholdID, id.MembershipID, id.UserID, id.Role, id.AuthVersion, id.SessionID).Scan(
 		&scope.Generation, &scope.Timezone, &scope.Currency, &scope.Today, &enabled, &revision, &settingsVersion)
 	if errors.Is(err, pgx.ErrNoRows) {

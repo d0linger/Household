@@ -71,6 +71,10 @@ func cleanupDeletedIngredientBinding(ctx context.Context, tx pgx.Tx, id auth.Ide
 		// an old statement snapshot after waiting for a concurrent rebind.
 		_, err := tx.Exec(ctx, "UPDATE core.ingredient_product_bindings SET product_id=NULL,target_generation=NULL,changed_by=$3 WHERE household_id=$1 AND product_id=$2", id.HouseholdID, rid, id.UserID)
 		return err
+	case "shopping/products":
+		// Keep a separate Pantry target when its Shopping price source vanishes.
+		_, err := tx.Exec(ctx, "UPDATE core.ingredient_product_bindings SET shopping_product_id=NULL,shopping_generation=NULL,changed_by=$3 WHERE household_id=$1 AND shopping_product_id=$2", id.HouseholdID, rid, id.UserID)
+		return err
 	default:
 		return nil
 	}

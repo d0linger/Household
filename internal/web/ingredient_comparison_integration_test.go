@@ -335,13 +335,31 @@ func TestIngredientCatalogHTTPBoundariesAliasSearchAndConcurrentWriters(t *testi
 	}
 }
 
-func TestIngredientBindingsRemovedByRealModulePurge(t *testing.T) {
-	for _, mid := range []string{"pantry", "recipes"} {
+func TestIngredientBindingsPreserveIndependentTargetsOnRealModulePurge(t *testing.T) {
+	for _, mid := range []string{"pantry", "shopping", "recipes"} {
 		t.Run(mid, func(t *testing.T) {
 			f := newIntegrationFixture(t)
 			cat, _ := auditCreate(t, f, "recipes", "ingredient_catalog", store.Record{"name": "Purge identity"})
 			p, _ := auditCreate(t, f, "pantry", "products", store.Record{"name": "Purge target", "unit_code": "kg"})
-			ingredientBind(t, f, cat, p)
+			bound := ingredientBind(t, f, cat, p)
+			shoppingProduct := value.UUID()
+			if _, err := f.owner.Exec(f.ctx, `INSERT INTO shopping.products
+ (id,household_id,name,pack_quantity,pack_unit,created_by)
+ VALUES($1,$2,'Independent shopping target',1,'kg',$3)`, shoppingProduct,
+				f.identity.HouseholdID, f.identity.UserID); err != nil {
+				t.Fatal("seed independent Shopping target", err)
+			}
+			shoppingGeneration := f.app.Store.States()["shopping"].Generation
+			if _, err := f.app.Store.SaveRecipeShoppingBinding(f.ctx, f.identity,
+				store.String(cat["id"]), value.UUID(), value.UUID(), store.RecipePriceBindingInput{
+					Generation:         f.app.Store.States()["recipes"].Generation,
+					ShoppingGeneration: shoppingGeneration,
+					CatalogVersion:     store.Int(cat["version"]),
+					BindingID:          store.String(bound["id"]), Version: store.Int(bound["version"]),
+					ProductID: shoppingProduct, ProductVersion: 1,
+				}); err != nil {
+				t.Fatal("bind independent Shopping target", err)
+			}
 			state := f.app.Store.States()[mid]
 			if err := f.app.Store.SetModule(f.ctx, f.identity, mid, false, state.Version, value.UUID()); err != nil {
 				t.Fatal(err)
@@ -357,8 +375,33 @@ func TestIngredientBindingsRemovedByRealModulePurge(t *testing.T) {
 				t.Fatal(err)
 			}
 			var left int
-			if err := f.pool.QueryRow(f.ctx, "SELECT count(*) FROM core.ingredient_product_bindings WHERE household_id=$1", f.identity.HouseholdID).Scan(&left); err != nil || left != 0 {
-				t.Fatal("purge retained cross-module product identity", left, err)
+			var pantryTarget, shoppingTarget string
+			var pantryGeneration, retainedShoppingGeneration int64
+			if err := f.pool.QueryRow(f.ctx, `SELECT count(*),coalesce(max(product_id::text),''),
+ coalesce(max(shopping_product_id::text),''),coalesce(max(target_generation),0),
+ coalesce(max(shopping_generation),0) FROM core.ingredient_product_bindings
+ WHERE household_id=$1`, f.identity.HouseholdID).Scan(&left, &pantryTarget,
+				&shoppingTarget, &pantryGeneration, &retainedShoppingGeneration); err != nil {
+				t.Fatal("read bindings after real purge", err)
+			}
+			switch mid {
+			case "pantry":
+				if left != 1 || pantryTarget != "" || pantryGeneration != 0 ||
+					shoppingTarget != shoppingProduct || retainedShoppingGeneration != shoppingGeneration {
+					t.Fatalf("Pantry purge changed Shopping target: %d/%q/%d/%q/%d", left,
+						pantryTarget, pantryGeneration, shoppingTarget, retainedShoppingGeneration)
+				}
+			case "shopping":
+				if left != 1 || pantryTarget != store.String(p["id"]) ||
+					pantryGeneration != f.app.Store.States()["pantry"].Generation ||
+					shoppingTarget != "" || retainedShoppingGeneration != 0 {
+					t.Fatalf("Shopping purge changed Pantry target: %d/%q/%d/%q/%d", left,
+						pantryTarget, pantryGeneration, shoppingTarget, retainedShoppingGeneration)
+				}
+			case "recipes":
+				if left != 0 {
+					t.Fatalf("Recipes purge retained source binding: %d", left)
+				}
 			}
 			var generation int64
 			if err := f.pool.QueryRow(f.ctx, "SELECT data_generation FROM core.module_states WHERE household_id=$1 AND module_id=$2", f.identity.HouseholdID, mid).Scan(&generation); err != nil || generation != state.Generation+1 {

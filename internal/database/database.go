@@ -69,6 +69,8 @@ func Migrate(ctx context.Context, dsn string) error {
 		if _, err = lock.Exec(ctx, "CREATE SCHEMA IF NOT EXISTS "+pgx.Identifier{schema}.Sanitize()); err != nil {
 			return fmt.Errorf("create schema %s: %w", schema, err)
 		}
+	}
+	migrateSchema := func(schema string, through *uint) error {
 		source, e := iofs.New(migrations, "migrations/"+schema)
 		if e != nil {
 			return fmt.Errorf("open migrations %s: %w", schema, e)
@@ -88,7 +90,23 @@ func Migrate(ctx context.Context, dsn string) error {
 			return fmt.Errorf("initialize migration runner: %w", e)
 		}
 		runner.LockTimeout = 30 * time.Second
-		e = runner.Up()
+		if through == nil {
+			e = runner.Up()
+		} else {
+			version, dirty, versionErr := runner.Version()
+			switch {
+			case errors.Is(versionErr, migrate.ErrNilVersion):
+				e = runner.Migrate(*through)
+			case versionErr != nil:
+				e = versionErr
+			case dirty:
+				e = fmt.Errorf("%s migration is dirty at the predecessor barrier", schema)
+			case version < *through:
+				e = runner.Migrate(*through)
+			default:
+				e = migrate.ErrNoChange
+			}
+		}
 		sourceErr, dbErr := runner.Close()
 		if e != nil && !errors.Is(e, migrate.ErrNoChange) {
 			return fmt.Errorf("migrate %s: %w", schema, e)
@@ -96,9 +114,41 @@ func Migrate(ctx context.Context, dsn string) error {
 		if e = errors.Join(sourceErr, dbErr); e != nil {
 			return fmt.Errorf("close migration %s: %w", schema, e)
 		}
+		return nil
 	}
-	// Core migrates first; attach its audit contract only after all independent
-	// module tables exist. The separate migration role alone may install triggers.
+	// Shopping 8, Fuel 5, and Pantry 12 pin the accepted Core 26 audit
+	// predecessor. Install those histories against that barrier, holding Recipes
+	// at 4 and Fuel at 5, then Core 27, Recipes 5, and Fuel 6. The same order
+	// works for fresh databases and populated upgrades without changing old SQL.
+	coreLegacyBarrier := uint(26)
+	if err = migrateSchema("core", &coreLegacyBarrier); err != nil {
+		return err
+	}
+	recipePredecessor := uint(4)
+	fuelPredecessor := uint(5)
+	for _, schema := range Schemas[1:] {
+		var through *uint
+		switch schema {
+		case "recipes":
+			through = &recipePredecessor
+		case "fuel":
+			through = &fuelPredecessor
+		}
+		if err = migrateSchema(schema, through); err != nil {
+			return err
+		}
+	}
+	if err = migrateSchema("core", nil); err != nil {
+		return err
+	}
+	if err = migrateSchema("recipes", nil); err != nil {
+		return err
+	}
+	if err = migrateSchema("fuel", nil); err != nil {
+		return err
+	}
+	// Attach the final audit contract only after all independent module tables
+	// exist. The separate migration role alone may install triggers.
 	if _, err = lock.Exec(ctx, "SELECT core.install_audit_triggers()"); err != nil {
 		return fmt.Errorf("install audit triggers: %w", err)
 	}
@@ -178,6 +228,20 @@ func Ready(ctx context.Context, pool *pgxpool.Pool) error {
 	}
 	if !catalogued {
 		return errors.New("incomplete ingredient catalogue contract")
+	}
+	var recipeCoreExpansion bool
+	if err := pool.QueryRow(ctx, "SELECT core.recipe_expansion_ready()").Scan(&recipeCoreExpansion); err != nil {
+		return fmt.Errorf("inspect recipe core expansion: %w", err)
+	}
+	if !recipeCoreExpansion {
+		return errors.New("incomplete recipe core expansion")
+	}
+	var recipeExpansion bool
+	if err := pool.QueryRow(ctx, "SELECT recipes.expansion_ready()").Scan(&recipeExpansion); err != nil {
+		return fmt.Errorf("inspect recipe expansion: %w", err)
+	}
+	if !recipeExpansion {
+		return errors.New("incomplete recipe expansion")
 	}
 	var cookingStock bool
 	if err := pool.QueryRow(ctx, "SELECT pantry.cooking_stock_ready()").Scan(&cookingStock); err != nil {

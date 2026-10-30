@@ -278,6 +278,9 @@ func TestPantryReplenishmentPopulatedUpgrade(t *testing.T) {
 	}
 	for _, schema := range database.Schemas {
 		version := uint(database.ExpectedVersion(schema))
+		if schema == "recipes" {
+			version = 4 // Recipes5 belongs to the later Core27 expansion.
+		}
 		if schema == "core" {
 			version = 17
 		}

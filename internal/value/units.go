@@ -10,7 +10,7 @@ func Convert(quantity *big.Rat, from, to string) (*big.Rat, error) {
 		dimension string
 		factor    int64
 	}
-	units := map[string]unit{"piece": {"count", 1}, "portion": {"serving", 1}, "g": {"mass", 1}, "kg": {"mass", 1000}, "ml": {"volume", 1}, "l": {"volume", 1000}}
+	units := map[string]unit{"piece": {"count", 1}, "portion": {"serving", 1}, "g": {"mass", 1}, "kg": {"mass", 1000}, "ml": {"volume", 1}, "l": {"volume", 1000}, "tsp": {"volume", 5}, "tbsp": {"volume", 15}}
 	source, ok := units[from]
 	target, valid := units[to]
 	if !ok || !valid || source.dimension != target.dimension {

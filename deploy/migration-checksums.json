@@ -73,5 +73,11 @@
   "fuel/000003_module_facts.up.sql": "02df2f32bf502207d2d4e945ed50b99b9bfaf637766f247cad60e56e9fa3d079",
   "fuel/000004_module_operations.up.sql": "4705280911984579ab46d2a44a5f13f1fcc47a75ef1248a45202611a568f480f",
   "fuel/000005_module_readiness.up.sql": "34f732357fc120560a31f994f5f607dd56093ede5066909f2393d9edfd6eeaea",
-  "pantry/000012_prepared_food_and_capture.up.sql": "660278a1917b2cd440f4d1172c05df07c1287ea11ca0e47c72878fb627854b1b"
+  "pantry/000012_prepared_food_and_capture.up.sql": "660278a1917b2cd440f4d1172c05df07c1287ea11ca0e47c72878fb627854b1b",
+  "core/000027_recipe_expansion.down.sql": "8dcd4664fc6e36efb3636a072dd26402006facdd2396704358a1fd42f75c1510",
+  "core/000027_recipe_expansion.up.sql": "ab6abf55b032c5afef10a0a11ee0b934a5e6e0eb0a32cafddbc64b212540504f",
+  "fuel/000006_core27_overview_compat.down.sql": "66ae742904e3daca4bcbbe0496977125a4c93a09476df2ba0d325ef7e66d4c63",
+  "fuel/000006_core27_overview_compat.up.sql": "d4b822e032781c711ff757716f7166476d11872f6823550e3d118cc2005367ac",
+  "recipes/000005_recipe_expansion.down.sql": "ac01e61e439c23de9abad011c23198080849610520f83322eeb3728e16e9e408",
+  "recipes/000005_recipe_expansion.up.sql": "130a8d4628e2f18c5ba0432372c4f290b4d1bbdf078c5747cb5a9f12e6ec065b"
 }

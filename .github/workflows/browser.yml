@@ -91,6 +91,7 @@ jobs:
             outputs/planning-participants-review
             outputs/planning-suggestions-review
             outputs/pantry-suggestions-review
+            outputs/recipe-expansion-review
             outputs/expense-editor-review
             outputs/repurchase-review
             outputs/barcode-review

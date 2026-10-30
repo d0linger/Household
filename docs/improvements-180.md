@@ -29,13 +29,15 @@ Ein Schema, eine Schaltfläche oder ein Mock allein schließt keinen Punkt ab. B
 
 ## Fortschritt
 
-180 Punkte: **87 verifiziert, 0 implementiert, 0 in Arbeit, 93 offen**. Dieser Zähler wird mit jedem abgeschlossenen Arbeitspaket abgeglichen.
+180 Punkte: **97 verifiziert, 0 implementiert, 0 in Arbeit, 83 offen**. Dieser Zähler wird mit jedem abgeschlossenen Arbeitspaket abgeglichen.
 
 Abgenommener Modulblock: **Fahrzeuge & Tanken (FU01–FU20)** – vollständige Implementierung und gemeinsame lokale Tests/Fehlerbehebung abgeschlossen. [Modulplan](fuel-module-plan.md).
 
 Abgenommener Modulblock: **Vorrat (PA10/PA13/PA19)** – vollständig implementiert und gemeinsam lokal abgenommen:157native,102eigenständigeBrowserprüfungen,14echteRecovery-Schritte sowie28-Komponenten-Regression mit912Checks. [Modulplan](pantry-module-plan.md) · [Prüfergebnisse und Abnahmegrenzen](pantry-module-validation.md).
 
 Abgenommener Modulblock: **Einkaufen (SH15/SH17)** – vollständiger Umfang und128chronologischeSchritte vor Umsetzung veröffentlicht. Beide Erweiterungen wurden danach gemeinsam implementiert, geprüft und nach echten Browserfehlern korrigiert. Aktuelle lokale Modulabnahme: Go247, Node245,24frische native Haupttests,37eigenständige Browserchecks,11Recovery-Stufen und28-Komponenten-Regression mit912Checks/135Axe. [Modulplan](shopping-module-plan.md) · [Nachweise und Grenzen](shopping-module-validation.md).
+
+Abgenommener Modulblock: **Rezepte (RE05/RE06/RE09/RE13/RE14/RE15/RE17/RE18/RE19/RE20)** – alle zehn Erweiterungen gemeinsam implementiert und lokal abgenommen. Nachweise: vollständige 616-Haupttest-Komposition (205 frühere +311 vollständig bestandene Folgetests +100 aktuelle Abschlusstests), 2.257 Haupt-/Unterfälle und 72,43 % interne Abdeckung; Node262, Linux-Race42/87, eigener Browser72, vollständige 29-Komponenten-Kette mit976Checks/143Axe und frischer verschlüsselter Restore/Purge mit16Schritten. Unabhängige Datei-/Quellenprüfung und erster exakter Index-Geheimnisscan ohne Befund bestanden. [Modulplan](recipes-module-plan.md) · [Nachweise und Grenzen](recipes-module-validation.md).
 
 ## Einkaufen
 
@@ -95,22 +97,22 @@ Abgenommener Modulblock: **Einkaufen (SH15/SH17)** – vollständiger Umfang und
 | RE02 | Kochmodus | Aktuellen Schritt, abgehakte Zutaten, Fortschritt und optional Wake Lock anbieten. | Verifiziert | Native Gesamtsuite, Linux-Race, Upgrade/Restore; 38 Koch-Browserchecks/4 axe, Gesamtkette371; DB-Prüfung ohne Befund, CK01 und Dokumentation abgenommen |
 | RE03 | Portionen im Kochmodus | Mengen exakt skalieren, ohne das Originalrezept zu ändern. | Verifiziert | Native Gesamtsuite, Linux-Race, Upgrade/Restore; 38 Koch-Browserchecks/4 axe, Gesamtkette371; DB-Prüfung ohne Befund, CK01 und Dokumentation abgenommen |
 | RE04 | Dauerhafte Küchentimer | Mehrere beschriftete Timer über Navigation und Neuladen hinweg wiederherstellen. | Verifiziert | Native Gesamtsuite, Linux-Race, Upgrade/Restore; 38 Koch-Browserchecks/4 axe, Gesamtkette371; DB-Prüfung ohne Befund, CK01 und Dokumentation abgenommen |
-| RE05 | Rezeptfilter | Dauer, Tags, Zutaten und letzte Zubereitung kombinieren und Ansichten speichern. | Offen | Zurückgestellt gemäß strikt modulweiser Umsetzung. Vorhandene Quellen und Prüfnachweise bleiben erhalten; Fortsetzung nach vollständiger Abnahme von Fahrzeuge & Tanken. Isolierte16-Dateipfade-Umsetzung auf404-Stand begonnen: begrenzte kombinierte Filter, belastbare Kochhistorie und ausdrücklich gerätelokale persönliche Ansichten mit atomarer IndexedDB-Speicherung. Keine serverübergreifende Synchronisation behauptet; Abnahme folgt. |
-| RE06 | Geprüfter Rezeptimport | Strukturierte Dateien und Schema.org-Rezepte vor Übernahme prüfen. | Offen | — |
+| RE05 | Rezeptfilter | Dauer, Tags, Zutaten und letzte Zubereitung kombinieren und Ansichten speichern. | Verifiziert | Kombinierte Filter/Cursor, Reader und gespeicherte Geräteansichten nativ und im Browser geprüft. [Gemeinsame Abnahme](recipes-module-validation.md). |
+| RE06 | Geprüfter Rezeptimport | Strukturierte Dateien und Schema.org-Rezepte vor Übernahme prüfen. | Verifiziert | Zweck-/Besitzerbindung, atomare Einzelbestätigung, Ablauf, Konflikte und dauerhafte Import-Receipts geprüft. [Gemeinsame Abnahme](recipes-module-validation.md). |
 | RE07 | Zutatenkatalog | Aliase normalisieren und Vorratsprodukte ausdrücklich zuordnen. | Verifiziert | Native Gesamtsuite68,3 %, Linux-Race201,979s, finale12 DB-/Upgradeverträge91,149s;29 Browserchecks/5axe, Gesamtkette481; Restore, DB-, UI- und Dokumentationsabnahme bestanden. |
 | RE08 | Versionen und Varianten | Rezeptstände und abgeleitete Varianten unabhängig vom Audit erhalten. | Verifiziert | Native Gesamtsuite + fokussierte Korrekturprüfung, Linux-Race, Upgrade/Restore; 37 Rezept-Browserchecks/4 axe, Gesamtkette333; RW01 unabhängig abgenommen |
-| RE09 | Zutatenersatz | Austauschregeln mit Mengenhinweisen anzeigen und manuell wählen. | Offen | — |
+| RE09 | Zutatenersatz | Austauschregeln mit Mengenhinweisen anzeigen und manuell wählen. | Verifiziert | Exakte Ersatzmengen, belegte Regeln und ausdrückliche Entwurfsübernahme mit Grenzen geprüft. [Gemeinsame Abnahme](recipes-module-validation.md). |
 | RE10 | Kochhistorie | Tatsächliche Portionen, Bewertung und Notizen einer Zubereitung speichern. | Verifiziert | Native Gesamtsuite, Linux-Race, Upgrade/Restore; 38 Koch-Browserchecks/4 axe, Gesamtkette371; DB-Prüfung ohne Befund, CK01 und Dokumentation abgenommen |
 | RE11 | Vorratsabgleich | Verfügbare Mengen, Fehlmengen und unbekannte Zuordnungen getrennt anzeigen. | Verifiziert | Native Gesamtsuite68,3 %, Linux-Race201,979s, finale12 DB-/Upgradeverträge91,149s;29 Browserchecks/5axe, Gesamtkette481; Restore, DB-, UI- und Dokumentationsabnahme bestanden. |
 | RE12 | Vorrat nach Kochen | Verbrauch mit Mengen und Chargenauswahl prüfen und atomar buchen. | Verifiziert | Native Gesamtsuite68,8 % (Web642,856s), fokussierte8 DB-Verträge59,220s, Linux-Race127,427s;34 Browserchecks/5axe, Gesamtkette515; bestücktes Upgrade/Restore, DB-Findings geschlossen, F01 resolved/ship und separate Dokumentationsprüfung. |
-| RE13 | Portionskosten | Geschätzte Kosten mit Preisalter, Quellen und fehlenden Preisen anzeigen. | Offen | — |
-| RE14 | Nährwerte und Allergene | Strukturierte Angaben mit Quelle und Vollständigkeit; unbekannt bleibt unbekannt. | Offen | — |
-| RE15 | Portabler Austausch | Household-JSON und ausgewählte Tandoor-, Mealie- und Paprika-Profile dokumentiert unterstützen. | Offen | — |
+| RE13 | Portionskosten | Geschätzte Kosten mit Preisalter, Quellen und fehlenden Preisen anzeigen. | Verifiziert | Aktuelle Core-Preisbindungen, exakte Portionsrechnung, Preisalter und unbekannte Teilkosten geprüft. [Gemeinsame Abnahme](recipes-module-validation.md). |
+| RE14 | Nährwerte und Allergene | Strukturierte Angaben mit Quelle und Vollständigkeit; unbekannt bleibt unbekannt. | Verifiziert | Quellen-/Rezeptfingerabdruck, Nährwerte sowie unbekannte und veraltete Allergenangaben geprüft. [Gemeinsame Abnahme](recipes-module-validation.md). |
+| RE15 | Portabler Austausch | Household-JSON und ausgewählte Tandoor-, Mealie- und Paprika-Profile dokumentiert unterstützen. | Verifiziert | Dokumentierte Teilprofile mit gültigen/ungültigen Dateien, Verlustberichten und Digest-Roundtrip geprüft. [Gemeinsame Abnahme](recipes-module-validation.md). |
 | RE16 | Gebündelte Rezeptdaten | Details mit begrenzten Abfragen statt einer Abfrage pro Zutat laden. | Verifiziert | Native Gesamtsuite + fokussierte Korrekturprüfung, Linux-Race, Upgrade/Restore; 37 Rezept-Browserchecks/4 axe, Gesamtkette333; RW01 unabhängig abgenommen |
-| RE17 | Offline-Rezepte | Ausgewählte Rezepte mit begrenzten Bildern ausdrücklich lokal speichern und löschen. | Offen | — |
-| RE18 | Kücheneinheiten | TL/EL umrechnen; Masse/Volumen nur mit bekannter zutatenbezogener Dichte. | Offen | — |
-| RE19 | Sicherer URL-Import | SSRF, Weiterleitungen, Größen und HTML begrenzen; Importarbeit isolieren. | Offen | — |
-| RE20 | Rezept-Dubletten | URL und Inhaltsfingerabdruck vergleichen; Zusammenführung immer prüfen lassen. | Offen | — |
+| RE17 | Offline-Rezepte | Ausgewählte Rezepte mit begrenzten Bildern ausdrücklich lokal speichern und löschen. | Verifiziert | 72 eigene Browserchecks: PNG/Quota, Offline-Neustart, Ablauf, Sitzungs-/Kontowechsel und echte Abmeldung geprüft. [Gemeinsame Abnahme](recipes-module-validation.md). |
+| RE18 | Kücheneinheiten | TL/EL umrechnen; Masse/Volumen nur mit bekannter zutatenbezogener Dichte. | Verifiziert | Exakte TL-/EL-Faktoren und nur belegte aktuelle Katalogdichten; ungültige/inexakte Umrechnung verweigert. [Gemeinsame Abnahme](recipes-module-validation.md). |
+| RE19 | Sicherer URL-Import | SSRF, Weiterleitungen, Größen und HTML begrenzen; Importarbeit isolieren. | Verifiziert | Öffentlich gepinntes HTTPS, DNS/TLS-/Redirect-/Proxy-/Größen-/Zeitgrenzen mit kontrolliertem Transport geprüft. [Gemeinsame Abnahme](recipes-module-validation.md). |
+| RE20 | Rezept-Dubletten | URL und Inhaltsfingerabdruck vergleichen; Zusammenführung immer prüfen lassen. | Verifiziert | Vollständige Vergleichsbäume, explizite Dublettenentscheidung, Versionskonflikt und dauerhafter Replay geprüft. [Gemeinsame Abnahme](recipes-module-validation.md). |
 
 ## Vorrat
 

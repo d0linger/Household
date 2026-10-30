@@ -27,13 +27,17 @@ func (s *Store) ConfirmImport(ctx context.Context, id auth.Identity, m module.De
 	}
 	defer rollback(tx)
 	var state string
+	var purpose string
 	var failures int
-	err = tx.QueryRow(ctx, "SELECT state,error_count FROM core.import_batches WHERE id=$1 AND household_id=$2 AND module_id=$3 AND entity=$4 AND module_generation=$5 FOR UPDATE", batchID, id.HouseholdID, m.ID, e.ID, generation).Scan(&state, &failures)
+	err = tx.QueryRow(ctx, "SELECT state,error_count,purpose FROM core.import_batches WHERE id=$1 AND household_id=$2 AND module_id=$3 AND entity=$4 AND module_generation=$5 FOR UPDATE", batchID, id.HouseholdID, m.ID, e.ID, generation).Scan(&state, &failures, &purpose)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return ErrNotFound
 	}
 	if err != nil {
 		return err
+	}
+	if purpose != "flat_csv" {
+		return ErrNotFound
 	}
 	if state == "confirmed" {
 		return nil

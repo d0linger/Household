@@ -28,6 +28,7 @@ import (
 	"household/internal/database"
 	"household/internal/foodfacts"
 	"household/internal/module"
+	"household/internal/recipeimport"
 	"household/internal/store"
 	"household/internal/value"
 	"household/internal/webpush"
@@ -47,16 +48,17 @@ const csrfKey requestKey = 2
 const traceKey requestKey = 3
 
 type Server struct {
-	Cfg        config.Config
-	Pool       *pgxpool.Pool
-	Auth       *auth.Service
-	Store      *store.Store
-	Push       *webpush.Service
-	Log        *slog.Logger
-	templates  *template.Template
-	assets     map[string]string
-	shutting   atomic.Bool
-	imageSlots chan struct{}
+	Cfg           config.Config
+	Pool          *pgxpool.Pool
+	Auth          *auth.Service
+	Store         *store.Store
+	Push          *webpush.Service
+	Log           *slog.Logger
+	templates     *template.Template
+	assets        map[string]string
+	shutting      atomic.Bool
+	imageSlots    chan struct{}
+	recipeFetcher *recipeimport.Fetcher
 }
 type Page struct {
 	Title      string
@@ -117,7 +119,7 @@ func New(ctx context.Context, pool *pgxpool.Pool, cfg config.Config, mods []modu
 	if err = a.Bootstrap(ctx, ids, enabled); err != nil {
 		return nil, err
 	}
-	s := &Server{Cfg: cfg, Pool: pool, Auth: a, Store: records, Push: push, Log: log, assets: map[string]string{}, imageSlots: make(chan struct{}, 2)}
+	s := &Server{Cfg: cfg, Pool: pool, Auth: a, Store: records, Push: push, Log: log, assets: map[string]string{}, imageSlots: make(chan struct{}, 2), recipeFetcher: recipeimport.NewFetcher()}
 	s.Store.FuelOCREnabled = cfg.OCREnabled
 	s.Store.FoodFacts = provider
 	if err = s.Store.LoadStates(ctx); err != nil {
@@ -157,6 +159,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /manifest.webmanifest", s.manifest)
 	mux.HandleFunc("GET /offline", s.offline)
 	mux.HandleFunc("GET /offline/shopping", s.offlineShopping)
+	mux.HandleFunc("GET /offline/recipes", s.offlineRecipes)
 	mux.HandleFunc("GET /login", s.loginPage)
 	mux.HandleFunc("POST /login", s.login)
 	mux.Handle("GET /{$}", s.require(s.home))
@@ -185,6 +188,21 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /api/v1/expenses/editor", s.require(s.expenseEditorAPI))
 	mux.Handle("POST /api/v1/expenses/editor", s.require(s.expenseEditorAPI))
 	mux.Handle("GET /m/recipes/new", s.require(s.recipeWorkspacePage))
+	mux.Handle("GET /m/recipes/find", s.require(s.recipeFindPage))
+	mux.Handle("GET /m/recipes/import-review", s.require(s.recipeImportPage))
+	mux.Handle("GET /m/recipes/recipes/{id}/insights", s.require(s.recipeInsightsPage))
+	mux.Handle("GET /api/v1/recipes/device-context", s.require(s.recipeDeviceContextAPI))
+	mux.Handle("GET /api/v1/recipes/discover", s.require(s.recipeDiscoverAPI))
+	mux.Handle("POST /api/v1/recipe-imports/previews", s.require(s.recipeImportPreviewCreate))
+	mux.Handle("GET /api/v1/recipe-imports/previews/{batch}", s.require(s.recipeImportPreviewGet))
+	mux.Handle("POST /api/v1/recipe-imports/previews/{batch}/rows/{row}/confirm", s.require(s.recipeImportConfirm))
+	mux.Handle("GET /api/v1/recipes/{id}/portable", s.require(s.recipePortableExport))
+	mux.Handle("GET /api/v1/recipes/{id}/insights", s.require(s.recipeInsightsGet))
+	mux.Handle("PUT /api/v1/recipes/{id}/profile", s.require(s.recipeProfilePut))
+	mux.Handle("PUT /api/v1/recipes/catalog/{id}/substitutions", s.require(s.recipeSubstitutionsPut))
+	mux.Handle("PUT /api/v1/recipes/catalog/{id}/density", s.require(s.recipeDensityPut))
+	mux.Handle("PUT /api/v1/recipes/catalog/{id}/shopping-binding", s.require(s.recipeShoppingBindingPut))
+	mux.Handle("GET /api/v1/recipes/{id}/read-snapshot", s.require(s.recipeReadSnapshotGet))
 	mux.Handle("GET /m/recipes/recipes/{id}/workspace", s.require(s.recipeWorkspacePage))
 	mux.Handle("POST /api/v1/recipes/workspace", s.require(s.recipeWorkspace))
 	mux.Handle("GET /api/v1/recipes/{id}/workspace", s.require(s.recipeWorkspace))
@@ -670,7 +688,7 @@ func formatChoice(v any) string {
 	if raw == "" {
 		return "Keine Angabe"
 	}
-	labels := map[string]string{"piece": "Stück", "portion": "Portionen", "available": "Verfügbar", "unavailable": "Nicht verfügbar", "substituted": "Ersatz gewählt", "diesel": "Diesel", "petrol": "Benzin", "lpg": "LPG", "cng": "CNG", "receive": "Zugang", "consume": "Verbrauch", "waste": "Entsorgung", "adjust": "Korrektur", "expense": "Ausgabe", "refund": "Erstattung", "dinner": "Abendessen", "lunch": "Mittagessen", "breakfast": "Frühstück", "snack": "Zwischenmahlzeit", "actual": "Abgelesen", "estimated": "Geschätzt"}
+	labels := map[string]string{"piece": "Stück", "portion": "Portionen", "tsp": "TL", "tbsp": "EL", "available": "Verfügbar", "unavailable": "Nicht verfügbar", "substituted": "Ersatz gewählt", "diesel": "Diesel", "petrol": "Benzin", "lpg": "LPG", "cng": "CNG", "receive": "Zugang", "consume": "Verbrauch", "waste": "Entsorgung", "adjust": "Korrektur", "expense": "Ausgabe", "refund": "Erstattung", "dinner": "Abendessen", "lunch": "Mittagessen", "breakfast": "Frühstück", "snack": "Zwischenmahlzeit", "actual": "Abgelesen", "estimated": "Geschätzt"}
 	if label, ok := labels[raw]; ok {
 		return label
 	}

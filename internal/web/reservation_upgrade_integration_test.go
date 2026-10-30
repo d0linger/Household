@@ -31,6 +31,8 @@ func TestReservationPopulatedPriorUpgrade(t *testing.T) {
 			version = 2 // Keep the actual predecessor compatible with Core18.
 		}
 		switch schema {
+		case "recipes":
+			version = 4 // Recipes5 belongs to the later Core27 expansion.
 		case "core":
 			version = 18
 		case "expenses":

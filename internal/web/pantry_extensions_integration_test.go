@@ -103,7 +103,7 @@ func TestPantryExtensionsServiceWorkerCachesOnlyNeutralScanShell(t *testing.T) {
 	if err = json.Unmarshal(match[1], &paths); err != nil {
 		t.Fatal(err)
 	}
-	neutral, shoppingNeutral := false, false
+	neutral, shoppingNeutral, recipesNeutral := false, false, false
 	for _, path := range paths {
 		if path == "/offline/scans" {
 			neutral = true
@@ -111,7 +111,10 @@ func TestPantryExtensionsServiceWorkerCachesOnlyNeutralScanShell(t *testing.T) {
 		if path == "/offline/shopping" {
 			shoppingNeutral = true
 		}
-		if path != "/offline" && path != "/offline/scans" && path != "/offline/shopping" && !strings.HasPrefix(path, "/assets/") {
+		if path == "/offline/recipes" {
+			recipesNeutral = true
+		}
+		if path != "/offline" && path != "/offline/scans" && path != "/offline/shopping" && path != "/offline/recipes" && !strings.HasPrefix(path, "/assets/") {
 			t.Fatal("private data entered public asset cache", path)
 		}
 	}
@@ -121,26 +124,34 @@ func TestPantryExtensionsServiceWorkerCachesOnlyNeutralScanShell(t *testing.T) {
 	if !shoppingNeutral {
 		t.Fatal("offline restart has no exact neutral Shopping document")
 	}
+	if !recipesNeutral {
+		t.Fatal("offline restart has no exact neutral Recipes document")
+	}
 	for _, caller := range []struct {
 		name, token string
 	}{{"anonymous", ""}, {"current administrator", f.token}} {
 		t.Run(caller.name, func(t *testing.T) {
-			response, raw, requestErr := f.request(http.MethodGet, "/offline/shopping", caller.token, "", "", nil, nil)
-			if requestErr != nil || response.StatusCode != http.StatusOK {
-				t.Fatal("neutral Shopping document unavailable", requestErr)
-			}
-			if !strings.Contains(response.Header.Get("Cache-Control"), "public") || len(response.Cookies()) != 0 {
-				t.Fatal("neutral Shopping document set private cache state or a cookie")
-			}
-			text := string(raw)
-			for _, required := range []string{`data-user=""`, `data-household=""`, `<meta name="csrf-token" content="">`, `data-shopping-offline`} {
-				if !strings.Contains(text, required) {
-					t.Fatal("Shopping shell did not retain empty identity/CSRF fields and its neutral view")
+			for _, shell := range []struct{ path, marker string }{
+				{"/offline/shopping", "data-shopping-offline"},
+				{"/offline/recipes", `<section id="recipe-offline"`},
+			} {
+				response, raw, requestErr := f.request(http.MethodGet, shell.path, caller.token, "", "", nil, nil)
+				if requestErr != nil || response.StatusCode != http.StatusOK {
+					t.Fatal("neutral document unavailable", shell.path, requestErr)
 				}
-			}
-			for _, private := range []string{f.identity.UserID, f.identity.HouseholdID, f.identity.SessionID, f.identity.MembershipID, f.identity.Username, f.token, f.app.Auth.CSRF(f.token, "session")} {
-				if private != "" && strings.Contains(text, private) {
-					t.Fatal("Shopping shell included fixture identity or credentials")
+				if !strings.Contains(response.Header.Get("Cache-Control"), "public") || len(response.Cookies()) != 0 {
+					t.Fatal("neutral document set private cache state or a cookie", shell.path)
+				}
+				text := string(raw)
+				for _, required := range []string{`data-user=""`, `data-household=""`, `<meta name="csrf-token" content="">`, shell.marker} {
+					if !strings.Contains(text, required) {
+						t.Fatal("shell did not retain empty identity/CSRF fields and its neutral view", shell.path)
+					}
+				}
+				for _, private := range []string{f.identity.UserID, f.identity.HouseholdID, f.identity.SessionID, f.identity.MembershipID, f.identity.Username, f.token, f.app.Auth.CSRF(f.token, "session")} {
+					if private != "" && strings.Contains(text, private) {
+						t.Fatal("shell included fixture identity or credentials", shell.path)
+					}
 				}
 			}
 		})

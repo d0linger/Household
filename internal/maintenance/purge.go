@@ -151,7 +151,23 @@ func Purge(ctx context.Context, pool *pgxpool.Pool, requestID string) error {
 			}
 		}
 	}
-	for _, query := range []string{"DELETE FROM core.alert_states WHERE household_id=$1 AND module_id=$2", "DELETE FROM core.capture_jobs WHERE household_id=$1 AND module_id=$2", "UPDATE core.attachments SET state='purged' WHERE household_id=$1 AND module_id=$2", "DELETE FROM core.search_documents WHERE household_id=$1 AND module_id=$2", "DELETE FROM core.reminders WHERE household_id=$1 AND module_id=$2", "DELETE FROM core.notifications WHERE household_id=$1 AND module_id=$2", "DELETE FROM core.jobs WHERE household_id=$1 AND module_id=$2", "DELETE FROM core.outbox_events WHERE household_id=$1 AND module_id=$2", "DELETE FROM core.idempotency_records WHERE household_id=$1 AND (module_id=$2 OR target_generations ? $2)", "DELETE FROM core.import_batches WHERE household_id=$1 AND module_id=$2", "DELETE FROM core.resource_links WHERE household_id=$1 AND (source_module=$2 OR target_module=$2)", "DELETE FROM core.ingredient_product_bindings WHERE household_id=$1 AND ($2='recipes' OR $2='pantry')"} {
+	// A catalogue source belongs to Recipes. Pantry and Shopping are independent
+	// optional targets of its Core mapping. Purging one target must not discard
+	// the other target or resurrect an old generation on a later rebind.
+	switch mid {
+	case "recipes":
+		_, err = tx.Exec(ctx, "DELETE FROM core.ingredient_product_bindings WHERE household_id=$1", hid)
+	case "pantry":
+		_, err = tx.Exec(ctx, `UPDATE core.ingredient_product_bindings SET product_id=NULL,target_generation=NULL,changed_by=$2
+ WHERE household_id=$1 AND product_id IS NOT NULL`, hid, actor)
+	case "shopping":
+		_, err = tx.Exec(ctx, `UPDATE core.ingredient_product_bindings SET shopping_product_id=NULL,shopping_generation=NULL,changed_by=$2
+ WHERE household_id=$1 AND shopping_product_id IS NOT NULL`, hid, actor)
+	}
+	if err != nil {
+		return err
+	}
+	for _, query := range []string{"DELETE FROM core.alert_states WHERE household_id=$1 AND module_id=$2", "DELETE FROM core.capture_jobs WHERE household_id=$1 AND module_id=$2", "UPDATE core.attachments SET state='purged' WHERE household_id=$1 AND module_id=$2", "DELETE FROM core.search_documents WHERE household_id=$1 AND module_id=$2", "DELETE FROM core.reminders WHERE household_id=$1 AND module_id=$2", "DELETE FROM core.notifications WHERE household_id=$1 AND module_id=$2", "DELETE FROM core.jobs WHERE household_id=$1 AND module_id=$2", "DELETE FROM core.outbox_events WHERE household_id=$1 AND module_id=$2", "DELETE FROM core.idempotency_records WHERE household_id=$1 AND (module_id=$2 OR target_generations ? $2)", "DELETE FROM core.import_batches WHERE household_id=$1 AND module_id=$2", "DELETE FROM core.resource_links WHERE household_id=$1 AND (source_module=$2 OR target_module=$2)"} {
 		if _, err = tx.Exec(ctx, query, hid, mid); err != nil {
 			return err
 		}

@@ -14,6 +14,7 @@ import (
 	"household/internal/audit"
 	"household/internal/auth"
 	"household/internal/module"
+	"household/internal/recipeimport"
 	"household/internal/value"
 
 	"github.com/jackc/pgx/v5"
@@ -28,9 +29,10 @@ type RecipeBundle struct {
 }
 
 type RecipeRow struct {
-	Key  string                     `json:"key"`
-	ID   string                     `json:"id"`
-	Data map[string]json.RawMessage `json:"data"`
+	Key        string                     `json:"key"`
+	ID         string                     `json:"id"`
+	Data       map[string]json.RawMessage `json:"data"`
+	Conversion *RecipeConversionInput     `json:"conversion,omitempty"`
 }
 
 type RecipeInput struct {
@@ -246,12 +248,39 @@ func (s *Store) SaveRecipe(ctx context.Context, id auth.Identity, rid, key, requ
 		return nil, err
 	}
 	defer rollback(tx)
+	response, err := s.saveRecipeTx(ctx, tx, id, rid, key, requestID, in, data, ingredients, steps, nil, "")
+	if err != nil {
+		return nil, err
+	}
+	if err = tx.Commit(ctx); err != nil {
+		return nil, shoppingContention(err)
+	}
+	return response, nil
+}
+
+type recipeImportMetadata struct {
+	SourceURL    string
+	SourceDigest []byte
+	Provenance   []byte
+}
+
+func (s *Store) saveRecipeTx(ctx context.Context, tx pgx.Tx, id auth.Identity, rid, key, requestID string,
+	in RecipeInput, data Record, ingredients, steps []Record, importMeta *recipeImportMetadata, importOperation string) (Record, error) {
 	encoded, err := json.Marshal(in)
+	if importOperation != "" {
+		encoded, err = json.Marshal(struct {
+			Input RecipeInput           `json:"input"`
+			Meta  *recipeImportMetadata `json:"meta,omitempty"`
+		}{in, importMeta})
+	}
 	if err != nil {
 		return nil, err
 	}
 	hash := sha256.Sum256(encoded)
 	op := "recipe/workspace/" + rid
+	if importOperation != "" {
+		op = importOperation
+	}
 	if _, err = tx.Exec(ctx, "SELECT pg_advisory_xact_lock(hashtextextended($1,0))", id.UserID+op+key); err != nil {
 		return nil, err
 	}
@@ -329,6 +358,13 @@ func (s *Store) SaveRecipe(ctx context.Context, id auth.Identity, rid, key, requ
 			return nil, err
 		}
 	}
+	if importMeta != nil {
+		if _, err = tx.Exec(ctx, `UPDATE recipes.recipes SET source_url=nullif($3,''),source_import_sha256=$4,
+		 import_provenance=$5::jsonb WHERE household_id=$1 AND id=$2`, id.HouseholdID, rid,
+			importMeta.SourceURL, importMeta.SourceDigest, importMeta.Provenance); err != nil {
+			return nil, err
+		}
+	}
 	if err = s.replaceRecipeRows(ctx, tx, id, rid, in.Generation, "ingredients", in.Ingredients, ingredients, current.Ingredients); err != nil {
 		return nil, err
 	}
@@ -351,6 +387,25 @@ func (s *Store) SaveRecipe(ctx context.Context, id auth.Identity, rid, key, requ
 			return nil, err
 		}
 	}
+	var snapshot []byte
+	if err = tx.QueryRow(ctx, "SELECT recipes.content_snapshot($1,$2)", id.HouseholdID, rid).Scan(&snapshot); err != nil {
+		return nil, err
+	}
+	portable, err := portableRecipeFromSnapshot(snapshot)
+	if err != nil {
+		return nil, err
+	}
+	portableDigest, err := recipeimport.ContentDigest(portable)
+	if err != nil {
+		return nil, err
+	}
+	portableBytes, err := hex.DecodeString(portableDigest)
+	if err != nil {
+		return nil, err
+	}
+	if _, err = tx.Exec(ctx, "UPDATE recipes.recipes SET portable_sha256=$3 WHERE household_id=$1 AND id=$2", id.HouseholdID, rid, portableBytes); err != nil {
+		return nil, err
+	}
 	if err = s.afterWrite(ctx, tx, id, m, entity, result, in.Generation); err != nil {
 		return nil, err
 	}
@@ -368,9 +423,6 @@ func (s *Store) SaveRecipe(ctx context.Context, id auth.Identity, rid, key, requ
 	_, err = tx.Exec(ctx, `INSERT INTO core.idempotency_records(household_id,user_id,operation,key,request_hash,module_id,module_generation,response_status,response_payload) VALUES($1,$2,$3,$4,$5,'recipes',$6,200,$7)`, id.HouseholdID, id.UserID, op, key, hash[:], in.Generation, raw)
 	if err != nil {
 		return nil, err
-	}
-	if err = tx.Commit(ctx); err != nil {
-		return nil, shoppingContention(err)
 	}
 	return response, nil
 }
@@ -405,7 +457,17 @@ func (s *Store) replaceRecipeRows(ctx context.Context, tx pgx.Tx, id auth.Identi
 			}
 		}
 		data["recipe_id"] = rid
-		record, err := save(ctx, tx, id, m, entity, rowID, data, creating, version)
+		var record Record
+		var err error
+		if row.Conversion != nil {
+			if name != "ingredients" || creating {
+				return RecipeErrors{name + "." + row.Key: "Umrechnung nur für eine bestehende Rezeptzutat"}
+			}
+			record, err = saveConvertedRecipeIngredient(ctx, tx, id, rowID, version,
+				data, existing[rowID], *row.Conversion)
+		} else {
+			record, err = save(ctx, tx, id, m, entity, rowID, data, creating, version)
+		}
 		if err != nil {
 			return shoppingContention(err)
 		}

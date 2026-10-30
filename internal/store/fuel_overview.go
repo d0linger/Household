@@ -12,7 +12,7 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// Current Core26 supports only the existing manual nonfinancial Fuel domain.
+// Reviewed Core 26 and recipe-only Core 27 support the manual Fuel domain.
 // A newer Core must integrate inherited per-record visibility before this read
 // surface can be admitted; omitting monetary columns is not authorization.
 const fuelOverviewScopeSQL = `SELECT ms.data_generation,h.timezone,(transaction_timestamp() AT TIME ZONE h.timezone)::date::text,transaction_timestamp(),ms.state='enabled'
@@ -21,7 +21,7 @@ const fuelOverviewScopeSQL = `SELECT ms.data_generation,h.timezone,(transaction_
  JOIN core.sessions s ON s.id=$6 AND s.user_id=u.id AND s.auth_version=u.auth_version AND s.revoked_at IS NULL
  AND s.idle_expires_at>transaction_timestamp() AND s.absolute_expires_at>transaction_timestamp()
  JOIN core.module_states ms ON ms.household_id=h.id AND ms.module_id='fuel'
- WHERE h.id=$1 AND (SELECT count(*)=1 AND bool_and(version=26 AND NOT dirty) FROM core.schema_migrations)`
+ WHERE h.id=$1 AND (SELECT count(*)=1 AND bool_and(version IN(26,27) AND NOT dirty) FROM core.schema_migrations)`
 
 func fuelOverviewScope(ctx context.Context, q interface {
 	QueryRow(context.Context, string, ...any) pgx.Row

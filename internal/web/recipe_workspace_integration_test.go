@@ -351,15 +351,21 @@ func TestRecipeVersionsPopulatedUpgrade(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	// Advance independent schemas that migrate before recipes. Otherwise a
-	// newer Core or Shopping barrier drains this writer before recipes2 can
-	// exercise the legacy ingredient/parent lock order this test constrains.
-	for _, schema := range database.Schemas {
+	// Install the accepted Core26 module histories before Core27. Then no
+	// independent household barrier can drain the writer before recipes2
+	// exercises the legacy ingredient/parent lock order this test constrains.
+	migratePriorAuditSchema(t, f, "core", 26)
+	for _, schema := range database.Schemas[1:] {
 		if schema == "recipes" {
-			break
+			continue
 		}
-		migratePriorAuditSchema(t, f, schema, uint(database.ExpectedVersion(schema)))
+		version := uint(database.ExpectedVersion(schema))
+		if schema == "fuel" {
+			version = 5
+		}
+		migratePriorAuditSchema(t, f, schema, version)
 	}
+	migratePriorAuditSchema(t, f, "core", uint(database.ExpectedVersion("core")))
 	// Reproduce the old child-first writer order while recipes2 waits at its
 	// household barrier. It must finish before any parent/table migration lock.
 	ctx, cancel := context.WithTimeout(f.ctx, 20*time.Second)
@@ -487,7 +493,12 @@ func TestRecipeVersionsRestoredTransactionIDCollision(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Model an imported history row whose old-cluster XID equals this new TX.
-	if _, err = f.owner.Exec(f.ctx, `INSERT INTO recipes.versions(household_id,recipe_id,revision,transaction_id,transaction_started_at,snapshot) VALUES($1,$2,2,$3,'2000-01-01',recipes.content_snapshot($1,$2))`, f.identity.HouseholdID, rid, xid); err != nil {
+	if _, err = f.owner.Exec(f.ctx, `WITH restored AS MATERIALIZED (
+ SELECT recipes.content_snapshot($1,$2) AS snapshot
+)
+INSERT INTO recipes.versions(household_id,recipe_id,revision,transaction_id,transaction_started_at,snapshot,snapshot_sha256)
+SELECT $1,$2,2,$3,'2000-01-01',restored.snapshot,sha256(convert_to(restored.snapshot::text,'UTF8'))
+FROM restored`, f.identity.HouseholdID, rid, xid); err != nil {
 		t.Fatal(err)
 	}
 	if _, err = tx.Exec(f.ctx, "UPDATE recipes.recipes SET title='Edit after restored XID collision',version=version+1 WHERE id=$1", rid); err != nil {

@@ -22,6 +22,8 @@ func TestPlanningIngredientBindingPopulatedPriorUpgrade(t *testing.T) {
 			version = 2 // Keep the actual predecessor compatible with Core19.
 		}
 		switch schema {
+		case "recipes":
+			version = 4 // Recipes5 belongs to the later Core27 expansion.
 		case "core":
 			version = 19
 		case "expenses":
