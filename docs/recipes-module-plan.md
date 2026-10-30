@@ -184,7 +184,7 @@ Die Minimalbeispiele sind Vertrags-Fixtures für die unterstützte Teilmenge, ke
 113. [x] Gefundene Fehler modulweit beheben und betroffene Kampagnen wiederholen (Import-Routing, Core/Fuel-Kompatibilität, echte Legacy-Fixtures, Offline-Consent/Ablauf, Passwortwechsel-Start und Testharness-Übergaben korrigiert; alle betroffenen Prüfungen und die vollständige native Komposition bestanden).
 114. [x] Unabhängige DB-/Backend-/UI-/Sicherheits-/Dokumentationsabnahme abgleichen (Quellen, 29 Browserberichte/155 PNG-Hashes, 42 Race-Identitäten, 16 frische Recovery-Stufen, exakte 616-Identitäts-/Coverage-Komposition und Nachweisgrenzen unabhängig nachgeprüft; erster exakter Index-Geheimnisscan ohne Befund).
 115. [x] Erst nach vollständiger lokaler Abnahme alle zehn RE-Punkte gemeinsam abhaken (RE05/06/09/13/14/15/17/18/19/20 gemeinsam verifiziert; Rezepte 20/20, Gesamtstand 97/180).
-116. [ ] Exakten gestagten Index auf Geheimnisse prüfen und lokalen Checkpoint ohne Push sichern.
+116. [x] Exakten gestagten Index auf Geheimnisse prüfen und lokalen Checkpoint ohne Push sichern (Checkpoint `02279966679a13757771b65543a5af454f16ea34`, 99 Recipe-Dateien; exakter Index mit765Blobs/81SQL und Gitleaks ohne Befund, 75 bisherige SQL-Dateien bytegleich; Finance-Entwurf ausgeschlossen, kein Push).
 
 ## Quellen und Nachweisgrenzen
 
