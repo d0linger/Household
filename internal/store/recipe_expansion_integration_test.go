@@ -43,6 +43,16 @@ type recipeExpansionFixture struct {
 // taking the same exclusive advisory lock used by the web integration suite.
 func newRecipeExpansionFixture(t *testing.T) *recipeExpansionFixture {
 	t.Helper()
+	return newRecipeExpansionFixtureForProfile(t, false)
+}
+
+func newRecipeExpansionPredecessorFixture(t *testing.T) *recipeExpansionFixture {
+	t.Helper()
+	return newRecipeExpansionFixtureForProfile(t, true)
+}
+
+func newRecipeExpansionFixtureForProfile(t *testing.T, predecessor bool) *recipeExpansionFixture {
+	t.Helper()
 	ownerURL, appURL := os.Getenv("HOUSEHOLD_TEST_OWNER_URL"), os.Getenv("HOUSEHOLD_TEST_APP_URL")
 	if ownerURL == "" || appURL == "" {
 		if os.Getenv("HOUSEHOLD_REQUIRE_INTEGRATION") == "1" {
@@ -109,7 +119,9 @@ func newRecipeExpansionFixture(t *testing.T) *recipeExpansionFixture {
 	if err = recipeExpansionReset(ctx, owner); err != nil {
 		t.Fatal(err)
 	}
-	if err = database.Migrate(ctx, ownerURL); err != nil {
+	if predecessor {
+		recipeExpansionMigratePredecessor(t, ctx, ownerURL, owner)
+	} else if err = database.Migrate(ctx, ownerURL); err != nil {
 		t.Fatal(err)
 	}
 	cfg := config.Config{
@@ -168,7 +180,7 @@ func TestRecipeExpansionFreshReadinessAndImportPurpose(t *testing.T) {
 		t.Fatalf("fresh contracts core=%t recipes=%t audit=%t fuel=%t error=%v",
 			coreReady, recipesReady, audited, fuelReady, err)
 	}
-	if err := f.owner.QueryRow(f.ctx, `SELECT count(*) FROM core.audit_policies`).Scan(&policies); err != nil || policies != 95 {
+	if err := f.owner.QueryRow(f.ctx, `SELECT count(*) FROM core.audit_policies`).Scan(&policies); err != nil || policies != 100 {
 		t.Fatalf("fresh audit policy count %d: %v", policies, err)
 	}
 	var teaspoons, tablespoons bool
@@ -640,6 +652,32 @@ func TestRecipeExpansionInsightsAndGuards(t *testing.T) {
 	}
 }
 
+func recipeExpansionMigratePredecessor(t *testing.T, ctx context.Context, ownerURL string, owner *pgxpool.Pool) {
+	t.Helper()
+	// Create every allowed namespace before any migration inspects other schemas.
+	for _, schema := range database.Schemas {
+		if _, err := owner.Exec(ctx, "CREATE SCHEMA IF NOT EXISTS "+pgx.Identifier{schema}.Sanitize()); err != nil {
+			t.Fatal("create genuine predecessor schemas", err)
+		}
+	}
+	// Freeze the historical release rather than upgrading and attempting to undo
+	// later audit/readiness contracts before the legacy rows are populated.
+	profile := map[string]uint{
+		"core": 26, "shopping": 8, "fuel": 5, "recipes": 4, "pantry": 12,
+		"expenses": 4, "chores": 1, "meters": 1, "documents": 1, "mealplan": 7,
+	}
+	for _, schema := range database.Schemas {
+		version, ok := profile[schema]
+		if !ok {
+			t.Fatalf("unreviewed predecessor schema %s", schema)
+		}
+		recipeExpansionMigrateTo(t, ownerURL, schema, version)
+	}
+	if _, err := owner.Exec(ctx, "SELECT core.install_audit_triggers()"); err != nil {
+		t.Fatal("install genuine predecessor audit triggers", err)
+	}
+}
+
 func recipeExpansionMigrateTo(t *testing.T, ownerURL, schema string, version uint) {
 	t.Helper()
 	source, err := iofs.New(os.DirFS("../database"), "migrations/"+schema)
@@ -650,7 +688,17 @@ func recipeExpansionMigrateTo(t *testing.T, ownerURL, schema string, version uin
 	if err != nil {
 		t.Fatal(err)
 	}
-	db := stdlib.OpenDB(*config)
+	db := stdlib.OpenDB(*config, stdlib.OptionAfterConnect(func(ctx context.Context, conn *pgx.Conn) error {
+		initialize, cancel := context.WithTimeout(ctx, 5*time.Second)
+		defer cancel()
+		if _, err := conn.Exec(initialize, "SET search_path=pg_catalog"); err != nil {
+			cleanup, stop := context.WithTimeout(context.Background(), 2*time.Second)
+			defer stop()
+			_ = conn.Close(cleanup)
+			return err
+		}
+		return nil
+	}))
 	defer func() { _ = db.Close() }()
 	driver, err := migratepgx.WithInstance(db, &migratepgx.Config{
 		SchemaName: schema, StatementTimeout: time.Minute,
@@ -663,7 +711,7 @@ func recipeExpansionMigrateTo(t *testing.T, ownerURL, schema string, version uin
 		t.Fatal("open predecessor migration runner", err)
 	}
 	if err = runner.Migrate(version); err != nil {
-		t.Fatal("downgrade isolated schema to checked-in predecessor", err)
+		t.Fatal("migrate isolated schema to checked-in predecessor", err)
 	}
 	sourceErr, driverErr := runner.Close()
 	if sourceErr != nil || driverErr != nil {
@@ -672,12 +720,9 @@ func recipeExpansionMigrateTo(t *testing.T, ownerURL, schema string, version uin
 }
 
 func TestRecipeExpansionPopulatedPredecessorUpgrade(t *testing.T) {
-	f := newRecipeExpansionFixture(t)
-	// Downgrade only the three newly changed schemas, then populate their actual
-	// predecessor columns and immutable recipe history before upgrading again.
-	recipeExpansionMigrateTo(t, f.ownerURL, "fuel", 5)
-	recipeExpansionMigrateTo(t, f.ownerURL, "recipes", 4)
-	recipeExpansionMigrateTo(t, f.ownerURL, "core", 26)
+	f := newRecipeExpansionPredecessorFixture(t)
+	// Populate the genuine predecessor columns and immutable history before the
+	// first current migration, without downgrading a bootstrapped current schema.
 	rid, ingredientID, batchID := value.UUID(), value.UUID(), value.UUID()
 	if _, err := f.owner.Exec(f.ctx, `INSERT INTO recipes.recipes
  (id,household_id,title,base_servings,created_by)

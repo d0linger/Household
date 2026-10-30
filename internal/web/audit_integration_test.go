@@ -36,7 +36,7 @@ func TestAuditTrailContract(t *testing.T) {
 			AND NOT(t.schemaname='pantry' AND t.tablename='lot_balances')
 			AND NOT(t.schemaname='fuel' AND t.tablename=ANY($2::text[]))`,
 			[]string{"shopping", "fuel", "recipes", "pantry", "expenses", "chores", "meters", "documents", "mealplan"}, privateFuel).Scan(&missing, &domainTables)
-		if err != nil || missing != 0 || domainTables != 66 {
+		if err != nil || missing != 0 || domainTables != 71 {
 			t.Fatalf("domain coverage: missing=%d tables=%d error=%v", missing, domainTables, err)
 		}
 		// Dedicated API tables remain audited business facts. Only the exact
@@ -59,6 +59,22 @@ func TestAuditTrailContract(t *testing.T) {
  FROM core.audit_policies WHERE schema_name='pantry' AND table_name=ANY($1::text[])`, pantryExtensions).
 			Scan(&extensionTables, &extensionPolicies, &redacted); err != nil || extensionTables != 6 || extensionPolicies != 6 || !redacted {
 			t.Fatalf("Pantry extension classification: tables=%d policies=%d redacted=%t error=%v", extensionTables, extensionPolicies, redacted, err)
+		}
+		planningExtensions := []string{"leftover_sources", "leftover_allocations", "weekly_settings", "calendar_feeds", "calendar_tombstones"}
+		if err = f.owner.QueryRow(f.ctx, `SELECT
+ (SELECT count(*) FROM pg_tables WHERE schemaname='mealplan' AND tablename=ANY($1::text[])),
+ count(*),coalesce(bool_and(p.key_columns=e.keys AND p.safe_columns=e.safe AND p.label_column IS NULL
+ AND NOT(p.safe_columns && ARRAY['expected_servings','servings','source_hash','budget_minor','manual_estimates','rules','token_hash','issuer_user_id','issuer_membership_id','issuer_auth_version','issuer_role','meal_id','planned_on']::text[])),false)
+ FROM core.audit_policies p JOIN (VALUES
+ ('leftover_sources',ARRAY['id'],ARRAY['plan_id','source_meal_id','source_component_id','reviewed_meal_version','reviewed_component_version','version']),
+ ('leftover_allocations',ARRAY['id'],ARRAY['plan_id','source_id','target_meal_id','reviewed_source_version','reviewed_target_version','version']),
+ ('weekly_settings',ARRAY['id'],ARRAY['plan_id','week_start','version']),
+ ('calendar_feeds',ARRAY['id'],ARRAY['plan_id','week_start','module_generation','expires_at','revoked_at','version']),
+ ('calendar_tombstones',ARRAY['household_id','module_generation','meal_id','planned_on'],ARRAY['plan_id','module_generation','sequence','deleted_at'])
+ ) e(name,keys,safe) ON p.schema_name='mealplan' AND p.table_name=e.name
+ WHERE p.table_name=ANY($1::text[])`, planningExtensions).
+			Scan(&extensionTables, &extensionPolicies, &redacted); err != nil || extensionTables != 5 || extensionPolicies != 5 || !redacted {
+			t.Fatalf("Mealplan extension classification: tables=%d policies=%d redacted=%t error=%v", extensionTables, extensionPolicies, redacted, err)
 		}
 		var ready bool
 		if err = f.pool.QueryRow(f.ctx, "SELECT core.audit_ready()").Scan(&ready); err != nil || !ready {

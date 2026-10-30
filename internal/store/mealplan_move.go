@@ -115,16 +115,21 @@ func (s *Store) copyPlanningWeek(ctx context.Context, tx pgx.Tx, id auth.Identit
 	if err = lockPlanningComponents(ctx, tx, id, ids); err != nil {
 		return nil, err
 	}
+	if err = reviewPlanningLeftoverCopy(ctx, tx, id, pid, week); err != nil {
+		return nil, err
+	}
 	newPlan := value.UUID()
 	if _, err = tx.Exec(ctx, "INSERT INTO mealplan.plans(id,household_id,name,starts_on,ends_on,is_template,created_by,copy_source_plan,copy_key,copy_request_hash) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)", newPlan, id.HouseholdID, name, target[0], target[6], in.IsTemplate, id.UserID, pid, key, requestHash); err != nil {
 		return nil, err
 	}
+	mealIDs := make(map[string]string, len(week.Meals))
 	for _, meal := range week.Meals {
 		date, dateErr := planningCopyDate(meal.PlannedOn, in.Week, in.TargetDate)
 		if dateErr != nil {
 			return nil, dateErr
 		}
 		newMeal := value.UUID()
+		mealIDs[meal.ID] = newMeal
 		if _, err = tx.Exec(ctx, `INSERT INTO mealplan.meals(id,household_id,plan_id,planned_on,meal_slot,title,servings,notes,kind,status,created_by,servings_mode,guest_count) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,'open',$10,$11,$12)`, newMeal, id.HouseholdID, newPlan, date, meal.Slot, meal.Title, meal.Servings, meal.Notes, meal.Kind, id.UserID, meal.ServingsMode, meal.GuestCount); err != nil {
 			return nil, err
 		}
@@ -139,6 +144,12 @@ func (s *Store) copyPlanningWeek(ctx context.Context, tx pgx.Tx, id auth.Identit
 		if err = s.projectPlanning(ctx, tx, id, "meals", newMeal, in.Generation); err != nil {
 			return nil, err
 		}
+	}
+	if err = copyPlanningLeftovers(ctx, tx, id, pid, newPlan, mealIDs); err != nil {
+		return nil, err
+	}
+	if err = copyPlanningWeekSettings(ctx, tx, id, pid, newPlan, in.Week, in.TargetDate, mealIDs); err != nil {
+		return nil, err
 	}
 	result := planningResult(newPlan, "")
 	result["url"] = String(result["url"]) + "?week=" + in.TargetDate

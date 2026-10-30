@@ -79,5 +79,9 @@
   "fuel/000006_core27_overview_compat.down.sql": "66ae742904e3daca4bcbbe0496977125a4c93a09476df2ba0d325ef7e66d4c63",
   "fuel/000006_core27_overview_compat.up.sql": "d4b822e032781c711ff757716f7166476d11872f6823550e3d118cc2005367ac",
   "recipes/000005_recipe_expansion.down.sql": "ac01e61e439c23de9abad011c23198080849610520f83322eeb3728e16e9e408",
-  "recipes/000005_recipe_expansion.up.sql": "130a8d4628e2f18c5ba0432372c4f290b4d1bbdf078c5747cb5a9f12e6ec065b"
+  "recipes/000005_recipe_expansion.up.sql": "130a8d4628e2f18c5ba0432372c4f290b4d1bbdf078c5747cb5a9f12e6ec065b",
+  "core/000028_planning_extensions.up.sql": "1c33107f2e94046d845d9d4290eed6b25fee7237745f7a62a7abb6636e262a9a",
+  "fuel/000007_core28_planning_compat.up.sql": "a796c4ac9fcae607c56f297460373fc7a8c50477f60886f19c1e74caa4496977",
+  "mealplan/000008_planning_extensions.up.sql": "2f050f30046dce3b25d752eb8651a7ec66d496424b2f6c39858c273387c2fb6e",
+  "pantry/000013_core28_planning_compat.up.sql": "028d9fb2d41147c8a1aca98860705f734aba414c76954b26b492563af81cdbe9"
 }

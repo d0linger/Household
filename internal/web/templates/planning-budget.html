@@ -1,0 +1,13 @@
+{{define "planning-budget"}}
+<details id="planning-budget" class="planning-extension">
+ <summary>Wochenbudget und Kostenschätzung</summary><h2 tabindex="-1">Zutatenverbrauch dieser Woche</h2>
+ <p class="fine">Geschätzter Zutatenverbrauch, keine Kassenausgaben. Vorrat ist nicht kostenlos; fehlende Preise bleiben unbekannt. Eine Restquelle wird einmal berechnet.</p>
+ <p data-extension-status role="status">Schätzung wird geladen …</p><div data-extension-error class="notice error" role="alert" tabindex="-1" hidden></div>
+ <p id="budget-total" class="notice"></p><div id="budget-meals"></div>
+ {{if .User.CanWrite}}<form id="budget-settings-form"><fieldset data-extension-write><legend>Geprüfte Wochenwerte speichern</legend>
+ <label>Budgetziel · EUR, leer = kein Ziel<input name="budget" inputmode="decimal" autocomplete="off" placeholder="z. B. 75,00"></label>
+ <h3>Optionale manuelle Mahlzeitenschätzungen</h3><p class="fine">Für freie, auswärtige oder bestellte Mahlzeiten. Ein Betrag gilt für die gesamte Mahlzeit und ihren angezeigten Stand. Rezeptkosten bleiben zutatenbasiert; Restproduktion wird bei der Quelle gerechnet. Leer bleibt unbekannt. 0,00 ist ausdrücklich bekannt null.</p><div id="budget-manual-estimates" class="form-grid"></div>
+ <h3>Gewichtung für Wochenvorschläge</h3><p class="fine">Ganze Werte von 0 bis 100. Unbekannte Angaben erhalten keinen Vorteil durch einen erfundenen Nullwert.</p><div class="form-grid" id="budget-rules"></div>
+ <button class="primary">Budget und geprüfte Schätzungen speichern</button></fieldset></form><div class="actions"><button type="button" id="budget-rebase">Entwurf gegen die aktuellen Mahlzeiten prüfen</button><button type="button" data-extension-discard>Budget-Entwurf verwerfen und neu laden</button></div>{{end}}
+</details>
+{{end}}

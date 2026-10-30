@@ -240,6 +240,10 @@ func TestExpenseEditorIntegrityPopulatedExpenses2AndLegacyWriterUpgrade(t *testi
 			version = 5
 		case "recipes":
 			version = 4
+		case "pantry":
+			version = 12 // Pantry13 belongs to Core28.
+		case "mealplan":
+			version = 7 // Keep the genuine Core26 predecessor.
 		case "expenses":
 			version = 2
 		}

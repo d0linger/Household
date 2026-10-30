@@ -77,6 +77,9 @@ func Purge(ctx context.Context, pool *pgxpool.Pool, requestID string) error {
 	}
 	switch mid {
 	case "mealplan":
+		// The schema-local table inventory above includes forecast sources and
+		// allocations, weekly settings, feed hashes and cancellation tombstones.
+		// All five are purged with the plan; no forecast is physical Pantry stock.
 		if _, err = tx.Exec(ctx, "DELETE FROM core.planning_purchase_requirements WHERE household_id=$1", hid); err != nil {
 			return err
 		}

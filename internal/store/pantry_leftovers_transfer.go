@@ -17,7 +17,7 @@ func recordPreparedTransfer(ctx context.Context, tx pgx.Tx, id auth.Identity, so
 	if err := tx.QueryRow(ctx, "SELECT version,dirty FROM pantry.schema_migrations").Scan(&version, &dirty); err != nil {
 		return err
 	}
-	if dirty || version > 12 {
+	if dirty || version > 13 {
 		return ErrConflict
 	}
 	if version < 12 {

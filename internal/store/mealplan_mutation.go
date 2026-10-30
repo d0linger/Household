@@ -136,7 +136,7 @@ func (s *Store) MutatePlanning(ctx context.Context, id auth.Identity, pid, key, 
 		return nil, err
 	}
 	if err = tx.Commit(ctx); err != nil {
-		return nil, shoppingContention(err)
+		return nil, planningLeftoverMutationError("mealplan", shoppingContention(err))
 	}
 	return result, nil
 }

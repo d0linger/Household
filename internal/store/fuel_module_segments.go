@@ -480,7 +480,7 @@ func (s *Store) FuelModuleHousekeeping(ctx context.Context, limit int) error {
  WHERE state.status='ready' AND(cutoff.day IS NULL OR cutoff.day>(transaction_timestamp() AT TIME ZONE h.timezone)::date
  OR EXISTS(SELECT 1 FROM fuel.fillups f WHERE f.household_id=state.household_id AND f.vehicle_id=state.vehicle_id
  AND f.occurred_on>cutoff.day AND f.occurred_on<=(transaction_timestamp() AT TIME ZONE h.timezone)::date))
- AND(SELECT count(*)=1 AND bool_and(version IN(26,27) AND NOT dirty) FROM core.schema_migrations)
+ AND(SELECT count(*)=1 AND bool_and(version IN(26,27,28) AND NOT dirty) FROM core.schema_migrations)
  ORDER BY state.updated_at LIMIT $1 FOR UPDATE OF state SKIP LOCKED), reset AS(
  UPDATE fuel.segment_state state SET source_version=source_version+1,status='pending',checkpoint='{}',cursor_series=NULL,cursor_day=NULL,
  cursor_odometer=NULL,cursor_id=NULL,updated_at=transaction_timestamp() FROM due
@@ -495,7 +495,7 @@ func (s *Store) FuelModuleHousekeeping(ctx context.Context, limit int) error {
  FROM fuel.segment_state state JOIN core.module_states m ON m.household_id=state.household_id AND m.module_id='fuel' AND m.state='enabled'
  WHERE(state.algorithm_version<>$1 OR state.built_version<>state.source_version)
  AND NOT EXISTS(SELECT 1 FROM fuel.segment_jobs j WHERE j.household_id=state.household_id AND j.vehicle_id=state.vehicle_id)
- AND(SELECT count(*)=1 AND bool_and(version IN(26,27) AND NOT dirty) FROM core.schema_migrations)
+ AND(SELECT count(*)=1 AND bool_and(version IN(26,27,28) AND NOT dirty) FROM core.schema_migrations)
  ORDER BY state.updated_at,state.household_id,state.vehicle_id LIMIT $2)
  INSERT INTO fuel.segment_jobs(household_id,vehicle_id,target_version) SELECT household_id,vehicle_id,source_version FROM stale
  ON CONFLICT(household_id,vehicle_id) DO NOTHING`, fuelSegmentAlgorithm, limit)
@@ -537,7 +537,7 @@ func (s *Store) fuelSegmentWork(ctx context.Context) (worked bool, workErr error
 	err = tx.QueryRow(ctx, `SELECT j.household_id,j.vehicle_id,j.target_version FROM fuel.segment_jobs j
  JOIN core.module_states m ON m.household_id=j.household_id AND m.module_id='fuel' AND m.state='enabled'
  WHERE j.next_attempt_at<=transaction_timestamp() AND(j.lease_until IS NULL OR j.lease_until<transaction_timestamp())
- AND(SELECT count(*)=1 AND bool_and(version IN(26,27) AND NOT dirty) FROM core.schema_migrations)
+ AND(SELECT count(*)=1 AND bool_and(version IN(26,27,28) AND NOT dirty) FROM core.schema_migrations)
  ORDER BY j.next_attempt_at,j.household_id,j.vehicle_id LIMIT 1 FOR UPDATE OF j SKIP LOCKED`).Scan(&household, &vehicle, &target)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return false, nil

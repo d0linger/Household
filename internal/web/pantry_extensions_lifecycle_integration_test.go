@@ -36,6 +36,8 @@ func pantryExtensionsPriorCatalog(t *testing.T, f *integrationFixture, pantryVer
 			version = 5
 		case "recipes":
 			version = 4
+		case "mealplan":
+			version = 7 // Mealplan8 requires the later Core28 extension stage.
 		case "pantry":
 			version = pantryVersion
 		}

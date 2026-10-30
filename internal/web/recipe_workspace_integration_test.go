@@ -360,12 +360,18 @@ func TestRecipeVersionsPopulatedUpgrade(t *testing.T) {
 			continue
 		}
 		version := uint(database.ExpectedVersion(schema))
+		if schema == "mealplan" {
+			version = 7
+		}
+		if schema == "pantry" {
+			version = 12
+		}
 		if schema == "fuel" {
 			version = 5
 		}
 		migratePriorAuditSchema(t, f, schema, version)
 	}
-	migratePriorAuditSchema(t, f, "core", uint(database.ExpectedVersion("core")))
+	migratePriorAuditSchema(t, f, "core", 27)
 	// Reproduce the old child-first writer order while recipes2 waits at its
 	// household barrier. It must finish before any parent/table migration lock.
 	ctx, cancel := context.WithTimeout(f.ctx, 20*time.Second)

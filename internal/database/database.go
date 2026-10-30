@@ -116,16 +116,17 @@ func Migrate(ctx context.Context, dsn string) error {
 		}
 		return nil
 	}
-	// Shopping 8, Fuel 5, and Pantry 12 pin the accepted Core 26 audit
-	// predecessor. Install those histories against that barrier, holding Recipes
-	// at 4 and Fuel at 5, then Core 27, Recipes 5, and Fuel 6. The same order
-	// works for fresh databases and populated upgrades without changing old SQL.
+	// Released histories retain their exact Core26 and Core27 predecessors.
+	// Explicit barriers also keep new optional-module migrations from running
+	// early on a fresh installation. No stage ever downgrades an existing schema.
 	coreLegacyBarrier := uint(26)
 	if err = migrateSchema("core", &coreLegacyBarrier); err != nil {
 		return err
 	}
 	recipePredecessor := uint(4)
 	fuelPredecessor := uint(5)
+	pantryPredecessor := uint(12)
+	mealplanPredecessor := uint(7)
 	for _, schema := range Schemas[1:] {
 		var through *uint
 		switch schema {
@@ -133,19 +134,30 @@ func Migrate(ctx context.Context, dsn string) error {
 			through = &recipePredecessor
 		case "fuel":
 			through = &fuelPredecessor
+		case "pantry":
+			through = &pantryPredecessor
+		case "mealplan":
+			through = &mealplanPredecessor
 		}
 		if err = migrateSchema(schema, through); err != nil {
 			return err
 		}
 	}
-	if err = migrateSchema("core", nil); err != nil {
+	coreRecipeBarrier := uint(27)
+	if err = migrateSchema("core", &coreRecipeBarrier); err != nil {
 		return err
 	}
 	if err = migrateSchema("recipes", nil); err != nil {
 		return err
 	}
-	if err = migrateSchema("fuel", nil); err != nil {
+	fuelRecipeBarrier := uint(6)
+	if err = migrateSchema("fuel", &fuelRecipeBarrier); err != nil {
 		return err
+	}
+	for _, schema := range []string{"mealplan", "core", "fuel", "pantry"} {
+		if err = migrateSchema(schema, nil); err != nil {
+			return err
+		}
 	}
 	// Attach the final audit contract only after all independent module tables
 	// exist. The separate migration role alone may install triggers.
@@ -305,6 +317,13 @@ func Ready(ctx context.Context, pool *pgxpool.Pool) error {
 	}
 	if !participants {
 		return errors.New("incomplete planning participant contract")
+	}
+	var planningExtensions, planningAudit bool
+	if err := pool.QueryRow(ctx, "SELECT mealplan.expansion_ready(),core.planning_extensions_ready()").Scan(&planningExtensions, &planningAudit); err != nil {
+		return fmt.Errorf("inspect planning extension contract: %w", err)
+	}
+	if !planningExtensions || !planningAudit {
+		return errors.New("incomplete planning extension contract")
 	}
 	var expenseEditing bool
 	if err := pool.QueryRow(ctx, "SELECT expenses.editing_ready()").Scan(&expenseEditing); err != nil {

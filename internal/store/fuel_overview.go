@@ -21,7 +21,7 @@ const fuelOverviewScopeSQL = `SELECT ms.data_generation,h.timezone,(transaction_
  JOIN core.sessions s ON s.id=$6 AND s.user_id=u.id AND s.auth_version=u.auth_version AND s.revoked_at IS NULL
  AND s.idle_expires_at>transaction_timestamp() AND s.absolute_expires_at>transaction_timestamp()
  JOIN core.module_states ms ON ms.household_id=h.id AND ms.module_id='fuel'
- WHERE h.id=$1 AND (SELECT count(*)=1 AND bool_and(version IN(26,27) AND NOT dirty) FROM core.schema_migrations)`
+ WHERE h.id=$1 AND (SELECT count(*)=1 AND bool_and(version IN(26,27,28) AND NOT dirty) FROM core.schema_migrations)`
 
 func fuelOverviewScope(ctx context.Context, q interface {
 	QueryRow(context.Context, string, ...any) pgx.Row

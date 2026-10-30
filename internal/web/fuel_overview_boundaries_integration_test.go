@@ -162,7 +162,7 @@ func TestFuelOverviewGenuineFuel1UpgradePreservesAllPriorFacts(t *testing.T) {
 func TestFuelOverviewExplicitReviewedCoreFutureVisibilityBarrier(t *testing.T) {
 	f := newIntegrationFixture(t)
 	fuelOverviewFixture(t, f, "future visibility")
-	if _, err := f.owner.Exec(f.ctx, "UPDATE core.schema_migrations SET version=28"); err != nil {
+	if _, err := f.owner.Exec(f.ctx, "UPDATE core.schema_migrations SET version=29"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := f.app.Store.FuelOverviewContext(f.ctx, f.identity); !errors.Is(err, store.ErrForbidden) {
@@ -172,7 +172,7 @@ func TestFuelOverviewExplicitReviewedCoreFutureVisibilityBarrier(t *testing.T) {
 	if err := f.pool.QueryRow(f.ctx, "SELECT coalesce(fuel.overview_ready(),false)").Scan(&ready); err != nil || ready {
 		t.Fatal(ready, err)
 	}
-	if _, err := f.owner.Exec(f.ctx, "UPDATE core.schema_migrations SET version=27"); err != nil {
+	if _, err := f.owner.Exec(f.ctx, "UPDATE core.schema_migrations SET version=28"); err != nil {
 		t.Fatal(err)
 	}
 	if err := database.Ready(f.ctx, f.pool); err != nil {

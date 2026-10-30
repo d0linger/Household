@@ -419,7 +419,7 @@ func (s *Store) Write(ctx context.Context, id auth.Identity, m module.Descriptor
 		return nil, err
 	}
 	if err = tx.Commit(ctx); err != nil {
-		return nil, err
+		return nil, planningLeftoverMutationError(m.ID, err)
 	}
 	return result, nil
 }

@@ -1,0 +1,11 @@
+{{define "planning-calendar"}}
+<details id="planning-calendar" class="planning-extension">
+ <summary>Kalender herunterladen oder ausdrücklich teilen</summary><h2 tabindex="-1">Kalender für genau sieben Tage</h2>
+ <p>Der Kalender enthält nur Titel, Mahlzeitenart und ganztägige Termine. Notizen, Personen, Zutaten, Kosten und Anleitungen werden nicht geteilt.</p>
+ <p data-extension-status role="status">Persönliche Freigaben werden geladen …</p><div data-extension-error class="notice error" role="alert" tabindex="-1" hidden></div>
+ <p id="calendar-scope"></p><div class="actions"><a id="calendar-download" class="button" download>Privaten Kalender herunterladen</a><button type="button" id="calendar-create" data-extension-personal>Diese sieben Tage für 90 Tage freigeben</button></div>
+ <p class="fine">Eine Freigabe ist ein geheimer Nur-Lese-Link, kein rollender Kalender. Jeder mit dem Link kann diese Woche lesen. Abmelden widerruft ihn nicht; Passwort- oder Berechtigungsänderungen können ihn ungültig machen.</p>
+ <section id="calendar-secret" class="notice" hidden aria-labelledby="calendar-secret-title"><h3 id="calendar-secret-title" tabindex="-1">Freigabelink wird nur jetzt angezeigt</h3><label>Geheimer Kalenderlink<input id="calendar-secret-value" readonly autocomplete="off" spellcheck="false"></label><div class="actions"><button type="button" id="calendar-copy">Link kopieren</button><button type="button" id="calendar-hide">Link ausblenden</button></div><p class="fine">Nur im Arbeitsspeicher dieser geöffneten Ansicht. Nach dem Schließen lässt er sich nicht erneut anzeigen. Bei Verlust widerrufen und eine neue Freigabe erstellen.</p></section>
+ <div id="calendar-feeds"></div>
+</details>
+{{end}}
