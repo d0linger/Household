@@ -1,0 +1,9 @@
+services:
+  app:
+    environment:
+      HOUSEHOLD_METERS_CA_FILE: /run/secrets/meters_ca
+    secrets:
+      - meters_ca
+secrets:
+  meters_ca:
+    file: ${HOUSEHOLD_METERS_CA_PATH:?Set a PEM CA certificate file path}

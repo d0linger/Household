@@ -74,6 +74,17 @@ func (s *Server) upload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	generation, _ := strconv.ParseInt(r.FormValue("generation"), 10, 64)
+	energyPhoto := r.Pattern == "POST /api/v1/meters/readings/{id}/photo"
+	var photoRevision int64
+	var photoDigest [32]byte
+	var photoReceipt store.Record
+	if energyPhoto {
+		photoRevision, err = strconv.ParseInt(r.FormValue("reading_revision"), 10, 64)
+		if err != nil || photoRevision < 1 || !value.ValidUUID(r.Header.Get("Idempotency-Key")) || r.FormValue("capture") != "false" {
+			s.fail(w, r, store.Invalid{Message: "Ablesung, Version und unveränderten Fotovorgang erneut prüfen"})
+			return
+		}
+	}
 	file, header, err := r.FormFile("file")
 	if err != nil {
 		s.fail(w, r, store.Invalid{Message: "Datei fehlt"})
@@ -96,9 +107,21 @@ func (s *Server) upload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	clean, kind, err := sanitizeUpload(raw)
+	if energyPhoto && err == nil && kind != "image/jpeg" && kind != "image/png" {
+		err = errors.New("ablesefoto muss JPEG oder PNG sein")
+	}
 	if err != nil {
 		s.fail(w, r, store.Invalid{Message: err.Error()})
 		return
+	}
+	if energyPhoto {
+		rawDigest := sha256.Sum256(raw)
+		proof, proofErr := json.Marshal([]any{rid, generation, photoRevision, header.Filename, rawDigest[:]})
+		if proofErr != nil {
+			s.fail(w, r, proofErr)
+			return
+		}
+		photoDigest = sha256.Sum256(proof)
 	}
 	tx, err := s.Store.BeginMutation(r.Context(), identity(r), m.ID, generation)
 	if err != nil {
@@ -113,6 +136,19 @@ func (s *Server) upload(w http.ResponseWriter, r *http.Request) {
 	if err = s.Store.LockResource(r.Context(), tx, identity(r), m.ID, e.ID, rid); err != nil {
 		s.fail(w, r, err)
 		return
+	}
+	if energyPhoto {
+		var replayed bool
+		photoReceipt, replayed, err = s.Store.PrepareEnergyPhoto(r.Context(), tx, identity(r), r.Header.Get("Idempotency-Key"),
+			rid, generation, photoRevision, photoDigest[:])
+		if err != nil {
+			s.fail(w, r, err)
+			return
+		}
+		if replayed {
+			writeJSON(w, http.StatusOK, photoReceipt)
+			return
+		}
 	}
 	var used int64
 	if err = tx.QueryRow(r.Context(), "SELECT coalesce(sum(size_bytes),0) FROM core.attachments WHERE household_id=$1 AND state='ready'", identity(r).HouseholdID).Scan(&used); err != nil {
@@ -203,6 +239,10 @@ func (s *Server) upload(w http.ResponseWriter, r *http.Request) {
 	if err == nil {
 		err = s.Store.CompleteFinanceArtifact(r.Context(), tx, identity(r), financeOperation)
 	}
+	if err == nil && energyPhoto {
+		photoReceipt, err = store.SaveEnergyPhotoReceipt(r.Context(), tx, identity(r), r.Header.Get("Idempotency-Key"),
+			rid, aid, generation, photoRevision, photoDigest[:])
+	}
 	if err == nil {
 		err = tx.Commit(r.Context())
 	}
@@ -211,6 +251,10 @@ func (s *Server) upload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	committed = true
+	if energyPhoto {
+		writeJSON(w, http.StatusCreated, photoReceipt)
+		return
+	}
 	if captureID != "" {
 		http.Redirect(w, r, "/capture/"+captureID, http.StatusSeeOther)
 		return

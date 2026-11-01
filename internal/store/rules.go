@@ -208,6 +208,13 @@ func (s *Store) validateDomain(ctx context.Context, tx pgx.Tx, id auth.Identity,
 			changed["repeat_days"] = nil
 		}
 	case "meters/readings":
+		var register string
+		if err := tx.QueryRow(ctx, `SELECT r.id::text FROM meters.registers r JOIN meters.devices d ON d.meter_id=r.meter_id
+ WHERE r.household_id=$1 AND d.id=$2 AND r.is_default AND r.input_mode='manual' AND r.measurement_kind='cumulative'
+ AND($3='' OR EXISTS(SELECT 1 FROM meters.readings x WHERE x.id=nullif($3,'')::uuid AND x.register_id=r.id))`,
+			id.HouseholdID, data["device_id"], rid).Scan(&register); err != nil {
+			return bad("Dieses Register im Zählerarbeitsbereich mit seinem Messgrößentyp bearbeiten")
+		}
 		var initial, previous string
 		var rollover *string
 		var installed time.Time
@@ -228,7 +235,7 @@ func (s *Store) validateDomain(ctx context.Context, tx pgx.Tx, id auth.Identity,
 		if reading.Sign() < 0 || rollover == nil && reading.Cmp(base) < 0 {
 			return bad("Ablesung liegt unter dem Anfangsstand")
 		}
-		if err = tx.QueryRow(ctx, "SELECT coalesce(max(value),$4::numeric)::text FROM meters.readings WHERE household_id=$1 AND device_id=$2 AND measured_at<$3::timestamptz AND id<>coalesce(nullif($5,'')::uuid,'00000000-0000-0000-0000-000000000000')", id.HouseholdID, data["device_id"], data["measured_at"], initial, rid).Scan(&previous); err != nil {
+		if err = tx.QueryRow(ctx, "SELECT coalesce((SELECT value FROM meters.readings WHERE household_id=$1 AND device_id=$2 AND register_id=$6 AND measured_at<$3::timestamptz AND id<>coalesce(nullif($5,'')::uuid,'00000000-0000-0000-0000-000000000000') ORDER BY measured_at DESC LIMIT 1),$4::numeric)::text", id.HouseholdID, data["device_id"], data["measured_at"], initial, rid, register).Scan(&previous); err != nil {
 			return err
 		}
 		prev, _ := value.Decimal(previous)
@@ -237,7 +244,7 @@ func (s *Store) validateDomain(ctx context.Context, tx pgx.Tx, id auth.Identity,
 		}
 		if rollover == nil {
 			var next *string
-			if err = tx.QueryRow(ctx, "SELECT min(value)::text FROM meters.readings WHERE household_id=$1 AND device_id=$2 AND measured_at>$3::timestamptz AND id<>coalesce(nullif($4,'')::uuid,'00000000-0000-0000-0000-000000000000')", id.HouseholdID, data["device_id"], data["measured_at"], rid).Scan(&next); err != nil {
+			if err = tx.QueryRow(ctx, "SELECT (SELECT value FROM meters.readings WHERE household_id=$1 AND device_id=$2 AND register_id=$5 AND measured_at>$3::timestamptz AND id<>coalesce(nullif($4,'')::uuid,'00000000-0000-0000-0000-000000000000') ORDER BY measured_at LIMIT 1)::text", id.HouseholdID, data["device_id"], data["measured_at"], rid, register).Scan(&next); err != nil {
 				return err
 			}
 			if next != nil {

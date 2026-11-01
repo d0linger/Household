@@ -1,0 +1,32 @@
+.energy-workspace{max-width:1120px;min-width:0;font-variant-numeric:tabular-nums}
+.energy-workspace [hidden]{display:none!important}
+.energy-workspace p{max-width:72ch;overflow-wrap:anywhere}
+.energy-workspace h2{font-size:1.35rem;margin:30px 0 12px}.energy-workspace h3{font-size:1.08rem;margin:0 0 8px}
+.energy-workspace :focus-visible{outline:3px solid var(--accent);outline-offset:3px}
+.energy-workspace ::selection{background:var(--accent);color:var(--surface)}
+.energy-workspace input,.energy-workspace textarea{caret-color:var(--accent)}
+.energy-workspace button,.energy-workspace .button,.energy-workspace select,.energy-workspace summary{min-height:44px}
+.energy-workspace button:disabled{opacity:.65;cursor:wait}
+.energy-nav{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 22px;padding-bottom:12px;border-bottom:1px solid var(--line)}
+.energy-nav a{display:inline-flex;align-items:center;min-height:44px;padding:8px 14px;border-radius:10px;color:var(--ink);text-underline-offset:4px}
+.energy-nav a[aria-current=page]{background:var(--soft);color:var(--accent);font-weight:650;text-decoration:none}
+#energy-selection{max-width:680px;margin-bottom:22px}
+.energy-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 22px;align-items:start}
+.energy-grid>.energy-full{grid-column:1/-1}
+.energy-workspace fieldset{min-width:0;border:0;padding:0;margin:0 0 22px}.energy-workspace legend{font-size:1.2rem;font-weight:650;margin-bottom:16px}
+.energy-workspace label{min-width:0}.energy-workspace input,.energy-workspace select,.energy-workspace textarea{max-width:100%;min-width:0;font-size:16px}
+.energy-workspace textarea{min-height:108px}.energy-workspace small{display:block;line-height:1.5;color:var(--muted)}
+.energy-check{display:flex;align-items:center;gap:10px;min-height:44px}.energy-check input{width:22px;height:22px;accent-color:var(--accent);flex:0 0 22px}
+.energy-row{display:flex;gap:18px;align-items:start;justify-content:space-between;padding:19px 0;border-bottom:1px solid var(--line)}
+.energy-row>div{min-width:0}.energy-row-main{flex:1}.energy-row p{margin:5px 0 10px}.energy-row .actions{margin:0;flex-wrap:wrap}
+.energy-facts{display:grid;grid-template-columns:minmax(130px,1fr) minmax(0,3fr);gap:8px 18px}.energy-facts dt{font-weight:600}.energy-facts dd{margin:0;overflow-wrap:anywhere}
+.energy-table-wrap{max-width:100%;overflow:auto;scrollbar-color:var(--accent) var(--ground);margin:18px 0}
+.energy-table{width:100%;border-collapse:collapse;line-height:1.5}.energy-table th,.energy-table td{padding:12px 10px;text-align:left;border-bottom:1px solid var(--line);vertical-align:top}
+.energy-table caption{text-align:left;font-weight:650;margin-bottom:10px}.energy-table tbody tr:focus{background:var(--soft)}
+.energy-chart-wrap{margin:22px 0}.energy-chart{display:block;width:100%;height:auto;stroke:none;max-height:280px;overflow:visible}.energy-chart .energy-bar{fill:var(--accent)}.energy-chart .energy-estimated{fill:var(--soft);stroke:var(--muted);stroke-width:2;stroke-dasharray:4 3}.energy-chart .energy-axis{stroke:var(--line);stroke-width:1}.energy-chart .energy-gap{fill:none;stroke:var(--muted);stroke-width:2}.energy-chart .energy-zero{stroke:var(--accent);stroke-width:3}.energy-chart text{fill:var(--ink);font:14px system-ui,sans-serif}
+.energy-chart .energy-bar:focus{stroke:var(--ink);stroke-width:3;outline:none}
+.energy-chart-note{font-size:.9rem;color:var(--muted)}
+#energy-editor:not(:empty){border-top:1px solid var(--line);padding-top:8px;margin-top:28px}.energy-review{background:var(--soft);padding:18px;border-radius:10px;margin:18px 0}
+.energy-empty{padding:12px 0 28px}.energy-empty p{margin-bottom:18px}.energy-file-link{overflow-wrap:anywhere}
+@media(max-width:680px){.energy-grid{grid-template-columns:minmax(0,1fr)}.energy-grid>.energy-full{grid-column:1}.energy-row{flex-direction:column;gap:10px}.energy-row .actions{width:100%}.energy-facts{grid-template-columns:minmax(100px,1fr) minmax(0,1.5fr);gap:8px 12px}.energy-nav a{padding:7px 10px}.energy-table th,.energy-table td{padding:10px 8px}.energy-review{padding:14px}}
+@media(max-width:680px){.energy-chart text{font-size:30px}}

@@ -65,6 +65,9 @@ func TestPantryBatchPopulatedPriorUpgrade(t *testing.T) {
 	}
 	for _, schema := range database.Schemas {
 		v := uint(database.ExpectedVersion(schema))
+		if schema == "meters" {
+			v = 1 // Meters2 requires the later complete Core32 predecessor.
+		}
 		if schema == "chores" {
 			v = 1 // Chores2 requires the later complete Core31 predecessor.
 		}

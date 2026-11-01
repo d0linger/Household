@@ -142,6 +142,9 @@ func TestShoppingCheckoutPopulatedUpgradeAndBounds(t *testing.T) {
 	}
 	for _, schema := range database.Schemas {
 		version := uint(database.ExpectedVersion(schema))
+		if schema == "meters" {
+			version = 1 // Meters2 requires the later complete Core32 predecessor.
+		}
 		if schema == "chores" {
 			version = 1 // Chores2 requires the later complete Core31 predecessor.
 		}

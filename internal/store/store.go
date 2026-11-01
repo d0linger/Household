@@ -303,6 +303,12 @@ func (s *Store) BeginMutation(ctx context.Context, id auth.Identity, mid string,
 			return nil, err
 		}
 	}
+	if mid == "meters" {
+		if _, err = tx.Exec(ctx, "SELECT pg_advisory_xact_lock(hashtextextended('household/meters/'||$1::text,0))", id.HouseholdID); err != nil {
+			rollback(tx)
+			return nil, err
+		}
+	}
 	return tx, nil
 }
 

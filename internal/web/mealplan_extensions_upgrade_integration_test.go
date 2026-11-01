@@ -25,6 +25,9 @@ func TestPlanningExtensionsPopulatedCore27Mealplan7UpgradePreservesFacts(t *test
 	prior := map[string]uint{"core": 26, "recipes": 4, "fuel": 5, "pantry": 12, "mealplan": 7, "expenses": 4}
 	for _, schema := range database.Schemas {
 		version := uint(database.ExpectedVersion(schema))
+		if schema == "meters" {
+			version = 1 // Meters2 requires the later complete Core32 predecessor.
+		}
 		if schema == "chores" {
 			version = 1 // Chores2 requires the later complete Core31 predecessor.
 		}

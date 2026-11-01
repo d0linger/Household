@@ -1,0 +1,12 @@
+services:
+  app:
+    environment:
+      HOUSEHOLD_METERS_MQTT_URL: ${HOUSEHOLD_METERS_MQTT_URL:?Set the explicitly trusted MQTT broker URL}
+      HOUSEHOLD_METERS_MQTT_USER: ${HOUSEHOLD_METERS_MQTT_USER:?Set the MQTT account name}
+      HOUSEHOLD_METERS_MQTT_PASSWORD_FILE: /run/secrets/meters_mqtt_password
+      HOUSEHOLD_METERS_ALLOW_PLAINTEXT: ${HOUSEHOLD_METERS_ALLOW_PLAINTEXT:-false}
+    secrets:
+      - meters_mqtt_password
+secrets:
+  meters_mqtt_password:
+    file: ${HOUSEHOLD_METERS_MQTT_PASSWORD_PATH:?Set the operator-owned password file path}

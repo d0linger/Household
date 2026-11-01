@@ -360,6 +360,9 @@ func TestRecipeVersionsPopulatedUpgrade(t *testing.T) {
 			continue
 		}
 		version := uint(database.ExpectedVersion(schema))
+		if schema == "meters" {
+			version = 1 // Meters2 requires the later complete Core32 predecessor.
+		}
 		if schema == "chores" {
 			version = 1 // Chores2 requires the later complete Core31 predecessor.
 		}
@@ -397,15 +400,18 @@ func TestRecipeVersionsPopulatedUpgrade(t *testing.T) {
 	if err = writer.QueryRow(ctx, "SELECT pg_backend_pid()").Scan(&writerPID); err != nil {
 		t.Fatal(err)
 	}
+	// Keep the short writer-lock contract separate from the full upgrade.
+	migrationCtx, stopMigration := context.WithCancel(f.ctx)
+	defer stopMigration()
 	migrated := make(chan error, 1)
 	migrationFinished := false
-	go func() { migrated <- database.Migrate(ctx, os.Getenv("HOUSEHOLD_TEST_OWNER_URL")) }()
+	go func() { migrated <- database.Migrate(migrationCtx, os.Getenv("HOUSEHOLD_TEST_OWNER_URL")) }()
 	defer func() {
 		_ = writer.Rollback(f.ctx)
 		if migrationFinished {
 			return
 		}
-		cancel()
+		stopMigration()
 		select {
 		case cleanupErr := <-migrated:
 			if cleanupErr != nil {

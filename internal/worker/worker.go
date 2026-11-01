@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"sync"
 	"time"
 
 	"household/internal/audit"
@@ -32,6 +33,21 @@ func (w *Worker) Run(ctx context.Context) {
 		if err := w.Close(); err != nil && w.Log != nil {
 			w.Log.Error("close background file scan", "error", err)
 		}
+	}()
+	feedContext, stopFeeds := context.WithCancel(ctx)
+	var feeds sync.WaitGroup
+	if w.Cfg.MeterFeeds.HAURL != "" || w.Cfg.MeterFeeds.MQTTURL != "" {
+		for range 2 {
+			feeds.Add(1)
+			go func() {
+				defer feeds.Done()
+				w.energyAdapterLoop(feedContext)
+			}()
+		}
+	}
+	defer func() {
+		stopFeeds()
+		feeds.Wait()
 	}()
 	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
@@ -92,6 +108,12 @@ func (w *Worker) Tick(ctx context.Context) error {
 	}
 	if err := fuelStore.ScheduleChoreWorkspace(ctx); err != nil {
 		return fmt.Errorf("chores workspace scheduling: %w", err)
+	}
+	if err := fuelStore.ScheduleEnergyWorkspace(ctx); err != nil {
+		return fmt.Errorf("energy workspace scheduling: %w", err)
+	}
+	if err := fuelStore.ScheduleEnergyAdapters(ctx, w.Cfg.MeterFeeds.HAURL != "", w.Cfg.MeterFeeds.MQTTURL != ""); err != nil {
+		return fmt.Errorf("energy adapter scheduling: %w", err)
 	}
 	for range 10 {
 		if err := w.job(ctx); err != nil {
@@ -160,7 +182,7 @@ func (w *Worker) job(ctx context.Context) (jobErr error) {
 	ctx = audit.WithSystem(ctx, "worker")
 	lease := value.UUID()
 	var id, kind string
-	err := w.Pool.QueryRow(ctx, `WITH candidate AS(SELECT j.id FROM core.jobs j WHERE ((state='pending' AND available_at<=now()) OR (state='running' AND lease_until<now())) AND attempts<max_attempts AND (module_id IS NULL OR EXISTS(SELECT 1 FROM core.module_states m WHERE m.household_id=j.household_id AND m.module_id=j.module_id AND m.state='enabled' AND m.data_generation=j.module_generation)) ORDER BY available_at LIMIT 1 FOR UPDATE SKIP LOCKED) UPDATE core.jobs j SET state='running',lease_token=$1,lease_until=now()+interval '60 seconds',attempts=attempts+1 FROM candidate c WHERE j.id=c.id RETURNING j.id,j.kind`, lease).Scan(&id, &kind)
+	err := w.Pool.QueryRow(ctx, `WITH candidate AS(SELECT j.id FROM core.jobs j WHERE kind<>'energy_adapter' AND ((state='pending' AND available_at<=now()) OR (state='running' AND lease_until<now())) AND attempts<max_attempts AND (module_id IS NULL OR EXISTS(SELECT 1 FROM core.module_states m WHERE m.household_id=j.household_id AND m.module_id=j.module_id AND m.state='enabled' AND m.data_generation=j.module_generation)) ORDER BY available_at LIMIT 1 FOR UPDATE SKIP LOCKED) UPDATE core.jobs j SET state='running',lease_token=$1,lease_until=now()+interval '60 seconds',attempts=attempts+1 FROM candidate c WHERE j.id=c.id RETURNING j.id,j.kind`, lease).Scan(&id, &kind)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil
 	}
@@ -193,6 +215,9 @@ func (w *Worker) job(ctx context.Context) (jobErr error) {
 	}
 	if kind == store.ChoreWorkspaceJobKind {
 		return store.New(w.Pool, modules.Registry()).CompleteChoreWorkspaceJob(ctx, id, lease)
+	}
+	if kind == store.EnergyWorkspaceJobKind {
+		return store.New(w.Pool, modules.Registry()).CompleteEnergyWorkspaceJob(ctx, id, lease)
 	}
 	tx, err := audit.Begin(ctx, w.Pool)
 	if err != nil {

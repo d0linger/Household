@@ -160,6 +160,7 @@ func (s *Server) Handler() http.Handler {
 	s.registerPlanningExtensionRoutes(mux)
 	s.registerFinanceRoutes(mux)
 	s.registerChoreRoutes(mux)
+	s.registerEnergyRoutes(mux)
 	mux.HandleFunc("GET /health/live", func(w http.ResponseWriter, r *http.Request) { writeJSON(w, 200, map[string]bool{"alive": true}) })
 	mux.HandleFunc("GET /health/ready", s.ready)
 	mux.HandleFunc("GET /metrics", s.metrics)
