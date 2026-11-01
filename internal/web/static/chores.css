@@ -1,0 +1,32 @@
+.chores-workspace{max-width:1120px;min-width:0}
+.chores-workspace [hidden]{display:none!important}
+.chores-nav{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 22px;border-bottom:1px solid var(--line);padding-bottom:12px}
+.chores-nav a{display:inline-flex;align-items:center;min-height:44px;padding:8px 14px;border-radius:10px;text-underline-offset:4px;color:var(--ink)}
+.chores-nav a[aria-current=page]{background:var(--soft);color:var(--accent);font-weight:650;text-decoration:none}
+.chores-workspace h2{font-size:1.35rem;margin:28px 0 12px}.chores-workspace h3{font-size:1.05rem;margin:0 0 8px}
+.chores-workspace p{max-width:72ch;overflow-wrap:anywhere}.chores-workspace input,.chores-workspace textarea{caret-color:var(--accent)}
+.chores-workspace ::selection{background:var(--accent);color:var(--surface)}
+.chores-workspace button,.chores-workspace .button,.chores-workspace select,.chores-workspace summary{min-height:44px}
+.chores-workspace :focus-visible{outline:3px solid var(--accent);outline-offset:3px}
+.chores-workspace button:disabled{cursor:wait;opacity:.6}
+.chores-filter-grid,.chores-form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 20px;align-items:start}
+.chores-form-grid>.chores-full,.chores-filter-grid>.chores-full{grid-column:1/-1}
+.chores-workspace fieldset{min-width:0;margin:0 0 24px;padding:0;border:0}
+.chores-workspace legend{font-size:1.2rem;font-weight:650;margin-bottom:16px}
+.chores-workspace label{min-width:0}.chores-workspace input,.chores-workspace select,.chores-workspace textarea{max-width:100%;min-width:0;font-size:16px}
+.chores-workspace textarea{min-height:100px}.chores-workspace small{color:var(--muted);line-height:1.5}
+.chores-row{display:flex;gap:20px;align-items:start;justify-content:space-between;padding:18px 0;border-bottom:1px solid var(--line)}
+.chores-row-main{min-width:0;flex:1}.chores-row p{margin:4px 0 8px}.chores-row .actions{margin:0;flex-wrap:wrap;justify-content:flex-start}
+.chores-facts{display:grid;grid-template-columns:minmax(120px,1fr) minmax(0,3fr);gap:8px 16px;font-variant-numeric:tabular-nums}
+.chores-facts dt{font-weight:600}.chores-facts dd{margin:0;overflow-wrap:anywhere;white-space:pre-wrap}
+.chores-instructions{white-space:pre-wrap;line-height:1.65;max-width:72ch}
+.chores-checks{display:flex;flex-wrap:wrap;gap:8px 18px;margin:8px 0 20px}.chores-checks label,.chores-check{display:flex;align-items:center;gap:10px;min-height:44px;margin:0}
+.chores-check input,.chores-checks input{width:22px;height:22px;flex:0 0 22px;accent-color:var(--accent)}
+.chores-repeat-row{display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:start;gap:12px;padding:14px 0;border-bottom:1px solid var(--line)}
+.chores-reference-tools{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0}.chores-reference-tools input{flex:1;min-width:140px}
+.chores-preview{padding:20px 0;border-block:1px solid var(--line);margin:24px 0}.chores-preview ol{padding-left:24px}.chores-preview li{padding:6px 0}
+.chores-alert{color:var(--danger);font-weight:600}.chores-empty{padding:28px 0}.chores-secret{display:block;width:100%;max-width:100%;overflow-wrap:anywhere}
+.chores-workspace progress{width:min(100%,360px);height:12px;accent-color:var(--accent)}
+.chores-workspace details{margin:18px 0}.chores-workspace summary{cursor:pointer;align-content:center;text-decoration:underline;text-underline-offset:4px}
+.chores-workspace form{margin:20px 0}.chores-workspace .actions{flex-wrap:wrap;justify-content:flex-start}.chores-workspace #chores-error h2{margin-top:0}
+@media(max-width:700px){.chores-filter-grid,.chores-form-grid{grid-template-columns:minmax(0,1fr);gap:0}.chores-row{flex-direction:column;gap:10px}.chores-row>.actions{width:100%}.chores-facts{grid-template-columns:minmax(0,1fr)}.chores-facts dt{margin-top:8px}.chores-repeat-row{grid-template-columns:minmax(0,1fr) auto}.chores-repeat-row>label:first-child{grid-column:1/-1}.chores-nav{gap:3px}.chores-nav a{padding-inline:11px}.chores-workspace .page-heading{align-items:start;gap:12px;flex-wrap:wrap}.chores-workspace .actions>*{flex:0 1 auto}.chores-workspace .actions .primary{flex-grow:1}}

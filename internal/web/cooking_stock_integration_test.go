@@ -124,6 +124,9 @@ func TestCookingStockPopulatedUpgrade(t *testing.T) {
 	}
 	for _, schema := range database.Schemas {
 		v := uint(database.ExpectedVersion(schema))
+		if schema == "chores" {
+			v = 1 // Chores2 requires the later complete Core31 predecessor.
+		}
 		if schema == "recipes" {
 			v = 4 // Recipes5 belongs to the later Core27 expansion.
 		}

@@ -6,10 +6,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
 
+	"household/internal/database"
 	"household/internal/expenseedit"
 	"household/internal/finance"
 	"household/internal/value"
@@ -134,11 +136,12 @@ func TestFinanceForwardCompatibilityReadinessAndDriftRefusal(t *testing.T) {
 		if err = tx.QueryRow(f.ctx, `SELECT pg_get_functiondef('fuel.module_authorize(bigint,jsonb,uuid,bigint,uuid)'::regprocedure)`).Scan(&definition); err != nil {
 			t.Fatal(err)
 		}
-		const fence = "bool_and(version=31 AND NOT dirty)"
+		fence := fmt.Sprintf("bool_and(version=%d AND NOT dirty)", database.ExpectedVersion("core"))
+		future := fmt.Sprintf("bool_and(version=%d AND NOT dirty)", database.ExpectedVersion("core")+1)
 		if strings.Count(definition, fence) != 1 {
 			t.Fatal("reviewed Fuel fence is not unique")
 		}
-		if _, err = tx.Exec(f.ctx, strings.Replace(definition, fence, "bool_and(version=32 AND NOT dirty)", 1)); err != nil {
+		if _, err = tx.Exec(f.ctx, strings.Replace(definition, fence, future, 1)); err != nil {
 			t.Fatal(err)
 		}
 		var ready bool

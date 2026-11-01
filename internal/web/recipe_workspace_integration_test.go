@@ -360,6 +360,9 @@ func TestRecipeVersionsPopulatedUpgrade(t *testing.T) {
 			continue
 		}
 		version := uint(database.ExpectedVersion(schema))
+		if schema == "chores" {
+			version = 1 // Chores2 requires the later complete Core31 predecessor.
+		}
 		if schema == "mealplan" {
 			version = 7
 		}

@@ -5,6 +5,7 @@ import (
 
 	"household/internal/audit"
 	"household/internal/auth"
+	"household/internal/database"
 
 	"github.com/jackc/pgx/v5"
 )
@@ -17,7 +18,7 @@ func recordPreparedTransfer(ctx context.Context, tx pgx.Tx, id auth.Identity, so
 	if err := tx.QueryRow(ctx, "SELECT count(*),coalesce(max(version),0),coalesce(bool_or(dirty),false) FROM pantry.schema_migrations").Scan(&schemaRows, &version, &dirty); err != nil {
 		return err
 	}
-	if schemaRows != 1 || dirty || version < 1 || version > 14 {
+	if schemaRows != 1 || dirty || version < 1 || version > int64(database.ExpectedVersion("pantry")) {
 		return ErrConflict
 	}
 	if version < 12 {

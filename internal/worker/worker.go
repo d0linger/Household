@@ -90,6 +90,9 @@ func (w *Worker) Tick(ctx context.Context) error {
 	if err := fuelStore.ScheduleFinanceRecurrences(ctx); err != nil {
 		return fmt.Errorf("finance recurrence scheduling: %w", err)
 	}
+	if err := fuelStore.ScheduleChoreWorkspace(ctx); err != nil {
+		return fmt.Errorf("chores workspace scheduling: %w", err)
+	}
 	for range 10 {
 		if err := w.job(ctx); err != nil {
 			return err
@@ -107,7 +110,7 @@ func (w *Worker) deliver(ctx context.Context) error {
 	if _, err = tx.Exec(ctx, "SELECT id FROM core.households FOR SHARE"); err != nil {
 		return err
 	}
-	rows, err := tx.Query(ctx, `SELECT r.id,r.household_id,r.module_id,r.resource_type,r.resource_id,r.kind,r.recipient_user_id,r.dedupe_key FROM core.reminders r JOIN core.module_states m ON m.household_id=r.household_id AND m.module_id=r.module_id AND m.state='enabled' AND m.data_generation=r.module_generation WHERE r.state='pending' AND r.module_id<>'expenses' AND r.scheduled_at<=now() ORDER BY r.scheduled_at LIMIT 50 FOR UPDATE OF r SKIP LOCKED`)
+	rows, err := tx.Query(ctx, `SELECT r.id,r.household_id,r.module_id,r.resource_type,r.resource_id,r.kind,r.recipient_user_id,r.dedupe_key FROM core.reminders r JOIN core.module_states m ON m.household_id=r.household_id AND m.module_id=r.module_id AND m.state='enabled' AND m.data_generation=r.module_generation WHERE r.state='pending' AND r.module_id NOT IN('expenses','chores') AND r.scheduled_at<=now() ORDER BY r.scheduled_at LIMIT 50 FOR UPDATE OF r SKIP LOCKED`)
 	if err != nil {
 		return err
 	}
@@ -187,6 +190,9 @@ func (w *Worker) job(ctx context.Context) (jobErr error) {
 	}
 	if kind == store.FinanceRecurrenceJobKind {
 		return store.New(w.Pool, modules.Registry()).CompleteFinanceRecurrenceJob(ctx, id, lease)
+	}
+	if kind == store.ChoreWorkspaceJobKind {
+		return store.New(w.Pool, modules.Registry()).CompleteChoreWorkspaceJob(ctx, id, lease)
 	}
 	tx, err := audit.Begin(ctx, w.Pool)
 	if err != nil {

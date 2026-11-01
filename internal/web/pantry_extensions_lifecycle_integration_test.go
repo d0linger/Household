@@ -29,6 +29,9 @@ func pantryExtensionsPriorCatalog(t *testing.T, f *integrationFixture, pantryVer
 	}
 	for _, schema := range database.Schemas {
 		version := uint(database.ExpectedVersion(schema))
+		if schema == "chores" {
+			version = 1 // Chores2 requires the later complete Core31 predecessor.
+		}
 		switch schema {
 		case "core":
 			version = 26
@@ -234,6 +237,48 @@ func TestPantryExtensionsActualPurgeRetainsOnlyIntentFences(t *testing.T) {
 	root := store.String(receipt["lines"].([]store.Record)[0]["lot_id"])
 	destination, _ := auditCreate(t, f, "pantry", "locations", store.Record{"name": "SYNTHETIC purge transfer"})
 	transferred := pantryLeftoverTransfer(t, f, root, store.String(destination["id"]), "0.25")
+	// The actual current transfer must succeed after compatibility-only Pantry
+	// upgrades. Unknown clean versions and dirty metadata still fail atomically.
+	futureLocation, _ := auditCreate(t, f, "pantry", "locations", store.Record{"name": "SYNTHETIC future-fence destination"})
+	pantryModule, _ := f.app.Store.Module("pantry")
+	lotEntity, _ := pantryModule.Entity("lots")
+	currentLot, err := f.app.Store.Get(f.ctx, f.identity, pantryModule, lotEntity, transferred)
+	if err != nil {
+		t.Fatal("read actual prepared transfer descendant", err)
+	}
+	futureInput := auditMutation(t, f, "pantry", store.Record{"location_id": store.String(futureLocation["id"]), "quantity": "0.125"}, store.Int(currentLot["version"]))
+	var transferCount int
+	var originalMovements string
+	if err = f.owner.QueryRow(f.ctx, `SELECT (SELECT count(*) FROM pantry.prepared_transfers WHERE household_id=$1),encode(sha256(convert_to(coalesce((SELECT jsonb_agg(to_jsonb(m) ORDER BY m.id) FROM pantry.stock_movements m WHERE m.household_id=$1),'[]'::jsonb)::text,'UTF8')),'hex')`, f.identity.HouseholdID).Scan(&transferCount, &originalMovements); err != nil {
+		t.Fatal("capture transfer fence baseline", err)
+	}
+	for _, test := range []struct {
+		name    string
+		version int
+		dirty   bool
+	}{
+		{"unreviewed future", database.ExpectedVersion("pantry") + 1, false},
+		{"dirty current", database.ExpectedVersion("pantry"), true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if _, err := f.owner.Exec(f.ctx, "UPDATE pantry.schema_migrations SET version=$1,dirty=$2", test.version, test.dirty); err != nil {
+				t.Fatal("install isolated schema fence", err)
+			}
+			defer func() {
+				if _, err := f.owner.Exec(f.ctx, "UPDATE pantry.schema_migrations SET version=$1,dirty=false", database.ExpectedVersion("pantry")); err != nil {
+					t.Error("restore actual schema marker", err)
+				}
+			}()
+			if _, err := f.app.Store.Action(f.ctx, f.identity, pantryModule, lotEntity, transferred, "transfer", value.UUID(), value.UUID(), futureInput); !errors.Is(err, store.ErrConflict) {
+				t.Fatal("unreviewed/dirty schema did not refuse transfer", err)
+			}
+			var afterCount int
+			var afterMovements string
+			if err := f.owner.QueryRow(f.ctx, `SELECT (SELECT count(*) FROM pantry.prepared_transfers WHERE household_id=$1),encode(sha256(convert_to(coalesce((SELECT jsonb_agg(to_jsonb(m) ORDER BY m.id) FROM pantry.stock_movements m WHERE m.household_id=$1),'[]'::jsonb)::text,'UTF8')),'hex')`, f.identity.HouseholdID).Scan(&afterCount, &afterMovements); err != nil || afterCount != transferCount || afterMovements != originalMovements {
+				t.Fatal("refused transfer changed actual facts", err)
+			}
+		})
+	}
 	provider := pantryFoodFactsProvider(f) // Deterministic test provider, not a real OFF availability claim.
 	foodInput, foodKey := pantryFoodFactsInput(t, f, "4006381333931"), value.UUID()
 	foodReview, err := f.app.Store.ReviewPantryFoodFacts(f.ctx, f.identity, foodKey, foodInput)

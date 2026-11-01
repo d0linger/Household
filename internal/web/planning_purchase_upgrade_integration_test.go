@@ -20,6 +20,9 @@ func TestPlanningPurchasePopulatedPriorUpgrade(t *testing.T) {
 	prior := map[string]uint{"core": 20, "shopping": 4, "fuel": 2, "recipes": 4, "pantry": 8, "mealplan": 4, "expenses": 3}
 	for _, schema := range database.Schemas {
 		version := uint(database.ExpectedVersion(schema))
+		if schema == "chores" {
+			version = 1 // Chores2 requires the later complete Core31 predecessor.
+		}
 		if pinned, ok := prior[schema]; ok {
 			version = pinned
 		}

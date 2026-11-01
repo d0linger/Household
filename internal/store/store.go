@@ -297,6 +297,12 @@ func (s *Store) BeginMutation(ctx context.Context, id auth.Identity, mid string,
 		rollback(tx)
 		return nil, ErrConflict
 	}
+	if mid == "chores" {
+		if _, err = tx.Exec(ctx, "SELECT pg_advisory_xact_lock(hashtextextended('household/chores/'||$1::text,0))", id.HouseholdID); err != nil {
+			rollback(tx)
+			return nil, err
+		}
+	}
 	return tx, nil
 }
 
@@ -327,6 +333,26 @@ func (s *Store) Write(ctx context.Context, id auth.Identity, m module.Descriptor
 	}
 	defer rollback(tx)
 	op := "write/" + m.ID + "/" + e.ID + "/" + rid
+	if m.ID == "chores" {
+		var managed bool
+		var checkErr error
+		if e.ID == "task_templates" && !creating {
+			checkErr = tx.QueryRow(ctx, `SELECT managed FROM chores.series_profiles WHERE household_id=$1 AND template_id=$2`, id.HouseholdID, rid).Scan(&managed)
+		} else if e.ID == "task_occurrences" {
+			if creating {
+				checkErr = tx.QueryRow(ctx, `SELECT managed FROM chores.series_profiles WHERE household_id=$1 AND template_id=$2`, id.HouseholdID, data["template_id"]).Scan(&managed)
+			} else {
+				checkErr = tx.QueryRow(ctx, `SELECT p.managed FROM chores.task_occurrences o JOIN chores.series_profiles p ON p.template_id=o.template_id
+ WHERE o.household_id=$1 AND o.id=$2`, id.HouseholdID, rid).Scan(&managed)
+			}
+		}
+		if checkErr != nil {
+			return nil, choreStoreError(checkErr)
+		}
+		if managed {
+			return nil, Invalid{"Verwaltete Aufgaben im Aufgabenarbeitsbereich mit Vorschau ändern"}
+		}
+	}
 	if !value.ValidUUID(key) {
 		return nil, Invalid{"gültige Idempotenz-ID erforderlich"}
 	}
@@ -493,6 +519,16 @@ func (s *Store) afterWrite(ctx context.Context, tx pgx.Tx, id auth.Identity, m m
 		title = e.Title
 	}
 	body := []string{}
+	if m.ID == "chores" && e.ID == "task_occurrences" {
+		var instruction string
+		if err := tx.QueryRow(ctx, `SELECT coalesce(detail.overrides->>'title',version.title),
+ left(coalesce(detail.overrides->>'description',version.description),10000)
+ FROM chores.occurrence_details detail JOIN chores.template_versions version ON version.id=detail.template_version_id
+ WHERE detail.household_id=$1 AND detail.occurrence_id=$2`, id.HouseholdID, r["id"]).Scan(&title, &instruction); err != nil {
+			return err
+		}
+		body = append(body, instruction)
+	}
 	for _, f := range e.Fields {
 		if f.Kind == "text" || f.Kind == "longtext" {
 			body = append(body, String(r[f.Name]))
@@ -531,6 +567,9 @@ func (s *Store) Delete(ctx context.Context, id auth.Identity, m module.Descripto
 		return err
 	}
 	defer rollback(tx)
+	if m.ID == "chores" {
+		return Invalid{"Aufgabenhistorie bleibt erhalten; Serie im Aufgabenarbeitsbereich archivieren oder einen offenen Termin ausdrücklich auslassen"}
+	}
 	var financeOperation string
 	var financeScope financialScope
 	if financialEntity(m.ID, e.ID) {

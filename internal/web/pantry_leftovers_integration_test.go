@@ -482,6 +482,18 @@ func TestPantryLeftoversTransferLineageRefusesForeignOrUnmatchedEvidence(t *test
 	if !errors.Is(transferErr, store.ErrConflict) || !errors.Is(sourceErr, store.ErrConflict) || futureSources != nil {
 		t.Fatal("unreviewed future Pantry version accepted a transfer or source export", transferErr, sourceErr, futureSources)
 	}
+	if _, err = f.owner.Exec(f.ctx, "UPDATE pantry.schema_migrations SET dirty=true"); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _, _ = f.owner.Exec(f.ctx, "UPDATE pantry.schema_migrations SET dirty=false") }()
+	_, dirtyTransferErr := f.app.Store.Action(f.ctx, f.identity, m, e, root, "transfer", value.UUID(), value.UUID(), input)
+	dirtySources, dirtySourceErr := f.app.Store.PantryFoodFactsExportSources(f.ctx, f.identity, "products", []string{product})
+	if _, err = f.owner.Exec(f.ctx, "UPDATE pantry.schema_migrations SET dirty=false"); err != nil {
+		t.Fatal(err)
+	}
+	if !errors.Is(dirtyTransferErr, store.ErrConflict) || !errors.Is(dirtySourceErr, store.ErrConflict) || dirtySources != nil {
+		t.Fatal("dirty current Pantry accepted a transfer or source export", dirtyTransferErr, dirtySourceErr, dirtySources)
+	}
 	if err = f.pool.QueryRow(f.ctx, snapshot).Scan(&after); err != nil || before != after {
 		t.Fatal("refused lineage changed lots/journal/preparation/descendants", before, after, err)
 	}

@@ -31,7 +31,27 @@ function mark(name){process.stdout.write(JSON.stringify({finance_step:name,elaps
   const entryView=async id=>{await page.goto(base+'m/expenses/workspace/entries?id='+id);await page.locator('#finance-entry-editor:not([hidden])').waitFor();};
   const field=(name,host=page)=>host.locator('[name="'+name+'"]:visible');
   async function choose(name,id,query,host=page){const select=field(name,host),label=select.locator('..');await label.getByRole('searchbox').fill(query);await label.getByRole('button',{name:'Suchen',exact:true}).click();await select.locator('option[value="'+id+'"]').waitFor({state:'attached'});await select.selectOption(id);must(await select.getAttribute('data-finance-ready')==='ready','Actual authorized reference search completed: '+name);}
-  async function reviewApply(trigger){const preview=page.waitForResponse(response=>new URL(response.url()).pathname===api+'/preview'&&response.request().method()==='POST');await trigger();const response=await preview;if(response.status()!==200&&process.env.HOUSEHOLD_BROWSER_PRIVATE_DIAGNOSTICS==='1')process.stderr.write(JSON.stringify({step,status:response.status(),body:await response.text()})+'\n');must(response.status()===200,'Actual server preview accepts the reviewed human form');await page.locator('#finance-review:not([hidden])').waitFor();const applied=page.waitForResponse(response=>new URL(response.url()).pathname===api+'/apply'&&response.request().method()==='POST');await page.locator('#finance-apply').click();const result=await applied;must(result.status()===200,'Actual atomic apply returns an accepted receipt');await result.finished();await page.locator('#finance-operation:not([hidden])').waitFor();let receipt;try{receipt=await result.json();}catch(error){if(!/No data found for resource|Response body is not available/.test(String(error)))throw error;const key=result.request().headers()['idempotency-key'];must(/^[0-9a-f-]{36}$/.test(key),'Browser transport recovery retains the exact accepted operation key');const durable=await page.request.get(base+'api/v1/expenses/finance/operations/'+key,{headers:{'Cache-Control':'no-store'}});must(durable.status()===200,'Browser protocol body loss recovers only through the actual current-authorized durable receipt');receipt=await durable.json();must(receipt.request_key===key,'Recovered durable receipt matches the actual apply request');report.transportBodyRecoveries=(report.transportBodyRecoveries||0)+1;}return receipt;}
+  async function reviewApply(trigger){
+   const preview=page.waitForResponse(response=>new URL(response.url()).pathname===api+'/preview'&&response.request().method()==='POST');
+   await trigger();const response=await preview;
+   if(response.status()!==200&&process.env.HOUSEHOLD_BROWSER_PRIVATE_DIAGNOSTICS==='1')process.stderr.write(JSON.stringify({step,status:response.status(),body:await response.text()})+'\n');
+   must(response.status()===200,'Actual server preview accepts the reviewed human form');
+   await page.locator('#finance-review:not([hidden])').waitFor();
+   const applied=page.waitForResponse(response=>new URL(response.url()).pathname===api+'/apply'&&response.request().method()==='POST');
+   await page.locator('#finance-apply').click();const result=await applied;
+   must(result.status()===200,'Actual atomic apply returns an accepted receipt');
+   mark('Accepted apply; awaiting visible receipt in '+step);
+   await page.locator('#finance-operation:not([hidden])').waitFor({timeout:20000});
+   const key=result.request().headers()['idempotency-key'];
+   must(/^[0-9a-f-]{36}$/.test(key),'Actual accepted apply retains its exact operation key');
+   mark('Visible receipt; verifying durable same-key result in '+step);
+   const durable=await page.request.get(base+'api/v1/expenses/finance/operations/'+key,{headers:{'Cache-Control':'no-store'},timeout:10000});
+   must(durable.status()===200,'Actual current-authorized durable receipt is available after apply');
+   const receipt=await durable.json();
+   must(receipt.request_key===key,'Durable receipt matches the actual accepted apply request');
+   report.durableReceiptReads=(report.durableReceiptReads||0)+1;
+   return receipt;
+  }
   async function action(label){await page.getByRole('button',{name:label,exact:true}).click();await page.locator('#finance-editor:not([hidden])').waitFor();}
   const genericPreview=()=>page.getByRole('button',{name:'Eingaben serverseitig prüfen',exact:true}).click();
   async function account(name,type='bank'){await pane('accounts');await action('Konto anlegen');await field('name').fill(name);await field('account_type').selectOption(type);await field('currency').selectOption('EUR');await field('notes').fill('Explicit synthetic account, not real bank credentials');return reviewApply(genericPreview);}

@@ -21,6 +21,9 @@ func (s *Store) Action(ctx context.Context, id auth.Identity, m module.Descripto
 	if m.ID == "fuel" {
 		return s.fuelModuleLegacyAction(ctx, id, e.ID, rid, action, key, requestID, in)
 	}
+	if m.ID == "chores" && e.ID == "task_occurrences" {
+		return s.choreLegacyAction(ctx, id, rid, action, key, requestID, in)
+	}
 	ctx = audit.WithRequest(audit.WithActor(ctx, id.UserID, id.HouseholdID), requestID)
 	if !value.ValidUUID(rid) || !value.ValidUUID(key) {
 		return nil, Invalid{"gültige Vorgangs-ID erforderlich"}
@@ -196,27 +199,6 @@ func (s *Store) Action(ctx context.Context, id auth.Identity, m module.Descripto
 			return nil, err
 		}
 		err = tx.QueryRow(ctx, "UPDATE expenses.entries t SET state='posted',posted_at=now() WHERE id=$1 RETURNING to_jsonb(t)", newID).Scan(&raw)
-	case "chores/task_occurrences/complete":
-		if String(record["state"]) != "open" {
-			return nil, ErrConflict
-		}
-		err = tx.QueryRow(ctx, "UPDATE chores.task_occurrences t SET state='completed',completed_at=now(),completed_by=$3,updated_at=now(),version=version+1 WHERE household_id=$1 AND id=$2 RETURNING to_jsonb(t)", id.HouseholdID, rid, id.UserID).Scan(&raw)
-		if err != nil {
-			return nil, err
-		}
-		var nextRaw []byte
-		err = tx.QueryRow(ctx, `INSERT INTO chores.task_occurrences AS t(household_id,template_id,occurrence_key,due_at,assignee_id,created_by)
-		 SELECT o.household_id,o.template_id,((o.due_at AT TIME ZONE t.timezone)+make_interval(days=>t.repeat_days))::text,((o.due_at AT TIME ZONE t.timezone)+make_interval(days=>t.repeat_days)) AT TIME ZONE t.timezone,o.assignee_id,$3
-		 FROM chores.task_occurrences o JOIN chores.task_templates t ON t.id=o.template_id AND t.household_id=o.household_id WHERE o.household_id=$1 AND o.id=$2 AND t.active AND t.repeat_days>0 ON CONFLICT(template_id,occurrence_key) DO NOTHING RETURNING to_jsonb(t)`, id.HouseholdID, rid, id.UserID).Scan(&nextRaw)
-		if errors.Is(err, pgx.ErrNoRows) {
-			err = nil
-		} else if err == nil {
-			var next Record
-			next, err = decode(nextRaw)
-			if err == nil {
-				err = s.afterWrite(ctx, tx, id, m, e, next, in.Generation)
-			}
-		}
 	case "recipes/recipes/shopping":
 		err = s.recipeToShopping(ctx, tx, id, record, data)
 		if err == nil {

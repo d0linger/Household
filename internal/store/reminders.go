@@ -33,6 +33,15 @@ func scheduleReminder(ctx context.Context, tx pgx.Tx, id auth.Identity, mid, ent
 	case "chores/task_occurrences":
 		date = String(r["due_at"])
 		kind = "task_due"
+		var managed bool
+		if err := tx.QueryRow(ctx, `SELECT profile.managed FROM chores.task_occurrences occurrence
+ JOIN chores.series_profiles profile ON profile.household_id=occurrence.household_id AND profile.template_id=occurrence.template_id
+ WHERE occurrence.household_id=$1 AND occurrence.id=$2`, id.HouseholdID, r["id"]).Scan(&managed); err != nil {
+			return err
+		}
+		if managed {
+			date = ""
+		}
 		if String(r["state"]) != "open" {
 			date = ""
 		}

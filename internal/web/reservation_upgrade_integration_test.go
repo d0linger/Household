@@ -27,6 +27,9 @@ func TestReservationPopulatedPriorUpgrade(t *testing.T) {
 	}
 	for _, schema := range database.Schemas {
 		version := uint(database.ExpectedVersion(schema))
+		if schema == "chores" {
+			version = 1 // Chores2 requires the later complete Core31 predecessor.
+		}
 		if schema == "fuel" {
 			version = 2 // Keep the actual predecessor compatible with Core18.
 		}

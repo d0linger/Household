@@ -228,6 +228,9 @@ func financialPriorFixture(t *testing.T, withGeneration bool) *integrationFixtur
 	}
 	for _, schema := range database.Schemas {
 		version := uint(database.ExpectedVersion(schema))
+		if schema == "chores" {
+			version = 1 // Chores2 requires the later complete Core31 predecessor.
+		}
 		if schema == "mealplan" {
 			version = 7 // Mealplan8 belongs to the later Core28 extension.
 		}

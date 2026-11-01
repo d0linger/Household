@@ -36,7 +36,7 @@ func TestAuditTrailContract(t *testing.T) {
 			AND NOT(t.schemaname='pantry' AND t.tablename='lot_balances')
 			AND NOT(t.schemaname='fuel' AND t.tablename=ANY($2::text[]))`,
 			[]string{"shopping", "fuel", "recipes", "pantry", "expenses", "chores", "meters", "documents", "mealplan"}, privateFuel).Scan(&missing, &domainTables)
-		if err != nil || missing != 0 || domainTables != 92 {
+		if err != nil || missing != 0 || domainTables != 106 {
 			t.Fatalf("domain coverage: missing=%d tables=%d error=%v", missing, domainTables, err)
 		}
 		// Dedicated API tables remain audited business facts. Only the exact

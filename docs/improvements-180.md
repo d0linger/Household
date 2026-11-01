@@ -31,9 +31,9 @@ Ein Schema, eine Schaltfläche oder ein Mock allein schließt keinen Punkt ab. B
 
 Abgenommener Modulblock: **Finanzen (EX01–EX20)**. Alle 20 Punkte sind nach vollständiger Implementierung und gemeinsamer lokaler Prüfung verifiziert. Belegt sind 717 Haupttests im vollständigen Linux-Race-Lauf plus zwei separate, quellenqualifizierte Liquiditäts-Race-Tests, 70,86 % beobachtete Statement-Abdeckung, zwölf Qualitätsprüfungen, 297 Node-Tests, 31 Browserkomponenten mit 1.273 Prüfpunkten und 167 sauberen Axe-Scans sowie 15 echte Restore-/Purge-Stufen. Exakter Indexscan über 892 Dateien ohne Geheimnisfund; alle 85 bisherigen SQL-Dateien bytegleich und 92 Pins geprüft. Lokaler Code-Checkpoint: 0102380, keine Veröffentlichung. [Modulplan](finance-module-plan.md) · [Abnahmenachweise und Grenzen](finance-module-validation.md) · [Kriterien mit ausgeführten Tests](finance-acceptance-map.md).
 
-Nächster Modulblock: **Aufgaben (CH01–CH20)**; danach Zähler und Dokumente. Jeder Block wird vollständig umgesetzt und erst danach gemeinsam getestet.
+Aktueller Modulblock: **Aufgaben (CH01–CH20)**. Der [vollständige 120-Schritte-Plan](chores-module-plan.md) beschreibt alle Änderungen vor der Implementierung. Danach folgen gemeinsame Tests und Fehlerbehebung; Zähler und Dokumente beginnen erst nach Aufgabenabnahme.
 
-180 Punkte: **120 verifiziert, 0 implementiert, 0 in Arbeit, 60 offen**. Dieser Zähler wird mit jedem abgeschlossenen Arbeitspaket abgeglichen.
+180 Punkte: **120 verifiziert, 0 implementiert, 20 in Arbeit, 40 offen**. Dieser Zähler wird mit jedem abgeschlossenen Arbeitspaket abgeglichen.
 
 Abgenommener Modulblock: **Fahrzeuge & Tanken (FU01–FU20)** – vollständige Implementierung und gemeinsame lokale Tests/Fehlerbehebung abgeschlossen. [Modulplan](fuel-module-plan.md).
 
@@ -174,26 +174,26 @@ Abgenommener Modulblock: **Essensplanung (MP08/MP13/MP15/MP19)** – alle20Verbe
 
 | ID | Verbesserung | Abnahmekriterium | Status | Nachweis |
 |---|---|---|---|---|
-| CH01 | Heute für mich | Zugewiesene, fällige und übernommene Aufgaben persönlich bündeln. | Offen | — |
-| CH02 | Räume und Bereiche | Aufgaben nach Bereichen mit Anzahl und Fälligkeit ordnen. | Offen | — |
-| CH03 | Wiederholung erklären | Letzte Erledigung und Berechnung der nächsten Fälligkeit sichtbar machen. | Offen | — |
-| CH04 | Arbeitsansicht | Anleitung, Material, Unteraufgaben und Abschluss konzentriert bedienen. | Offen | — |
-| CH05 | Verschieben und Pausieren | Termin verschieben, Vorkommen auslassen und Serie pausieren unterscheiden und vorab zeigen. | Offen | — |
-| CH06 | Kalenderwiederholungen | Wochentage, Monate und Saison mit begrenzten Regeln und Vorschau unterstützen. | Offen | — |
-| CH07 | Wiederholungsanker | Festen Zeitplan oder letzte Erledigung als ausdrücklichen Anker verwenden. | Offen | — |
-| CH08 | Zuständigkeitsrotation | Rotation, Ausnahmen und Vertretung nachvollziehbar anwenden. | Offen | — |
-| CH09 | Aufwand und Eignung | Optionale Dauer, Schwierigkeit und geeignete Personen pflegen. | Offen | — |
-| CH10 | Unteraufgaben und Abhängigkeiten | Abhängigkeiten ohne Zyklen validieren und Abschlussbedingungen zeigen. | Offen | — |
-| CH11 | Tagesplanung | Zeitbudget und Priorität für einen erklärbaren Tagesvorschlag verwenden. | Offen | — |
-| CH12 | Abwesenheiten | Personenbezogene Pausen und Ersatzregeln in Zuweisungen beachten. | Offen | — |
-| CH13 | Modulereignisse | Aufgaben aus Kernereignissen mit deduplizierter Herkunft erstellen. | Offen | — |
-| CH14 | Aufgaben-Kalender | ICS-Export und widerrufbare Feeds mit stabilen Ereigniskennungen anbieten. | Offen | — |
-| CH15 | Erinnerungsbündel | Ruhezeiten, Zusammenfassungen und ausdrücklich gewählte Eskalation berücksichtigen. | Offen | — |
-| CH16 | Vorkommenshorizont | Begrenzten rollierenden Horizont mit eindeutigen Vorkommenskennungen erzeugen. | Offen | — |
-| CH17 | Erledigungshistorie | Aufwand, Häufigkeit und tatsächliche Person ohne erzwungene Rangliste zeigen. | Offen | — |
-| CH18 | Paralleler Abschluss | Gleichzeitige Erledigung genau einmal buchen und Ergebnis verständlich zurückgeben. | Offen | — |
-| CH19 | Serienänderungen | Einzeltermin und zukünftige Serie unterscheiden; historische Vorlage erhalten. | Offen | — |
-| CH20 | Zeitzonen und Sommerzeit | Lokale Wiederholung über Zeitumstellungen hinweg deterministisch berechnen. | Offen | — |
+| CH01 | Heute für mich | Zugewiesene, fällige und übernommene Aufgaben persönlich bündeln. | In Arbeit | Implementiert; gemeinsame quellengebundene Abnahme läuft. [Aktuelle Erfolge, Fehlversuche und offene Wiederholungen](chores-module-validation.md) · [120-Schritte-Checkliste](chores-module-plan.md). |
+| CH02 | Räume und Bereiche | Aufgaben nach Bereichen mit Anzahl und Fälligkeit ordnen. | In Arbeit | Implementiert; gemeinsame quellengebundene Abnahme läuft. [Aktuelle Erfolge, Fehlversuche und offene Wiederholungen](chores-module-validation.md) · [120-Schritte-Checkliste](chores-module-plan.md). |
+| CH03 | Wiederholung erklären | Letzte Erledigung und Berechnung der nächsten Fälligkeit sichtbar machen. | In Arbeit | Implementiert; gemeinsame quellengebundene Abnahme läuft. [Aktuelle Erfolge, Fehlversuche und offene Wiederholungen](chores-module-validation.md) · [120-Schritte-Checkliste](chores-module-plan.md). |
+| CH04 | Arbeitsansicht | Anleitung, Material, Unteraufgaben und Abschluss konzentriert bedienen. | In Arbeit | Implementiert; gemeinsame quellengebundene Abnahme läuft. [Aktuelle Erfolge, Fehlversuche und offene Wiederholungen](chores-module-validation.md) · [120-Schritte-Checkliste](chores-module-plan.md). |
+| CH05 | Verschieben und Pausieren | Termin verschieben, Vorkommen auslassen und Serie pausieren unterscheiden und vorab zeigen. | In Arbeit | Implementiert; gemeinsame quellengebundene Abnahme läuft. [Aktuelle Erfolge, Fehlversuche und offene Wiederholungen](chores-module-validation.md) · [120-Schritte-Checkliste](chores-module-plan.md). |
+| CH06 | Kalenderwiederholungen | Wochentage, Monate und Saison mit begrenzten Regeln und Vorschau unterstützen. | In Arbeit | Implementiert; gemeinsame quellengebundene Abnahme läuft. [Aktuelle Erfolge, Fehlversuche und offene Wiederholungen](chores-module-validation.md) · [120-Schritte-Checkliste](chores-module-plan.md). |
+| CH07 | Wiederholungsanker | Festen Zeitplan oder letzte Erledigung als ausdrücklichen Anker verwenden. | In Arbeit | Implementiert; gemeinsame quellengebundene Abnahme läuft. [Aktuelle Erfolge, Fehlversuche und offene Wiederholungen](chores-module-validation.md) · [120-Schritte-Checkliste](chores-module-plan.md). |
+| CH08 | Zuständigkeitsrotation | Rotation, Ausnahmen und Vertretung nachvollziehbar anwenden. | In Arbeit | Implementiert; gemeinsame quellengebundene Abnahme läuft. [Aktuelle Erfolge, Fehlversuche und offene Wiederholungen](chores-module-validation.md) · [120-Schritte-Checkliste](chores-module-plan.md). |
+| CH09 | Aufwand und Eignung | Optionale Dauer, Schwierigkeit und geeignete Personen pflegen. | In Arbeit | Implementiert; gemeinsame quellengebundene Abnahme läuft. [Aktuelle Erfolge, Fehlversuche und offene Wiederholungen](chores-module-validation.md) · [120-Schritte-Checkliste](chores-module-plan.md). |
+| CH10 | Unteraufgaben und Abhängigkeiten | Abhängigkeiten ohne Zyklen validieren und Abschlussbedingungen zeigen. | In Arbeit | Implementiert; gemeinsame quellengebundene Abnahme läuft. [Aktuelle Erfolge, Fehlversuche und offene Wiederholungen](chores-module-validation.md) · [120-Schritte-Checkliste](chores-module-plan.md). |
+| CH11 | Tagesplanung | Zeitbudget und Priorität für einen erklärbaren Tagesvorschlag verwenden. | In Arbeit | Implementiert; gemeinsame quellengebundene Abnahme läuft. [Aktuelle Erfolge, Fehlversuche und offene Wiederholungen](chores-module-validation.md) · [120-Schritte-Checkliste](chores-module-plan.md). |
+| CH12 | Abwesenheiten | Personenbezogene Pausen und Ersatzregeln in Zuweisungen beachten. | In Arbeit | Implementiert; gemeinsame quellengebundene Abnahme läuft. [Aktuelle Erfolge, Fehlversuche und offene Wiederholungen](chores-module-validation.md) · [120-Schritte-Checkliste](chores-module-plan.md). |
+| CH13 | Modulereignisse | Aufgaben aus Kernereignissen mit deduplizierter Herkunft erstellen. | In Arbeit | Implementiert; gemeinsame quellengebundene Abnahme läuft. [Aktuelle Erfolge, Fehlversuche und offene Wiederholungen](chores-module-validation.md) · [120-Schritte-Checkliste](chores-module-plan.md). |
+| CH14 | Aufgaben-Kalender | ICS-Export und widerrufbare Feeds mit stabilen Ereigniskennungen anbieten. | In Arbeit | Implementiert; gemeinsame quellengebundene Abnahme läuft. [Aktuelle Erfolge, Fehlversuche und offene Wiederholungen](chores-module-validation.md) · [120-Schritte-Checkliste](chores-module-plan.md). |
+| CH15 | Erinnerungsbündel | Ruhezeiten, Zusammenfassungen und ausdrücklich gewählte Eskalation berücksichtigen. | In Arbeit | Implementiert; gemeinsame quellengebundene Abnahme läuft. [Aktuelle Erfolge, Fehlversuche und offene Wiederholungen](chores-module-validation.md) · [120-Schritte-Checkliste](chores-module-plan.md). |
+| CH16 | Vorkommenshorizont | Begrenzten rollierenden Horizont mit eindeutigen Vorkommenskennungen erzeugen. | In Arbeit | Implementiert; gemeinsame quellengebundene Abnahme läuft. [Aktuelle Erfolge, Fehlversuche und offene Wiederholungen](chores-module-validation.md) · [120-Schritte-Checkliste](chores-module-plan.md). |
+| CH17 | Erledigungshistorie | Aufwand, Häufigkeit und tatsächliche Person ohne erzwungene Rangliste zeigen. | In Arbeit | Implementiert; gemeinsame quellengebundene Abnahme läuft. [Aktuelle Erfolge, Fehlversuche und offene Wiederholungen](chores-module-validation.md) · [120-Schritte-Checkliste](chores-module-plan.md). |
+| CH18 | Paralleler Abschluss | Gleichzeitige Erledigung genau einmal buchen und Ergebnis verständlich zurückgeben. | In Arbeit | Implementiert; gemeinsame quellengebundene Abnahme läuft. [Aktuelle Erfolge, Fehlversuche und offene Wiederholungen](chores-module-validation.md) · [120-Schritte-Checkliste](chores-module-plan.md). |
+| CH19 | Serienänderungen | Einzeltermin und zukünftige Serie unterscheiden; historische Vorlage erhalten. | In Arbeit | Implementiert; gemeinsame quellengebundene Abnahme läuft. [Aktuelle Erfolge, Fehlversuche und offene Wiederholungen](chores-module-validation.md) · [120-Schritte-Checkliste](chores-module-plan.md). |
+| CH20 | Zeitzonen und Sommerzeit | Lokale Wiederholung über Zeitumstellungen hinweg deterministisch berechnen. | In Arbeit | Implementiert; gemeinsame quellengebundene Abnahme läuft. [Aktuelle Erfolge, Fehlversuche und offene Wiederholungen](chores-module-validation.md) · [120-Schritte-Checkliste](chores-module-plan.md). |
 
 ## Zähler und Energie
 

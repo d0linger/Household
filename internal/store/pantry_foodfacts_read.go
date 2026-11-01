@@ -11,6 +11,7 @@ import (
 
 	"household/internal/audit"
 	"household/internal/auth"
+	"household/internal/database"
 	"household/internal/foodfacts"
 	"household/internal/value"
 
@@ -502,7 +503,7 @@ func (s *Store) PantryFoodFactsExportSources(ctx context.Context, id auth.Identi
 	if err = tx.QueryRow(ctx, "SELECT count(*),coalesce(max(version),0),coalesce(bool_or(dirty),false) FROM pantry.schema_migrations").Scan(&schemaRows, &schemaVersion, &dirty); err != nil {
 		return nil, err
 	}
-	if schemaRows != 1 || dirty || schemaVersion < 1 || schemaVersion > 14 {
+	if schemaRows != 1 || dirty || schemaVersion < 1 || schemaVersion > int64(database.ExpectedVersion("pantry")) {
 		return nil, ErrConflict
 	}
 	if schemaVersion < 12 {

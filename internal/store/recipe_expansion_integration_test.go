@@ -210,12 +210,20 @@ func (d recipeExpansionQueryDiagnostics) TraceQueryEnd(ctx context.Context, _ *p
 }
 
 func recipeExpansionReset(ctx context.Context, owner *pgxpool.Pool) error {
-	names := make([]string, 0, len(database.Schemas))
-	for _, schema := range database.Schemas {
-		names = append(names, pgx.Identifier{schema}.Sanitize())
+	tx, err := owner.Begin(ctx)
+	if err != nil {
+		return err
 	}
-	_, err := owner.Exec(ctx, "DROP SCHEMA IF EXISTS "+strings.Join(names, ",")+" CASCADE")
-	return err
+	defer func() { _ = tx.Rollback(ctx) }()
+	// Preserve atomic reset and the existing statement/total deadlines. Match
+	// the accepted Web fixture: optional schemas first, shared Core last.
+	for n := len(database.Schemas) - 1; n >= 0; n-- {
+		schema := pgx.Identifier{database.Schemas[n]}.Sanitize()
+		if _, err = tx.Exec(ctx, "DROP SCHEMA IF EXISTS "+schema+" CASCADE"); err != nil {
+			return err
+		}
+	}
+	return tx.Commit(ctx)
 }
 
 func TestRecipeExpansionFreshReadinessAndImportPurpose(t *testing.T) {
@@ -231,7 +239,7 @@ func TestRecipeExpansionFreshReadinessAndImportPurpose(t *testing.T) {
 		t.Fatalf("fresh contracts core=%t recipes=%t audit=%t fuel=%t error=%v",
 			coreReady, recipesReady, audited, fuelReady, err)
 	}
-	if err := f.owner.QueryRow(f.ctx, `SELECT count(*) FROM core.audit_policies`).Scan(&policies); err != nil || policies != 121 {
+	if err := f.owner.QueryRow(f.ctx, `SELECT count(*) FROM core.audit_policies`).Scan(&policies); err != nil || policies != 135 {
 		t.Fatalf("fresh audit policy count %d: %v", policies, err)
 	}
 	var teaspoons, tablespoons bool

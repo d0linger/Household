@@ -128,6 +128,7 @@ func Migrate(ctx context.Context, dsn string) error {
 	pantryPredecessor := uint(12)
 	mealplanPredecessor := uint(7)
 	expensePredecessor := uint(4)
+	chorePredecessor := uint(1)
 	for _, schema := range Schemas[1:] {
 		var through *uint
 		switch schema {
@@ -141,6 +142,8 @@ func Migrate(ctx context.Context, dsn string) error {
 			through = &mealplanPredecessor
 		case "expenses":
 			through = &expensePredecessor
+		case "chores":
+			through = &chorePredecessor
 		}
 		if err = migrateSchema(schema, through); err != nil {
 			return err
@@ -164,7 +167,8 @@ func Migrate(ctx context.Context, dsn string) error {
 		version uint
 	}{{"mealplan", 8}, {"core", 28}, {"fuel", 7}, {"pantry", 13},
 		{"core", 29}, {"expenses", 5}, {"core", 30}, {"core", 31},
-		{"fuel", 8}, {"pantry", 14}, {"mealplan", 9}} {
+		{"fuel", 8}, {"pantry", 14}, {"mealplan", 9},
+		{"chores", 2}, {"core", 32}, {"fuel", 9}, {"pantry", 15}, {"mealplan", 10}} {
 		if err = migrateSchema(stage.schema, &stage.version); err != nil {
 			return err
 		}
@@ -207,175 +211,33 @@ func Ready(ctx context.Context, pool *pgxpool.Pool) error {
 			return fmt.Errorf("incompatible schema %s", schema)
 		}
 	}
-	var repurchase bool
-	var fuelOverview bool
-	if err := pool.QueryRow(ctx, "SELECT fuel.overview_ready()").Scan(&fuelOverview); err != nil {
-		return fmt.Errorf("inspect vehicle overview contract: %w", err)
-	}
-	if !fuelOverview {
-		return errors.New("incomplete vehicle overview contract")
-	}
-	var fuelModule bool
-	if err := pool.QueryRow(ctx, "SELECT fuel.module_ready()").Scan(&fuelModule); err != nil {
-		return fmt.Errorf("inspect vehicle module contract: %w", err)
-	}
-	if !fuelModule {
-		return errors.New("incomplete vehicle module contract")
-	}
-	if err := pool.QueryRow(ctx, "SELECT shopping.repurchase_ready()").Scan(&repurchase); err != nil {
-		return fmt.Errorf("inspect shopping history contract: %w", err)
-	}
-	if !repurchase {
-		return errors.New("incomplete shopping history contract")
-	}
-	var barcodes bool
-	if err := pool.QueryRow(ctx, "SELECT shopping.barcode_ready()").Scan(&barcodes); err != nil {
-		return fmt.Errorf("inspect shopping barcode contract: %w", err)
-	}
-	if !barcodes {
-		return errors.New("incomplete shopping barcode contract")
-	}
-	var audited bool
-	if err := pool.QueryRow(ctx, "SELECT core.audit_ready()").Scan(&audited); err != nil {
-		return fmt.Errorf("inspect audit contract: %w", err)
-	}
-	if !audited {
-		return errors.New("incomplete audit trigger contract")
-	}
-	var projected bool
-	if err := pool.QueryRow(ctx, "SELECT pantry.projection_ready()").Scan(&projected); err != nil {
-		return fmt.Errorf("inspect stock projection contract: %w", err)
-	}
-	if !projected {
-		return errors.New("incomplete stock projection contract")
-	}
-	var catalogued bool
-	if err := pool.QueryRow(ctx, "SELECT recipes.catalog_ready()").Scan(&catalogued); err != nil {
-		return fmt.Errorf("inspect ingredient catalogue contract: %w", err)
-	}
-	if !catalogued {
-		return errors.New("incomplete ingredient catalogue contract")
-	}
-	var recipeCoreExpansion bool
-	if err := pool.QueryRow(ctx, "SELECT core.recipe_expansion_ready()").Scan(&recipeCoreExpansion); err != nil {
-		return fmt.Errorf("inspect recipe core expansion: %w", err)
-	}
-	if !recipeCoreExpansion {
-		return errors.New("incomplete recipe core expansion")
-	}
-	var recipeExpansion bool
-	if err := pool.QueryRow(ctx, "SELECT recipes.expansion_ready()").Scan(&recipeExpansion); err != nil {
-		return fmt.Errorf("inspect recipe expansion: %w", err)
-	}
-	if !recipeExpansion {
-		return errors.New("incomplete recipe expansion")
-	}
-	var cookingStock bool
-	if err := pool.QueryRow(ctx, "SELECT pantry.cooking_stock_ready()").Scan(&cookingStock); err != nil {
-		return fmt.Errorf("inspect cooking stock contract: %w", err)
-	}
-	if !cookingStock {
-		return errors.New("incomplete cooking stock contract")
-	}
-	var stockBatch bool
-	if err := pool.QueryRow(ctx, "SELECT pantry.stock_batch_ready()").Scan(&stockBatch); err != nil {
-		return fmt.Errorf("inspect stock batch contract: %w", err)
-	}
-	if !stockBatch {
-		return errors.New("incomplete stock batch contract")
-	}
-	var replenishment bool
-	if err := pool.QueryRow(ctx, "SELECT pantry.replenishment_ready()").Scan(&replenishment); err != nil {
-		return fmt.Errorf("inspect replenishment contract: %w", err)
-	}
-	if !replenishment {
-		return errors.New("incomplete replenishment contract")
-	}
-	var reservations bool
-	var waste bool
-	if err := pool.QueryRow(ctx, "SELECT pantry.waste_ready()").Scan(&waste); err != nil {
-		return fmt.Errorf("inspect waste analysis contract: %w", err)
-	}
-	if !waste {
-		return errors.New("incomplete waste analysis contract")
-	}
-	var preparedCapture bool
-	if err := pool.QueryRow(ctx, "SELECT pantry.prepared_capture_ready()").Scan(&preparedCapture); err != nil {
-		return fmt.Errorf("inspect prepared food and scan contract: %w", err)
-	}
-	if !preparedCapture {
-		return errors.New("incomplete prepared food and scan contract")
-	}
-	if err := pool.QueryRow(ctx, "SELECT core.meal_reservations_ready()").Scan(&reservations); err != nil {
-		return fmt.Errorf("inspect meal reservation contract: %w", err)
-	}
-	if !reservations {
-		return errors.New("incomplete meal reservation contract")
-	}
-	var planningBindings bool
-	if err := pool.QueryRow(ctx, "SELECT core.planning_bindings_ready()").Scan(&planningBindings); err != nil {
-		return fmt.Errorf("inspect planning ingredient bindings: %w", err)
-	}
-	if !planningBindings {
-		return errors.New("incomplete planning ingredient binding contract")
-	}
-	var planningPurchases bool
-	if err := pool.QueryRow(ctx, "SELECT core.planning_purchases_ready()").Scan(&planningPurchases); err != nil {
-		return fmt.Errorf("inspect planning purchase contract: %w", err)
-	}
-	if !planningPurchases {
-		return errors.New("incomplete planning purchase contract")
-	}
-	var participants bool
-	if err := pool.QueryRow(ctx, "SELECT core.planning_participants_ready()").Scan(&participants); err != nil {
-		return fmt.Errorf("inspect planning participant contract: %w", err)
-	}
-	if !participants {
-		return errors.New("incomplete planning participant contract")
-	}
-	var planningExtensions, planningAudit bool
-	if err := pool.QueryRow(ctx, "SELECT mealplan.expansion_ready(),core.planning_extensions_ready()").Scan(&planningExtensions, &planningAudit); err != nil {
-		return fmt.Errorf("inspect planning extension contract: %w", err)
-	}
-	if !planningExtensions || !planningAudit {
-		return errors.New("incomplete planning extension contract")
-	}
-	var expenseEditing bool
-	if err := pool.QueryRow(ctx, "SELECT expenses.editing_ready()").Scan(&expenseEditing); err != nil {
-		return fmt.Errorf("inspect expense editor integrity: %w", err)
-	}
-	if !expenseEditing {
-		return errors.New("incomplete expense editor integrity contract")
-	}
-	var expenseOperations bool
-	if err := pool.QueryRow(ctx, "SELECT core.expense_editing_ready()").Scan(&expenseOperations); err != nil {
-		return fmt.Errorf("inspect durable expense operations: %w", err)
-	}
-	if !expenseOperations {
-		return errors.New("incomplete durable expense operation contract")
-	}
-	var financialBindings bool
-	if err := pool.QueryRow(ctx, "SELECT expenses.financial_bindings_ready()").Scan(&financialBindings); err != nil {
-		return fmt.Errorf("inspect financial identity foundation: %w", err)
-	}
-	if !financialBindings {
-		return errors.New("incomplete financial identity foundation")
-	}
-	var financialRequirements bool
-	if err := pool.QueryRow(ctx, "SELECT core.financial_requirements_ready()").Scan(&financialRequirements); err != nil {
-		return fmt.Errorf("inspect financial requirement foundation: %w", err)
-	}
-	if !financialRequirements {
-		return errors.New("incomplete financial requirement foundation")
-	}
-	var financeDomain, financeCore bool
-	if err := pool.QueryRow(ctx, "SELECT expenses.finance_ready(),core.finance_ready()").Scan(&financeDomain, &financeCore); err != nil {
-		return fmt.Errorf("inspect complete finance contract: %w", err)
-	}
-	if !financeDomain || !financeCore {
-		return errors.New("incomplete finance authority or domain contract")
-	}
-	return nil
+	return inspectReadiness(ctx, pool, []readinessCheck{
+		{"SELECT fuel.overview_ready()", "inspect vehicle overview contract: %w", "incomplete vehicle overview contract", 1},
+		{"SELECT fuel.module_ready()", "inspect vehicle module contract: %w", "incomplete vehicle module contract", 1},
+		{"SELECT shopping.repurchase_ready()", "inspect shopping history contract: %w", "incomplete shopping history contract", 1},
+		{"SELECT shopping.barcode_ready()", "inspect shopping barcode contract: %w", "incomplete shopping barcode contract", 1},
+		{"SELECT core.audit_ready()", "inspect audit contract: %w", "incomplete audit trigger contract", 1},
+		{"SELECT pantry.projection_ready()", "inspect stock projection contract: %w", "incomplete stock projection contract", 1},
+		{"SELECT recipes.catalog_ready()", "inspect ingredient catalogue contract: %w", "incomplete ingredient catalogue contract", 1},
+		{"SELECT core.recipe_expansion_ready()", "inspect recipe core expansion: %w", "incomplete recipe core expansion", 1},
+		{"SELECT recipes.expansion_ready()", "inspect recipe expansion: %w", "incomplete recipe expansion", 1},
+		{"SELECT pantry.cooking_stock_ready()", "inspect cooking stock contract: %w", "incomplete cooking stock contract", 1},
+		{"SELECT pantry.stock_batch_ready()", "inspect stock batch contract: %w", "incomplete stock batch contract", 1},
+		{"SELECT pantry.replenishment_ready()", "inspect replenishment contract: %w", "incomplete replenishment contract", 1},
+		{"SELECT pantry.waste_ready()", "inspect waste analysis contract: %w", "incomplete waste analysis contract", 1},
+		{"SELECT pantry.prepared_capture_ready()", "inspect prepared food and scan contract: %w", "incomplete prepared food and scan contract", 1},
+		{"SELECT core.meal_reservations_ready()", "inspect meal reservation contract: %w", "incomplete meal reservation contract", 1},
+		{"SELECT core.planning_bindings_ready()", "inspect planning ingredient bindings: %w", "incomplete planning ingredient binding contract", 1},
+		{"SELECT core.planning_purchases_ready()", "inspect planning purchase contract: %w", "incomplete planning purchase contract", 1},
+		{"SELECT core.planning_participants_ready()", "inspect planning participant contract: %w", "incomplete planning participant contract", 1},
+		{"SELECT mealplan.expansion_ready(),core.planning_extensions_ready()", "inspect planning extension contract: %w", "incomplete planning extension contract", 2},
+		{"SELECT expenses.editing_ready()", "inspect expense editor integrity: %w", "incomplete expense editor integrity contract", 1},
+		{"SELECT core.expense_editing_ready()", "inspect durable expense operations: %w", "incomplete durable expense operation contract", 1},
+		{"SELECT expenses.financial_bindings_ready()", "inspect financial identity foundation: %w", "incomplete financial identity foundation", 1},
+		{"SELECT core.financial_requirements_ready()", "inspect financial requirement foundation: %w", "incomplete financial requirement foundation", 1},
+		{"SELECT expenses.finance_ready(),core.finance_ready()", "inspect complete finance contract: %w", "incomplete finance authority or domain contract", 2},
+		{"SELECT chores.expansion_ready()", "inspect chore workspace contract: %w", "incomplete chore workspace contract", 1},
+	})
 }
 
 func ExpectedVersion(schema string) int {
