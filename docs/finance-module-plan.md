@@ -180,10 +180,10 @@ Haken in Phase1/2 dokumentieren fertiggestellte Spezifikation beziehungsweise im
 - [x] 114. Vollständige bestehende Modul-Browserregression auf 515c3433 bestanden:31Komponenten/1.273Prüfpunkte/167Axe.
 - [x] 115. Bevölkerten verschlüsselten Restore einschließlich Dateien/privater FX-/Herkunftsdaten prüfen.
 - [x] 116. Echten restaurierten Expenses-Purge und unabhängige Modulbestände prüfen.
-- [ ] 117. Gemeinsame Modulabnahme anhand tatsächlicher Gates und ehrlicher Quellen-/Evidenzgrenzen dokumentieren.
-- [ ] 118. Exakten Git-Index/SQL-Rohbytes/Geheimnisscan prüfen und lokal checkpointen.
-- [ ] 119. Erst danach19EX-Punkte verifizieren, Aufgabenliste erzeugen und verbleibende Module beginnen.
-- [ ] 120. Aufgaben, Zähler und Dokumente fortführen, bis alle180vereinbarten Verbesserungen abgeschlossen sind.
+- [x] 117. Gemeinsame Modulabnahme anhand tatsächlicher Gates und ehrlicher Quellen-/Evidenzgrenzen dokumentieren.
+- [x] 118. Exakten Git-Index/SQL-Rohbytes/Geheimnisscan prüfen und lokal checkpointen.
+- [x] 119. Erst danach die 19 EX-Punkte verifizieren und die Aufgabenliste erzeugen.
+- [ ] 120. Nach Finanzabnahme: Aufgaben, Zähler und Dokumente fortführen, bis alle 180 vereinbarten Verbesserungen abgeschlossen sind.
 
 ## Ausführungsstand
 
@@ -191,7 +191,7 @@ Der finale Anwendungsstand a6e871cc besteht alle zwölf Qualitätsprüfungen, 30
 
 Die vollständige Linux-Race-Kampagne besteht alle 717 Haupttests in sechs streng geprüften Shards. Alle 20 früher fehlgeschlagenen Fälle bestehen jetzt ebenfalls; keine Fehler, Skips oder Race-Warnungen. Die Quelle blieb unverändert, alle 15 eigenen Ressourcen sind nachweislich bereinigt. Zwei zusätzliche, getrennt bestandene Liquiditäts-Race-Tests sind nach Ende der eingefrorenen Kampagne übernommen. Die Quellenqualifizierung belegt 719 eindeutige Haupttests bei 70,86 % beobachteter Statement-Abdeckung; ein einzelner 719-Test-Lauf wird nicht behauptet. Produktionscode, SQL und sämtliche bisherigen Testbytes bleiben identisch.
 
-Der aktuelle Git-sichtbare Geheimnisscan über 892 Dateien findet keine Geheimnisse. Der abschließende exakte Git-Indexscan und der lokale Checkpoint bleiben offen. Die 19 Finanzpunkte bleiben bis dahin in Arbeit; Gesamtstand 101 von 180.
+Der Git-sichtbare und der exakte Git-Index-Geheimnisscan über 892 Dateien finden keine Geheimnisse. Alle 92 SQL-Pins sind exakt geprüft; alle 85 bisherigen Migrationen behalten ihre Rohbytes. Der lokale Code-Checkpoint 0102380 enthält den geprüften 158-Dateien-Stand. Alle 20 Finanzpunkte sind lokal abgenommen; Gesamtstand 120 von 180. Nächster Modulblock: Aufgaben. Eine zusätzliche abschließende Leerzeile in der ungeändert getesteten Expenses-5-Migration ist als kosmetischer Git-Whitespace-Befund dokumentiert; keine globale Prüfregel wurde abgeschaltet.
 Die nachfolgenden Browser- und Restore-Ergebnisse sind ausdrücklich Vorläufernachweise auf1275e06a; sie ersetzen keine Abnahme von089c7a6e.
 
 Die gesamte Browserkette e617bc5f36ee4ac7926a453331e09189 besteht funktional auf unverändertem Stand1275e06a:31Komponenten,1.256Prüfpunkte,179Screenshots und167saubereAxe-Scans. Browser endet mit0; alle Berichts-/Bild-Hashes sind separat geprüft. Ein alter Name im lokalen Aufräumskript lässt zunächst nur den ACL-geschützten Anmeldeordner zurück; Anwendung und Uploadvolume sind bereits entfernt. Das unveränderte ursprüngliche Fehlprotokoll und die anschließend tatsächlich ausgeführte, unabhängig verifizierte Bereinigung stehen gemeinsam in `orchestration-cleanup-reconciliation.json`. Dies verifiziert den Browserblock, nicht die noch offene vollständige native Racekampagne.

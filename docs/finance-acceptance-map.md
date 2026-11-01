@@ -1,8 +1,8 @@
 # Finance criteria and executed browser evidence
 
-Status: all functional and security test gates pass; final exact-index and checkpoint acceptance remains open. Final test source a6e871cc contains the reviewed append-only cashflow addition. Production bytes match 515c3433. Actual execution is 717 complete Linux-race mains plus two separate supplemental race mains, source-qualified at 70.8571% observed-statement coverage; no single 719-main campaign is claimed.
+Status: all 20 Finance criteria are locally accepted. Functional/security gates, the exact 892-blob secret/SQL scan and local code checkpoint 0102380 have passed. Final test source a6e871cc contains the reviewed append-only cashflow addition. Production bytes match 515c3433. Actual execution is 717 complete Linux-race mains plus two separate supplemental race mains, source-qualified at 70.8571% observed-statement coverage; no single 719-main campaign is claimed.
 
-The table connects every approved Finance item to concrete checks. Browser statements below actually passed in standalone98a33607 (208checks/16cleanAxe); the complete31-component browserb76ae97c also passed1,273checks/167cleanAxe. Native test names identify the required contracts; the complete campaign has passed; exact-index and local checkpoint checks remain before the 19 pending item statuses are promoted. EX02 retains its prior acceptance.
+The table connects every approved Finance item to concrete checks. Browser statements below actually passed in standalone98a33607 (208checks/16cleanAxe); the complete31-component browserb76ae97c also passed1,273checks/167cleanAxe. Native test names identify the required contracts; the complete campaign, exact-index scan and local checkpoint have passed; all 19 pending item statuses are now promoted. EX02 retains its prior acceptance.
 
 | ID | Approved criterion | Actual standalone browser observations | Native contracts |
 |---|---|---|---|

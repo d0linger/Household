@@ -1,8 +1,8 @@
 # Finance module validation
 
-## Final source a6e871cc — index and local checkpoint pending
+## Accepted Finance module — final source a6e871cc
 
-The final 679-file application digest is a6e871cc295e017808a2dfabb91d356507e6ef809a7bca868760373a9232c118. It adds only two reviewed cashflow tests and their helper to production source 515c3433; all existing test-file bytes remain an exact prefix. The thirteen earlier corrections and this append-only transfer have exact old/new hash reports. Production code, assets, dependencies and SQL are byte-identical between the two sources. All 85 released SQL files retain their raw bytes; all 92 current migration checksum pins pass. No improvement IDs are promoted before the index/checkpoint gates.
+The final 679-file application digest is a6e871cc295e017808a2dfabb91d356507e6ef809a7bca868760373a9232c118. It adds only two reviewed cashflow tests and their helper to production source 515c3433; all existing test-file bytes remain an exact prefix. The thirteen earlier corrections and this append-only transfer have exact old/new hash reports. Production code, assets, dependencies and SQL are byte-identical between the two sources. All 85 released SQL files retain their raw bytes; all 92 current migration checksum pins pass. The exact-index and local checkpoint gates have passed; all 20 Finance improvements are now locally verified.
 
 Executed checks on the final test source and its byte-identical production source:
 
@@ -12,14 +12,14 @@ Executed checks on the final test source and its byte-identical production sourc
 - Standalone browser 98a33607 passes 208 checks, 16 manually inspected screenshots and 16 clean Axe scans, with no JavaScript errors or external frontend requests.
 - Complete browser regression b76ae97c passes all 31 components: 1,273 checks, 179 screenshots and 167 clean Axe scans. Original report/image hashes, unchanged source and owned/private cleanup are verified.
 - Recovery 7deac1e1 passes 15 actual stages: two encrypted backup/restore qualifications, exact data/files/security keys, a real purge of the restored copy, ordinary physical deletion and retained independent records. All 12 owned removals are verified and private state is absent.
-- Worktree secret scan 0bd659b2 passes 892 Git-visible files with zero findings. Its private bounded source copy is removed and verified. The final exact-index scan remains separate.
+- Worktree secret scan 0bd659b2 passes 892 Git-visible files with zero findings. Its private bounded source copy is removed and verified. Exact-index scan 16c93b93 also passes all 892 indexed blobs with zero findings, unchanged index and verified private-copy removal; all 92 raw SQL pins and all 85 released predecessor files match.
 
 The complete 717-main Linux race campaign 88c7e4c1 passes all six strict shards with exactly one terminal per registered main, no failed/skipped cases or race warnings, unchanged frozen source and 15 verified owned removals. There are no cleanup errors; private state and the source copy are absent. Whole-run statement coverage is 70.3574%. The previous 716-main campaign 80495bab remains failed with 696 passes and 20 failures; all 20 formerly failing identities now pass in the current complete campaign.
 
 Two additional cashflow tests pass both native PostgreSQL and supplemental Linux race a935ec84. Exact source qualification verifies 717 complete-run mains plus two distinct supplemental race mains, unchanged production/SQL and unchanged existing test bytes. Qualified observed-statement coverage is 70.8571%, above the unchanged 55% floor. Raw atomic profiles remain immutable; only Boolean covered-statement observations are joined. No single 719-main run is claimed. The test addition is now transferred into Root. Its full source copy also passes formatting, tagged vet and the complete tagged linter. Final quality repeats on Root pass all 12 gates, 307 ordinary Go mains and 1,645 terminals.
 
 The first final Node evidence wrapper fails because Node emits the spec reporter while the parser expects TAP; its unchanged output shows 297 passes and zero failures. The corrected explicit-TAP run passes all 297 configured tests, without filtering or skips. Both attempts remain recorded.
-The [criteria map](finance-acceptance-map.md) connects all 20 approved Finance criteria to 32 exact observations in the original accepted browser report and registered native contracts. Whole-run completion and source qualification have passed; the final exact-index scan and local checkpoint remain required. Overall status: **101 verified / 19 Finance in progress / 60 later-module items open**. The live application on port 8100 is unchanged; nothing is pushed or published.
+The [criteria map](finance-acceptance-map.md) connects all 20 approved Finance criteria to 32 exact observations in the original accepted browser report and registered native contracts. Whole-run completion and source qualification have passed; the exact 892-blob index scan and local code checkpoint 0102380 have passed. Overall status: **120 verified / 60 later-module items open**. The live application on port 8100 is unchanged; nothing is pushed or published.
 
 Earlier joint attempts remain preserved. Application-contract repetition feae3074 passes on current source after fixing synthetic source preparation and the precise absent-list assertion. Joint attempt f2cbef66 passes its other five selected mains and 42 terminals, then fails the old wrong-sentinel assertion. Joint attempt 7266e32c passes both goal cases, Owner-definer denial, inherited scope and the populated Fuel2 upgrade, then fails its unclassified import fixture. Those failures remain failed; current whole-run validation supersedes them only after it actually finishes.
 
@@ -201,3 +201,10 @@ The actual complete679-file additive source copya6e871cc also passes formatting,
 
 
 Worktree secret qualification0bd659b2actually scans892Git-visible files on515c3433, with exit0 and zero redacted findings; its bounded private copy is removed and verified. Later documentation/test additions still require the final exact-index scan. Local integration credentials, ignored run outputs and sibling projects are outside the source census; no secret is included in public reports.
+
+
+## Local module acceptance and remaining limits
+
+Code checkpoint 0102380b3f0d74122d25fb1ba6a1c5bc223f22df stores the exact scanned 158-file Finance tree 08b36f5c9d1e31da88f1152c12eb12ba65809b2b. All 20 Finance criteria are locally verified after the full tests, source qualification, actual browser/recovery runs and exact-index secret scan. A single Git whitespace finding remains documented: an extra final empty line at Expenses migration 000005 line 419. The exact tested, checksum-pinned SQL bytes are retained; all other staged paths pass the standard whitespace check. No global whitespace or security rule is suppressed. This cosmetic observation does not alter behavior or migration integrity.
+
+No live8100 upgrade, hosted GitHub Actions execution, push, publication, trusted OCI signature or permanent backup/RPO guarantee is claimed. The unimported OpenPGP module advisory remains explicitly recorded above. Later-module changes require their own fresh checks.
