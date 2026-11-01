@@ -171,10 +171,10 @@ Writes prüfen aktuelle Session, Haushaltsrolle, Modulzustand, Generation und Ve
 
 - [x] 116. Echteverschlüsselte Sicherung/Wiederherstellungundrestaurierten Zähler-Purge ausführen.
 - [x] 117. Vollständigebestehende Modul-Browserregression auf gleicher Produktionsquelle ausführen.
-- [ ] 118. Exakten Git-Index auf Geheimnisseundunveränderte SQL-Vorgänger prüfen.
-- [ ] 119. Alle 20 ME-Kriterien erstnach Nachweisenverifizierenundlokalcheckpointen.
-- [ ] 120. Checklisteauf 160 aktualisierenunderstdanach Dokumentebeginnen.
+- [x] 118. Exakten Git-Index auf Geheimnisseundunveränderte SQL-Vorgänger prüfen.
+- [x] 119. Alle 20 ME-Kriterien erstnach Nachweisenverifizierenundlokalcheckpointen.
+- [x] 120. Checklisteauf 160 aktualisierenunderstdanach Dokumentebeginnen.
 
 ## Aktueller Stand
 
-117/120 Unterpunkte bearbeitet. Vollständige776Haupttest-Identitäten haben tatsächliche, vollständig bestandene und quellenqualifizierte Linux-Race-Bäume;70,51%Statement-Abdeckung. Ursprüngliche Fehler/Timeouts bleiben dokumentiert. Alle16geprüften Fixture-Korrekturen sind exakt übernommen; keine Produktions-/SQL-Änderung. Die erneut ausgeführten12Qualitätsgates (339gewöhnliche Go-Haupttests/1.787Terminals) undNode297bestehen auf finaler Quelle32c7e4d8. Reale117Browserprüfungen/14manuell geprüfte Ansichten/14Axe,33Komponenten/1.556Prüfungen/209Screenshots/197Axe,16Recovery-/Purge-Stufen sowie3Images/strenge OCI-Prüfung sind über identische Produktionsdateien qualifiziert. Exakter Indexscan, lokaler Code-Checkpoint und gemeinsame ME-Promotion bleiben offen. [Prüfnachweise](meters-module-validation.md).
+120/120 Unterpunkte abgeschlossen. Alle20ME-Kriterien sind nach vollständiger Implementierung, gemeinsamer Fehlerbehebung und ausgeführten Prüfungen lokal abgenommen. Alle776registrierten Haupttest-Identitäten haben vollständig bestandene, quellenqualifizierte Linux-Race-Bäume;70,51%Statement-Abdeckung. Ursprüngliche Fehler/Timeouts bleiben dokumentiert. Finale12Qualitätsgates (339Go-Haupttests/1.787Terminals),Node297, reale Browser/Visual/Axe-/33Komponenten-Prüfung,16Recovery-/Purge-Stufen und3Images/strenge OCI-Prüfung bestehen. Exakter Indexscan:983Blobs,0Geheimnisfunde,102SQL-Pins,97unverändertefreigegebene SQL-Dateien. Lokaler Code-Checkpoint`e25b88b`. Gesamt160/180verifiziert; als Nächstes Dokumente. [Prüfnachweise](meters-module-validation.md).

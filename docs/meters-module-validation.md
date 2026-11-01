@@ -1,6 +1,6 @@
 # Meters module validation
 
-Current status: **joint validation in progress; 0/20 ME criteria accepted**. Overall remains 140 verified /20 Meters in progress /20 Documents open. Failed attempts remain failed. Live8100, sibling services, hosted CI and publication are unchanged.
+Current status: **all20 ME criteria locally accepted**. Overall is160verified /0inprogress /20Documentsopen. Code checkpoint`e25b88b`; exact-index scan6bf0f5c9 passes983blobs/0findings/102pins/97unchanged released SQL files. Failed attempts remain failed. Live8100, sibling services, hosted CI and publication are unchanged.
 
 ## Final transferred source and qualified proof
 
@@ -12,7 +12,7 @@ Final application/test manifest `32c7e4d82821c6592c1d38d1f978d824e054a859a418b86
 - `final-production-gate-qualification.json` binds the five actual earlier production gate groups below to identical final Go/SQL/assets/templates/dependencies. Only16integration-test files differ; none enter production compilation or the two explicit embed patterns. Earlier images are not relabelled and no unexecuted rebuild is claimed.
 - Final repeatfbe39de2 passes all29selected main trees, unchanged source,11owned cleanup removals, zero cleanup errors and no retained private/source copy. Early repeat909540a5 passes56with14clean removals. The qualified proof independently revalidates every raw event tree, registry and hash.
 
-Remaining: exact indexed-blob/secret/97released-SQL review, local checkpoint and joint promotion of ME01–ME20. Overall remains140verified until those final steps succeed.
+Final indexed-blob/secret/97released-SQL review and local code checkpoint`e25b88b` are executed. All20 ME criteria promote together; overall160verified.
 
 ## Preserved common production source before test-only fixture transfer
 
@@ -99,3 +99,7 @@ A one-owned-database JIT experiment records9fully fresh fixture samples: migrati
 
 Campaign909540a5814d4117abe95895f26517f1 passes all56selected complete main trees across7groups. Its actual corrected source99054317and original root754f6611 both remain unchanged. The independent repository event/state-ledger revalidation and complete coverage-definition comparison pass. All14owned cleanup removals succeed, with zero cleanup errors and no private/source copy retained. Exact events/discovery/atomic coverage/contracts are published under its shards/go-test-job-* directories. Final disjoint29-target campaignfbe39de2 continues; no776orME acceptance is inferred yet.
 
+
+## Joint local acceptance
+
+All120phase steps and20MEcriteria are accepted after code checkpointe25b88b and exact indexed scan6bf0f5c9. The exact983indexed blob copies and raw102SQL pins pass;97released predecessors remain byte-identical. Worktree/index EOL normalization is explicitly recorded for non-SQL text files in blob-proof.json; raw SQL admits no normalization. The code checkpoint retains a documentation-only trailing blank line, removed with this final documentation status update. Failed original campaigns are preserved; the accepted claim is776unique complete source-qualified passing main trees, not a single all-passing776command. Live8100 and publication remain unchanged. Documents follows this completed module.

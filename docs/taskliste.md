@@ -1,16 +1,14 @@
 # Household – Aufgabenliste
 
-Stand: 01.11.2026, 22:06 (Europe/Vienna).
+Stand: 01.11.2026, 22:10 (Europe/Vienna).
 
-**140 / 180 verifiziert und abgehakt · 20 in Arbeit · 20 offen.**
+**160 / 180 verifiziert und abgehakt · 0 in Arbeit · 20 offen.**
 
 Ein Haken bedeutet: umgesetzt und durch ausgeführte Prüfungen belegt. Vorbereitete Änderungen und einzelne bestandene Zwischentests schließen einen Verbesserungspunkt noch nicht ab.
 
-Aktuell in Arbeit: **ME01 – Zählerübersicht**, **ME02 – Mobile Ablesung**, **ME03 – Intervallverbrauch**, **ME04 – Messqualität**, **ME05 – Zählerwechsel**, **ME06 – Zeitabhängige Tarife**, **ME07 – Kosten und Abschläge**, **ME08 – Periodenvergleich**, **ME09 – Mehrere Register**, **ME10 – Ableseplan**, **ME11 – Home Assistant**, **ME12 – MQTT**, **ME13 – Versorgerimport**, **ME14 – Anomaliehinweise**, **ME15 – Rechnungen als Ausgabe**, **ME16 – Ablesung und Telemetrie**, **ME17 – Zeitaggregate**, **ME18 – Korrektur-Neuberechnung**, **ME19 – Messgrößentypen**, **ME20 – Große Messreihen**.
+Derzeit ist kein Punkt als „In Arbeit“ markiert.
 
 **Aufgaben vollständig lokal abgenommen: 20/20 Punkte.** Alle746Testidentitäten haben vollständige Erfolge auf identischen Quellen; ursprüngliche Paket-Timeouts bleiben dokumentiert. Browser, Barrierefreiheit, echte Wiederherstellung und exakter Indexscan bestanden. [Modulplan mit Haken](chores-module-plan.md) · [Nachweise und Grenzen](chores-module-validation.md).
-
-**Aktueller Modulblock: Zähler und Energie (ME01–ME20).** 117/120 abgearbeitete Phasenunterpunkte. Die gesamte Implementierung wird zuerst abgeschlossen; danach folgen gemeinsame Tests und Fehlerbehebung. Geschriebene Quellen sind noch keine bestandenen Prüfungen. Dokumente beginnen nach der vollständigen Zählerabnahme. [120-Schritte-Checkliste](meters-module-plan.md).
 
 **Essensplanung vollständig lokal abgenommen: 20 / 20 Punkte.** Geplante Reste, Wochenbudget, Kalender und Autoplan sind nach nativen Tests, Browserprüfung und verschlüsseltem Restore/Purge gemeinsam abgehakt. [Modulplan](mealplan-module-plan.md) · [Abnahmenachweise und Grenzen](mealplan-module-validation.md).
 
@@ -30,7 +28,7 @@ Diese Ansicht wird aus der [verbindlichen Liste mit Abnahmekriterien und Nachwei
 | Vorrat | 20 / 20 | 0 | 0 |
 | Finanzen | 20 / 20 | 0 | 0 |
 | Aufgaben | 20 / 20 | 0 | 0 |
-| Zähler und Energie | 0 / 20 | 20 | 0 |
+| Zähler und Energie | 20 / 20 | 0 | 0 |
 | Dokumente | 0 / 20 | 0 | 20 |
 | Essensplanung | 20 / 20 | 0 | 0 |
 
@@ -174,26 +172,26 @@ Diese Ansicht wird aus der [verbindlichen Liste mit Abnahmekriterien und Nachwei
 
 ## Zähler und Energie
 
-- [ ] **ME01 Zählerübersicht** — **In Arbeit** — Letzten Stand, Datum, Verbrauch und überfällige Ablesung darstellen.
-- [ ] **ME02 Mobile Ablesung** — **In Arbeit** — Aktives Gerät, letzten Stand und Foto in einem geführten Ablauf anbieten.
-- [ ] **ME03 Intervallverbrauch** — **In Arbeit** — Verbrauch und Tagesdurchschnitt mit genauer Zeitspanne erklären.
-- [ ] **ME04 Messqualität** — **In Arbeit** — Messung, Schätzung und Datenlücken in Diagramm und Tabelle unterscheiden.
-- [ ] **ME05 Zählerwechsel** — **In Arbeit** — Alten Endstand und neuen Anfangsstand mit Datum und möglicher Lücke erfassen.
-- [ ] **ME06 Zeitabhängige Tarife** — **In Arbeit** — Arbeits- und Grundpreis mit Gültigkeitsintervallen versionieren.
-- [ ] **ME07 Kosten und Abschläge** — **In Arbeit** — Geschätzte Kosten mit tatsächlichen Abschlägen vergleichen und kennzeichnen.
-- [ ] **ME08 Periodenvergleich** — **In Arbeit** — Jahre und Zeiträume nur mit sichtbarer Datenabdeckung vergleichen.
-- [ ] **ME09 Mehrere Register** — **In Arbeit** — Bezug, Einspeisung und Erzeugung mit Einheiten und Flussrichtung trennen.
-- [ ] **ME10 Ableseplan** — **In Arbeit** — Fällige Ablesungen nach tatsächlichem passenden Messwert erledigen.
-- [ ] **ME11 Home Assistant** — **In Arbeit** — Optionalen Adapter mit ausdrücklicher Entitäts-, Einheiten- und Typzuordnung bereitstellen.
-- [ ] **ME12 MQTT** — **In Arbeit** — Optionale begrenzte Topics, validierte Nachrichten, Authentifizierung und Dublettenschutz.
-- [ ] **ME13 Versorgerimport** — **In Arbeit** — CSV mit Zeitzone, Einheit, Register und geprüfter Vorschau importieren.
-- [ ] **ME14 Anomaliehinweise** — **In Arbeit** — Konfigurierbare Verbrauchs- und Grundlasthinweise erst bei ausreichender Historie zeigen.
-- [ ] **ME15 Rechnungen als Ausgabe** — **In Arbeit** — Nur bestätigte Rechnungen oder Abschläge in Finanzen übernehmen.
-- [ ] **ME16 Ablesung und Telemetrie** — **In Arbeit** — Manuelle Stände von hochfrequenten Messdaten strukturell trennen.
-- [ ] **ME17 Zeitaggregate** — **In Arbeit** — Stunden-, Tages- und Monatswerte samt Rohdatenaufbewahrung verwalten.
-- [ ] **ME18 Korrektur-Neuberechnung** — **In Arbeit** — Benachbarte Intervalle und Kosten nach Änderung gezielt invalidieren.
-- [ ] **ME19 Messgrößentypen** — **In Arbeit** — Kumulativ, Intervall und Leistung strikt unterscheiden; kW ist nicht kWh.
-- [ ] **ME20 Große Messreihen** — **In Arbeit** — Zeitgefilterte, aggregierte Auswertungen jenseits von 10.000 Rohwerten liefern.
+- [x] **ME01 Zählerübersicht** — Letzten Stand, Datum, Verbrauch und überfällige Ablesung darstellen.
+- [x] **ME02 Mobile Ablesung** — Aktives Gerät, letzten Stand und Foto in einem geführten Ablauf anbieten.
+- [x] **ME03 Intervallverbrauch** — Verbrauch und Tagesdurchschnitt mit genauer Zeitspanne erklären.
+- [x] **ME04 Messqualität** — Messung, Schätzung und Datenlücken in Diagramm und Tabelle unterscheiden.
+- [x] **ME05 Zählerwechsel** — Alten Endstand und neuen Anfangsstand mit Datum und möglicher Lücke erfassen.
+- [x] **ME06 Zeitabhängige Tarife** — Arbeits- und Grundpreis mit Gültigkeitsintervallen versionieren.
+- [x] **ME07 Kosten und Abschläge** — Geschätzte Kosten mit tatsächlichen Abschlägen vergleichen und kennzeichnen.
+- [x] **ME08 Periodenvergleich** — Jahre und Zeiträume nur mit sichtbarer Datenabdeckung vergleichen.
+- [x] **ME09 Mehrere Register** — Bezug, Einspeisung und Erzeugung mit Einheiten und Flussrichtung trennen.
+- [x] **ME10 Ableseplan** — Fällige Ablesungen nach tatsächlichem passenden Messwert erledigen.
+- [x] **ME11 Home Assistant** — Optionalen Adapter mit ausdrücklicher Entitäts-, Einheiten- und Typzuordnung bereitstellen.
+- [x] **ME12 MQTT** — Optionale begrenzte Topics, validierte Nachrichten, Authentifizierung und Dublettenschutz.
+- [x] **ME13 Versorgerimport** — CSV mit Zeitzone, Einheit, Register und geprüfter Vorschau importieren.
+- [x] **ME14 Anomaliehinweise** — Konfigurierbare Verbrauchs- und Grundlasthinweise erst bei ausreichender Historie zeigen.
+- [x] **ME15 Rechnungen als Ausgabe** — Nur bestätigte Rechnungen oder Abschläge in Finanzen übernehmen.
+- [x] **ME16 Ablesung und Telemetrie** — Manuelle Stände von hochfrequenten Messdaten strukturell trennen.
+- [x] **ME17 Zeitaggregate** — Stunden-, Tages- und Monatswerte samt Rohdatenaufbewahrung verwalten.
+- [x] **ME18 Korrektur-Neuberechnung** — Benachbarte Intervalle und Kosten nach Änderung gezielt invalidieren.
+- [x] **ME19 Messgrößentypen** — Kumulativ, Intervall und Leistung strikt unterscheiden; kW ist nicht kWh.
+- [x] **ME20 Große Messreihen** — Zeitgefilterte, aggregierte Auswertungen jenseits von 10.000 Rohwerten liefern.
 
 ## Dokumente
 
