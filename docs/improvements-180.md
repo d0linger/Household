@@ -29,7 +29,9 @@ Ein Schema, eine Schaltfläche oder ein Mock allein schließt keinen Punkt ab. B
 
 ## Fortschritt
 
-180 Punkte: **101 verifiziert, 0 implementiert, 0 in Arbeit, 79 offen**. Dieser Zähler wird mit jedem abgeschlossenen Arbeitspaket abgeglichen.
+Aktueller Modulblock: **Finanzen (EX01/EX03–EX20)**. Vollständiger Umfang und120chronologischeSchritte werden vor Umsetzung in [finance-module-plan.md](finance-module-plan.md) beschrieben. Gesamte Implementierung vor gemeinsamen Tests; historische Finanzvorbereitungen sind keine aktuelle Modulabnahme.
+
+180 Punkte: **101 verifiziert, 0 implementiert, 19 in Arbeit, 60 offen**. Dieser Zähler wird mit jedem abgeschlossenen Arbeitspaket abgeglichen.
 
 Abgenommener Modulblock: **Fahrzeuge & Tanken (FU01–FU20)** – vollständige Implementierung und gemeinsame lokale Tests/Fehlerbehebung abgeschlossen. [Modulplan](fuel-module-plan.md).
 
@@ -145,26 +147,26 @@ Abgenommener Modulblock: **Essensplanung (MP08/MP13/MP15/MP19)** – alle20Verbe
 
 | ID | Verbesserung | Abnahmekriterium | Status | Nachweis |
 |---|---|---|---|---|
-| EX01 | Monatsübersicht | Gebuchte Beträge, Entwürfe und Hauptkategorien getrennt darstellen. | Offen | — |
+| EX01 | Monatsübersicht | Gebuchte Beträge, Entwürfe und Hauptkategorien getrennt darstellen. | In Arbeit | — |
 | EX02 | Aufgeteilte Erfassung | Buchung und Kategoriezeilen gemeinsam bearbeiten; Restdifferenz sichtbar halten. | Verifiziert | Gemeinsamer EUR-Editor mit exakter Restdifferenz, atomarem Entwurf/Buchen, vollständiger Versionsbasis, explizitem Entfernen, Konflikt- und Wiederherstellungsablauf. Vollständige native Regression:335Haupttests/74,1% interne Abdeckung;52ausgewählte Linux-Race-Verträge ohne Race-Meldung(Web645,231s);846Browserprüfungen/24Komponenten, davon43Editorprüfungen/zehn saubere axe-Scans/zehn Aufnahmen. Unabhängige UI-Korrekturfreigabe und separate Designprüfung;84Node/64Hashes/Lint/Security/aktueller verschlüsselter Restore bestanden.16echte Geheimniswerte in37Textartefakten/stagedDiff nicht gefunden;356Quelldateien nach Native/Race unverändert. Haushaltsfreigabe bleibt ausdrücklich gemeinsam; EX19 separat. [Nachweise](expense-editor-verification.md). |
-| EX03 | Buchungszustände | Entwurf, gebucht, erstattet und korrigiert mit passenden Aktionen erklären. | Offen | — |
-| EX04 | Gespeicherte Finanzfilter | Person, Kategorie, Empfänger, Zeitraum und Status kombinieren. | Offen | — |
-| EX05 | Belegprüfung | Beleg und Buchung nebeneinander beziehungsweise mobil mit erhaltenem Formularzustand zeigen. | Offen | — |
-| EX06 | Konten und Einnahmen | Konten, Einnahmen und Umbuchungen modellieren; Transfers nicht als Verbrauch zählen. | Offen | — |
-| EX07 | Kategoriebudgets | Monatsbudgets und ausdrücklich gewählte Übertragsregeln auswerten. | Offen | — |
-| EX08 | Sparziele | Zielbetrag, Termin und geplante Beiträge von tatsächlichem Kontostand unterscheiden. | Offen | — |
-| EX09 | Personenaufteilung | Gleich, Prozent, Anteile oder Festbetrag mit deterministischer Centverteilung aufteilen. | Offen | — |
-| EX10 | Ausgleichszahlungen | Personensalden und Zahlungen getrennt von ursprünglichen Ausgaben führen. | Offen | — |
-| EX11 | Wiederkehrende Buchungen | Vorlagen erzeugen deduplizierte, prüfbare Entwürfe. | Offen | — |
-| EX12 | Kategorisierungsregeln | Prioritäten und zutreffende Empfängerregeln vor Übernahme erklären. | Offen | — |
-| EX13 | Bankdateiimport | Dokumentierte CSV-Profile, Kontoauswahl, Vorschau und Dublettenkontrolle anbieten. | Offen | — |
-| EX14 | Belegsumme prüfen | Positionen und Gesamtsumme mit OCR-Herkunft und Abweichungen vergleichen. | Offen | — |
-| EX15 | Liquiditätsvorschau | Bestätigte Fälligkeiten und Wiederholungen mit Unsicherheit projizieren. | Offen | — |
-| EX16 | Finanzberichte | Konten-, Personen-, Kategorien- und Zeitaggregate serverseitig nachvollziehbar berechnen. | Offen | — |
-| EX17 | Kontoabstimmung | Externen Stichtagssaldo vergleichen; keine stillen Ausgleichsbuchungen. | Offen | — |
-| EX18 | Mehrere Währungen | Originalbetrag, Basisbetrag, Kurs, Datum und Rundungsregel unveränderlich nachvollziehen. | Offen | — |
-| EX19 | Finanzsichtbarkeit | Konten- und Datensatzrechte in Suche, Aggregaten, Dateien, Export und Audit anwenden. | Offen | Zurückgestellt gemäß strikt modulweiser Umsetzung. Vorhandene Quellen und Prüfnachweise bleiben erhalten; Fortsetzung nach vollständiger Abnahme von Fahrzeuge & Tanken. Core26-Grundlage verifiziert; private Freigaben bleiben gesperrt. Capture/Manual/Editor/Buchen/Storno/Löschen bestehen die dokumentierten Einzel-, Kompatibilitäts- und Race-Prüfungen nach gezielten Korrekturen. Fuel-Core32:14Verträge sowie4echteBarcode-Kompositionsfälle bestanden. Core33:2von3Einstiegstests bestanden, ersterLesezugriff läuft ins10sSQL-Limit; Messung/Korrektur läuft. Gemeinsame Abnahme, Kontenrechte und vollständige EX19-Freigabe offen. [Laufende Prüfliste](financial-visibility-verification.md#current-producer-checklist). |
-| EX20 | Buchungsherkunft | Manuell, Bank, Tankung und Beleg über gemeinsame Herkunft und Dublettenschutz verbinden. | Offen | — |
+| EX03 | Buchungszustände | Entwurf, gebucht, erstattet und korrigiert mit passenden Aktionen erklären. | In Arbeit | — |
+| EX04 | Gespeicherte Finanzfilter | Person, Kategorie, Empfänger, Zeitraum und Status kombinieren. | In Arbeit | — |
+| EX05 | Belegprüfung | Beleg und Buchung nebeneinander beziehungsweise mobil mit erhaltenem Formularzustand zeigen. | In Arbeit | — |
+| EX06 | Konten und Einnahmen | Konten, Einnahmen und Umbuchungen modellieren; Transfers nicht als Verbrauch zählen. | In Arbeit | — |
+| EX07 | Kategoriebudgets | Monatsbudgets und ausdrücklich gewählte Übertragsregeln auswerten. | In Arbeit | — |
+| EX08 | Sparziele | Zielbetrag, Termin und geplante Beiträge von tatsächlichem Kontostand unterscheiden. | In Arbeit | — |
+| EX09 | Personenaufteilung | Gleich, Prozent, Anteile oder Festbetrag mit deterministischer Centverteilung aufteilen. | In Arbeit | — |
+| EX10 | Ausgleichszahlungen | Personensalden und Zahlungen getrennt von ursprünglichen Ausgaben führen. | In Arbeit | — |
+| EX11 | Wiederkehrende Buchungen | Vorlagen erzeugen deduplizierte, prüfbare Entwürfe. | In Arbeit | — |
+| EX12 | Kategorisierungsregeln | Prioritäten und zutreffende Empfängerregeln vor Übernahme erklären. | In Arbeit | — |
+| EX13 | Bankdateiimport | Dokumentierte CSV-Profile, Kontoauswahl, Vorschau und Dublettenkontrolle anbieten. | In Arbeit | — |
+| EX14 | Belegsumme prüfen | Positionen und Gesamtsumme mit OCR-Herkunft und Abweichungen vergleichen. | In Arbeit | — |
+| EX15 | Liquiditätsvorschau | Bestätigte Fälligkeiten und Wiederholungen mit Unsicherheit projizieren. | In Arbeit | — |
+| EX16 | Finanzberichte | Konten-, Personen-, Kategorien- und Zeitaggregate serverseitig nachvollziehbar berechnen. | In Arbeit | — |
+| EX17 | Kontoabstimmung | Externen Stichtagssaldo vergleichen; keine stillen Ausgleichsbuchungen. | In Arbeit | — |
+| EX18 | Mehrere Währungen | Originalbetrag, Basisbetrag, Kurs, Datum und Rundungsregel unveränderlich nachvollziehen. | In Arbeit | — |
+| EX19 | Finanzsichtbarkeit | Konten- und Datensatzrechte in Suche, Aggregaten, Dateien, Export und Audit anwenden. | In Arbeit | Gemeinsam mit dem Finanzmodul implementiert: Core29–31/Expenses5, ursprüngliche Quellen- und Kontenschnittmenge, Auswahl vor erstem Audit, Reader-/Entzugsprüfung und begrenzte Admin-Metadatenwiederherstellung. Aktuelle515-Browser-/Datei-/Restoreprüfungen bestanden; vollständige717-Native-/Racekampagne, Schlussprüfung und gemeinsame Modulabnahme offen. Historische Experimente bleiben in den [Prüfnachweisen](finance-module-validation.md) erhalten. |
+| EX20 | Buchungsherkunft | Manuell, Bank, Tankung und Beleg über gemeinsame Herkunft und Dublettenschutz verbinden. | In Arbeit | — |
 
 ## Aufgaben
 

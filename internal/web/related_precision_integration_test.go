@@ -7,25 +7,20 @@ import (
 	"strings"
 	"testing"
 
+	"household/internal/store"
 	"household/internal/value"
 )
 
 func TestRelatedAmountAndSelectedReference(t *testing.T) {
 	f := newIntegrationFixture(t)
-	entry, category := value.UUID(), value.UUID()
-	for _, query := range []string{
-		"INSERT INTO expenses.categories(id,household_id,name,created_by) VALUES($1,$2,'Precision',$3)",
-	} {
-		if _, err := f.owner.Exec(f.ctx, query, category, f.identity.HouseholdID, f.identity.UserID); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if _, err := f.owner.Exec(f.ctx, "INSERT INTO expenses.entries(id,household_id,occurred_on,description,amount_minor,created_by) VALUES($1,$2,current_date,'Exact related amount',1000000,$3)", entry, f.identity.HouseholdID, f.identity.UserID); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := f.owner.Exec(f.ctx, "INSERT INTO expenses.entry_lines(household_id,entry_id,category_id,amount_minor,created_by) VALUES($1,$2,$3,1000000,$4)", f.identity.HouseholdID, entry, category, f.identity.UserID); err != nil {
-		t.Fatal(err)
-	}
+	category, _ := auditCreate(t, f, "expenses", "categories", store.Record{"name": "Precision"})
+	header, _ := auditCreate(t, f, "expenses", "entries", store.Record{
+		"occurred_on": "2026-10-26", "description": "Exact related amount", "amount_minor": "10000.00",
+	})
+	entry := store.String(header["id"])
+	auditCreate(t, f, "expenses", "entry_lines", store.Record{
+		"entry_id": entry, "category_id": category["id"], "amount_minor": "10000.00",
+	})
 	response, data, err := f.request(http.MethodGet, "/m/expenses/entries/"+entry, f.token, "", "", nil, nil)
 	if err != nil || response.StatusCode != 200 || !strings.Contains(string(data), "<small>10000,00 €</small>") {
 		t.Fatalf("related amount lost precision: %v/%d", err, response.StatusCode)

@@ -43,7 +43,7 @@ func TestExpenseEditCanonicalReadSetAndKeyCase(t *testing.T) {
 func TestExpenseEditInactiveReferencesAndOversizedLegacyStayExplicit(t *testing.T) {
 	f, category, entry, _ := expenseIntegrityFixture(t)
 	payer := shoppingTestMember(t, f, "editor-retained-payer", "reader")
-	if _, err := f.owner.Exec(f.ctx, "UPDATE expenses.entries SET paid_by_membership_id=$2 WHERE id=$1", entry["id"], payer.MembershipID); err != nil {
+	if err := expenseIntegrityPreparedSQL(t, f, store.String(entry["id"]), "UPDATE expenses.entries SET paid_by_membership_id=$2 WHERE id=$1", entry["id"], payer.MembershipID); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := f.owner.Exec(f.ctx, "UPDATE expenses.categories SET archived_at=now() WHERE id=$1", category["id"]); err != nil {
@@ -82,11 +82,14 @@ func TestExpenseEditInactiveReferencesAndOversizedLegacyStayExplicit(t *testing.
 		t.Fatal("new inactive payer selection accepted", err)
 	}
 	large, _ := auditCreate(t, f, "expenses", "entries", store.Record{"occurred_on": "2026-10-26", "description": "Oversized editor legacy", "amount_minor": "10.00"})
-	if _, err = f.owner.Exec(f.ctx, `INSERT INTO expenses.entry_lines(household_id,entry_id,category_id,amount_minor,note,position,created_by)
+	if err = expenseIntegrityPreparedSQL(t, f, store.String(large["id"]), `INSERT INTO expenses.entry_lines(household_id,entry_id,category_id,amount_minor,note,position,created_by)
  SELECT $1,$2,$3,1,'Legacy',n,$4 FROM generate_series(0,100) n`, f.identity.HouseholdID, large["id"], category["id"], f.identity.UserID); err != nil {
 		t.Fatal(err)
 	}
-	newInput.EntryID, newInput.Version, newInput.Header.PaidByMembershipID = store.String(large["id"]), store.Int(large["version"]), ""
+	newInput.EntryID, newInput.Header.PaidByMembershipID = store.String(large["id"]), ""
+	if err = f.owner.QueryRow(f.ctx, "SELECT version FROM expenses.entries WHERE id=$1", large["id"]).Scan(&newInput.Version); err != nil {
+		t.Fatal(err)
+	}
 	before = expenseEditSnapshot(t, f)
 	if _, err = f.app.Store.SaveExpense(f.ctx, f.identity, value.UUID(), value.UUID(), newInput); err == nil || expenseEditSnapshot(t, f) != before {
 		t.Fatal("oversized unseen rows were replaced", err)
@@ -99,14 +102,14 @@ func TestExpenseEditProofOnlyMismatchAndReadinessGuards(t *testing.T) {
 		t.Fatal(err)
 	}
 	before := expenseEditSnapshot(t, f)
-	err := expenseIntegrityAppSQL(t, f, `INSERT INTO core.expense_edit_operations(household_id,created_by,request_key,request_hash,
+	err := expenseIntegrityPreparedSQL(t, f, store.String(entry["id"]), `INSERT INTO core.expense_edit_operations(household_id,created_by,request_key,request_hash,
  expenses_generation,operation,entry_id,result_version) VALUES($1,$2,$3,decode(repeat('ab',32),'hex'),$4,'save',$5,2)`,
 		f.identity.HouseholdID, f.identity.UserID, value.UUID(), f.app.Store.States()["expenses"].Generation, entry["id"])
 	var pgerr *pgconn.PgError
 	if !errors.As(err, &pgerr) || pgerr.Code != "23514" || expenseEditSnapshot(t, f) != before {
 		t.Fatal("proof-only operation committed without matching effect", err)
 	}
-	err = expenseIntegrityAppSQL(t, f, `WITH changed AS(UPDATE expenses.entries SET version=version+1 WHERE household_id=$1 AND id=$5 RETURNING id,version)
+	err = expenseIntegrityPreparedSQL(t, f, store.String(entry["id"]), `WITH changed AS(UPDATE expenses.entries SET version=version+1 WHERE household_id=$1 AND id=$5 RETURNING id,version)
  INSERT INTO core.expense_edit_operations(household_id,created_by,request_key,request_hash,expenses_generation,operation,entry_id,result_version)
  SELECT $1,$2,$3,decode(repeat('ab',32),'hex'),$4,'save',changed.id,changed.version+1 FROM changed`,
 		f.identity.HouseholdID, f.identity.UserID, value.UUID(), f.app.Store.States()["expenses"].Generation, entry["id"])
@@ -210,7 +213,7 @@ func TestExpenseEditPopulatedCore23UpgradePreservesSharedFinancialFacts(t *testi
 	 INSERT INTO core.module_states(household_id,module_id,state,data_generation) SELECT $1,module_id,'disabled',7 FROM installation`, hh); err != nil {
 		t.Fatal(err)
 	}
-	const snapshot = `SELECT jsonb_build_object('entries',(SELECT jsonb_agg(to_jsonb(e) ORDER BY id) FROM expenses.entries e),
+	const snapshot = `SELECT jsonb_build_object('entries',(SELECT jsonb_agg((to_jsonb(e)-'money_mode') ORDER BY id) FROM expenses.entries e),
  'lines',(SELECT jsonb_agg(to_jsonb(l) ORDER BY id) FROM expenses.entry_lines l),'categories',(SELECT jsonb_agg(to_jsonb(c) ORDER BY id) FROM expenses.categories c))::text`
 	var before, after string
 	if err := f.owner.QueryRow(f.ctx, snapshot).Scan(&before); err != nil {
@@ -224,11 +227,20 @@ func TestExpenseEditPopulatedCore23UpgradePreservesSharedFinancialFacts(t *testi
 	if err := f.owner.QueryRow(f.ctx, snapshot).Scan(&after); err != nil || before != after {
 		t.Fatal("Core24 changed historical shared fact or invented values", err)
 	}
+	assertLegacyFinanceMoneyMode(t, f)
 	var proofs, policies int
-	if err := f.owner.QueryRow(f.ctx, "SELECT (SELECT count(*) FROM core.expense_edit_operations),(SELECT count(*) FROM core.audit_policies)").Scan(&proofs, &policies); err != nil || proofs != 0 || policies != 100 {
+	if err := f.owner.QueryRow(f.ctx, "SELECT (SELECT count(*) FROM core.expense_edit_operations),(SELECT count(*) FROM core.audit_policies)").Scan(&proofs, &policies); err != nil || proofs != 0 || policies != 121 {
 		t.Fatal("upgrade fabricated editor proofs or lost audit policy", proofs, policies, err)
 	}
 	if err := database.Ready(f.ctx, f.pool); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func assertLegacyFinanceMoneyMode(t *testing.T, f *integrationFixture) {
+	t.Helper()
+	var explicit bool
+	if err := f.owner.QueryRow(f.ctx, `SELECT count(*)>0 AND coalesce(bool_and(money_mode='legacy_eur'),false) FROM expenses.entries`).Scan(&explicit); err != nil || !explicit {
+		t.Fatal("forward schema did not preserve explicit legacy EUR money mode", explicit, err)
 	}
 }

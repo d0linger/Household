@@ -22,7 +22,7 @@ func TestPlanningExtensionsPopulatedCore27Mealplan7UpgradePreservesFacts(t *test
 	if err := resetIntegrationSchemas(f.ctx, f.owner); err != nil {
 		t.Fatal(err)
 	}
-	prior := map[string]uint{"core": 26, "recipes": 4, "fuel": 5, "pantry": 12, "mealplan": 7}
+	prior := map[string]uint{"core": 26, "recipes": 4, "fuel": 5, "pantry": 12, "mealplan": 7, "expenses": 4}
 	for _, schema := range database.Schemas {
 		version := uint(database.ExpectedVersion(schema))
 		if pinned, ok := prior[schema]; ok {

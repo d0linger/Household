@@ -99,6 +99,27 @@ func (w *Worker) capture(ctx context.Context, job, lease string) error {
 		if _, err = tx.Exec(ctx, "SELECT id FROM core.households FOR SHARE"); err != nil {
 			return err
 		}
+		var captureID string
+		err = tx.QueryRow(ctx, `SELECT c.id FROM core.capture_jobs c JOIN core.jobs j ON c.id::text=j.payload->>'capture_id'
+ WHERE j.id=$1 AND j.lease_token=$2 AND j.state='running' AND j.lease_until>now() AND c.state='extracting' FOR UPDATE OF c`, job, lease).Scan(&captureID)
+		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+			return err
+		}
+		if captureID != "" {
+			if err = store.CheckFinanceArtifactJob(ctx, tx, job, lease); err != nil {
+				return err
+			}
+			operation, prepareErr := store.PrepareFinanceArtifactJob(ctx, tx, job, lease, "capture", captureID)
+			if prepareErr != nil {
+				return prepareErr
+			}
+			if _, err = tx.Exec(ctx, `UPDATE core.capture_jobs SET state='review',source_text='Lokale Texterkennung ist deaktiviert. Werte bitte manuell prüfen.' WHERE id=$1`, captureID); err != nil {
+				return err
+			}
+			if err = store.CompleteFinanceArtifactJob(ctx, tx, operation); err != nil {
+				return err
+			}
+		}
 		tag, err := tx.Exec(ctx, `UPDATE core.jobs j SET state='paused',lease_until=NULL,lease_token=NULL
 			FROM core.module_states m WHERE j.id=$1 AND j.lease_token=$2 AND j.state='running' AND j.lease_until>now()
 			AND m.household_id=j.household_id AND m.module_id=j.module_id AND m.state='enabled' AND m.data_generation=j.module_generation`, job, lease)
@@ -121,6 +142,9 @@ func (w *Worker) capture(ctx context.Context, job, lease string) error {
 	}
 	if !value.ValidUUID(key) || !value.ValidUUID(capture) {
 		return errors.New("invalid capture job")
+	}
+	if err = w.financeArtifactPreflight(ctx, job, lease); err != nil {
+		return err
 	}
 	root, err := os.OpenRoot(w.Cfg.UploadDir)
 	if err != nil {
@@ -169,7 +193,17 @@ func (w *Worker) capture(ctx context.Context, job, lease string) error {
 	if err != nil {
 		return err
 	}
+	if err = store.CheckFinanceArtifactJob(ctx, tx, job, lease); err != nil {
+		return err
+	}
+	operation, err := store.PrepareFinanceArtifactJob(ctx, tx, job, lease, "capture", capture)
+	if err != nil {
+		return err
+	}
 	if _, err = tx.Exec(ctx, "UPDATE core.capture_jobs SET extracted_values=$2,source_text=$3,confidence='{\"requires_review\":true}',state='review' WHERE id=$1 AND state='extracting'", capture, raw, text); err != nil {
+		return err
+	}
+	if err = store.CompleteFinanceArtifactJob(ctx, tx, operation); err != nil {
 		return err
 	}
 	if _, err = tx.Exec(ctx, "UPDATE core.jobs SET state='done',finished_at=now(),lease_until=NULL,lease_token=NULL WHERE id=$1 AND lease_token=$2", job, lease); err != nil {
@@ -219,11 +253,26 @@ func (w *Worker) files(ctx context.Context) error {
 		if !value.ValidUUID(x.key) {
 			return errors.New("invalid file tombstone")
 		}
+		var retired bool
+		err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM core.attachments a WHERE a.id=$1 AND a.state IN('purged','orphaned')
+ AND(a.storage_key=$2 OR EXISTS(SELECT 1 FROM core.attachment_derivatives d WHERE d.attachment_id=a.id AND d.storage_key=$2)))
+ OR(NOT EXISTS(SELECT 1 FROM core.attachments WHERE id=$1)
+ AND NOT EXISTS(SELECT 1 FROM core.attachments WHERE storage_key=$2)
+ AND NOT EXISTS(SELECT 1 FROM core.attachment_derivatives WHERE storage_key=$2))`, x.id, x.key).Scan(&retired)
+		if err != nil {
+			return err
+		}
+		if !retired {
+			return errors.New("file deletion source is still referenced or not retired")
+		}
 		err = root.Remove(x.key)
 		if err != nil && !errors.Is(err, os.ErrNotExist) {
 			return err
 		}
 		if _, err = tx.Exec(ctx, "DELETE FROM core.capture_jobs WHERE source_attachment_id=$1", x.id); err != nil {
+			return err
+		}
+		if _, err = tx.Exec(ctx, "DELETE FROM core.attachment_derivatives WHERE attachment_id=$1", x.id); err != nil {
 			return err
 		}
 		if _, err = tx.Exec(ctx, "DELETE FROM core.attachments WHERE id=$1 AND state IN('purged','orphaned')", x.id); err != nil {

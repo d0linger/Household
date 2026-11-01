@@ -36,14 +36,6 @@ func (s *Store) Search(ctx context.Context, id auth.Identity, query string) ([]R
 	if query == "" {
 		return list, tx.Commit(ctx)
 	}
-	entryPredicate, policyArgs, err := financialPredicate(scope, "entries", financialView, 5)
-	if err != nil {
-		return nil, err
-	}
-	linePredicate, _, err := financialPredicate(scope, "entry_lines", financialView, 5)
-	if err != nil {
-		return nil, err
-	}
 	modules := make([]string, 0, len(s.Modules))
 	for _, m := range s.Modules {
 		modules = append(modules, m.ID)
@@ -51,12 +43,12 @@ func (s *Store) Search(ctx context.Context, id auth.Identity, query string) ([]R
 	rows, err := tx.Query(ctx, `SELECT d.module_id,d.resource_type,d.resource_id,d.title
  FROM core.search_documents d JOIN core.module_states m ON m.household_id=d.household_id AND m.module_id=d.module_id
  WHERE d.household_id=$1 AND m.state='enabled' AND m.data_generation=d.module_generation AND d.module_id=ANY($4::text[])
- AND (d.module_id<>'expenses' OR d.resource_type='categories' OR ($7 AND (
- d.resource_type='entries' AND EXISTS(SELECT 1 FROM expenses.entries t WHERE t.household_id=d.household_id AND t.id=d.resource_id AND `+entryPredicate+`)
- OR d.resource_type='entry_lines' AND EXISTS(SELECT 1 FROM expenses.entry_lines t WHERE t.household_id=d.household_id AND t.id=d.resource_id AND `+linePredicate+`))))
+ AND (d.module_id<>'expenses' OR d.resource_type='categories' OR ($10
+ AND d.resource_type IN('entries','entry_lines','accounts','cash_events','category_budgets','savings_goals','recurring_templates','categorization_rules')
+ AND core.finance_resource_visible($1,$5,$6,$7,$8,$9,d.resource_type,d.resource_id,'view')))
  AND (d.search_vector @@ websearch_to_tsquery('german',$2) OR d.title ILIKE $3 OR d.title OPERATOR(core.%) $2)
  ORDER BY (ts_rank(d.search_vector,websearch_to_tsquery('german',$2))+core.similarity(d.title,$2)) DESC,d.title,d.resource_id LIMIT 50`,
-		append(append([]any{scope.householdID, query, "%" + query + "%", modules}, policyArgs...), enabled)...)
+		scope.householdID, query, "%"+query+"%", modules, id.UserID, id.MembershipID, id.SessionID, id.AuthVersion, scope.generation, enabled)
 	if err != nil {
 		return nil, err
 	}
@@ -66,8 +58,21 @@ func (s *Store) Search(ctx context.Context, id auth.Identity, query string) ([]R
 		if err = rows.Scan(&mid, &entity, &rid, &title); err != nil {
 			return nil, err
 		}
-		list = append(list, Record{"module": mid, "entity": entity, "id": rid, "title": title,
-			"url": "/m/" + mid + "/" + entity + "/" + rid})
+		target := "/m/" + mid + "/" + entity + "/" + rid
+		if mid == "expenses" {
+			switch entity {
+			case "entries":
+				target = "/m/expenses/workspace/entries?id=" + rid
+			case "cash_events":
+				target = "/m/expenses/workspace/entries?section=ledger&id=" + rid
+			case "accounts":
+				target = "/m/expenses/workspace/accounts?id=" + rid
+			case "category_budgets", "savings_goals", "recurring_templates", "categorization_rules":
+				section := map[string]string{"category_budgets": "budgets", "savings_goals": "goals", "recurring_templates": "recurrences", "categorization_rules": "rules"}[entity]
+				target = "/m/expenses/workspace/planning?section=" + section + "&id=" + rid
+			}
+		}
+		list = append(list, Record{"module": mid, "entity": entity, "id": rid, "title": title, "url": target})
 	}
 	if err = rows.Err(); err != nil {
 		return nil, err
@@ -85,17 +90,18 @@ func readSurfaceScope(ctx context.Context, tx pgx.Tx, id auth.Identity) (financi
 		!value.ValidUUID(id.SessionID) || id.AuthVersion <= 0 {
 		return financialScope{}, false, ErrForbidden
 	}
-	out := financialScope{householdID: id.HouseholdID, role: id.Role}
+	out := financialScope{householdID: id.HouseholdID, role: id.Role, userID: id.UserID,
+		membershipID: id.MembershipID, sessionID: id.SessionID, authVersion: id.AuthVersion}
 	var enabled bool
 	err := tx.QueryRow(ctx, `SELECT h.timezone,h.currency_code,transaction_timestamp(),
- coalesce(ms.state='enabled',false),coalesce(ms.data_generation,0)
+ coalesce(ms.state='enabled',false),coalesce(ms.data_generation,0),coalesce(ms.state_version,0)
  FROM core.households h JOIN core.memberships m ON m.household_id=h.id AND m.user_id=$2 AND m.id=$3 AND m.role=$4 AND m.inactive_at IS NULL
  JOIN core.users u ON u.id=m.user_id AND u.disabled_at IS NULL AND u.auth_version=$5 AND NOT u.must_change_password
  JOIN core.sessions s ON s.user_id=u.id AND s.id=$6 AND s.revoked_at IS NULL AND s.auth_version=u.auth_version
  AND s.idle_expires_at>transaction_timestamp() AND s.absolute_expires_at>transaction_timestamp()
  LEFT JOIN core.module_states ms ON ms.household_id=h.id AND ms.module_id='expenses'
  WHERE h.id=$1`, id.HouseholdID, id.UserID, id.MembershipID, id.Role, id.AuthVersion, id.SessionID).Scan(
-		&out.timezone, &out.currency, &out.readAt, &enabled, &out.generation)
+		&out.timezone, &out.currency, &out.readAt, &enabled, &out.generation, &out.stateVersion)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return financialScope{}, false, ErrForbidden
 	}
@@ -288,7 +294,7 @@ func (s *Store) ExpenseReport(ctx context.Context, id auth.Identity) ([]Record, 
 		if err != nil {
 			return err
 		}
-		rows, err := tx.Query(ctx, `SELECT to_char(t.occurred_on,'YYYY-MM'),sum(t.amount_minor)::bigint FROM expenses.entries t
+		rows, err := tx.Query(ctx, `SELECT to_char(t.occurred_on,'YYYY-MM'),sum(t.amount_minor)::text FROM expenses.entries t
  WHERE t.household_id=$1 AND t.state='posted' AND `+predicate+" GROUP BY 1 ORDER BY 1 DESC LIMIT 24",
 			append([]any{scope.householdID}, args...)...)
 		if err != nil {
@@ -297,7 +303,7 @@ func (s *Store) ExpenseReport(ctx context.Context, id auth.Identity) ([]Record, 
 		defer rows.Close()
 		for rows.Next() {
 			var month string
-			var amount int64
+			var amount string
 			if err = rows.Scan(&month, &amount); err != nil {
 				return err
 			}

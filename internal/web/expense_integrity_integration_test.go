@@ -14,6 +14,7 @@ import (
 	"household/internal/store"
 	"household/internal/value"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
@@ -39,6 +40,45 @@ func expenseIntegrityAppSQL(t *testing.T, f *integrationFixture, statement strin
 	return tx.Commit(f.ctx)
 }
 
+// expenseIntegrityPreparedSQL exercises the SQL guards with a real current App
+// actor and exact prepared entry root. It intentionally bypasses Go form limits
+// to construct coherent historical-reader fixtures, not production form coverage.
+func expenseIntegrityPreparedSQL(t *testing.T, f *integrationFixture, entry string, statement string, args ...any) error {
+	t.Helper()
+	generation := f.app.Store.States()["expenses"].Generation
+	tx, err := f.app.Store.BeginMutation(f.ctx, f.identity, "expenses", generation)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(f.ctx) }()
+	operation, err := expenseIntegrityPrepareEntry(f.ctx, f, tx, entry)
+	if err != nil {
+		return err
+	}
+	if _, err = tx.Exec(f.ctx, statement, args...); err != nil {
+		return err
+	}
+	if err = expenseIntegrityFinishEntry(f.ctx, f, tx, operation); err != nil {
+		return err
+	}
+	return tx.Commit(f.ctx)
+}
+
+func expenseIntegrityPrepareEntry(ctx context.Context, f *integrationFixture, tx pgx.Tx, entry string) (string, error) {
+	var operation string
+	err := tx.QueryRow(ctx, `SELECT core.finance_origin_begin($1,$2,$3,$4,$5,$6,'entries',$7,'manual','[]'::jsonb,NULL)`,
+		f.identity.HouseholdID, f.identity.UserID, f.identity.MembershipID, f.identity.SessionID, f.identity.AuthVersion,
+		f.app.Store.States()["expenses"].Generation, entry).Scan(&operation)
+	return operation, err
+}
+
+func expenseIntegrityFinishEntry(ctx context.Context, f *integrationFixture, tx pgx.Tx, operation string) error {
+	_, err := tx.Exec(ctx, `SELECT core.finance_origin_finish($1,$2,$3,$4,$5,$6,$7)`, operation,
+		f.identity.HouseholdID, f.identity.UserID, f.identity.MembershipID, f.identity.SessionID, f.identity.AuthVersion,
+		f.app.Store.States()["expenses"].Generation)
+	return err
+}
+
 func TestExpenseEditorIntegrityEveryAppChildWriteTracksParent(t *testing.T) {
 	f, category, entry, line := expenseIntegrityFixture(t)
 	version := func() int64 {
@@ -58,7 +98,14 @@ func TestExpenseEditorIntegrityEveryAppChildWriteTracksParent(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = tx.Rollback(f.ctx) }()
+	operation, err := expenseIntegrityPrepareEntry(f.ctx, f, tx, store.String(entry["id"]))
+	if err != nil {
+		t.Fatal(err)
+	}
 	if _, err = tx.Exec(f.ctx, "UPDATE expenses.entry_lines SET note='Direct app change',version=version+1 WHERE id=$1", line["id"]); err != nil {
+		t.Fatal(err)
+	}
+	if err = expenseIntegrityFinishEntry(f.ctx, f, tx, operation); err != nil {
 		t.Fatal(err)
 	}
 	if err = tx.Commit(f.ctx); err != nil || version() != 3 {
@@ -73,17 +120,14 @@ func TestExpenseEditorIntegrityEveryAppChildWriteTracksParent(t *testing.T) {
  FROM core.audit_log WHERE request_id=$1`, request, f.identity.UserID, f.identity.HouseholdID, entry["id"], line["id"]).Scan(&attributed); err != nil || !attributed {
 		t.Fatal("parent/child audit lost actor, household or exact resource attribution", attributed, err)
 	}
-	if _, err = f.owner.Exec(f.ctx, "UPDATE expenses.entry_lines SET note='Owner restore fixture' WHERE id=$1", line["id"]); err != nil || version() != 3 {
-		t.Fatal("owner fixture bypass no longer preserves historical version", err)
-	}
-	if err = expenseIntegrityAppSQL(t, f, "DELETE FROM expenses.entry_lines WHERE id=$1", line["id"]); err != nil || version() != 4 {
+	if err = expenseIntegrityPreparedSQL(t, f, store.String(entry["id"]), "DELETE FROM expenses.entry_lines WHERE id=$1", line["id"]); err != nil || version() != 4 {
 		t.Fatal("direct child delete did not invalidate parent", err)
 	}
-	if err = expenseIntegrityAppSQL(t, f, `INSERT INTO expenses.entry_lines(household_id,entry_id,category_id,amount_minor,note,created_by)
+	if err = expenseIntegrityPreparedSQL(t, f, store.String(entry["id"]), `INSERT INTO expenses.entry_lines(household_id,entry_id,category_id,amount_minor,note,created_by)
  VALUES($1,$2,$3,1000,'Restored complete allocation',$4)`, f.identity.HouseholdID, entry["id"], category["id"], f.identity.UserID); err != nil || version() != 5 {
 		t.Fatal("direct child insert did not invalidate parent", err)
 	}
-	if err = expenseIntegrityAppSQL(t, f, "UPDATE expenses.entries SET state='posted',posted_at=clock_timestamp(),version=version+1 WHERE id=$1", entry["id"]); err != nil {
+	if err = expenseIntegrityPreparedSQL(t, f, store.String(entry["id"]), "UPDATE expenses.entries SET state='posted',posted_at=clock_timestamp(),version=version+1 WHERE id=$1", entry["id"]); err != nil {
 		t.Fatal(err)
 	}
 	for _, tc := range []struct{ name, statement string }{
@@ -100,6 +144,23 @@ func TestExpenseEditorIntegrityEveryAppChildWriteTracksParent(t *testing.T) {
 	}
 }
 
+func TestExpenseEditorIntegrityUnprovenOwnerMutationDoesNotBecomeReadable(t *testing.T) {
+	f, _, entry, line := expenseIntegrityFixture(t)
+	var before, after int64
+	if err := f.owner.QueryRow(f.ctx, "SELECT version FROM expenses.entries WHERE id=$1", entry["id"]).Scan(&before); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.owner.Exec(f.ctx, "UPDATE expenses.entry_lines SET note='Unproven restored content' WHERE id=$1", line["id"]); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.owner.QueryRow(f.ctx, "SELECT version FROM expenses.entries WHERE id=$1", entry["id"]).Scan(&after); err != nil || before != after {
+		t.Fatal("Owner restore changed the historical parent version", before, after, err)
+	}
+	if _, err := f.app.Store.ExpenseBundle(f.ctx, f.identity, store.String(entry["id"])); !errors.Is(err, store.ErrNotFound) {
+		t.Fatal("unproven Owner content bypassed the retained row proof", err)
+	}
+}
+
 func TestExpenseEditorIntegrityOppositeLockOrderFailsBeforeParentRelease(t *testing.T) {
 	f, _, entry, line := expenseIntegrityFixture(t)
 	ctx, cancel := context.WithTimeout(f.ctx, 5*time.Second)
@@ -109,6 +170,10 @@ func TestExpenseEditorIntegrityOppositeLockOrderFailsBeforeParentRelease(t *test
 		t.Fatal(err)
 	}
 	defer func() { _ = parent.Rollback(f.ctx) }()
+	operation, err := expenseIntegrityPrepareEntry(ctx, f, parent, store.String(entry["id"]))
+	if err != nil {
+		t.Fatal(err)
+	}
 	if _, err = parent.Exec(ctx, "SELECT id FROM expenses.entries WHERE id=$1 FOR UPDATE", entry["id"]); err != nil {
 		t.Fatal(err)
 	}
@@ -123,6 +188,9 @@ func TestExpenseEditorIntegrityOppositeLockOrderFailsBeforeParentRelease(t *test
 	if _, err = parent.Exec(ctx, "UPDATE expenses.entry_lines SET note='Parent-first edit',version=version+1 WHERE id=$1", line["id"]); err != nil {
 		t.Fatal("failed generic edit retained child lock", err)
 	}
+	if err = expenseIntegrityFinishEntry(ctx, f, parent, operation); err != nil {
+		t.Fatal(err)
+	}
 	if err = parent.Commit(ctx); err != nil {
 		t.Fatal(err)
 	}
@@ -134,12 +202,92 @@ func TestExpenseEditorIntegrityDraftCascadeAndSignedDiscounts(t *testing.T) {
 	if store.Int(line["amount_minor"]) != -100 {
 		t.Fatal("signed discount was not retained exactly", line)
 	}
-	if err := expenseIntegrityAppSQL(t, f, "DELETE FROM expenses.entries WHERE id=$1", entry["id"]); err != nil {
-		t.Fatal("valid draft cascade failed after parent deletion", err)
+	before := expenseEditSnapshot(t, f)
+	var pgerr *pgconn.PgError
+	if err := expenseIntegrityAppSQL(t, f, "DELETE FROM expenses.entries WHERE id=$1", entry["id"]); !errors.As(err, &pgerr) || pgerr.Code != "42501" || expenseEditSnapshot(t, f) != before {
+		t.Fatal("unprepared draft deletion bypassed its exact financial operation", err)
+	}
+	current, err := f.app.Store.ExpenseBundle(f.ctx, f.identity, store.String(entry["id"]))
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, _ := f.app.Store.Module("expenses")
+	e, _ := m.Entity("entries")
+	if err := f.app.Store.Delete(f.ctx, f.identity, m, e, store.String(entry["id"]), current.Header.Version,
+		f.app.Store.States()["expenses"].Generation, value.UUID()); err != nil {
+		t.Fatal("prepared draft deletion failed to clean its complete bundle", err)
 	}
 	var remaining int
 	if err := f.pool.QueryRow(f.ctx, "SELECT count(*) FROM expenses.entry_lines WHERE entry_id=$1", entry["id"]).Scan(&remaining); err != nil || remaining != 0 {
 		t.Fatal("draft deletion left children or resurrected parent", remaining, err)
+	}
+}
+
+func TestExpenseEditorIntegrityDraftDeleteRejectsNestedForeignRetirement(t *testing.T) {
+	f, category, entry, _ := expenseIntegrityFixture(t)
+	foreign, _ := auditCreate(t, f, "expenses", "entries", store.Record{
+		"occurred_on": "2026-10-26", "description": "Independent retained source", "amount_minor": "10.00",
+	})
+	auditCreate(t, f, "expenses", "entry_lines", store.Record{
+		"entry_id": foreign["id"], "category_id": category["id"], "amount_minor": "10.00", "note": "Independent source allocation",
+	})
+	var executable bool
+	if err := f.owner.QueryRow(f.ctx, `SELECT has_function_privilege('household_app',
+ 'core.finance_union_sets(uuid,uuid[],uuid)','EXECUTE')`).Scan(&executable); err != nil || executable {
+		t.Fatal("private source union became an App capability", executable, err)
+	}
+	before := expenseEditSnapshot(t, f)
+	var rootsBefore int
+	if err := f.owner.QueryRow(f.ctx, "SELECT count(*) FROM core.finance_origin_operations").Scan(&rootsBefore); err != nil {
+		t.Fatal(err)
+	}
+	tx, err := f.app.Store.BeginMutation(f.ctx, f.identity, "expenses", f.app.Store.States()["expenses"].Generation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = tx.Rollback(f.ctx) }()
+	var operation string
+	if err = tx.QueryRow(f.ctx, `SELECT core.finance_origin_begin($1,$2,$3,$4,$5,$6,'entries',$7,'manual',
+ jsonb_build_array(jsonb_build_object('kind','entries','id',$8::uuid)),NULL)`,
+		f.identity.HouseholdID, f.identity.UserID, f.identity.MembershipID, f.identity.SessionID, f.identity.AuthVersion,
+		f.app.Store.States()["expenses"].Generation, entry["id"], foreign["id"]).Scan(&operation); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = tx.Exec(f.ctx, "UPDATE expenses.entries SET payee='Current proven foreign source',version=version+1 WHERE id=$1", entry["id"]); err != nil {
+		t.Fatal(err)
+	}
+	var foreignRequirements int
+	if err = tx.QueryRow(f.ctx, `SELECT count(*) FROM core.finance_origin_resources h
+ JOIN core.financial_requirement_members m ON m.household_id=h.household_id AND m.set_id=h.set_id
+ JOIN core.financial_subjects source ON source.household_id=m.household_id AND source.id=m.subject_id
+ WHERE h.household_id=$1 AND h.resource_type='entries' AND h.resource_id=$2
+ AND source.policy_id=(SELECT policy_id FROM core.financial_subjects WHERE household_id=$1 AND resource_type='entries' AND resource_id=$3)`,
+		f.identity.HouseholdID, entry["id"], foreign["id"]).Scan(&foreignRequirements); err != nil || foreignRequirements != 2 {
+		t.Fatal("new source and its complete children were omitted from an existing target", foreignRequirements, err)
+	}
+	nested, err := expenseIntegrityPrepareEntry(f.ctx, f, tx, store.String(foreign["id"]))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = tx.Exec(f.ctx, "DELETE FROM expenses.entries WHERE id=$1", foreign["id"]); err != nil {
+		t.Fatal(err)
+	}
+	if err = expenseIntegrityFinishEntry(f.ctx, f, tx, nested); err != nil {
+		t.Fatal("valid nested source deletion did not finish its own exact bundle", err)
+	}
+	if _, err = tx.Exec(f.ctx, "DELETE FROM expenses.entries WHERE id=$1", entry["id"]); err != nil {
+		t.Fatal(err)
+	}
+	var pgerr *pgconn.PgError
+	if err = expenseIntegrityFinishEntry(f.ctx, f, tx, operation); !errors.As(err, &pgerr) || pgerr.Code != "42501" {
+		t.Fatal("own-bundle retirement bypassed the separately retired foreign source", err)
+	}
+	if err = tx.Rollback(f.ctx); err != nil {
+		t.Fatal(err)
+	}
+	var rootsAfter int
+	if err = f.owner.QueryRow(f.ctx, "SELECT count(*) FROM core.finance_origin_operations").Scan(&rootsAfter); err != nil || rootsAfter != rootsBefore || expenseEditSnapshot(t, f) != before {
+		t.Fatal("refused foreign retirement left partial rows or source evidence", rootsBefore, rootsAfter, err)
 	}
 }
 
@@ -341,7 +489,7 @@ func TestExpenseEditorIntegrityPopulatedExpenses2AndLegacyWriterUpgrade(t *testi
 		t.Fatal("migration inverted the old child/parent lock order", err)
 	}
 	const fingerprint = `SELECT jsonb_build_object(
- 'entries',(SELECT jsonb_agg(to_jsonb(e) ORDER BY id) FROM expenses.entries e WHERE household_id=$1),
+ 'entries',(SELECT jsonb_agg((to_jsonb(e)-'money_mode') ORDER BY id) FROM expenses.entries e WHERE household_id=$1),
  'lines',(SELECT jsonb_agg(to_jsonb(l) ORDER BY id) FROM expenses.entry_lines l WHERE household_id=$1))::text`
 	var before, after string
 	if err = writer.QueryRow(ctx, fingerprint, hid).Scan(&before); err != nil {
@@ -363,6 +511,7 @@ func TestExpenseEditorIntegrityPopulatedExpenses2AndLegacyWriterUpgrade(t *testi
 	if err = f.pool.QueryRow(f.ctx, fingerprint, hid).Scan(&after); err != nil || before != after {
 		t.Fatal("upgrade changed financial values/versions/history", err)
 	}
+	assertLegacyFinanceMoneyMode(t, f)
 	var count int
 	if err = f.pool.QueryRow(f.ctx, "SELECT count(*) FROM expenses.entry_lines WHERE entry_id=$1", oversized).Scan(&count); err != nil || count != 101 {
 		t.Fatal("upgrade truncated legacy allocations", count, err)

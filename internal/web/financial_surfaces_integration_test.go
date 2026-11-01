@@ -7,6 +7,7 @@ import (
 	"encoding/csv"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/url"
 	"strings"
@@ -14,27 +15,24 @@ import (
 	"time"
 
 	"household/internal/store"
+	"household/internal/value"
 )
 
 func financialSurfaceEntries(t *testing.T, f *integrationFixture, prefix string, count int, created string) []string {
 	t.Helper()
-	rows, err := f.owner.Query(f.ctx, `INSERT INTO expenses.entries(household_id,occurred_on,description,amount_minor,created_by,created_at)
- SELECT $1,'2026-10-26',$2||' '||n,100,$3,$4::timestamptz+n*interval '1 second' FROM generate_series(1,$5::int)n RETURNING id`,
-		f.identity.HouseholdID, prefix, f.identity.UserID, created, count)
-	if err != nil {
-		t.Fatal(err)
+	if count < 1 || count > 1000 {
+		t.Fatal("bounded fixture row count", count)
 	}
-	defer rows.Close()
-	ids := []string{}
-	for rows.Next() {
-		var id string
-		if err = rows.Scan(&id); err != nil {
-			t.Fatal(err)
+	ids := make([]string, 0, count)
+	for n := 1; n <= count; n++ {
+		id := value.UUID()
+		// Real App SQL guards capture the exact initial row, including its
+		// deterministic pagination timestamp, before any audit event.
+		if err := expenseIntegrityPreparedSQL(t, f, id, `INSERT INTO expenses.entries(id,household_id,occurred_on,description,amount_minor,created_by,created_at)
+ VALUES($1,$2,'2026-10-26',$3,100,$4,$5::timestamptz+$6::int*interval '1 second')`, id, f.identity.HouseholdID, fmt.Sprintf("%s %d", prefix, n), f.identity.UserID, created, n); err != nil {
+			t.Fatal("actual prepared financial surface fixture", n, err)
 		}
 		ids = append(ids, id)
-	}
-	if err = rows.Err(); err != nil || len(ids) != count {
-		t.Fatal("financial surface fixture rows", len(ids), err)
 	}
 	return ids
 }
@@ -147,16 +145,18 @@ func TestFinancialSurfaceRelatedReportsAndBothCSVEntitiesExcludeBrokenBindings(t
 	f, category, entry, line := expenseIntegrityFixture(t)
 	hidden, _ := auditCreate(t, f, "expenses", "entries", store.Record{"occurred_on": "2026-10-26", "description": "Excluded secret expense", "amount_minor": "20.00"})
 	hiddenLine, _ := auditCreate(t, f, "expenses", "entry_lines", store.Record{"entry_id": hidden["id"], "category_id": category["id"], "amount_minor": "20.00", "note": "Excluded secret line"})
-	if _, err := f.owner.Exec(f.ctx, `INSERT INTO expenses.entry_lines(household_id,entry_id,category_id,amount_minor,note,position,created_by)
+	if err := expenseIntegrityPreparedSQL(t, f, store.String(hidden["id"]), `INSERT INTO expenses.entry_lines(household_id,entry_id,category_id,amount_minor,note,position,created_by)
  SELECT $1,$2,$3,1,'Excluded secret first rows',-1000+n,$4 FROM generate_series(1,105)n`,
 		f.identity.HouseholdID, hidden["id"], category["id"], f.identity.UserID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := f.owner.Exec(f.ctx, "UPDATE expenses.entry_lines SET amount_minor=1895 WHERE id=$1", hiddenLine["id"]); err != nil {
+	if err := expenseIntegrityPreparedSQL(t, f, store.String(hidden["id"]), "UPDATE expenses.entry_lines SET amount_minor=1895 WHERE id=$1", hiddenLine["id"]); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := f.owner.Exec(f.ctx, "UPDATE expenses.entries SET state='posted',posted_at=clock_timestamp() WHERE household_id=$1", f.identity.HouseholdID); err != nil {
-		t.Fatal(err)
+	for _, target := range []string{store.String(entry["id"]), store.String(hidden["id"])} {
+		if err := expenseIntegrityPreparedSQL(t, f, target, "UPDATE expenses.entries SET state='posted',posted_at=clock_timestamp() WHERE household_id=$1 AND id=$2", f.identity.HouseholdID, target); err != nil {
+			t.Fatal(err)
+		}
 	}
 	financialSurfaceRetire(t, f, []string{store.String(hidden["id"])})
 	months, err := f.app.Store.ExpenseReport(f.ctx, f.identity)
@@ -177,7 +177,7 @@ func TestFinancialSurfaceRelatedReportsAndBothCSVEntitiesExcludeBrokenBindings(t
 			t.Fatal("financial CSV omitted or duplicated visible facts", entity, rows, err)
 		}
 	}
-	if _, err = f.owner.Exec(f.ctx, "DELETE FROM core.financial_subjects WHERE resource_type='entry_lines' AND resource_id=$1", line["id"]); err != nil {
+	if _, err = f.owner.Exec(f.ctx, "DELETE FROM core.finance_origin_resources WHERE resource_type='entry_lines' AND resource_id=$1", line["id"]); err != nil {
 		t.Fatal(err)
 	}
 	months, err = f.app.Store.ExpenseReport(f.ctx, f.identity)
@@ -289,7 +289,7 @@ func TestFinancialSurfaceCSVCancellationAndOutputBoundsNeverPublishPartialConten
 	if !errors.Is(err, context.Canceled) || pages != 1 {
 		t.Fatal("cancelled export continued paging or succeeded", pages, err)
 	}
-	if _, err = f.owner.Exec(f.ctx, "UPDATE expenses.entries SET payee=repeat('oversized financial payload ',700000) WHERE id=$1", ids[0]); err != nil {
+	if err = expenseIntegrityPreparedSQL(t, f, ids[0], "UPDATE expenses.entries SET payee=repeat('oversized financial payload ',700000) WHERE id=$1", ids[0]); err != nil {
 		t.Fatal(err)
 	}
 	response, raw, err := f.request(http.MethodGet, "/api/v1/m/expenses/entries/export.csv", f.token, "", "", nil, nil)

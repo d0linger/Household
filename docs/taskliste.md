@@ -1,18 +1,42 @@
 # Household – Aufgabenliste
 
-Stand: 30.10.2026, 22:26 (Europe/Vienna).
+Stand: 01.11.2026, 07:10 (Europe/Vienna).
 
-**101 / 180 verifiziert und abgehakt · 0 in Arbeit · 79 offen.**
+**101 / 180 verifiziert und abgehakt · 19 in Arbeit · 60 offen.**
 
 Ein Haken bedeutet: umgesetzt und durch ausgeführte Prüfungen belegt. Vorbereitete Änderungen und einzelne bestandene Zwischentests schließen einen Verbesserungspunkt noch nicht ab.
 
-Derzeit ist kein Punkt als „In Arbeit“ markiert.
+Aktuell in Arbeit: **EX01 – Monatsübersicht**, **EX03 – Buchungszustände**, **EX04 – Gespeicherte Finanzfilter**, **EX05 – Belegprüfung**, **EX06 – Konten und Einnahmen**, **EX07 – Kategoriebudgets**, **EX08 – Sparziele**, **EX09 – Personenaufteilung**, **EX10 – Ausgleichszahlungen**, **EX11 – Wiederkehrende Buchungen**, **EX12 – Kategorisierungsregeln**, **EX13 – Bankdateiimport**, **EX14 – Belegsumme prüfen**, **EX15 – Liquiditätsvorschau**, **EX16 – Finanzberichte**, **EX17 – Kontoabstimmung**, **EX18 – Mehrere Währungen**, **EX19 – Finanzsichtbarkeit**, **EX20 – Buchungsherkunft**.
 
 **Essensplanung vollständig lokal abgenommen: 20 / 20 Punkte.** Geplante Reste, Wochenbudget, Kalender und Autoplan sind nach nativen Tests, Browserprüfung und verschlüsseltem Restore/Purge gemeinsam abgehakt. [Modulplan](mealplan-module-plan.md) · [Abnahmenachweise und Grenzen](mealplan-module-validation.md).
 
 **Vorrat vollständig lokal abgenommen: 20 / 20 Punkte.** PA10, PA13 und PA19 sind nach nativen Tests, eigenständigem Browserlauf, echtem Restore/Purge und vollständiger 28-Komponenten-Regression abgehakt. [Modulplan](pantry-module-plan.md) · [Abnahmenachweise](pantry-module-validation.md).
 
 **Rezepte vollständig lokal abgenommen: 20 / 20 Punkte.** Alle zehn Erweiterungen sind nach nativer Komposition, Linux-Race, eigener und vollständiger Browserprüfung sowie echtem Restore/Purge gemeinsam abgehakt. [Modulplan](recipes-module-plan.md) · [Abnahmenachweise und Grenzen](recipes-module-validation.md).
+
+**Aktueller Modulblock: Finanzen (19 Erweiterungen in Arbeit, EX02 bleibt erhalten).**
+
+- [x] Finaler Stand a6e871cc: zwölf Qualitätsprüfungen, 307 Go-Unit-Haupttests und 297 Node-Tests bestanden; Produktionscode unverändert.
+- [x] Geprüfte Datenbankkorrekturen gemeinsam übertragen; Finanzquellen, echte Zeilenlöschung, Pantry14 und sichere Auditprojektion nachgeprüft.
+- [x] Aktuelle Runtime-, OCR- und Backup-Images auf 515c3433 als nicht privilegierter Benutzer gebaut.
+- [x] Aktuelle lokale OCI-/SBOM-/Provenienzprüfung auf 515c3433 bestanden.
+- [x] Finanz-Browser auf 515c3433: 208 Prüfpunkte, 16 manuell geprüfte Screenshots und 16 saubere Axe-Scans.
+- [x] Verschlüsselter Restore/Purge auf 515c3433: 15 tatsächliche Stufen und vollständig verifizierte Bereinigung.
+- [x] Historische Fuel-Testvorbereitung korrigiert; alle vier beschädigten Altbestände getrennt bestanden.
+- [x] Git-sichtbaren Stand 515c3433 mit 892 Dateien gescannt: keine Funde; private Prüfkopie entfernt.
+- [x] Alle 716 Haupttests tatsächlich ausgeführt: 696 bestanden, 20 fehlgeschlagen, keine übersprungen; Originalbefunde und Bereinigung dokumentiert.
+- [x] Vollständige Linux-Race-Regression bestanden: 717 Haupttests, sechs strenge Shards, alle 20 früheren Fehlerfälle erfolgreich; 15 Bereinigungen verifiziert.
+- [x] Vollständige Browserkette auf 515c3433: 31 Komponenten, 1.273 Prüfpunkte, 179 Screenshots und 167 saubere Axe-Scans.
+- [x] Mobile Korrektur getrennt geprüft: 208 Prüfpunkte, überlappungsfreie Werte und 16 saubere Axe-Scans; verschlüsselter Restore/Purge bestanden.
+- [x] Acht korrigierte Finanzverträge und sechs Capture-/Aufräumfälle vollständig nachgeprüft.
+- [x] Sparziel-Gegenbuchung separat korrigiert: reguläre Rückbuchung und beschädigter Nachbarbestand beide nachgeprüft.
+- [x] Dreizehn geprüfte Korrekturdateien auf Stand 515c3433 übertragen; alle 85 freigegebenen SQL-Dateien unverändert, 92 aktuelle Pins bestanden.
+- [x] Liquiditätsvorschau mit zwei zusätzlichen nativen und Linux-Race-Fällen bestanden; keine Fehler/Skips/Races, Produktionscode unverändert.
+- [x] Ergänzter Teststand a6e871cc: Formatierung, vet und vollständiger getaggter Linter auf tatsächlicher Quellkopie bestanden.
+- [x] Zwei zusätzliche Liquiditätstests quellenqualifiziert übertragen; 719 eindeutige Race-Haupttests belegt, 70,86 % beobachtete Statement-Abdeckung.
+- [ ] Abschließende Indexprüfung, gemeinsame Modulabnahme und lokaler Checkpoint.
+
+Fehlversuche bleiben als solche erhalten. Die 19 Finanzverbesserungen werden nach der gemeinsamen Modulabnahme abgehakt. [Modulplan mit Haken](finance-module-plan.md) · [Prüfnachweise und Quellenstände](finance-module-validation.md).
 
 Diese Ansicht wird aus der [verbindlichen Liste mit Abnahmekriterien und Nachweisen](improvements-180.md) erzeugt. Aktualisieren: `node scripts/update-tasklist.cjs`.
 
@@ -22,7 +46,7 @@ Diese Ansicht wird aus der [verbindlichen Liste mit Abnahmekriterien und Nachwei
 | Fahrzeuge und Tanken | 20 / 20 | 0 | 0 |
 | Rezepte | 20 / 20 | 0 | 0 |
 | Vorrat | 20 / 20 | 0 | 0 |
-| Finanzen | 1 / 20 | 0 | 19 |
+| Finanzen | 1 / 20 | 19 | 0 |
 | Aufgaben | 0 / 20 | 0 | 20 |
 | Zähler und Energie | 0 / 20 | 0 | 20 |
 | Dokumente | 0 / 20 | 0 | 20 |
@@ -122,26 +146,26 @@ Diese Ansicht wird aus der [verbindlichen Liste mit Abnahmekriterien und Nachwei
 
 ## Finanzen
 
-- [ ] **EX01 Monatsübersicht** — Gebuchte Beträge, Entwürfe und Hauptkategorien getrennt darstellen.
+- [ ] **EX01 Monatsübersicht** — **In Arbeit** — Gebuchte Beträge, Entwürfe und Hauptkategorien getrennt darstellen.
 - [x] **EX02 Aufgeteilte Erfassung** — Buchung und Kategoriezeilen gemeinsam bearbeiten; Restdifferenz sichtbar halten.
-- [ ] **EX03 Buchungszustände** — Entwurf, gebucht, erstattet und korrigiert mit passenden Aktionen erklären.
-- [ ] **EX04 Gespeicherte Finanzfilter** — Person, Kategorie, Empfänger, Zeitraum und Status kombinieren.
-- [ ] **EX05 Belegprüfung** — Beleg und Buchung nebeneinander beziehungsweise mobil mit erhaltenem Formularzustand zeigen.
-- [ ] **EX06 Konten und Einnahmen** — Konten, Einnahmen und Umbuchungen modellieren; Transfers nicht als Verbrauch zählen.
-- [ ] **EX07 Kategoriebudgets** — Monatsbudgets und ausdrücklich gewählte Übertragsregeln auswerten.
-- [ ] **EX08 Sparziele** — Zielbetrag, Termin und geplante Beiträge von tatsächlichem Kontostand unterscheiden.
-- [ ] **EX09 Personenaufteilung** — Gleich, Prozent, Anteile oder Festbetrag mit deterministischer Centverteilung aufteilen.
-- [ ] **EX10 Ausgleichszahlungen** — Personensalden und Zahlungen getrennt von ursprünglichen Ausgaben führen.
-- [ ] **EX11 Wiederkehrende Buchungen** — Vorlagen erzeugen deduplizierte, prüfbare Entwürfe.
-- [ ] **EX12 Kategorisierungsregeln** — Prioritäten und zutreffende Empfängerregeln vor Übernahme erklären.
-- [ ] **EX13 Bankdateiimport** — Dokumentierte CSV-Profile, Kontoauswahl, Vorschau und Dublettenkontrolle anbieten.
-- [ ] **EX14 Belegsumme prüfen** — Positionen und Gesamtsumme mit OCR-Herkunft und Abweichungen vergleichen.
-- [ ] **EX15 Liquiditätsvorschau** — Bestätigte Fälligkeiten und Wiederholungen mit Unsicherheit projizieren.
-- [ ] **EX16 Finanzberichte** — Konten-, Personen-, Kategorien- und Zeitaggregate serverseitig nachvollziehbar berechnen.
-- [ ] **EX17 Kontoabstimmung** — Externen Stichtagssaldo vergleichen; keine stillen Ausgleichsbuchungen.
-- [ ] **EX18 Mehrere Währungen** — Originalbetrag, Basisbetrag, Kurs, Datum und Rundungsregel unveränderlich nachvollziehen.
-- [ ] **EX19 Finanzsichtbarkeit** — Konten- und Datensatzrechte in Suche, Aggregaten, Dateien, Export und Audit anwenden.
-- [ ] **EX20 Buchungsherkunft** — Manuell, Bank, Tankung und Beleg über gemeinsame Herkunft und Dublettenschutz verbinden.
+- [ ] **EX03 Buchungszustände** — **In Arbeit** — Entwurf, gebucht, erstattet und korrigiert mit passenden Aktionen erklären.
+- [ ] **EX04 Gespeicherte Finanzfilter** — **In Arbeit** — Person, Kategorie, Empfänger, Zeitraum und Status kombinieren.
+- [ ] **EX05 Belegprüfung** — **In Arbeit** — Beleg und Buchung nebeneinander beziehungsweise mobil mit erhaltenem Formularzustand zeigen.
+- [ ] **EX06 Konten und Einnahmen** — **In Arbeit** — Konten, Einnahmen und Umbuchungen modellieren; Transfers nicht als Verbrauch zählen.
+- [ ] **EX07 Kategoriebudgets** — **In Arbeit** — Monatsbudgets und ausdrücklich gewählte Übertragsregeln auswerten.
+- [ ] **EX08 Sparziele** — **In Arbeit** — Zielbetrag, Termin und geplante Beiträge von tatsächlichem Kontostand unterscheiden.
+- [ ] **EX09 Personenaufteilung** — **In Arbeit** — Gleich, Prozent, Anteile oder Festbetrag mit deterministischer Centverteilung aufteilen.
+- [ ] **EX10 Ausgleichszahlungen** — **In Arbeit** — Personensalden und Zahlungen getrennt von ursprünglichen Ausgaben führen.
+- [ ] **EX11 Wiederkehrende Buchungen** — **In Arbeit** — Vorlagen erzeugen deduplizierte, prüfbare Entwürfe.
+- [ ] **EX12 Kategorisierungsregeln** — **In Arbeit** — Prioritäten und zutreffende Empfängerregeln vor Übernahme erklären.
+- [ ] **EX13 Bankdateiimport** — **In Arbeit** — Dokumentierte CSV-Profile, Kontoauswahl, Vorschau und Dublettenkontrolle anbieten.
+- [ ] **EX14 Belegsumme prüfen** — **In Arbeit** — Positionen und Gesamtsumme mit OCR-Herkunft und Abweichungen vergleichen.
+- [ ] **EX15 Liquiditätsvorschau** — **In Arbeit** — Bestätigte Fälligkeiten und Wiederholungen mit Unsicherheit projizieren.
+- [ ] **EX16 Finanzberichte** — **In Arbeit** — Konten-, Personen-, Kategorien- und Zeitaggregate serverseitig nachvollziehbar berechnen.
+- [ ] **EX17 Kontoabstimmung** — **In Arbeit** — Externen Stichtagssaldo vergleichen; keine stillen Ausgleichsbuchungen.
+- [ ] **EX18 Mehrere Währungen** — **In Arbeit** — Originalbetrag, Basisbetrag, Kurs, Datum und Rundungsregel unveränderlich nachvollziehen.
+- [ ] **EX19 Finanzsichtbarkeit** — **In Arbeit** — Konten- und Datensatzrechte in Suche, Aggregaten, Dateien, Export und Audit anwenden.
+- [ ] **EX20 Buchungsherkunft** — **In Arbeit** — Manuell, Bank, Tankung und Beleg über gemeinsame Herkunft und Dublettenschutz verbinden.
 
 ## Aufgaben
 

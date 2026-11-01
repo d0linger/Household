@@ -131,7 +131,7 @@
   async function queueOp(mode, operation) {const db = await dbPromise; return new Promise((resolve,reject) => {const tx = db.transaction('queue',mode); const result = operation(tx.objectStore('queue')); tx.oncomplete = () => resolve(result?.result); tx.onerror = () => reject(tx.error); tx.onabort = () => reject(tx.error);});}
   async function clearQueue() {await queueOp('readwrite', store => store.clear());}
   function financialMutation(url) {
-    try {const target=new URL(url,location.origin);return target.origin===location.origin&&(/^\/api\/v1\/(?:m\/expenses(?:\/|$)|expenses\/editor(?:\/|$))/.test(target.pathname)||actionTargets(target.pathname).includes('expenses'));}catch{return false;}
+    try {const target=new URL(url,location.origin);return target.origin===location.origin&&(/^\/api\/v1\/(?:m\/expenses(?:\/|$)|expenses\/(?:editor|finance)(?:\/|$))/.test(target.pathname)||actionTargets(target.pathname).includes('expenses'));}catch{return false;}
   }
   function financialRecovery(url) {
     const target=new URL(url,location.origin),match=target.pathname.match(/^\/api\/v1\/m\/(expenses|fuel)\/(entries|entry_lines|categories|fillups)(?:\/([0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}))?(?:\/actions\/[a-z_]+)?$/i);
@@ -312,7 +312,7 @@
       const table=document.createElement('table'),thead=document.createElement('thead'),head=document.createElement('tr');
       for(const key of section.columns){const th=document.createElement('th');th.scope='col';th.textContent=labels[key];head.append(th);}thead.append(head);table.append(thead);
       const body=document.createElement('tbody');
-      for(const row of rows){const tr=document.createElement('tr');for(const key of section.columns){const td=document.createElement('td');let value=row[key];if(value!==null&&value!==undefined){if(key.endsWith('_minor'))value=new Intl.NumberFormat('de-AT',{style:'currency',currency:'EUR'}).format(Number(value)/100);else if(['from','to','from_date','to_date','date'].includes(key))value=localDate(value,meterReport&&['from','to'].includes(key));else if(typeof value==='boolean')value=value?'Ja':'Nein';else if(['stock','minimum','distance','quantity','per_100km','consumption','odometer'].includes(key))value=String(value).replace(/(\.\d*?)0+$/,'$1').replace(/\.$/,'').replace('.',',');else value=choiceText(value);}td.textContent=value??'–';tr.append(td);}body.append(tr);}table.append(body);wrap.append(table);report.append(title,wrap);
+      for(const row of rows){const tr=document.createElement('tr');for(const key of section.columns){const td=document.createElement('td');let value=row[key];if(value!==null&&value!==undefined){if(key.endsWith('_minor'))value=window.HouseholdReportValues.euroMinor(value);else if(['from','to','from_date','to_date','date'].includes(key))value=localDate(value,meterReport&&['from','to'].includes(key));else if(typeof value==='boolean')value=value?'Ja':'Nein';else if(['stock','minimum','distance','quantity','per_100km','consumption','odometer'].includes(key))value=String(value).replace(/(\.\d*?)0+$/,'$1').replace(/\.$/,'').replace('.',',');else value=choiceText(value);}td.textContent=value??'–';tr.append(td);}body.append(tr);}table.append(body);wrap.append(table);report.append(title,wrap);
     }
     if(!report.children.length)report.textContent='Noch keine auswertbaren Daten.';
   }).catch(error=>report.textContent=error.message);

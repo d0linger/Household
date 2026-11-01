@@ -36,7 +36,7 @@ func TestAuditTrailContract(t *testing.T) {
 			AND NOT(t.schemaname='pantry' AND t.tablename='lot_balances')
 			AND NOT(t.schemaname='fuel' AND t.tablename=ANY($2::text[]))`,
 			[]string{"shopping", "fuel", "recipes", "pantry", "expenses", "chores", "meters", "documents", "mealplan"}, privateFuel).Scan(&missing, &domainTables)
-		if err != nil || missing != 0 || domainTables != 71 {
+		if err != nil || missing != 0 || domainTables != 92 {
 			t.Fatalf("domain coverage: missing=%d tables=%d error=%v", missing, domainTables, err)
 		}
 		// Dedicated API tables remain audited business facts. Only the exact
@@ -75,6 +75,37 @@ func TestAuditTrailContract(t *testing.T) {
  WHERE p.table_name=ANY($1::text[])`, planningExtensions).
 			Scan(&extensionTables, &extensionPolicies, &redacted); err != nil || extensionTables != 5 || extensionPolicies != 5 || !redacted {
 			t.Fatalf("Mealplan extension classification: tables=%d policies=%d redacted=%t error=%v", extensionTables, extensionPolicies, redacted, err)
+		}
+		financeTables := []string{"accounts", "entry_finance", "entry_original_lines", "cash_events", "account_movements", "entry_relations", "entry_split_sets", "entry_person_shares", "settlement_details", "saved_filters", "category_budgets", "savings_goals", "goal_contributions", "recurring_templates", "recurring_occurrences", "categorization_rules", "bank_profiles", "reconciliations", "reconciliation_items", "receipt_reviews", "receipt_review_lines"}
+		if err = f.owner.QueryRow(f.ctx, `SELECT
+ (SELECT count(*) FROM pg_tables WHERE schemaname='expenses' AND tablename=ANY($1::text[])),count(*),
+ coalesce(bool_and(p.key_columns=e.keys AND p.safe_columns=e.safe AND p.label_column IS NOT DISTINCT FROM e.label
+ AND NOT(p.safe_columns && ARRAY['name','description','notes','template','criteria','scope','basis','payment_context','reviewed_sources','source_text','request_hash','source_hash','scope_hash','review_data']::text[])),false)
+ FROM core.audit_policies p JOIN(VALUES
+('accounts',ARRAY['id'],ARRAY['account_type','currency_code','currency_exponent','archived_at','version'],NULL),
+('entry_finance',ARRAY['id'],ARRAY['entry_id','original_state','original_currency','original_exponent','original_minor','fx_numerator','fx_denominator','fx_effective_on','fx_source','fx_rounding','fx_reviewed_by','fx_reviewed_at','account_id','payment_currency','payment_exponent','payment_minor','payment_fx_numerator','payment_fx_denominator','payment_fx_on','payment_base_minor','payment_difference_reviewed','version'],NULL),
+('entry_original_lines',ARRAY['id'],ARRAY['entry_id','line_id','original_minor','allocation_rule','version'],NULL),
+('cash_events',ARRAY['id'],ARRAY['event_kind','state','occurred_on','payee','entry_id','account_id','original_currency','original_exponent','original_minor','base_minor','fx_numerator','fx_denominator','fx_effective_on','reverses_event_id','posted_at','version'],NULL),
+('account_movements',ARRAY['id'],ARRAY['event_id','account_id','leg','currency_code','currency_exponent','amount_minor','base_minor','fx_numerator','fx_denominator','fx_effective_on','version'],NULL),
+('entry_relations',ARRAY['id'],ARRAY['entry_id','original_entry_id','relation','reviewed_original_version','reversal_entry_id','version'],NULL),
+('entry_split_sets',ARRAY['id'],ARRAY['entry_id','method','currency_code','currency_exponent','total_minor','payer_membership_id','algorithm','reviewed_at','reviewed_by','active','version'],NULL),
+('entry_person_shares',ARRAY['id'],ARRAY['split_set_id','entry_id','membership_id','share_minor','base_minor','position','version'],NULL),
+('settlement_details',ARRAY['id'],ARRAY['event_id','from_membership_id','to_membership_id','currency_code','currency_exponent','amount_minor','version'],NULL),
+('saved_filters',ARRAY['id'],ARRAY['owner_user_id','criteria_version','version'],NULL),
+('category_budgets',ARRAY['id'],ARRAY['category_id','starts_on','ends_on','monthly_minor','carry_rule','initial_carry_minor','archived_at','version'],NULL),
+('savings_goals',ARRAY['id'],ARRAY['currency_code','currency_exponent','target_minor','target_on','account_id','planned_period_minor','planned_period','state','version'],NULL),
+('goal_contributions',ARRAY['id'],ARRAY['goal_id','occurred_on','amount_minor','contribution_kind','event_id','movement_id','reverses_contribution_id','version'],NULL),
+('recurring_templates',ARRAY['id'],ARRAY['anchor_on','ends_on','repeat_unit','repeat_interval','monthday_policy','template_kind','account_id','active','version'],NULL),
+('recurring_occurrences',ARRAY['id'],ARRAY['template_id','scheduled_on','template_version','entry_id','event_id','state','version'],NULL),
+('categorization_rules',ARRAY['id'],ARRAY['priority','active','match_kind','currency_code','minimum_minor','maximum_minor','category_id','account_id','version'],NULL),
+('bank_profiles',ARRAY['id'],ARRAY['owner_user_id','account_id','encoding','date_layout','decimal_separator','amount_mode','profile_format','archived_at','version'],NULL),
+('reconciliations',ARRAY['id'],ARRAY['account_id','starts_on','opening_minor','statement_on','statement_minor','currency_code','currency_exponent','computed_minor','difference_minor','account_version','posting_count','state','confirmed_by','confirmed_at','reopens_id','version'],NULL),
+('reconciliation_items',ARRAY['id'],ARRAY['reconciliation_id','movement_id','reviewed_event_version','reviewed_movement_version','amount_minor','version'],NULL),
+('receipt_reviews',ARRAY['id'],ARRAY['entry_id','capture_job_id','attachment_id','source_version','currency_code','currency_exponent','receipt_total_minor','line_total_minor','difference_minor','difference_acknowledged','reviewed_entry_version','reviewed_entry_original_minor','reviewed_entry_currency','reviewed_entry_exponent','entry_difference_minor','state','confirmed_by','confirmed_at','version'],NULL),
+('receipt_review_lines',ARRAY['id'],ARRAY['review_id','position','amount_minor','source_kind','page_number','source_line','confidence','entry_line_id','reviewed','version'],NULL)
+ ) e(name,keys,safe,label) ON p.schema_name='expenses' AND p.table_name=e.name WHERE p.table_name=ANY($1::text[])`, financeTables).
+			Scan(&extensionTables, &extensionPolicies, &redacted); err != nil || extensionTables != 21 || extensionPolicies != 21 || !redacted {
+			t.Fatalf("Finance extension classification: tables=%d policies=%d closed_fields=%t error=%v", extensionTables, extensionPolicies, redacted, err)
 		}
 		var ready bool
 		if err = f.pool.QueryRow(f.ctx, "SELECT core.audit_ready()").Scan(&ready); err != nil || !ready {

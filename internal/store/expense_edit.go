@@ -116,7 +116,10 @@ func (s *Store) SaveExpense(ctx context.Context, id auth.Identity, key, requestI
 	if draft.EntryID != "" {
 		// RC takes a new snapshot after parent/child locks: the complete binding
 		// set must still agree before reconciling or exposing financial facts.
-		currentScope := financialScope{householdID: id.HouseholdID, generation: scope.Generation}
+		currentScope, scopeErr := readFinancialScope(ctx, tx, id)
+		if scopeErr != nil {
+			return ExpenseEditReceipt{}, scopeErr
+		}
 		if _, err = readFinancialAccessVersion(ctx, tx, currentScope, draft.EntryID); err != nil {
 			return ExpenseEditReceipt{}, err
 		}
@@ -163,7 +166,13 @@ func readExpenseEditProof(ctx context.Context, tx pgx.Tx, id auth.Identity, key 
 }
 
 func currentExpenseReceipt(ctx context.Context, tx pgx.Tx, id auth.Identity, generation int64, out *ExpenseEditReceipt) error {
-	scope := financialScope{householdID: id.HouseholdID, generation: generation, role: id.Role}
+	scope, err := readFinancialScope(ctx, tx, id)
+	if err != nil {
+		return err
+	}
+	if scope.generation != generation {
+		return ErrNotFound
+	}
 	predicate, args, err := financialPredicate(scope, "entries", financialEdit, 3)
 	if err != nil {
 		return err

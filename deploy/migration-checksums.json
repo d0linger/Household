@@ -83,5 +83,12 @@
   "core/000028_planning_extensions.up.sql": "1c33107f2e94046d845d9d4290eed6b25fee7237745f7a62a7abb6636e262a9a",
   "fuel/000007_core28_planning_compat.up.sql": "a796c4ac9fcae607c56f297460373fc7a8c50477f60886f19c1e74caa4496977",
   "mealplan/000008_planning_extensions.up.sql": "2f050f30046dce3b25d752eb8651a7ec66d496424b2f6c39858c273387c2fb6e",
-  "pantry/000013_core28_planning_compat.up.sql": "028d9fb2d41147c8a1aca98860705f734aba414c76954b26b492563af81cdbe9"
+  "pantry/000013_core28_planning_compat.up.sql": "028d9fb2d41147c8a1aca98860705f734aba414c76954b26b492563af81cdbe9",
+  "core/000029_finance_authority.up.sql": "3e7d9a9c10127390b0b05f666c234b7eb0c332d45fa0a9c54570a1676c7b0de2",
+  "core/000030_finance_producers.up.sql": "9af5485729461277f6b9c2b18fbb8d0541f8f8e90eb036542157efc714d5af96",
+  "core/000031_finance_selected_cutover.up.sql": "48fa5b9f5356267b086751552d0a3c8113a62b43048d91c4b6643cc99393fbfa",
+  "expenses/000005_finance_workspace.up.sql": "31e4a4258add1e4db96e5e69d07c738dcff7070d2363bff7ed9bc371c7e99204",
+  "fuel/000008_core31_finance_compat.up.sql": "f7262feae14fd4ad9d4d57031a3d0d75b7e3aeaab4f012351b3bc3a35a8565b7",
+  "mealplan/000009_core31_finance_compat.up.sql": "d3f663e4886fc027aad6355d344e1ce63e5fd240bfb6ba65657ff7a934ca3d2a",
+  "pantry/000014_core31_finance_compat.up.sql": "1505f7fbd2c607c1e81351c493e58fb5a88fc3b6afd80ca27f7aa1416bc4bdab"
 }

@@ -138,7 +138,7 @@ func TestExpenseEditCompleteBaselineAndExplicitRemoval(t *testing.T) {
 		t.Fatal("removed child or projection survived", remains, projection, err)
 	}
 	stale := expenseEditInput(t, f, store.String(entry["id"]))
-	if err := expenseIntegrityAppSQL(t, f, "UPDATE expenses.entry_lines SET note='Intervening child',version=version+1 WHERE id=$1", stale.Lines[0].ID); err != nil {
+	if err := expenseIntegrityPreparedSQL(t, f, store.String(entry["id"]), "UPDATE expenses.entry_lines SET note='Intervening child',version=version+1 WHERE id=$1", stale.Lines[0].ID); err != nil {
 		t.Fatal(err)
 	}
 	// Even if an old client somehow carries the current parent version, its

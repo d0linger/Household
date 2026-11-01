@@ -20,6 +20,10 @@ func (s *Server) expenseEditorPage(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, err)
 		return
 	}
+	if bundle.Advanced {
+		http.Redirect(w, r, bundle.FinanceURL, http.StatusSeeOther)
+		return
+	}
 	p := s.page(r, "Ausgabe gemeinsam aufteilen")
 	if bundle.Header.ID == "" {
 		p.Title = "Neue Ausgabe aufteilen"

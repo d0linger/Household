@@ -163,6 +163,15 @@ func (s *Server) upload(w http.ResponseWriter, r *http.Request) {
 		name = name[:200]
 	}
 	sum := sha256.Sum256(clean)
+	var financeSources []store.FinanceResourceRef
+	if m.ID == "expenses" && (e.ID == "entries" || e.ID == "entry_lines") {
+		financeSources = []store.FinanceResourceRef{{Kind: e.ID, ID: rid}}
+	}
+	financeOperation, err := s.Store.PrepareFinanceArtifact(r.Context(), tx, identity(r), "attachment", aid, financeSources)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
 	_, err = tx.Exec(r.Context(), "INSERT INTO core.attachments(id,household_id,module_id,module_generation,resource_type,resource_id,storage_key,original_name,media_type,size_bytes,sha256,uploaded_by) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)", aid, identity(r).HouseholdID, m.ID, generation, e.ID, rid, key, name, kind, len(clean), sum[:], identity(r).UserID)
 	if err == nil && kind != "application/pdf" {
 		payload, _ := json.Marshal(store.Record{"attachment_id": aid, "storage_key": key})
@@ -171,7 +180,12 @@ func (s *Server) upload(w http.ResponseWriter, r *http.Request) {
 	captureID := ""
 	if err == nil && r.FormValue("capture") == "true" {
 		captureID = value.UUID()
-		_, err = tx.Exec(r.Context(), "INSERT INTO core.capture_jobs(id,household_id,module_id,module_generation,source_attachment_id,target_schema,extracted_values) VALUES($1,$2,$3,$4,$5,$6,'{}')", captureID, identity(r).HouseholdID, m.ID, generation, aid, e.ID)
+		captureOperation, prepareErr := s.Store.PrepareFinanceArtifact(r.Context(), tx, identity(r), "capture", captureID,
+			[]store.FinanceResourceRef{{Kind: "attachment", ID: aid}})
+		err = prepareErr
+		if err == nil {
+			_, err = tx.Exec(r.Context(), "INSERT INTO core.capture_jobs(id,household_id,module_id,module_generation,source_attachment_id,target_schema,extracted_values) VALUES($1,$2,$3,$4,$5,$6,'{}')", captureID, identity(r).HouseholdID, m.ID, generation, aid, e.ID)
+		}
 		if err == nil && s.Cfg.OCREnabled && kind != "application/pdf" {
 			_, err = tx.Exec(r.Context(), "UPDATE core.capture_jobs SET state='extracting',provider='tesseract' WHERE id=$1", captureID)
 			if err == nil {
@@ -179,9 +193,15 @@ func (s *Server) upload(w http.ResponseWriter, r *http.Request) {
 				_, err = tx.Exec(r.Context(), "INSERT INTO core.jobs(household_id,module_id,module_generation,kind,payload,dedupe_key) VALUES($1,$2,$3,'capture_ocr',$4,$5)", identity(r).HouseholdID, m.ID, generation, payload, "capture/"+captureID)
 			}
 		}
+		if err == nil {
+			err = s.Store.CompleteFinanceArtifact(r.Context(), tx, identity(r), captureOperation)
+		}
 	}
 	if err == nil {
 		err = store.Audit(r.Context(), tx, identity(r), m.ID, e.ID, rid, "attachment_upload", trace(r))
+	}
+	if err == nil {
+		err = s.Store.CompleteFinanceArtifact(r.Context(), tx, identity(r), financeOperation)
 	}
 	if err == nil {
 		err = tx.Commit(r.Context())
@@ -209,7 +229,12 @@ func (s *Server) attachmentList(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, err)
 		return
 	}
-	rows, err := s.Pool.Query(r.Context(), "SELECT id,original_name,media_type,size_bytes,EXISTS(SELECT 1 FROM core.attachment_derivatives d WHERE d.attachment_id=a.id AND variant='preview') FROM core.attachments a WHERE household_id=$1 AND module_id=$2 AND resource_type=$3 AND resource_id=$4 AND state='ready' ORDER BY created_at DESC LIMIT 100", identity(r).HouseholdID, m.ID, e.ID, r.PathValue("id"))
+	actor := identity(r)
+	rows, err := s.Pool.Query(r.Context(), `SELECT id,original_name,media_type,size_bytes,EXISTS(SELECT 1 FROM core.attachment_derivatives d
+ WHERE d.attachment_id=a.id AND variant='preview' AND core.finance_artifact_visible($1,$5,$6,$7,$8,'attachment_derivative',d.id,'view'))
+ FROM core.attachments a WHERE household_id=$1 AND module_id=$2 AND resource_type=$3 AND resource_id=$4 AND state='ready'
+ AND core.finance_artifact_visible($1,$5,$6,$7,$8,'attachment',a.id,'view') ORDER BY created_at DESC LIMIT 100`, actor.HouseholdID,
+		m.ID, e.ID, r.PathValue("id"), actor.UserID, actor.MembershipID, actor.SessionID, actor.AuthVersion)
 	if err != nil {
 		s.fail(w, r, err)
 		return
@@ -240,7 +265,17 @@ func (s *Server) download(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var mid, entity, rid, key, name, kind string
-	err := s.Pool.QueryRow(r.Context(), "SELECT a.module_id,a.resource_type,a.resource_id,a.storage_key,a.original_name,a.media_type FROM core.attachments a JOIN core.module_states m ON m.household_id=a.household_id AND m.module_id=a.module_id AND m.state='enabled' AND m.data_generation=a.module_generation WHERE a.id=$1 AND a.household_id=$2 AND a.state='ready'", r.PathValue("id"), identity(r).HouseholdID).Scan(&mid, &entity, &rid, &key, &name, &kind)
+	tx, err := s.Pool.Begin(r.Context())
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	defer func() { _ = tx.Rollback(r.Context()) }()
+	actor := identity(r)
+	err = tx.QueryRow(r.Context(), `SELECT a.module_id,a.resource_type,a.resource_id,a.storage_key,a.original_name,a.media_type FROM core.attachments a
+ JOIN core.module_states m ON m.household_id=a.household_id AND m.module_id=a.module_id AND m.state='enabled' AND m.data_generation=a.module_generation
+ WHERE a.id=$1 AND a.household_id=$2 AND a.state='ready' AND core.finance_artifact_visible($2,$3,$4,$5,$6,'attachment',a.id,'view')`,
+		r.PathValue("id"), actor.HouseholdID, actor.UserID, actor.MembershipID, actor.SessionID, actor.AuthVersion).Scan(&mid, &entity, &rid, &key, &name, &kind)
 	if errors.Is(err, pgx.ErrNoRows) {
 		s.fail(w, r, store.ErrNotFound)
 		return
@@ -263,14 +298,23 @@ func (s *Server) download(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, err)
 		return
 	}
+	if err = s.Store.LockFinanceArtifact(r.Context(), tx, actor, "attachment", r.PathValue("id"), "view"); err != nil {
+		s.fail(w, r, err)
+		return
+	}
 	if !value.ValidUUID(key) {
 		s.fail(w, r, store.ErrNotFound)
 		return
 	}
 	inline := strings.HasSuffix(r.URL.Path, "/preview")
 	if inline {
-		if err = s.Pool.QueryRow(r.Context(), "SELECT storage_key,media_type FROM core.attachment_derivatives WHERE attachment_id=$1 AND variant='preview'", r.PathValue("id")).Scan(&key, &kind); err != nil {
+		var derivativeID string
+		if err = tx.QueryRow(r.Context(), "SELECT id,storage_key,media_type FROM core.attachment_derivatives WHERE attachment_id=$1 AND variant='preview'", r.PathValue("id")).Scan(&derivativeID, &key, &kind); err != nil {
 			s.fail(w, r, store.ErrNotFound)
+			return
+		}
+		if err = s.Store.LockFinanceArtifact(r.Context(), tx, actor, "attachment_derivative", derivativeID, "view"); err != nil {
+			s.fail(w, r, err)
 			return
 		}
 		if !value.ValidUUID(key) {
@@ -319,7 +363,9 @@ func (s *Server) capturePage(w http.ResponseWriter, r *http.Request) {
 		AND a.household_id=c.household_id AND a.module_id=c.module_id AND a.module_generation=c.module_generation AND a.state='ready'
 		JOIN core.module_states m ON m.household_id=c.household_id AND m.module_id=c.module_id
 		AND m.state='enabled' AND m.data_generation=c.module_generation
-		WHERE c.id=$1 AND c.household_id=$2 AND c.expires_at>now()`, r.PathValue("id"), identity(r).HouseholdID).Scan(&mid, &entity, &aid, &state, &generation, &raw, &source, &sourceType, &sourceID)
+		WHERE c.id=$1 AND c.household_id=$2 AND c.expires_at>now()
+		AND core.finance_artifact_visible($2,$3,$4,$5,$6,'capture',c.id,'view')`, r.PathValue("id"), identity(r).HouseholdID,
+		identity(r).UserID, identity(r).MembershipID, identity(r).SessionID, identity(r).AuthVersion).Scan(&mid, &entity, &aid, &state, &generation, &raw, &source, &sourceType, &sourceID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		s.fail(w, r, store.ErrNotFound)
 		return

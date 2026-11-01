@@ -45,6 +45,9 @@ func (s *Store) ConfirmCapture(ctx context.Context, id auth.Identity, captureID,
 		return "", "", "", err
 	}
 	defer rollback(tx)
+	if err = s.LockFinanceArtifact(ctx, tx, id, "capture", captureID, "edit"); err != nil {
+		return "", "", "", err
+	}
 	var state, attachment string
 	var result *string
 	var same bool
@@ -58,6 +61,11 @@ func (s *Store) ConfirmCapture(ctx context.Context, id auth.Identity, captureID,
 	if state == "confirmed" && result != nil {
 		if !same {
 			return "", "", "", ErrConflict
+		}
+		if financialEntity(mid, entity) {
+			if err = lockFinancialReplay(ctx, tx, id, entity, *result, financialEdit); err != nil {
+				return "", "", "", err
+			}
 		}
 		return *result, mid, entity, nil
 	}
@@ -86,22 +94,54 @@ func (s *Store) ConfirmCapture(ctx context.Context, id auth.Identity, captureID,
 	if err = s.validateDomain(ctx, tx, id, mid, entity, "", data, data); err != nil {
 		return "", "", "", err
 	}
-	record, err := save(ctx, tx, id, m, e, value.UUID(), data, true, 0)
+	captureOperation, err := s.PrepareFinanceArtifact(ctx, tx, id, "capture", captureID, []FinanceResourceRef{{Kind: "attachment", ID: attachment}})
+	if err != nil {
+		return "", "", "", err
+	}
+	rid := value.UUID()
+	var financeOperation string
+	var financeScope financialScope
+	if financialEntity(mid, entity) {
+		financeOperation, financeScope, err = prepareLegacyFinanceMutation(withFinanceOrigin(ctx, "capture", []FinanceResourceRef{{Kind: "capture", ID: captureID}}),
+			tx, id, entity, rid, data)
+		if err != nil {
+			return "", "", "", err
+		}
+	}
+	record, err := save(ctx, tx, id, m, e, rid, data, true, 0)
 	if err != nil {
 		return "", "", "", err
 	}
 	if err = s.afterWrite(ctx, tx, id, m, e, record, in.Generation); err != nil {
 		return "", "", "", err
 	}
-	rid := String(record["id"])
+	if financeOperation != "" {
+		if err = completeFinanceOrigin(ctx, tx, id, financeScope, financeOperation); err != nil {
+			return "", "", "", err
+		}
+	}
 	// Compare and persist the approved input before domain-specific storage normalization.
 	if _, err = tx.Exec(ctx, "UPDATE core.capture_jobs SET state='confirmed',confirmed_values=$2,confirmed_by=$3,confirmed_at=now(),result_resource_id=$4 WHERE id=$1", captureID, normalized, id.UserID, rid); err != nil {
+		return "", "", "", err
+	}
+	attachmentSources := []FinanceResourceRef{{Kind: "capture", ID: captureID}}
+	if financialEntity(mid, entity) {
+		attachmentSources = append(attachmentSources, FinanceResourceRef{Kind: entity, ID: rid})
+	}
+	attachmentOperation, err := s.PrepareFinanceArtifact(ctx, tx, id, "attachment", attachment, attachmentSources)
+	if err != nil {
 		return "", "", "", err
 	}
 	if _, err = tx.Exec(ctx, "UPDATE core.attachments SET resource_type=$2,resource_id=$3 WHERE id=$1", attachment, entity, rid); err != nil {
 		return "", "", "", err
 	}
+	if err = s.CompleteFinanceArtifact(ctx, tx, id, attachmentOperation); err != nil {
+		return "", "", "", err
+	}
 	if err = Audit(ctx, tx, id, mid, entity, rid, "capture_confirm", requestID); err != nil {
+		return "", "", "", err
+	}
+	if err = s.CompleteFinanceArtifact(ctx, tx, id, captureOperation); err != nil {
 		return "", "", "", err
 	}
 	if err = tx.Commit(ctx); err != nil {

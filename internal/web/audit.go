@@ -111,8 +111,10 @@ func (s *Server) readAudit(r *http.Request) (auditResult, error) {
 		coalesce(request_id::text,''),entity_key,changes,details FROM visible
 		WHERE ($2='' OR display_module=$2) AND ($3='' OR action=$3)
 		AND ($4='' OR display_resource=nullif($4,'')::uuid) AND ($5='' OR request_id=nullif($5,'')::uuid)
+		AND core.finance_audit_visible($1,$7,$8,$9,$10,id)
 		AND ($6::bigint=0 OR id<$6) ORDER BY id DESC LIMIT 51`,
-		id.HouseholdID, filter.Module, filter.Action, filter.Resource, filter.Request, filter.Before)
+		id.HouseholdID, filter.Module, filter.Action, filter.Resource, filter.Request, filter.Before,
+		id.UserID, id.MembershipID, id.SessionID, id.AuthVersion)
 	if err != nil {
 		return result, err
 	}

@@ -11,6 +11,8 @@ import (
 	"household/internal/auth"
 	"household/internal/store"
 	"household/internal/value"
+
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 func financialReadsDenied(t *testing.T, f *integrationFixture, id auth.Identity, entry, line string, expected error) {
@@ -61,7 +63,9 @@ func TestFinancialReadCurrentSharedMemberAndActualAccessRevision(t *testing.T) {
 		contentVersion = got.Header.Version
 	}
 	policy := financialPolicyID(t, f, entry)
-	if err := expenseIntegrityAppSQL(t, f, "UPDATE core.financial_policies SET version=version+1 WHERE id=$1", policy); err != nil {
+	// This reader contract models a restored metadata-only revision. Runtime
+	// policy mutations use the separately tested private access factory.
+	if _, err := f.owner.Exec(f.ctx, "UPDATE core.financial_policies SET version=version+1 WHERE id=$1", policy); err != nil {
 		t.Fatal(err)
 	}
 	got, err := f.app.Store.ExpenseBundle(f.ctx, reader, store.String(entry["id"]))
@@ -79,8 +83,8 @@ func TestFinancialReadDamagedRequiredBindingsDenyEntireRecord(t *testing.T) {
 		name, statement string
 		child           bool
 	}{
-		{"missing parent subject", "DELETE FROM core.financial_subjects WHERE resource_type='entries' AND resource_id=$1", false},
-		{"missing child subject", "DELETE FROM core.financial_subjects WHERE resource_type='entry_lines' AND resource_id=$1", true},
+		{"missing parent origin", "DELETE FROM core.finance_origin_resources WHERE resource_type='entries' AND resource_id=$1", false},
+		{"missing child origin", "DELETE FROM core.finance_origin_resources WHERE resource_type='entry_lines' AND resource_id=$1", true},
 		{"retired policy", "UPDATE core.financial_policies SET retired_at=clock_timestamp() WHERE resource_id=$1", false},
 		{"retired child", "UPDATE core.financial_subjects SET retired_at=clock_timestamp() WHERE resource_type='entry_lines' AND resource_id=$1", true},
 		{"old policy generation", "UPDATE core.financial_policies SET module_generation=module_generation+1 WHERE resource_id=$1", false},
@@ -102,19 +106,36 @@ func TestFinancialReadDamagedRequiredBindingsDenyEntireRecord(t *testing.T) {
 	}
 }
 
+func TestFinancialReadRequiredSubjectsCannotBeRemoved(t *testing.T) {
+	for _, kind := range []string{"entries", "entry_lines"} {
+		t.Run(kind, func(t *testing.T) {
+			f, _, entry, line := expenseIntegrityFixture(t)
+			target := entry["id"]
+			if kind == "entry_lines" {
+				target = line["id"]
+			}
+			before := expenseEditSnapshot(t, f)
+			_, err := f.owner.Exec(f.ctx, "DELETE FROM core.financial_subjects WHERE household_id=$1 AND resource_type=$2 AND resource_id=$3", f.identity.HouseholdID, kind, target)
+			var problem *pgconn.PgError
+			if !errors.As(err, &problem) || problem.Code != "23503" || expenseEditSnapshot(t, f) != before {
+				t.Fatal("required subject lost its referential barrier", err)
+			}
+			if _, err := f.app.Store.ExpenseBundle(f.ctx, f.identity, store.String(entry["id"])); err != nil {
+				t.Fatal("rejected impossible corruption damaged the valid bundle", err)
+			}
+		})
+	}
+}
+
 func TestFinancialReadWrongChildPolicyAndUnseen101stBindingDenyBeforeContent(t *testing.T) {
 	f, category, entry, line := expenseIntegrityFixture(t)
 	other, _ := auditCreate(t, f, "expenses", "entries", store.Record{"occurred_on": "2026-10-26", "description": "Other policy", "amount_minor": "1.00"})
 	otherPolicy := financialPolicyID(t, f, other)
-	if _, err := f.owner.Exec(f.ctx, "UPDATE core.financial_subjects SET policy_id=$2 WHERE resource_type='entry_lines' AND resource_id=$1", line["id"], otherPolicy); err != nil {
-		t.Fatal(err)
-	}
+	financialReadCorruptChildPolicy(t, f, store.String(line["id"]), otherPolicy)
 	if bundle, err := f.app.Store.ExpenseBundle(f.ctx, f.identity, store.String(entry["id"])); !errors.Is(err, store.ErrNotFound) || !reflect.DeepEqual(bundle, store.ExpenseBundle{}) {
 		t.Fatal("wrong-policy child produced a partial sum", bundle, err)
 	}
-	if _, err := f.owner.Exec(f.ctx, "UPDATE core.financial_subjects SET policy_id=$2 WHERE resource_type='entry_lines' AND resource_id=$1", line["id"], financialPolicyID(t, f, entry)); err != nil {
-		t.Fatal(err)
-	}
+	financialReadCorruptChildPolicy(t, f, store.String(line["id"]), financialPolicyID(t, f, entry))
 	if _, err := f.owner.Exec(f.ctx, `INSERT INTO expenses.entry_lines(household_id,entry_id,category_id,amount_minor,note,position,created_by)
  SELECT $1,$2,$3,1,repeat('x',11000),n,$4 FROM generate_series(1,100) n`, f.identity.HouseholdID, entry["id"], category["id"], f.identity.UserID); err != nil {
 		t.Fatal(err)
@@ -128,8 +149,57 @@ func TestFinancialReadWrongChildPolicyAndUnseen101stBindingDenyBeforeContent(t *
 	}
 	m, _ := f.app.Store.Module("expenses")
 	e, _ := m.Entity("entry_lines")
+	if got, err := f.app.Store.Get(f.ctx, f.identity, m, e, store.String(line["id"])); !errors.Is(err, store.ErrNotFound) || got != nil {
+		t.Fatal("an intact child escaped its incomplete parent's authority", got, err)
+	}
 	if rows, err := f.app.Store.List(f.ctx, f.identity, m, e, "", 100, 0); err != nil || len(rows) != 0 {
 		t.Fatal("partial financial child set escaped through generic list", len(rows), err)
+	}
+}
+
+// A restored wrong-policy fixture must remain relationally valid. Preserve its
+// complete requirement membership while the real Owner changes the binding;
+// no FK, trigger or readiness check is disabled to create the test corruption.
+func financialReadCorruptChildPolicy(t *testing.T, f *integrationFixture, line, policy string) {
+	t.Helper()
+	tx, err := f.owner.Begin(f.ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = tx.Rollback(f.ctx) }()
+	var subject string
+	if err = tx.QueryRow(f.ctx, `SELECT id FROM core.financial_subjects WHERE household_id=$1 AND resource_type='entry_lines' AND resource_id=$2`, f.identity.HouseholdID, line).Scan(&subject); err != nil {
+		t.Fatal(err)
+	}
+	rows, err := tx.Query(f.ctx, `SELECT set_id FROM core.financial_requirement_members WHERE household_id=$1 AND subject_id=$2 ORDER BY set_id LIMIT 1025`, f.identity.HouseholdID, subject)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sets := []string{}
+	for rows.Next() {
+		var set string
+		if err = rows.Scan(&set); err != nil {
+			rows.Close()
+			t.Fatal(err)
+		}
+		sets = append(sets, set)
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil || len(sets) > 1024 {
+		t.Fatal("bounded complete corruption fixture requirements:", err)
+	}
+	if _, err = tx.Exec(f.ctx, `DELETE FROM core.financial_requirement_members WHERE household_id=$1 AND subject_id=$2`, f.identity.HouseholdID, subject); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = tx.Exec(f.ctx, `UPDATE core.financial_subjects SET policy_id=$3 WHERE household_id=$1 AND id=$2`, f.identity.HouseholdID, subject, policy); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = tx.Exec(f.ctx, `INSERT INTO core.financial_requirement_members(household_id,set_id,subject_id,policy_id) SELECT $1,member,$3,$4 FROM unnest($2::uuid[]) member`, f.identity.HouseholdID, sets, subject, policy); err != nil {
+		t.Fatal(err)
+	}
+	if err = tx.Commit(f.ctx); err != nil {
+		t.Fatal("commit coherent restored child-policy corruption:", err)
 	}
 }
 
@@ -137,9 +207,15 @@ func TestFinancialReadFiltersBeforeLimitAndOffset(t *testing.T) {
 	f, _, entry, _ := expenseIntegrityFixture(t)
 	second, _ := auditCreate(t, f, "expenses", "entries", store.Record{"occurred_on": "2026-10-26", "description": "Second visible", "amount_minor": "2.00"})
 	hidden, _ := auditCreate(t, f, "expenses", "entries", store.Record{"occurred_on": "2026-10-26", "description": "Hidden newest", "amount_minor": "3.00"})
-	if _, err := f.owner.Exec(f.ctx, `UPDATE expenses.entries SET created_at=CASE id WHEN $1 THEN '2026-01-01'::timestamptz
- WHEN $2 THEN '2026-01-02'::timestamptz WHEN $3 THEN '2026-01-03'::timestamptz ELSE created_at END WHERE household_id=$4`, entry["id"], second["id"], hidden["id"], f.identity.HouseholdID); err != nil {
-		t.Fatal(err)
+	// Keep the actual App-created row images intact. Rewriting created_at as
+	// Owner invalidates their provenance hashes and is correctly unreadable.
+	// Sequential real creates already provide the intended hidden-first order.
+	var chronological bool
+	if err := f.pool.QueryRow(f.ctx, `SELECT first.created_at<second.created_at AND second.created_at<newest.created_at
+ FROM expenses.entries first JOIN expenses.entries second ON second.household_id=first.household_id AND second.id=$2
+ JOIN expenses.entries newest ON newest.household_id=first.household_id AND newest.id=$3
+ WHERE first.household_id=$4 AND first.id=$1`, entry["id"], second["id"], hidden["id"], f.identity.HouseholdID).Scan(&chronological); err != nil || !chronological {
+		t.Fatal("actual fixture creation order is not strict", chronological, err)
 	}
 	if _, err := f.owner.Exec(f.ctx, "UPDATE core.financial_policies SET retired_at=clock_timestamp() WHERE resource_id=$1", hidden["id"]); err != nil {
 		t.Fatal(err)

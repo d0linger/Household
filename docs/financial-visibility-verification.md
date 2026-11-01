@@ -1,6 +1,6 @@
 # Financial visibility — EX19 implementation evidence
 
-EX19 remains in progress. Selected financial visibility is unavailable. The financial foundation remains Core26/Expenses4 from source checkpoint839ff73. Independently verified SH14/SH13 use Shopping8(checkpointfd39841); development source now also contains PA14 with its final browser/race gates pending:394source/dependency files and70migration files. Explicit source bridges preserve prior SQL. Later financial producer changes remain isolated preparations; live8100 has not been upgraded. Historical shared-editor evidence at390036a (335main native tests,74.1% internal coverage,52scoped race contracts and846browser checks) belongs to that earlier source and does not verify the later preparations.
+EX19 remains in progress. Selected financial visibility is unavailable. The financial foundation remains Core26/Expenses4 from source checkpoint839ff73. SH14/SH13 and PA14 are locally verified(checkpointsfd39841/d30c219); current development source additionally contains FU01 with its browser/race gates pending:404source/dependency files and71migration files. Explicit source bridges preserve prior SQL. Later financial producer changes remain isolated preparations; live8100 has not been upgraded. Historical shared-editor evidence at390036a (335main native tests,74.1% internal coverage,52scoped race contracts and846browser checks) belongs to that earlier source and does not verify the later preparations.
 
 ## Current producer checklist
 

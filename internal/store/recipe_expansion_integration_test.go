@@ -24,6 +24,7 @@ import (
 	migratepgx "github.com/golang-migrate/migrate/v4/database/pgx/v5"
 	"github.com/golang-migrate/migrate/v4/source/iofs"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/jackc/pgx/v5/stdlib"
 )
@@ -53,6 +54,14 @@ func newRecipeExpansionPredecessorFixture(t *testing.T) *recipeExpansionFixture 
 
 func newRecipeExpansionFixtureForProfile(t *testing.T, predecessor bool) *recipeExpansionFixture {
 	t.Helper()
+	if predecessor {
+		return newRecipeExpansionFixtureForMigration(t, recipeExpansionMigratePredecessor)
+	}
+	return newRecipeExpansionFixtureForMigration(t, nil)
+}
+
+func newRecipeExpansionFixtureForMigration(t *testing.T, profile func(*testing.T, context.Context, string, *pgxpool.Pool)) *recipeExpansionFixture {
+	t.Helper()
 	ownerURL, appURL := os.Getenv("HOUSEHOLD_TEST_OWNER_URL"), os.Getenv("HOUSEHOLD_TEST_APP_URL")
 	if ownerURL == "" || appURL == "" {
 		if os.Getenv("HOUSEHOLD_REQUIRE_INTEGRATION") == "1" {
@@ -80,6 +89,15 @@ func newRecipeExpansionFixtureForProfile(t *testing.T, predecessor bool) *recipe
 	app, err := database.Open(ctx, appURL, 8)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if os.Getenv("HOUSEHOLD_TEST_QUERY_DIAGNOSTICS") == "1" {
+		cfg := app.Config()
+		app.Close()
+		cfg.ConnConfig.Tracer = recipeExpansionQueryDiagnostics{t: t}
+		app, err = pgxpool.NewWithConfig(ctx, cfg)
+		if err != nil {
+			t.Fatal("open diagnostic test pool:", err)
+		}
 	}
 	t.Cleanup(app.Close)
 	for _, entry := range []struct {
@@ -110,6 +128,10 @@ func newRecipeExpansionFixtureForProfile(t *testing.T, predecessor bool) *recipe
 		lock.Release()
 	})
 	t.Cleanup(func() {
+		if t.Failed() && os.Getenv("HOUSEHOLD_TEST_RETAIN_FAILED_FIXTURE") == "1" {
+			t.Log("diagnostic only: failed isolated fixture retained; roles and advisory lock still released")
+			return
+		}
 		cleanup, stop := context.WithTimeout(context.Background(), 20*time.Second)
 		defer stop()
 		if err := recipeExpansionReset(cleanup, owner); err != nil {
@@ -117,10 +139,10 @@ func newRecipeExpansionFixtureForProfile(t *testing.T, predecessor bool) *recipe
 		}
 	})
 	if err = recipeExpansionReset(ctx, owner); err != nil {
-		t.Fatal(err)
+		t.Fatal("reset isolated fixture before migration:", err)
 	}
-	if predecessor {
-		recipeExpansionMigratePredecessor(t, ctx, ownerURL, owner)
+	if profile != nil {
+		profile(t, ctx, ownerURL, owner)
 	} else if err = database.Migrate(ctx, ownerURL); err != nil {
 		t.Fatal(err)
 	}
@@ -141,21 +163,50 @@ func newRecipeExpansionFixtureForProfile(t *testing.T, predecessor bool) *recipe
 		enabled[descriptor.ID] = true
 	}
 	if err = a.Bootstrap(ctx, ids, enabled); err != nil {
-		t.Fatal(err)
+		t.Fatal("bootstrap isolated fixture:", err)
 	}
 	if _, err = owner.Exec(ctx, "UPDATE core.users SET must_change_password=false WHERE username=$1", cfg.AdminUsername); err != nil {
-		t.Fatal(err)
+		t.Fatal("set isolated bootstrap password state:", err)
 	}
 	_, identity, err := a.Login(ctx, cfg.AdminUsername, recipeExpansionPassword, "", "127.0.0.1", "Recipe test")
 	if err != nil {
-		t.Fatal(err)
+		t.Fatal("login isolated fixture:", err)
 	}
 	s := New(app, mods)
 	if err = s.LoadStates(ctx); err != nil {
-		t.Fatal(err)
+		t.Fatal("load isolated module states:", err)
 	}
 	return &recipeExpansionFixture{ctx: ctx, ownerURL: ownerURL, owner: owner, app: app,
 		store: s, identity: identity}
+}
+
+type recipeExpansionQueryDiagnostics struct{ t *testing.T }
+type recipeExpansionQueryTraceKey struct{}
+type recipeExpansionQueryTrace struct {
+	started time.Time
+	label   string
+}
+
+func (d recipeExpansionQueryDiagnostics) TraceQueryStart(ctx context.Context, _ *pgx.Conn, data pgx.TraceQueryStartData) context.Context {
+	label := strings.Join(strings.Fields(data.SQL), " ")
+	if len(label) > 90 {
+		label = label[:90]
+	}
+	return context.WithValue(ctx, recipeExpansionQueryTraceKey{}, recipeExpansionQueryTrace{time.Now(), label})
+}
+
+func (d recipeExpansionQueryDiagnostics) TraceQueryEnd(ctx context.Context, _ *pgx.Conn, data pgx.TraceQueryEndData) {
+	trace, ok := ctx.Value(recipeExpansionQueryTraceKey{}).(recipeExpansionQueryTrace)
+	if !ok {
+		return
+	}
+	elapsed := time.Since(trace.started)
+	if elapsed >= 100*time.Millisecond || data.Err != nil || os.Getenv("HOUSEHOLD_TEST_QUERY_DIAGNOSTICS") == "1" {
+		d.t.Logf("isolated query diagnostic %s %q", elapsed, trace.label)
+		if problem, ok := errors.AsType[*pgconn.PgError](data.Err); ok {
+			d.t.Logf("isolated query failure SQLSTATE=%s message=%s context=%s", problem.Code, problem.Message, problem.Where)
+		}
+	}
 }
 
 func recipeExpansionReset(ctx context.Context, owner *pgxpool.Pool) error {
@@ -180,7 +231,7 @@ func TestRecipeExpansionFreshReadinessAndImportPurpose(t *testing.T) {
 		t.Fatalf("fresh contracts core=%t recipes=%t audit=%t fuel=%t error=%v",
 			coreReady, recipesReady, audited, fuelReady, err)
 	}
-	if err := f.owner.QueryRow(f.ctx, `SELECT count(*) FROM core.audit_policies`).Scan(&policies); err != nil || policies != 100 {
+	if err := f.owner.QueryRow(f.ctx, `SELECT count(*) FROM core.audit_policies`).Scan(&policies); err != nil || policies != 121 {
 		t.Fatalf("fresh audit policy count %d: %v", policies, err)
 	}
 	var teaspoons, tablespoons bool

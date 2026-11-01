@@ -51,6 +51,15 @@ func (s *Store) Action(ctx context.Context, id auth.Identity, m module.Descripto
 		return nil, err
 	}
 	var priorHash, prior []byte
+	var durableFinance Record
+	var durableFinanceFound bool
+	financeProofOperation := "legacy." + op
+	if financialEntity(m.ID, e.ID) {
+		durableFinance, durableFinanceFound, err = financeLegacyReplay(ctx, tx, id, key, financeProofOperation, e.ID, "", hash[:])
+		if err != nil {
+			return nil, err
+		}
+	}
 	err = tx.QueryRow(ctx, "SELECT request_hash,response_payload FROM core.idempotency_records WHERE household_id=$1 AND user_id=$2 AND operation=$3 AND key=$4", id.HouseholdID, id.UserID, op, key).Scan(&priorHash, &prior)
 	if err == nil {
 		if !bytes.Equal(priorHash, hash[:]) {
@@ -67,6 +76,12 @@ func (s *Store) Action(ctx context.Context, id auth.Identity, m module.Descripto
 	}
 	if !errors.Is(err, pgx.ErrNoRows) {
 		return nil, err
+	}
+	if durableFinanceFound {
+		if err = financialActionReplay(ctx, tx, id, m.ID, e.ID, rid, action, durableFinance); err != nil {
+			return nil, err
+		}
+		return durableFinance, nil
 	}
 	if financialEntity(m.ID, e.ID) {
 		if err = lockFinancialResource(ctx, tx, id, e.ID, rid); err != nil {
@@ -106,6 +121,8 @@ func (s *Store) Action(ctx context.Context, id auth.Identity, m module.Descripto
 		}
 		data[k] = val
 	}
+	var financeOperation string
+	var financeScope financialScope
 	switch m.ID + "/" + e.ID + "/" + action {
 	case "shopping/items/merge":
 		raw, err = s.mergeShoppingItems(ctx, tx, id, record, data)
@@ -142,6 +159,10 @@ func (s *Store) Action(ctx context.Context, id auth.Identity, m module.Descripto
 		if String(record["state"]) != "draft" {
 			return nil, ErrConflict
 		}
+		financeOperation, financeScope, err = prepareLegacyFinanceMutation(ctx, tx, id, "entries", rid, record)
+		if err != nil {
+			return nil, err
+		}
 		var count int
 		if err = tx.QueryRow(ctx, "SELECT count(*) FROM expenses.entry_lines WHERE household_id=$1 AND entry_id=$2", id.HouseholdID, rid).Scan(&count); err != nil {
 			return nil, err
@@ -161,6 +182,11 @@ func (s *Store) Action(ctx context.Context, id auth.Identity, m module.Descripto
 			return nil, Invalid{"nur gebuchte Einträge stornieren"}
 		}
 		newID := value.UUID()
+		financeOperation, financeScope, err = prepareLegacyFinanceMutation(withFinanceOrigin(ctx, "reversal",
+			[]FinanceResourceRef{{Kind: "entries", ID: rid}}), tx, id, "entries", newID, nil)
+		if err != nil {
+			return nil, err
+		}
 		_, err = tx.Exec(ctx, "INSERT INTO expenses.entries(id,household_id,occurred_on,payee,description,amount_minor,kind,reverses_entry_id,created_by) VALUES($1,$2,current_date,$3,$4,$5,'reversal',$6,$7)", newID, id.HouseholdID, record["payee"], "Storno: "+String(record["description"]), -Int(record["amount_minor"]), rid, id.UserID)
 		if err != nil {
 			return nil, err
@@ -271,6 +297,14 @@ func (s *Store) Action(ctx context.Context, id auth.Identity, m module.Descripto
 	}
 	if err = Audit(ctx, tx, id, m.ID, e.ID, rid, action, requestID); err != nil {
 		return nil, err
+	}
+	if financeOperation != "" {
+		if err = completeFinanceOrigin(ctx, tx, id, financeScope, financeOperation); err != nil {
+			return nil, err
+		}
+		if err = financeStoreLegacyProof(ctx, tx, id, key, financeProofOperation, e.ID, String(result["id"]), hash[:], in.Generation, Int(result["version"])); err != nil {
+			return nil, err
+		}
 	}
 	targetJSON, err := json.Marshal(targets)
 	if err != nil {
@@ -440,6 +474,11 @@ func (s *Store) fuelToExpense(ctx context.Context, tx pgx.Tx, id auth.Identity, 
 	newID := value.UUID()
 	m, _ := s.Module("expenses")
 	e, _ := m.Entity("entries")
+	operation, scope, err := prepareLegacyFinanceMutation(withFinanceOrigin(ctx, "fuel",
+		[]FinanceResourceRef{{Kind: "shared_fuel_fillups", ID: String(fill["id"])}}), tx, id, "entries", newID, nil)
+	if err != nil {
+		return nil, err
+	}
 	r, err := save(ctx, tx, id, m, e, newID, Record{"occurred_on": fill["occurred_on"], "description": "Tankvorgang: " + String(fill["station"]), "payee": fill["station"], "amount_minor": Int(fill["total_minor"]), "kind": "expense"}, true, 0)
 	if err != nil {
 		return nil, err
@@ -456,6 +495,9 @@ func (s *Store) fuelToExpense(ctx context.Context, tx pgx.Tx, id auth.Identity, 
 		return nil, err
 	}
 	if err = s.afterWrite(ctx, tx, id, m, e, r, generation); err != nil {
+		return nil, err
+	}
+	if err = completeFinanceOrigin(ctx, tx, id, scope, operation); err != nil {
 		return nil, err
 	}
 	return Record{"message": "Ausgabe einmalig verknüpft", "expense_id": newID}, nil

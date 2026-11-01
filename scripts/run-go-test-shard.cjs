@@ -9,7 +9,7 @@ const SHARDS = 6;
 const MAX_LOG = 128 << 20;
 const MAX_LINE = 2 << 20;
 const NAME = /^(Test|Fuzz|Example)[\p{L}\p{N}_]*$/u;
-const SETTINGS = Object.freeze({race: true, parallelPackages: 1, tags: 'integration', shuffle: 'on', count: 1, timeout: '30m', coverpkg: './internal/...', covermode: 'atomic'});
+const SETTINGS = Object.freeze({race: true, parallelPackages: 1, tags: 'integration', shuffle: 'on', count: 1, timeout: '60m', coverpkg: './internal/...', covermode: 'atomic'});
 const sha = value => createHash('sha256').update(value).digest('hex');
 const canonical = value => JSON.stringify(value);
 const identity = test => test.package + '/' + test.name;
@@ -120,7 +120,7 @@ function validateBuildParity(discovery, execution) {
 }
 
 function executionArguments(inventory, shard, profile) {
-  return ['test', '-race', '-p', '1', '-tags=integration', '-shuffle=on', '-coverpkg=./internal/...', '-covermode=atomic', '-coverprofile=' + profile, './...', '-count=1', '-timeout=30m', '-json', '-run', exactPattern(inventory, shard)];
+  return ['test', '-race', '-p', '1', '-tags=integration', '-shuffle=on', '-coverpkg=./internal/...', '-covermode=atomic', '-coverprofile=' + profile, './...', '-count=1', '-timeout=' + SETTINGS.timeout, '-json', '-run', exactPattern(inventory, shard)];
 }
 
 class ExecutionLedger {

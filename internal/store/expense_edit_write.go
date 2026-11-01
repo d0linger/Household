@@ -19,11 +19,29 @@ func (s *Store) writeExpenseEdit(ctx context.Context, tx pgx.Tx, id auth.Identit
 	if creating {
 		entryID = value.UUID()
 	}
+	scope, err := readFinancialScope(ctx, tx, id)
+	if err != nil {
+		return nil, err
+	}
+	if !creating {
+		var advanced bool
+		if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM expenses.entry_finance WHERE household_id=$1 AND entry_id=$2)`, id.HouseholdID, entryID).Scan(&advanced); err != nil {
+			return nil, err
+		}
+		if advanced {
+			return nil, Invalid{"Buchung mit Finanzdetails im Finanzarbeitsbereich gemeinsam bearbeiten"}
+		}
+	}
+	origin, sources := financeOriginFor(ctx, nil)
+	op, err := prepareFinanceOrigin(ctx, tx, id, scope, "entries", entryID, origin, sources)
+	if err != nil {
+		return nil, err
+	}
 	var payer any
 	if draft.Header.PaidByMembershipID != "" {
 		payer = draft.Header.PaidByMembershipID
 	}
-	_, err := save(ctx, tx, id, m, entryEntity, entryID, Record{
+	_, err = save(ctx, tx, id, m, entryEntity, entryID, Record{
 		"occurred_on": draft.Header.OccurredOn, "description": draft.Header.Description, "payee": draft.Header.Payee,
 		"amount_minor": draft.Header.AmountMinor, "kind": draft.Header.Kind, "paid_by_membership_id": payer,
 	}, creating, draft.Version)
@@ -69,6 +87,9 @@ func (s *Store) writeExpenseEdit(ctx context.Context, tx pgx.Tx, id auth.Identit
 		}
 	}
 	if draft.Action == "post" {
+		if err = financeLockDebts(ctx, tx, id.HouseholdID); err != nil {
+			return nil, err
+		}
 		if _, err = tx.Exec(ctx, "UPDATE expenses.entries SET state='posted',posted_at=clock_timestamp(),updated_at=clock_timestamp(),version=version+1 WHERE household_id=$1 AND id=$2", id.HouseholdID, entryID); err != nil {
 			return nil, err
 		}
@@ -89,6 +110,9 @@ func (s *Store) writeExpenseEdit(ctx context.Context, tx pgx.Tx, id auth.Identit
 		action = "post"
 	}
 	if err = Audit(ctx, tx, id, "expenses", "entries", entryID, action, requestID); err != nil {
+		return nil, err
+	}
+	if err = completeFinanceOrigin(ctx, tx, id, scope, op); err != nil {
 		return nil, err
 	}
 	return entry, nil

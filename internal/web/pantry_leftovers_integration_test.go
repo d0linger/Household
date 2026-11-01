@@ -457,6 +457,31 @@ func TestPantryLeftoversTransferLineageRefusesForeignOrUnmatchedEvidence(t *test
 	if _, err = f.app.Store.PantryPreparedLot(f.ctx, foreign, target); !errors.Is(err, store.ErrForbidden) {
 		t.Fatal("foreign household read prepared lineage", err)
 	}
+	m, _ := f.app.Store.Module("pantry")
+	e, _ := m.Entity("lots")
+	current, err := f.app.Store.Get(f.ctx, f.identity, m, e, root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	product := store.String(current["product_id"])
+	sources, err := f.app.Store.PantryFoodFactsExportSources(f.ctx, f.identity, "products", []string{product})
+	if err != nil || sources[product] != "[]" {
+		t.Fatal("reviewed current Pantry source export was unavailable or invented attribution", sources, err)
+	}
+	input := auditMutation(t, f, "pantry", store.Record{"location_id": destination["id"], "quantity": "0.1"}, store.Int(current["version"]))
+	version := database.ExpectedVersion("pantry")
+	if _, err = f.owner.Exec(f.ctx, "UPDATE pantry.schema_migrations SET version=$1", version+1); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _, _ = f.owner.Exec(f.ctx, "UPDATE pantry.schema_migrations SET version=$1", version) }()
+	_, transferErr := f.app.Store.Action(f.ctx, f.identity, m, e, root, "transfer", value.UUID(), value.UUID(), input)
+	futureSources, sourceErr := f.app.Store.PantryFoodFactsExportSources(f.ctx, f.identity, "products", []string{product})
+	if _, err = f.owner.Exec(f.ctx, "UPDATE pantry.schema_migrations SET version=$1", version); err != nil {
+		t.Fatal(err)
+	}
+	if !errors.Is(transferErr, store.ErrConflict) || !errors.Is(sourceErr, store.ErrConflict) || futureSources != nil {
+		t.Fatal("unreviewed future Pantry version accepted a transfer or source export", transferErr, sourceErr, futureSources)
+	}
 	if err = f.pool.QueryRow(f.ctx, snapshot).Scan(&after); err != nil || before != after {
 		t.Fatal("refused lineage changed lots/journal/preparation/descendants", before, after, err)
 	}

@@ -52,9 +52,9 @@ func TestFinancialFoundationRolloutBarrierAndIdentityGuards(t *testing.T) {
 	f, _, entry, line := expenseIntegrityFixture(t)
 	policy := financialPolicyID(t, f, entry)
 	for _, test := range []struct{ statement, code string }{
-		{"UPDATE core.financial_policies SET access_mode='selected' WHERE id=$1", "23514"},
+		{"UPDATE core.financial_policies SET access_mode='selected' WHERE id=$1", "42501"},
 		{"UPDATE core.financial_policies SET module_generation=module_generation+1 WHERE id=$1", "42501"},
-		{"UPDATE core.financial_policies SET resource_id=gen_random_uuid() WHERE id=$1", "23514"},
+		{"UPDATE core.financial_policies SET resource_id=gen_random_uuid() WHERE id=$1", "42501"},
 	} {
 		err := expenseIntegrityAppSQL(t, f, test.statement, policy)
 		if pgerr, ok := err.(*pgconn.PgError); !ok || pgerr.Code != test.code {
@@ -72,11 +72,15 @@ func TestFinancialFoundationRolloutBarrierAndIdentityGuards(t *testing.T) {
 			t.Fatal("runtime role can delete financial history", table, err)
 		}
 	}
-	if err := expenseIntegrityAppSQL(t, f, "UPDATE core.financial_policies SET version=999,updated_at='1970-01-01' WHERE id=$1", policy); err != nil {
+	var originalVersion int64
+	if err := f.pool.QueryRow(f.ctx, "SELECT version FROM core.financial_policies WHERE id=$1", policy).Scan(&originalVersion); err != nil {
 		t.Fatal(err)
 	}
+	if err := expenseIntegrityAppSQL(t, f, "UPDATE core.financial_policies SET version=999,updated_at='1970-01-01' WHERE id=$1", policy); err == nil {
+		t.Fatal("client-controlled metadata bypassed the private identity factory")
+	}
 	var honest bool
-	if err := f.pool.QueryRow(f.ctx, "SELECT version=2 AND updated_at>'2026-01-01' AND changed_by=$2 FROM core.financial_policies WHERE id=$1", policy, f.identity.UserID).Scan(&honest); err != nil || !honest {
+	if err := f.pool.QueryRow(f.ctx, "SELECT version=$3 AND updated_at>'2026-01-01' AND changed_by=$2 FROM core.financial_policies WHERE id=$1", policy, f.identity.UserID, originalVersion).Scan(&honest); err != nil || !honest {
 		t.Fatal("server revision/time/actor were client-controlled", honest, err)
 	}
 }
@@ -84,15 +88,14 @@ func TestFinancialFoundationRolloutBarrierAndIdentityGuards(t *testing.T) {
 func TestFinancialFoundationDeletionRetainsDeniedIdentity(t *testing.T) {
 	f, _, entry, line := expenseIntegrityFixture(t)
 	policy := financialPolicyID(t, f, entry)
-	tx, err := f.app.Store.BeginMutation(f.ctx, f.identity, "expenses", f.app.Store.States()["expenses"].Generation)
+	current, err := f.app.Store.ExpenseBundle(f.ctx, f.identity, store.String(entry["id"]))
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _ = tx.Rollback(f.ctx) }()
-	if _, err = tx.Exec(f.ctx, "DELETE FROM expenses.entries WHERE household_id=$1 AND id=$2", f.identity.HouseholdID, entry["id"]); err != nil {
-		t.Fatal(err)
-	}
-	if err = tx.Commit(f.ctx); err != nil {
+	m, _ := f.app.Store.Module("expenses")
+	e, _ := m.Entity("entries")
+	if err = f.app.Store.Delete(f.ctx, f.identity, m, e, store.String(entry["id"]), current.Header.Version,
+		f.app.Store.States()["expenses"].Generation, value.UUID()); err != nil {
 		t.Fatal(err)
 	}
 	var retired bool
@@ -117,13 +120,13 @@ func TestFinancialFoundationRejectsPhantomsAndPrematureRetirement(t *testing.T) 
 		{"financial_subjects", "resource_id", store.String(line["id"])},
 	} {
 		err := expenseIntegrityAppSQL(t, f, "UPDATE core."+target.table+" SET retired_at=clock_timestamp() WHERE "+target.column+"=$1", target.id)
-		if pgerr, ok := err.(*pgconn.PgError); !ok || pgerr.Code != "23514" {
+		if pgerr, ok := err.(*pgconn.PgError); !ok || pgerr.Code != "42501" {
 			t.Fatal("live source identity retired before deletion", target.table, err)
 		}
 	}
 	err := expenseIntegrityAppSQL(t, f, `INSERT INTO core.financial_subjects(household_id,module_id,module_generation,resource_type,resource_id,policy_id,created_by,changed_by)
 	 VALUES($1,'expenses',$2,'entry_lines',$3,$4,$5,$5)`, f.identity.HouseholdID, f.app.Store.States()["expenses"].Generation, value.UUID(), policy, f.identity.UserID)
-	if pgerr, ok := err.(*pgconn.PgError); !ok || pgerr.Code != "23514" {
+	if pgerr, ok := err.(*pgconn.PgError); !ok || pgerr.Code != "42501" {
 		t.Fatal("phantom source binding committed", err)
 	}
 	var policies, subjects int
@@ -170,25 +173,31 @@ func TestFinancialFoundationReadinessRejectsPrivilegesAndRemovedBarrier(t *testi
 			t.Fatal("disabled financial trigger accepted", target.table, target.trigger)
 		}
 	}
-	if _, err := f.owner.Exec(f.ctx, "ALTER TABLE core.financial_policies DROP CONSTRAINT financial_rollout_shared_only"); err != nil {
+	if _, err := f.owner.Exec(f.ctx, "ALTER TABLE core.financial_policies DROP CONSTRAINT financial_access_mode"); err != nil {
 		t.Fatal(err)
 	}
 	err := database.Ready(f.ctx, f.pool)
-	if _, restore := f.owner.Exec(f.ctx, "ALTER TABLE core.financial_policies ADD CONSTRAINT financial_rollout_shared_only CHECK(access_mode='household')"); restore != nil {
+	if _, restore := f.owner.Exec(f.ctx, "ALTER TABLE core.financial_policies ADD CONSTRAINT financial_access_mode CHECK(access_mode IN('household','selected'))"); restore != nil {
 		t.Fatal(restore)
 	}
 	if err == nil {
-		t.Fatal("missing shared-only rollout barrier accepted")
+		t.Fatal("missing current access-mode constraint accepted")
 	}
 	ctx := audit.WithActor(f.ctx, f.identity.UserID, f.identity.HouseholdID)
 	if _, err := audit.Exec(ctx, f.pool, "UPDATE core.financial_policies SET access_mode='selected' WHERE id=$1", policy); err == nil {
-		t.Fatal("selected access became enabled during foundation rollout")
+		t.Fatal("direct selected-access mutation bypassed its private factory")
 	}
 }
 
 func TestFinancialFoundationSourceContentionFailsBeforeRelease(t *testing.T) {
 	f, _, entry, _ := expenseIntegrityFixture(t)
-	policy := financialPolicyID(t, f, entry)
+	current, err := f.app.Store.ExpenseBundle(f.ctx, f.identity, store.String(entry["id"]))
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, _ := f.app.Store.Module("expenses")
+	e, _ := m.Entity("entries")
+	input := auditMutation(t, f, "expenses", store.Record{"description": "Source-lock retry"}, current.Header.Version)
 	lock, err := f.owner.Begin(f.ctx)
 	if err != nil {
 		t.Fatal(err)
@@ -199,16 +208,14 @@ func TestFinancialFoundationSourceContentionFailsBeforeRelease(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(f.ctx, 4*time.Second)
 	defer cancel()
-	bounded := *f
-	bounded.ctx = ctx
-	err = expenseIntegrityAppSQL(t, &bounded, "UPDATE core.financial_policies SET version=version+1 WHERE id=$1", policy)
+	_, err = f.app.Store.Write(ctx, f.identity, m, e, store.String(entry["id"]), value.UUID(), value.UUID(), input)
 	if pgerr, ok := err.(*pgconn.PgError); !ok || pgerr.Code != "55P03" {
 		t.Fatal("policy/source opposite order waited or bypassed the source lock", err)
 	}
 	if err := lock.Rollback(f.ctx); err != nil {
 		t.Fatal(err)
 	}
-	if err := expenseIntegrityAppSQL(t, f, "UPDATE core.financial_policies SET version=version+1 WHERE id=$1", policy); err != nil {
+	if _, err := f.app.Store.Write(f.ctx, f.identity, m, e, store.String(entry["id"]), value.UUID(), value.UUID(), input); err != nil {
 		t.Fatal("released source could not be retried", err)
 	}
 }
@@ -286,7 +293,7 @@ func financialDomainSnapshot(t *testing.T, f *integrationFixture) string {
 	t.Helper()
 	var snapshot string
 	if err := f.owner.QueryRow(f.ctx, `SELECT jsonb_build_object(
-	 'entries',(SELECT jsonb_agg(to_jsonb(e) ORDER BY id) FROM expenses.entries e),
+	 'entries',(SELECT jsonb_agg((to_jsonb(e)-'money_mode') ORDER BY id) FROM expenses.entries e),
 	 'lines',(SELECT jsonb_agg(to_jsonb(l) ORDER BY id) FROM expenses.entry_lines l),
 	 'categories',(SELECT jsonb_agg(to_jsonb(c) ORDER BY id) FROM expenses.categories c))::text`).Scan(&snapshot); err != nil {
 		t.Fatal(err)
@@ -305,6 +312,7 @@ func TestFinancialFoundationPopulatedPriorUpgradePreservesExactLegacy(t *testing
 	if after := financialDomainSnapshot(t, f); before != after {
 		t.Fatal("financial identity backfill changed original facts or content versions")
 	}
+	assertLegacyFinanceMoneyMode(t, f)
 	var policies, subjects int
 	var explicit bool
 	if err := f.owner.QueryRow(f.ctx, `SELECT (SELECT count(*) FROM core.financial_policies),count(*),bool_and(

@@ -4,7 +4,6 @@ package web
 
 import (
 	"bytes"
-	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -14,8 +13,6 @@ import (
 	"log/slog"
 	"mime/multipart"
 	"net/http"
-	"os"
-	"path/filepath"
 	"sync"
 	"testing"
 	"time"
@@ -26,6 +23,7 @@ import (
 	"household/internal/value"
 	"household/internal/worker"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/pquerna/otp/totp"
 )
@@ -396,18 +394,30 @@ func TestApplicationContract(t *testing.T) {
 	// Approved values remain canonical even when storage maps zero timers to NULL.
 	seedCapture := func(mid, entity, rid string) string {
 		t.Helper()
-		aid, key, cid := value.UUID(), value.UUID(), value.UUID()
-		if writeErr := os.WriteFile(filepath.Join(cfg.UploadDir, key), picture.Bytes(), 0600); writeErr != nil {
-			t.Fatal(writeErr)
+		// Use the real upload producer so the source receives its explicit
+		// nonfinancial classification before confirmation or canonical replay.
+		var body bytes.Buffer
+		form := multipart.NewWriter(&body)
+		for k, v := range map[string]string{"csrf": app.Auth.CSRF(token, "session"), "generation": fmt.Sprint(app.Store.States()[mid].Generation), "capture": "true"} {
+			if err := form.WriteField(k, v); err != nil {
+				t.Fatal(err)
+			}
 		}
-		sum := sha256.Sum256(picture.Bytes())
-		if _, seedErr := owner.Exec(ctx, "INSERT INTO core.attachments(id,household_id,module_id,module_generation,resource_type,resource_id,storage_key,original_name,media_type,size_bytes,sha256,uploaded_by) VALUES($1,$2,$3,$4,$5,$6,$7,'fixture.png','image/png',$8,$9,$10)", aid, hid, mid, app.Store.States()[mid].Generation, entity, rid, key, picture.Len(), sum[:], uid); seedErr != nil {
-			t.Fatal(seedErr)
+		part, err := form.CreateFormFile("file", "fixture.png")
+		if err != nil {
+			t.Fatal(err)
 		}
-		if _, seedErr := owner.Exec(ctx, "INSERT INTO core.capture_jobs(id,household_id,module_id,module_generation,source_attachment_id,target_schema) VALUES($1,$2,$3,$4,$5,$6)", cid, hid, mid, app.Store.States()[mid].Generation, aid, entity); seedErr != nil {
-			t.Fatal(seedErr)
+		if _, err = part.Write(picture.Bytes()); err != nil {
+			t.Fatal(err)
 		}
-		return "/capture/" + cid
+		if err = form.Close(); err != nil {
+			t.Fatal(err)
+		}
+		response, data, err := fixture.request(http.MethodPost, "/api/v1/m/"+mid+"/"+entity+"/"+rid+"/attachments", token, app.Auth.CSRF(token, "session"), form.FormDataContentType(), &body, nil)
+		if err != nil || response.StatusCode != http.StatusSeeOther {
+			t.Fatal("actual capture source upload", response, string(data), err)
+		}
+		return response.Header.Get("Location")
 	}
 	stepCapture := seedCapture("recipes", "steps", store.String(step["id"]))
 	stepInput := mutation("recipes", store.Record{"recipe_id": recipe["id"], "instruction": "Captured step", "timer_seconds": 0}, 0)
@@ -476,19 +486,29 @@ func TestApplicationContract(t *testing.T) {
 	}
 	// A late relationship failure rolls back every imported row; confirmation retry stays once-only.
 	batch := value.UUID()
-	if _, err = owner.Exec(ctx, "INSERT INTO core.import_batches(id,household_id,module_id,module_generation,entity,row_count,valid_count,error_count) VALUES($1,$2,'shopping',$3,'items',2,2,0)", batch, hid, app.Store.States()["shopping"].Generation); err != nil {
+	// Synthetic normalized rows use the real App transaction and explicit
+	// private creator classification; no trusted scope is invented by Owner.
+	seedTx, err := app.Store.BeginMutation(ctx, id, "shopping", app.Store.States()["shopping"].Generation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = seedTx.Rollback(ctx) }()
+	if _, err = seedTx.Exec(ctx, "INSERT INTO core.import_batches(id,household_id,module_id,module_generation,entity,row_count,valid_count,error_count,created_by) VALUES($1,$2,'shopping',$3,'items',2,2,0,$4)", batch, hid, app.Store.States()["shopping"].Generation, uid); err != nil {
 		t.Fatal(err)
 	}
 	for n, listID := range []any{list["id"], value.UUID()} {
 		raw, _ := json.Marshal(store.Record{"list_id": listID, "name": fmt.Sprintf("Import %s %d", prefix, n)})
-		if _, err = owner.Exec(ctx, "INSERT INTO core.import_rows(batch_id,row_number,normalized_values,validation_errors) VALUES($1,$2,$3,'[]')", batch, n+1, raw); err != nil {
+		if _, err = seedTx.Exec(ctx, "INSERT INTO core.import_rows(batch_id,row_number,normalized_values,validation_errors) VALUES($1,$2,$3,'[]')", batch, n+1, raw); err != nil {
 			t.Fatal(err)
 		}
 	}
+	if err = seedTx.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
 	shoppingImport, _ := app.Store.Module("shopping")
 	itemsImport, _ := shoppingImport.Entity("items")
-	if err = app.Store.ConfirmImport(ctx, id, shoppingImport, itemsImport, batch, value.UUID(), app.Store.States()["shopping"].Generation); err == nil {
-		t.Fatal("invalid relationship import accepted")
+	if err = app.Store.ConfirmImport(ctx, id, shoppingImport, itemsImport, batch, value.UUID(), app.Store.States()["shopping"].Generation); !errors.Is(err, pgx.ErrNoRows) {
+		t.Fatal("invalid relationship import did not reach the intended relationship denial", err)
 	}
 	var imported int
 	if err = owner.QueryRow(ctx, "SELECT count(*) FROM shopping.items WHERE household_id=$1 AND name LIKE $2", hid, "Import "+prefix+" %").Scan(&imported); err != nil || imported != 0 {

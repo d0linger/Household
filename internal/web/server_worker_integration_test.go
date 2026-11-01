@@ -16,6 +16,8 @@ import (
 	"household/internal/maintenance"
 	"household/internal/value"
 	"household/internal/worker"
+
+	"github.com/jackc/pgx/v5"
 )
 
 func TestBackupLockCancellationContract(t *testing.T) {
@@ -147,12 +149,29 @@ func seedCaptureWork(t *testing.T, f *integrationFixture, generation int64, capt
 		t.Fatal(err)
 	}
 	digest := sha256.Sum256([]byte("synthetic source metadata"))
-	if _, err := f.owner.Exec(f.ctx, `INSERT INTO core.attachments(id,household_id,module_id,module_generation,resource_type,resource_id,storage_key,original_name,media_type,size_bytes,sha256,uploaded_by)
+	var source pgx.Tx
+	var err error
+	if generation == f.app.Store.States()["recipes"].Generation {
+		// Current nonfinancial fixtures use the real App actor and classification
+		// triggers. The deliberately stale generation remains Owner-seeded and
+		// unclassified: the worker must never reach that source.
+		source, err = f.app.Store.BeginMutation(f.ctx, f.identity, "recipes", generation)
+	} else {
+		source, err = f.owner.Begin(f.ctx)
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = source.Rollback(f.ctx) }()
+	if _, err = source.Exec(f.ctx, `INSERT INTO core.attachments(id,household_id,module_id,module_generation,resource_type,resource_id,storage_key,original_name,media_type,size_bytes,sha256,uploaded_by)
 		VALUES($1,$2,'recipes',$3,'recipes',$4,$5,'fixture.png','image/png',1,$6,$7)`, attachment, f.identity.HouseholdID, generation, resource, value.UUID(), digest[:], f.identity.UserID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := f.owner.Exec(f.ctx, `INSERT INTO core.capture_jobs(id,household_id,module_id,module_generation,source_attachment_id,target_schema,state)
+	if _, err = source.Exec(f.ctx, `INSERT INTO core.capture_jobs(id,household_id,module_id,module_generation,source_attachment_id,target_schema,state)
 		VALUES($1,$2,'recipes',$3,$4,'recipes',$5)`, capture, f.identity.HouseholdID, generation, attachment, captureState); err != nil {
+		t.Fatal(err)
+	}
+	if err = source.Commit(f.ctx); err != nil {
 		t.Fatal(err)
 	}
 	// The malformed storage key makes retry failures deterministic without relying

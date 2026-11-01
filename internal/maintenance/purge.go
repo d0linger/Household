@@ -182,6 +182,31 @@ func Purge(ctx context.Context, pool *pgxpool.Pool, requestID string) error {
 				return err
 			}
 		}
+		var financeInstalled bool
+		if err = tx.QueryRow(ctx, "SELECT to_regclass('core.finance_origin_resources') IS NOT NULL").Scan(&financeInstalled); err != nil {
+			return err
+		}
+		if financeInstalled {
+			if _, err = tx.Exec(ctx, "SET LOCAL TIME ZONE 'UTC'"); err != nil {
+				return err
+			}
+			// The maintenance state transition must retain the exact purged image
+			// before the ordinary worker can retire its queued physical files.
+			if _, err = tx.Exec(ctx, `UPDATE core.finance_origin_resources o SET row_hash=sha256(convert_to(to_jsonb(a)::text,'UTF8'))
+ FROM core.attachments a WHERE o.household_id=$1 AND o.module_generation=$2 AND o.resource_type='attachment' AND o.row_number=0
+ AND a.id=o.resource_id AND a.household_id=o.household_id AND a.module_id='expenses' AND a.module_generation=$2 AND a.state='purged'`, hid, generation); err != nil {
+				return err
+			}
+			for _, query := range []string{
+				"UPDATE core.finance_origin_resources SET retired_at=coalesce(retired_at,clock_timestamp()) WHERE household_id=$1 AND module_generation=$2",
+				"UPDATE core.finance_private_owners SET retired_at=coalesce(retired_at,clock_timestamp()) WHERE household_id=$1 AND module_generation=$2",
+				"UPDATE core.finance_background_authorities SET enabled=false,updated_at=clock_timestamp() WHERE household_id=$1 AND expenses_generation=$2",
+			} {
+				if _, err = tx.Exec(ctx, query, hid, generation); err != nil {
+					return err
+				}
+			}
+		}
 	}
 	if mid == "shopping" {
 		// Personal Shopping watch consent belongs to this data generation. Other

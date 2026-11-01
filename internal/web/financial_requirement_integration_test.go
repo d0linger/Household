@@ -70,7 +70,14 @@ func TestFinancialRequirementsRetainOriginalSubjectAndPolicyAfterSourceDeletion(
  JOIN core.financial_subjects s ON s.id=m.subject_id WHERE m.set_id=$1 AND s.resource_id=$2`, set, line["id"]).Scan(&originalSubject, &originalPolicy); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := f.owner.Exec(f.ctx, "DELETE FROM expenses.entry_lines WHERE id=$1", line["id"]); err != nil {
+	m, _ := f.app.Store.Module("expenses")
+	e, _ := m.Entity("entry_lines")
+	current, err := f.app.Store.Get(f.ctx, f.identity, m, e, store.String(line["id"]))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = f.app.Store.Delete(f.ctx, f.identity, m, e, store.String(line["id"]), store.Int(current["version"]),
+		f.app.Store.States()["expenses"].Generation, value.UUID()); err != nil {
 		t.Fatal(err)
 	}
 	var retained bool
@@ -238,7 +245,7 @@ func TestFinancialRequirementsOwnerRolePreservesIdentityAndReadiness(t *testing.
 		}
 	}
 	var policies int
-	if err = f.owner.QueryRow(f.ctx, "SELECT count(*) FROM core.audit_policies").Scan(&policies); err != nil || policies != 100 {
+	if err = f.owner.QueryRow(f.ctx, "SELECT count(*) FROM core.audit_policies").Scan(&policies); err != nil || policies != 121 {
 		t.Fatal("security infrastructure recursively joined row audit", policies, err)
 	}
 	if _, err = f.owner.Exec(f.ctx, "ALTER TABLE core.financial_artifact_scope_versions ALTER COLUMN object_id TYPE text USING object_id::text"); err != nil {
@@ -337,9 +344,16 @@ func TestFinancialRequirementsPopulatedCore25UpgradeAndRepeatPreserveFacts(t *te
 			t.Fatal(err)
 		}
 	}
-	var inferred int
-	if err := f.pool.QueryRow(f.ctx, `SELECT (SELECT count(*) FROM core.financial_requirement_sets)+(SELECT count(*) FROM core.financial_requirement_members)+(SELECT count(*) FROM core.financial_artifact_scope_versions)`).Scan(&inferred); err != nil || inferred != 0 {
-		t.Fatal("foundation inferred historical provenance", inferred, err)
+	// Current migration retains deny evidence for every unknown historical
+	// subject. No modern producer, membership or session may be invented.
+	var legacy int
+	var unresolved bool
+	if err := f.owner.QueryRow(f.ctx, `SELECT count(*),coalesce(bool_and(o.origin='legacy_unresolved' AND s.classification='unresolved'
+ AND o.membership_id IS NULL AND o.session_id IS NULL),false)
+ FROM core.finance_origin_resources r JOIN core.finance_origin_operations o ON o.id=coalesce(r.provenance_root_id,r.root_id)
+ JOIN core.financial_requirement_sets s ON s.id=r.set_id
+ WHERE r.resource_type IN('entries','entry_lines')`).Scan(&legacy, &unresolved); err != nil || legacy != 105 || !unresolved {
+		t.Fatal("historical identity lost its explicit unresolved deny evidence", legacy, unresolved, err)
 	}
 }
 
@@ -366,8 +380,10 @@ func TestFinancialRequirementsInheritedResultScopeUsesCoreIdentityAndExcludesOwn
 		{"separate primary plus inherited original", result, generation, true},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			err := financialRequirementOwnerSQL(t, f, `INSERT INTO core.financial_artifact_scope_versions(household_id,artifact_kind,object_id,revision,set_id,source_module,source_generation)
- VALUES($1,'financial_subject',$2,1,$3,'expenses',$4)`, f.identity.HouseholdID, test.subject, set, test.generation)
+			err := financialRequirementOwnerSQL(t, f, `INSERT INTO core.financial_artifact_scope_versions(household_id,artifact_kind,object_id,revision,previous_id,set_id,source_module,source_generation)
+ SELECT $1,'financial_subject',$2,coalesce(max(revision),0)+1,
+ (SELECT id FROM core.financial_artifact_scope_versions WHERE household_id=$1 AND artifact_kind='financial_subject' AND object_id=$2 ORDER BY revision DESC LIMIT 1),$3,'expenses',$4
+ FROM core.financial_artifact_scope_versions WHERE household_id=$1 AND artifact_kind='financial_subject' AND object_id=$2`, f.identity.HouseholdID, test.subject, set, test.generation)
 			if test.accepted {
 				if err != nil {
 					t.Fatal(err)

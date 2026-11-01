@@ -61,7 +61,7 @@ func TestExpenseBundleSharedReadIsCompleteExactAndSideEffectFree(t *testing.T) {
 func TestExpenseBundleLegacyReferencesTextBytesAndCompleteRowBounds(t *testing.T) {
 	f, category, entry, line := expenseIntegrityFixture(t)
 	payer := shoppingTestMember(t, f, "legacy-expense-payer", "editor")
-	if _, err := f.owner.Exec(f.ctx, "UPDATE expenses.entries SET paid_by_membership_id=$2 WHERE id=$1", entry["id"], payer.MembershipID); err != nil {
+	if err := expenseIntegrityPreparedSQL(t, f, store.String(entry["id"]), "UPDATE expenses.entries SET paid_by_membership_id=$2 WHERE id=$1", entry["id"], payer.MembershipID); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := f.owner.Exec(f.ctx, "UPDATE core.memberships SET inactive_at=clock_timestamp() WHERE id=$1", payer.MembershipID); err != nil {
@@ -71,7 +71,7 @@ func TestExpenseBundleLegacyReferencesTextBytesAndCompleteRowBounds(t *testing.T
 		t.Fatal(err)
 	}
 	for _, length := range []int{expenseedit.NoteLimit, expenseedit.NoteLimit + 1} {
-		if _, err := f.owner.Exec(f.ctx, "UPDATE expenses.entry_lines SET note=$2 WHERE id=$1", line["id"], strings.Repeat("界", length)); err != nil {
+		if err := expenseIntegrityPreparedSQL(t, f, store.String(entry["id"]), "UPDATE expenses.entry_lines SET note=$2 WHERE id=$1", line["id"], strings.Repeat("界", length)); err != nil {
 			t.Fatal(err)
 		}
 		bundle, err := f.app.Store.ExpenseBundle(f.ctx, f.identity, store.String(entry["id"]))
@@ -82,7 +82,7 @@ func TestExpenseBundleLegacyReferencesTextBytesAndCompleteRowBounds(t *testing.T
 	}
 	const byteLimit = 1 << 20
 	for _, size := range []int{byteLimit, byteLimit + 1} {
-		if _, err := f.owner.Exec(f.ctx, "UPDATE expenses.entry_lines SET note=repeat('x',$2) WHERE id=$1", line["id"], size); err != nil {
+		if err := expenseIntegrityPreparedSQL(t, f, store.String(entry["id"]), "UPDATE expenses.entry_lines SET note=repeat('x',$2) WHERE id=$1", line["id"], size); err != nil {
 			t.Fatal(err)
 		}
 		bundle, err := f.app.Store.ExpenseBundle(f.ctx, f.identity, store.String(entry["id"]))
@@ -94,24 +94,24 @@ func TestExpenseBundleLegacyReferencesTextBytesAndCompleteRowBounds(t *testing.T
 			t.Fatal("oversized note produced a partial bundle", bundle, err)
 		}
 	}
-	if _, err := f.owner.Exec(f.ctx, "UPDATE expenses.entry_lines SET note=repeat('x',11000) WHERE id=$1", line["id"]); err != nil {
+	if err := expenseIntegrityPreparedSQL(t, f, store.String(entry["id"]), "UPDATE expenses.entry_lines SET note=repeat('x',11000) WHERE id=$1", line["id"]); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := f.owner.Exec(f.ctx, `INSERT INTO expenses.entry_lines(household_id,entry_id,category_id,amount_minor,note,position,created_by)
+	if err := expenseIntegrityPreparedSQL(t, f, store.String(entry["id"]), `INSERT INTO expenses.entry_lines(household_id,entry_id,category_id,amount_minor,note,position,created_by)
  SELECT $1,$2,$3,1,repeat('y',11000),n,$4 FROM generate_series(1,99) n`, f.identity.HouseholdID, entry["id"], category["id"], f.identity.UserID); err != nil {
 		t.Fatal(err)
 	}
 	if got, err := f.app.Store.ExpenseBundle(f.ctx, f.identity, store.String(entry["id"])); err == nil || !reflect.DeepEqual(got, store.ExpenseBundle{}) {
 		t.Fatal("combined text budget was not enforced before text fetch", got, err)
 	}
-	if _, err := f.owner.Exec(f.ctx, "UPDATE expenses.entry_lines SET note='bounded' WHERE entry_id=$1", entry["id"]); err != nil {
+	if err := expenseIntegrityPreparedSQL(t, f, store.String(entry["id"]), "UPDATE expenses.entry_lines SET note='bounded' WHERE entry_id=$1", entry["id"]); err != nil {
 		t.Fatal(err)
 	}
 	bundle, err := f.app.Store.ExpenseBundle(f.ctx, f.identity, store.String(entry["id"]))
 	if err != nil || len(bundle.Lines) != 100 || len(bundle.Baseline) != 100 || bundle.SumMinor != "1099" || *bundle.RemainingMinor != "-99" {
 		t.Fatal("full100-row boundary was truncated or rounded", bundle, err)
 	}
-	if _, err := f.owner.Exec(f.ctx, `INSERT INTO expenses.entry_lines(household_id,entry_id,category_id,amount_minor,note,created_by)
+	if err := expenseIntegrityPreparedSQL(t, f, store.String(entry["id"]), `INSERT INTO expenses.entry_lines(household_id,entry_id,category_id,amount_minor,note,created_by)
  VALUES($1,$2,$3,1,'Unseen101st line',$4)`, f.identity.HouseholdID, entry["id"], category["id"], f.identity.UserID); err != nil {
 		t.Fatal(err)
 	}
@@ -191,10 +191,10 @@ func TestExpenseBundleCurrentReaderCalendarAndModuleAuthority(t *testing.T) {
 }
 
 func TestExpenseBundlePostedReversalAndPayeeByteBoundaryStayUnmodified(t *testing.T) {
-	f, category, entry, line := expenseIntegrityFixture(t)
+	f, _, entry, line := expenseIntegrityFixture(t)
 	const byteLimit = 1 << 20
 	for _, size := range []int{byteLimit - len(store.String(line["note"])), byteLimit - len(store.String(line["note"])) + 1, byteLimit + 1} {
-		if _, err := f.owner.Exec(f.ctx, "UPDATE expenses.entries SET payee=repeat('p',$2) WHERE id=$1", entry["id"], size); err != nil {
+		if err := expenseIntegrityPreparedSQL(t, f, store.String(entry["id"]), "UPDATE expenses.entries SET payee=repeat('p',$2) WHERE id=$1", entry["id"], size); err != nil {
 			t.Fatal(err)
 		}
 		bundle, err := f.app.Store.ExpenseBundle(f.ctx, f.identity, store.String(entry["id"]))
@@ -206,34 +206,24 @@ func TestExpenseBundlePostedReversalAndPayeeByteBoundaryStayUnmodified(t *testin
 			t.Fatal("combined/individual payee overflow returned usable content", err)
 		}
 	}
-	if _, err := f.owner.Exec(f.ctx, "UPDATE expenses.entries SET payee='Preserved payee' WHERE id=$1", entry["id"]); err != nil {
+	if err := expenseIntegrityPreparedSQL(t, f, store.String(entry["id"]), "UPDATE expenses.entries SET payee='Preserved payee' WHERE id=$1", entry["id"]); err != nil {
 		t.Fatal(err)
 	}
-	if err := expenseIntegrityAppSQL(t, f, "UPDATE expenses.entries SET state='posted',posted_at=clock_timestamp(),version=version+1 WHERE id=$1", entry["id"]); err != nil {
+	if err := expenseIntegrityPreparedSQL(t, f, store.String(entry["id"]), "UPDATE expenses.entries SET state='posted',posted_at=clock_timestamp(),version=version+1 WHERE id=$1", entry["id"]); err != nil {
 		t.Fatal(err)
 	}
 	posted, err := f.app.Store.ExpenseBundle(f.ctx, f.identity, store.String(entry["id"]))
 	if err != nil || posted.Editable || posted.Header.State != "posted" || posted.Header.PostedAt == nil || posted.Header.Payee != "Preserved payee" || posted.SumMinor != "1000" {
 		t.Fatal("reader normalized or rejected historical posted facts", posted, err)
 	}
-	reversal := value.UUID()
-	tx, err := f.owner.Begin(f.ctx)
+	m, _ := f.app.Store.Module("expenses")
+	e, _ := m.Entity("entries")
+	reversed, err := f.app.Store.Action(f.ctx, f.identity, m, e, store.String(entry["id"]), "reverse", value.UUID(), value.UUID(),
+		auditMutation(t, f, "expenses", store.Record{}, posted.Header.Version))
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _ = tx.Rollback(f.ctx) }()
-	if _, err = tx.Exec(f.ctx, `INSERT INTO expenses.entries(id,household_id,occurred_on,description,amount_minor,kind,state,posted_at,reverses_entry_id,created_by)
- VALUES($1,$2,'2026-10-26','Historical reversal',-1000,'reversal','posted',clock_timestamp(),$3,$4)`, reversal, f.identity.HouseholdID, entry["id"], f.identity.UserID); err != nil {
-		t.Fatal(err)
-	}
-	if _, err = tx.Exec(f.ctx, `INSERT INTO expenses.entry_lines(household_id,entry_id,category_id,amount_minor,note,created_by)
- VALUES($1,$2,$3,-1000,'Exact historic opposite',$4)`, f.identity.HouseholdID, reversal, category["id"], f.identity.UserID); err != nil {
-		t.Fatal(err)
-	}
-	if err = tx.Commit(f.ctx); err != nil {
-		t.Fatal(err)
-	}
-	historical, err := f.app.Store.ExpenseBundle(f.ctx, f.identity, reversal)
+	historical, err := f.app.Store.ExpenseBundle(f.ctx, f.identity, store.String(reversed["id"]))
 	if err != nil || historical.Editable || historical.Header.Kind != "reversal" || historical.Header.AmountMinor != "-1000" || historical.SumMinor != "-1000" ||
 		historical.Header.ReversesEntryID == nil || *historical.Header.ReversesEntryID != store.String(entry["id"]) || historical.RemainingMinor == nil || *historical.RemainingMinor != "0" {
 		t.Fatal("reversal was passed through a draft-only validator", historical, err)
@@ -244,11 +234,15 @@ func TestExpenseBundleKeepsOneSnapshotAcrossBlockedContentRead(t *testing.T) {
 	f, _, entry, line := expenseIntegrityFixture(t)
 	ctx, cancel := context.WithTimeout(f.ctx, 15*time.Second)
 	defer cancel()
-	writer, err := f.owner.Begin(ctx)
+	writer, err := f.app.Store.BeginMutation(ctx, f.identity, "expenses", f.app.Store.States()["expenses"].Generation)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer func() { _ = writer.Rollback(f.ctx) }()
+	operation, err := expenseIntegrityPrepareEntry(ctx, f, writer, store.String(entry["id"]))
+	if err != nil {
+		t.Fatal(err)
+	}
 	if _, err = writer.Exec(ctx, "LOCK TABLE expenses.entries IN ACCESS EXCLUSIVE MODE"); err != nil {
 		t.Fatal(err)
 	}
@@ -288,7 +282,8 @@ func TestExpenseBundleKeepsOneSnapshotAcrossBlockedContentRead(t *testing.T) {
 		// Observe through the reader's role; pg_stat_activity hides another
 		// role's query/wait details from the non-superuser migration owner.
 		if err = f.pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM pg_stat_activity a WHERE a.datname=current_database()
- AND $1::int=ANY(pg_blocking_pids(a.pid)) AND a.wait_event_type='Lock' AND a.query LIKE '%SELECT p.version FROM expenses.entries t%')`, writerPID).Scan(&blocked); err != nil {
+ AND $1::int=ANY(pg_blocking_pids(a.pid)) AND a.wait_event_type='Lock'
+ AND(a.query LIKE '%SELECT p.version FROM expenses.entries t%' OR a.query LIKE '%core.finance_authority(%'))`, writerPID).Scan(&blocked); err != nil {
 			t.Fatal(err)
 		}
 		if blocked {
@@ -310,6 +305,9 @@ func TestExpenseBundleKeepsOneSnapshotAcrossBlockedContentRead(t *testing.T) {
 	if _, err = writer.Exec(ctx, "UPDATE expenses.entry_lines SET note='Changed after snapshot',version=version+1 WHERE id=$1", line["id"]); err != nil {
 		t.Fatal(err)
 	}
+	if err = expenseIntegrityFinishEntry(ctx, f, writer, operation); err != nil {
+		t.Fatal(err)
+	}
 	if err = writer.Commit(ctx); err != nil {
 		t.Fatal(err)
 	}
@@ -319,7 +317,7 @@ func TestExpenseBundleKeepsOneSnapshotAcrossBlockedContentRead(t *testing.T) {
 		t.Fatal("one reader mixed its scope/content/text snapshots", old)
 	}
 	fresh, err := f.app.Store.ExpenseBundle(f.ctx, f.identity, store.String(entry["id"]))
-	if err != nil || fresh.Header.Payee != "Changed after snapshot" || fresh.Header.Version != 3 || fresh.Lines[0].Note != "Changed after snapshot" {
+	if err != nil || fresh.Header.Payee != "Changed after snapshot" || fresh.Header.Version != 4 || fresh.Lines[0].Note != "Changed after snapshot" {
 		t.Fatal("subsequent request did not observe committed current content", fresh, err)
 	}
 }

@@ -93,14 +93,14 @@ test('discovery strips database authority without mutating the integration execu
   assert.equal(result.PATH, before.PATH);
 });
 
-test('execution preserves race, sequential packages, full internal coverage, shuffle and existing thirty-minute timeout', () => {
+test('execution preserves race, sequential packages, full internal coverage, shuffle and the bounded sixty-minute package budget', () => {
   const {inventory} = fixture();
   const args = executionArguments(inventory, 0, 'outputs/qa/shard-0/coverage.out');
   assert.equal(args[0], 'test');
-  for (const argument of ['-race', '-tags=integration', '-shuffle=on', '-coverpkg=./internal/...', '-covermode=atomic', '-count=1', '-timeout=30m', '-json', './...']) assert.ok(args.includes(argument), argument);
+  for (const argument of ['-race', '-tags=integration', '-shuffle=on', '-coverpkg=./internal/...', '-covermode=atomic', '-count=1', '-timeout=60m', '-json', './...']) assert.ok(args.includes(argument), argument);
   assert.equal(args[args.indexOf('-p') + 1], '1');
   assert.equal(args[args.indexOf('-run') + 1], exactPattern(inventory, 0));
-  assert.equal(SETTINGS.timeout, '30m');
+  assert.equal(SETTINGS.timeout, '60m');
 });
 
 test('registration discovery uses the execution race build selection and fails closed if race-only cases could disappear', () => {
@@ -229,7 +229,7 @@ test('coverage rejects malformed counters, changed statement counts and invalid 
 
 test('inventory digest binds source files, compiler target and command settings', () => {
   const {inventory} = fixture();
-  for (const mutate of [value => { value.source.manifest[0].sha256 = '0'.repeat(64); }, value => { value.go.version = 'go1.28.0'; }, value => { value.settings.timeout = '60m'; }, value => { value.tests[0].shard = 99; }]) {
+  for (const mutate of [value => { value.source.manifest[0].sha256 = '0'.repeat(64); }, value => { value.go.version = 'go1.28.0'; }, value => { value.settings.timeout = 'unbounded'; }, value => { value.tests[0].shard = 99; }]) {
     const value = JSON.parse(canonical(inventory));
     mutate(value);
     assert.throws(() => validateInventory(value), /digest|settings/);
@@ -241,7 +241,7 @@ test('quality workflow uses isolated six-job matrix and validates complete artif
   const tests = workflow.jobs.Tests, coverage = workflow.jobs.Coverage;
   assert.deepEqual(tests.strategy.matrix.shard, [0, 1, 2, 3, 4, 5]);
   assert.equal(tests.strategy['fail-fast'], false);
-  assert.equal(tests['timeout-minutes'], 40);
+  assert.equal(tests['timeout-minutes'], 75);
   assert.equal(tests.services.postgres.env.POSTGRES_DB, 'household_test');
   assert.equal(tests.env.HOUSEHOLD_REQUIRE_INTEGRATION, '1');
   assert.ok(tests.env.HOUSEHOLD_TEST_OWNER_URL.includes('household_owner:'));

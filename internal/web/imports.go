@@ -227,7 +227,22 @@ func (s *Server) importCSV(w http.ResponseWriter, r *http.Request) {
 	}
 	defer func() { _ = tx.Rollback(r.Context()) }()
 	batch := value.UUID()
-	_, err = tx.Exec(r.Context(), "INSERT INTO core.import_batches(id,household_id,module_id,module_generation,entity,row_count,valid_count,error_count) VALUES($1,$2,$3,$4,$5,$6,$7,$8)", batch, identity(r).HouseholdID, m.ID, state.Generation, e.ID, len(items), len(items)-failures, failures)
+	financeSources := []store.FinanceResourceRef{}
+	if m.ID == "expenses" && e.ID == "entry_lines" {
+		for _, item := range items {
+			var fields map[string]json.RawMessage
+			var parent string
+			if json.Unmarshal(item.raw, &fields) == nil && json.Unmarshal(fields["entry_id"], &parent) == nil && value.ValidUUID(parent) {
+				financeSources = append(financeSources, store.FinanceResourceRef{Kind: "entries", ID: parent})
+			}
+		}
+	}
+	financeOperation, err := s.Store.PrepareFinanceImport(r.Context(), tx, identity(r), m.ID, batch, financeSources)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	_, err = tx.Exec(r.Context(), "INSERT INTO core.import_batches(id,household_id,module_id,module_generation,entity,row_count,valid_count,error_count,created_by) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)", batch, identity(r).HouseholdID, m.ID, state.Generation, e.ID, len(items), len(items)-failures, failures, identity(r).UserID)
 	for n, x := range items {
 		if err != nil {
 			break
@@ -237,6 +252,9 @@ func (s *Server) importCSV(w http.ResponseWriter, r *http.Request) {
 			messages, _ = json.Marshal([]string{x.message})
 		}
 		_, err = tx.Exec(r.Context(), "INSERT INTO core.import_rows(batch_id,row_number,normalized_values,validation_errors) VALUES($1,$2,$3,$4)", batch, n+1, x.raw, messages)
+	}
+	if err == nil {
+		err = s.Store.CompleteFinanceArtifact(r.Context(), tx, identity(r), financeOperation)
 	}
 	if err == nil {
 		err = tx.Commit(r.Context())

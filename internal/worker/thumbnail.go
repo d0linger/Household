@@ -11,6 +11,7 @@ import (
 	"os"
 
 	"household/internal/audit"
+	"household/internal/store"
 	"household/internal/value"
 
 	"github.com/jackc/pgx/v5"
@@ -26,6 +27,9 @@ func (w *Worker) thumbnail(ctx context.Context, job, lease string) error {
 	}
 	if !value.ValidUUID(aid) || !value.ValidUUID(key) {
 		return errors.New("invalid thumbnail job")
+	}
+	if err = w.financeArtifactPreflight(ctx, job, lease); err != nil {
+		return err
 	}
 	root, err := os.OpenRoot(w.Cfg.UploadDir)
 	if err != nil {
@@ -114,8 +118,30 @@ func (w *Worker) thumbnail(ctx context.Context, job, lease string) error {
 		return err
 	}
 	hash := sha256.Sum256(buffer.Bytes())
-	tag, err := tx.Exec(ctx, "INSERT INTO core.attachment_derivatives(attachment_id,variant,storage_key,media_type,width,height,size_bytes,sha256) VALUES($1,'preview',$2,'image/png',$3,$4,$5,$6) ON CONFLICT(attachment_id,variant) DO NOTHING", aid, newKey, width, height, buffer.Len(), hash[:])
+	if err = store.CheckFinanceArtifactJob(ctx, tx, job, lease); err != nil {
+		return err
+	}
+	var existing bool
+	if err = tx.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM core.attachment_derivatives WHERE attachment_id=$1 AND variant='preview')", aid).Scan(&existing); err != nil {
+		return err
+	}
+	if existing {
+		_, err = tx.Exec(ctx, "UPDATE core.jobs SET state='done',finished_at=now(),lease_until=NULL,lease_token=NULL WHERE id=$1 AND lease_token=$2", job, lease)
+		if err != nil {
+			return err
+		}
+		return tx.Commit(ctx)
+	}
+	derivativeID := value.UUID()
+	operation, err := store.PrepareFinanceArtifactJob(ctx, tx, job, lease, "attachment_derivative", derivativeID)
 	if err != nil {
+		return err
+	}
+	tag, err := tx.Exec(ctx, "INSERT INTO core.attachment_derivatives(id,attachment_id,variant,storage_key,media_type,width,height,size_bytes,sha256) VALUES($1,$2,'preview',$3,'image/png',$4,$5,$6,$7)", derivativeID, aid, newKey, width, height, buffer.Len(), hash[:])
+	if err != nil {
+		return err
+	}
+	if err = store.CompleteFinanceArtifactJob(ctx, tx, operation); err != nil {
 		return err
 	}
 	if _, err = tx.Exec(ctx, "UPDATE core.jobs SET state='done',finished_at=now(),lease_until=NULL,lease_token=NULL WHERE id=$1 AND lease_token=$2", job, lease); err != nil {

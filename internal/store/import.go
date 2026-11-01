@@ -26,6 +26,9 @@ func (s *Store) ConfirmImport(ctx context.Context, id auth.Identity, m module.De
 		return err
 	}
 	defer rollback(tx)
+	if err = s.LockFinanceArtifact(ctx, tx, id, "import_batch", batchID, "edit"); err != nil {
+		return err
+	}
 	var state string
 	var purpose string
 	var failures int
@@ -44,6 +47,10 @@ func (s *Store) ConfirmImport(ctx context.Context, id auth.Identity, m module.De
 	}
 	if state != "preview" || failures != 0 {
 		return ErrConflict
+	}
+	financeOperation, err := s.PrepareFinanceImport(ctx, tx, id, m.ID, batchID, nil)
+	if err != nil {
+		return err
 	}
 	rows, err := tx.Query(ctx, "SELECT row_number,normalized_values FROM core.import_rows WHERE batch_id=$1 ORDER BY row_number", batchID)
 	if err != nil {
@@ -80,21 +87,42 @@ func (s *Store) ConfirmImport(ctx context.Context, id auth.Identity, m module.De
 		if err = s.validateDomain(ctx, tx, id, m.ID, e.ID, "", data, data); err != nil {
 			return err
 		}
-		record, err := save(ctx, tx, id, m, e, value.UUID(), data, true, 0)
+		rid := value.UUID()
+		var rowOperation string
+		var rowScope financialScope
+		if financialEntity(m.ID, e.ID) {
+			if err = financialWriteScope(ctx, tx, id, e.ID, rid, data, true); err != nil {
+				return err
+			}
+			rowOperation, rowScope, err = prepareLegacyFinanceMutation(withFinanceOrigin(ctx, "import",
+				[]FinanceResourceRef{{Kind: "import_row", ID: batchID, RowNumber: int64(x.number)}}), tx, id, e.ID, rid, data)
+			if err != nil {
+				return err
+			}
+		}
+		record, err := save(ctx, tx, id, m, e, rid, data, true, 0)
 		if err != nil {
 			return err
 		}
 		if err = s.afterWrite(ctx, tx, id, m, e, record, generation); err != nil {
 			return err
 		}
+		if rowOperation != "" {
+			if err = completeFinanceOrigin(ctx, tx, id, rowScope, rowOperation); err != nil {
+				return err
+			}
+		}
 		if _, err = tx.Exec(ctx, "UPDATE core.import_rows SET state='imported',result_resource_id=$3 WHERE batch_id=$1 AND row_number=$2", batchID, x.number, record["id"]); err != nil {
 			return err
 		}
 	}
-	if _, err = tx.Exec(ctx, "UPDATE core.import_batches SET state='confirmed',confirmed_by=$2,confirmed_at=now() WHERE id=$1", batchID, id.UserID); err != nil {
+	if _, err = tx.Exec(ctx, "UPDATE core.import_batches SET state='confirmed',confirmed_by=$2,confirmed_at=now(),version=version+1 WHERE id=$1", batchID, id.UserID); err != nil {
 		return err
 	}
 	if err = Audit(ctx, tx, id, m.ID, e.ID, "", "import_confirm", requestID); err != nil {
+		return err
+	}
+	if err = s.CompleteFinanceArtifact(ctx, tx, id, financeOperation); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)

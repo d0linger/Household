@@ -600,6 +600,20 @@ func (s *Server) updateUser(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	if role == "reader" || disabled {
+		var responsible bool
+		err = tx.QueryRow(r.Context(), `SELECT EXISTS(SELECT 1 FROM core.financial_policies p JOIN core.memberships m
+ ON m.household_id=p.household_id AND m.id=p.responsible_membership_id WHERE p.household_id=$1 AND m.user_id=$2 AND p.retired_at IS NULL)`,
+			id.HouseholdID, target).Scan(&responsible)
+		if err != nil {
+			s.fail(w, r, err)
+			return
+		}
+		if responsible {
+			s.fail(w, r, store.Invalid{Message: "Finanzverantwortung vor Deaktivierung oder Wechsel zur Leserrolle ausdrücklich übertragen; bei fehlendem Inhaltszugriff die administrative Neuzuordnung verwenden"})
+			return
+		}
+	}
 	if _, err = tx.Exec(r.Context(), "UPDATE core.memberships SET role=$3,version=version+1,updated_at=now() WHERE household_id=$1 AND user_id=$2", id.HouseholdID, target, role); err == nil {
 		_, err = tx.Exec(r.Context(), "UPDATE core.users SET disabled_at=CASE WHEN $2 THEN now() END,auth_version=auth_version+1,updated_at=now() WHERE id=$1", target, disabled)
 	}
@@ -667,7 +681,9 @@ func (s *Server) searchAPI(w http.ResponseWriter, r *http.Request) {
 func (s *Server) notifications(w http.ResponseWriter, r *http.Request) {
 	p := s.page(r, "Mitteilungen")
 	p.View = "notifications"
-	rows, err := s.Pool.Query(r.Context(), "SELECT id,title,coalesce(target_path,''),read_at IS NOT NULL,kind FROM core.notifications n WHERE user_id=$1 AND household_id=$2 AND dismissed_at IS NULL AND (module_id IS NULL OR EXISTS(SELECT 1 FROM core.module_states m WHERE m.household_id=n.household_id AND m.module_id=n.module_id AND m.state='enabled')) ORDER BY created_at DESC LIMIT 100", identity(r).UserID, identity(r).HouseholdID)
+	// Finance currently publishes no generic notices. Untyped historical rows
+	// have no complete recipient/source proof and cannot disclose a private title.
+	rows, err := s.Pool.Query(r.Context(), "SELECT id,title,coalesce(target_path,''),read_at IS NOT NULL,kind FROM core.notifications n WHERE user_id=$1 AND household_id=$2 AND dismissed_at IS NULL AND module_id IS DISTINCT FROM 'expenses' AND (module_id IS NULL OR EXISTS(SELECT 1 FROM core.module_states m WHERE m.household_id=n.household_id AND m.module_id=n.module_id AND m.state='enabled')) ORDER BY created_at DESC LIMIT 100", identity(r).UserID, identity(r).HouseholdID)
 	if err != nil {
 		s.fail(w, r, err)
 		return
@@ -715,7 +731,7 @@ func (s *Server) readNotification(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, store.ErrNotFound)
 		return
 	}
-	_, err := audit.Exec(r.Context(), s.Pool, "UPDATE core.notifications SET read_at=coalesce(read_at,now()) WHERE id=$1 AND user_id=$2", r.PathValue("id"), identity(r).UserID)
+	_, err := audit.Exec(r.Context(), s.Pool, "UPDATE core.notifications SET read_at=coalesce(read_at,now()) WHERE id=$1 AND user_id=$2 AND module_id IS DISTINCT FROM 'expenses'", r.PathValue("id"), identity(r).UserID)
 	if err != nil {
 		s.fail(w, r, err)
 		return

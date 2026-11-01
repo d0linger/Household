@@ -43,6 +43,8 @@ func fuelModuleUpgradePriorCatalog(t *testing.T, f *integrationFixture, fuelVers
 			version = 7 // Mealplan8 requires the later Core28 extension stage.
 		case "pantry":
 			version = 11 // Pantry12 requires the later accepted Fuel5/Core26 audit catalog.
+		case "expenses":
+			version = 4 // Finance5 requires Core29; this is the genuine Core26 release.
 		}
 		migratePriorAuditSchema(t, f, schema, version)
 	}
@@ -174,7 +176,7 @@ func TestFuelModuleNativePopulatedFuel2UpgradeRetainsFactsAndOldIntentFences(t *
  (SELECT version FROM fuel.schema_migrations),
  (SELECT count(*) FROM fuel.fillups WHERE household_id=$1 AND quantity_unit='l' AND currency_code='EUR' AND source_kind='manual' AND source_job_id IS NULL)`,
 		f.identity.HouseholdID, f.identity.UserID, generation, oldKey).Scan(&fences, &operations, &effects, &fuelVersion, &goodDimensions)
-	if err != nil || fences != 1 || operations != 0 || effects != 0 || fuelVersion != 7 || goodDimensions != 2 {
+	if err != nil || fences != 1 || operations != 0 || effects != 0 || fuelVersion != database.ExpectedVersion("fuel") || goodDimensions != 2 {
 		t.Fatal("upgrade fabricated producer proof or failed minimal legacy fences/dimensions", fences, operations, effects, fuelVersion, goodDimensions, err)
 	}
 	if _, err = f.owner.Exec(f.ctx, "DELETE FROM core.idempotency_records WHERE module_id='fuel'"); err != nil {

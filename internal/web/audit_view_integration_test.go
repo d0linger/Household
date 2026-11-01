@@ -61,8 +61,19 @@ func TestAuditViewerBoundaries(t *testing.T) {
 	if legacyResponse.StatusCode != 200 || len(legacy.Entries) != 1 || legacy.Entries[0].ActorID != "" || legacy.Entries[0].Resource != f.identity.UserID || len(legacy.Entries[0].Changes) != 0 {
 		t.Fatalf("legacy recovery projection: %s", legacyData)
 	}
+	malformedRequest := value.UUID()
+	if _, err := f.owner.Exec(f.ctx, `INSERT INTO core.audit_log(actor_user_id,action,outcome,request_id,changes)
+ VALUES($1,'operator_password_recovery','success',$2,'{"description":{"after":"private-legacy-finance-sentinel"}}'::jsonb)`,
+		f.identity.UserID, malformedRequest); err != nil {
+		t.Fatal(err)
+	}
+	malformedResponse, malformedData := read("/api/v1/core/audit?module=core&resource="+f.identity.UserID+"&request="+malformedRequest, f.token)
+	var malformed auditResult
+	if json.Unmarshal(malformedData, &malformed) != nil || malformedResponse.StatusCode != 200 || len(malformed.Entries) != 0 {
+		t.Fatal("data-bearing unscoped row bypassed the exact legacy shape")
+	}
 	_, allData := read("/api/v1/core/audit", f.token)
-	if strings.Contains(string(allData), "unscoped-private") {
+	if strings.Contains(string(allData), "unscoped-private") || strings.Contains(string(allData), "private-legacy-finance-sentinel") {
 		t.Fatal("unscoped legacy row exposed")
 	}
 	var first auditResult

@@ -166,13 +166,21 @@ func validateIntegrationURLs(ownerURL, appURL string) error {
 }
 
 func resetIntegrationSchemas(ctx context.Context, pool *pgxpool.Pool) error {
-	names := make([]string, 0, len(database.Schemas))
-	for _, schema := range database.Schemas {
-		names = append(names, pgx.Identifier{schema}.Sanitize())
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		return err
 	}
-	// Identifiers come only from the application's compiled schema allowlist.
-	_, err := pool.Exec(ctx, "DROP SCHEMA IF EXISTS "+strings.Join(names, ",")+" CASCADE")
-	return err
+	defer func() { _ = tx.Rollback(ctx) }()
+	// Keep each DDL statement bounded and the whole reset atomic. Optional
+	// schemas go first; shared Core is last, under the same fixture lease.
+	// The existing statement and total cleanup deadlines remain unchanged.
+	for n := len(database.Schemas) - 1; n >= 0; n-- {
+		schema := pgx.Identifier{database.Schemas[n]}.Sanitize()
+		if _, err = tx.Exec(ctx, "DROP SCHEMA IF EXISTS "+schema+" CASCADE"); err != nil {
+			return err
+		}
+	}
+	return tx.Commit(ctx)
 }
 
 type integrationResponse struct {

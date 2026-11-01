@@ -12,12 +12,12 @@ import (
 // recordPreparedTransfer extends only the current prepared-food schema. Older
 // clean Pantry installations retain their original transfer transaction.
 func recordPreparedTransfer(ctx context.Context, tx pgx.Tx, id auth.Identity, source, target, correlation, quantity string, generation int64) error {
-	var version int
+	var schemaRows, version int64
 	var dirty bool
-	if err := tx.QueryRow(ctx, "SELECT version,dirty FROM pantry.schema_migrations").Scan(&version, &dirty); err != nil {
+	if err := tx.QueryRow(ctx, "SELECT count(*),coalesce(max(version),0),coalesce(bool_or(dirty),false) FROM pantry.schema_migrations").Scan(&schemaRows, &version, &dirty); err != nil {
 		return err
 	}
-	if dirty || version > 13 {
+	if schemaRows != 1 || dirty || version < 1 || version > 14 {
 		return ErrConflict
 	}
 	if version < 12 {

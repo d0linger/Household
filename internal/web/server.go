@@ -144,6 +144,9 @@ func New(ctx context.Context, pool *pgxpool.Pool, cfg config.Config, mods []modu
 		if m.ID == "fuel" {
 			return "/m/fuel/workspace/overview"
 		}
+		if m.ID == "expenses" {
+			return "/m/expenses/workspace/overview"
+		}
 		return "/m/" + m.ID + "/" + m.Entities[0].ID
 	}, "dict": dict, "icon": func(asset map[string]string, name string) string { return asset["icons.svg"] + "#" + name }}).ParseFS(files, "templates/*.html")
 	return s, err
@@ -152,6 +155,7 @@ func New(ctx context.Context, pool *pgxpool.Pool, cfg config.Config, mods []modu
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	s.registerPlanningExtensionRoutes(mux)
+	s.registerFinanceRoutes(mux)
 	mux.HandleFunc("GET /health/live", func(w http.ResponseWriter, r *http.Request) { writeJSON(w, 200, map[string]bool{"alive": true}) })
 	mux.HandleFunc("GET /health/ready", s.ready)
 	mux.HandleFunc("GET /metrics", s.metrics)

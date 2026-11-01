@@ -339,6 +339,15 @@ func (s *Store) Write(ctx context.Context, id auth.Identity, m module.Descriptor
 		return nil, err
 	}
 	var priorHash, prior []byte
+	var durableFinance Record
+	var durableFinanceFound bool
+	financeProofOperation := "legacy." + op
+	if financialEntity(m.ID, e.ID) {
+		durableFinance, durableFinanceFound, err = financeLegacyReplay(ctx, tx, id, key, financeProofOperation, e.ID, rid, hash[:])
+		if err != nil {
+			return nil, err
+		}
+	}
 	err = tx.QueryRow(ctx, "SELECT request_hash,response_payload FROM core.idempotency_records WHERE household_id=$1 AND user_id=$2 AND operation=$3 AND key=$4", id.HouseholdID, id.UserID, op, key).Scan(&priorHash, &prior)
 	if err == nil {
 		if !bytes.Equal(priorHash, hash[:]) {
@@ -360,6 +369,9 @@ func (s *Store) Write(ctx context.Context, id auth.Identity, m module.Descriptor
 	}
 	if !errors.Is(err, pgx.ErrNoRows) {
 		return nil, err
+	}
+	if durableFinanceFound {
+		return durableFinance, nil
 	}
 	if m.ID == "pantry" && e.ID == "stock_movements" && creating && String(data["reason"]) == "waste" {
 		return nil, Invalid{"Abfall über Vorrat → Abfall buchen; bereits gebuchte Vorgänge im Verlauf prüfen"}
@@ -400,6 +412,14 @@ func (s *Store) Write(ctx context.Context, id auth.Identity, m module.Descriptor
 	if creating {
 		rid = value.UUID()
 	}
+	var financeOperation string
+	var financeScope financialScope
+	if financialEntity(m.ID, e.ID) {
+		financeOperation, financeScope, err = prepareLegacyFinanceMutation(ctx, tx, id, e.ID, rid, merged)
+		if err != nil {
+			return nil, err
+		}
+	}
 	result, err := save(ctx, tx, id, m, e, rid, data, creating, in.Version)
 	if err != nil {
 		return nil, err
@@ -409,6 +429,14 @@ func (s *Store) Write(ctx context.Context, id auth.Identity, m module.Descriptor
 	}
 	if err = Audit(ctx, tx, id, m.ID, e.ID, rid, "record_write", requestID); err != nil {
 		return nil, err
+	}
+	if financeOperation != "" {
+		if err = completeFinanceOrigin(ctx, tx, id, financeScope, financeOperation); err != nil {
+			return nil, err
+		}
+		if err = financeStoreLegacyProof(ctx, tx, id, key, financeProofOperation, e.ID, rid, hash[:], in.Generation, Int(result["version"])); err != nil {
+			return nil, err
+		}
 	}
 	resultRaw, err := json.Marshal(result)
 	if err != nil {
@@ -503,8 +531,28 @@ func (s *Store) Delete(ctx context.Context, id auth.Identity, m module.Descripto
 		return err
 	}
 	defer rollback(tx)
+	var financeOperation string
+	var financeScope financialScope
 	if financialEntity(m.ID, e.ID) {
 		if err = lockFinancialResource(ctx, tx, id, e.ID, rid); err != nil {
+			return err
+		}
+		targetKind, targetID := e.ID, rid
+		if e.ID == "entry_lines" {
+			// The child disappears before its parent's revision trigger runs.
+			// Reserve the locked stored parent so both effects retain one root.
+			err = tx.QueryRow(ctx, `SELECT entry_id FROM expenses.entry_lines
+ WHERE household_id=$1 AND id=$2 AND version=$3`, id.HouseholdID, rid, version).Scan(&targetID)
+			if errors.Is(err, pgx.ErrNoRows) {
+				return ErrConflict
+			}
+			if err != nil {
+				return err
+			}
+			targetKind = "entries"
+		}
+		financeOperation, financeScope, err = prepareLegacyFinanceMutation(ctx, tx, id, targetKind, targetID, nil)
+		if err != nil {
 			return err
 		}
 	}
@@ -541,6 +589,11 @@ func (s *Store) Delete(ctx context.Context, id auth.Identity, m module.Descripto
 	}
 	if err = Audit(ctx, tx, id, m.ID, e.ID, rid, "record_delete", requestID); err != nil {
 		return err
+	}
+	if financeOperation != "" {
+		if err = completeFinanceOrigin(ctx, tx, id, financeScope, financeOperation); err != nil {
+			return err
+		}
 	}
 	return tx.Commit(ctx)
 }

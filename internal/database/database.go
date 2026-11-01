@@ -127,6 +127,7 @@ func Migrate(ctx context.Context, dsn string) error {
 	fuelPredecessor := uint(5)
 	pantryPredecessor := uint(12)
 	mealplanPredecessor := uint(7)
+	expensePredecessor := uint(4)
 	for _, schema := range Schemas[1:] {
 		var through *uint
 		switch schema {
@@ -138,6 +139,8 @@ func Migrate(ctx context.Context, dsn string) error {
 			through = &pantryPredecessor
 		case "mealplan":
 			through = &mealplanPredecessor
+		case "expenses":
+			through = &expensePredecessor
 		}
 		if err = migrateSchema(schema, through); err != nil {
 			return err
@@ -154,9 +157,21 @@ func Migrate(ctx context.Context, dsn string) error {
 	if err = migrateSchema("fuel", &fuelRecipeBarrier); err != nil {
 		return err
 	}
-	for _, schema := range []string{"mealplan", "core", "fuel", "pantry"} {
-		if err = migrateSchema(schema, nil); err != nil {
+	// Preserve the exact Core27→Mealplan8→Core28→Fuel7/Pantry13 release
+	// predecessors before installing Finance; newer schemas must not run early.
+	for _, stage := range []struct {
+		schema  string
+		version uint
+	}{{"mealplan", 8}, {"core", 28}, {"fuel", 7}, {"pantry", 13},
+		{"core", 29}, {"expenses", 5}, {"core", 30}, {"core", 31},
+		{"fuel", 8}, {"pantry", 14}, {"mealplan", 9}} {
+		if err = migrateSchema(stage.schema, &stage.version); err != nil {
 			return err
+		}
+		if stage.schema == "core" && stage.version == 31 {
+			if _, err = lock.Exec(ctx, "SELECT core.install_audit_triggers()"); err != nil {
+				return fmt.Errorf("install finance audit predecessor: %w", err)
+			}
 		}
 	}
 	// Attach the final audit contract only after all independent module tables
@@ -352,6 +367,13 @@ func Ready(ctx context.Context, pool *pgxpool.Pool) error {
 	}
 	if !financialRequirements {
 		return errors.New("incomplete financial requirement foundation")
+	}
+	var financeDomain, financeCore bool
+	if err := pool.QueryRow(ctx, "SELECT expenses.finance_ready(),core.finance_ready()").Scan(&financeDomain, &financeCore); err != nil {
+		return fmt.Errorf("inspect complete finance contract: %w", err)
+	}
+	if !financeDomain || !financeCore {
+		return errors.New("incomplete finance authority or domain contract")
 	}
 	return nil
 }

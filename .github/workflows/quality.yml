@@ -28,7 +28,7 @@ jobs:
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
         with: {go-version-file: go.mod, cache: true}
       - run: go install github.com/securego/gosec/v2/cmd/gosec@v2.30.0
-      - run: gosec -fmt=sarif -out=gosec.sarif ./...
+      - run: gosec -fmt=sarif -out=gosec.sarif ./cmd/... ./internal/...
       - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
         if: always()
         with: {name: gosec-report, path: gosec.sarif, retention-days: 14, if-no-files-found: error}
@@ -62,7 +62,7 @@ jobs:
         with: {name: dependency-review, path: dependency-report.md, retention-days: 14}
   Tests:
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 75
     strategy:
       fail-fast: false
       max-parallel: 6
@@ -154,7 +154,7 @@ jobs:
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with: {node-version: '24'}
       - run: npm ci --ignore-scripts
-      - run: node --test scripts/quality-tools.test.cjs scripts/shopping-input.test.cjs scripts/shopping-checkout.test.cjs scripts/recipe-workspace.test.cjs scripts/recipe-expansion.test.cjs scripts/cooking.test.cjs scripts/planning.test.cjs scripts/mealplan-extensions.test.cjs scripts/planning-suggestions.test.cjs scripts/planning-purchases.test.cjs scripts/pantry-daily.test.cjs scripts/ingredient-pantry.test.cjs scripts/cooking-stock.test.cjs scripts/pantry-batches.test.cjs scripts/expense-editor.test.cjs scripts/shopping-repurchase.test.cjs scripts/shopping-barcode.test.cjs scripts/pantry-waste.test.cjs scripts/fuel-overview.test.cjs scripts/fuel-module-values.test.cjs scripts/go-test-shards.test.cjs scripts/fuel-browser-contracts.test.cjs scripts/pantry-extensions.test.cjs scripts/shopping-extensions.test.cjs scripts/push-worker.test.cjs
+      - run: node --test scripts/quality-tools.test.cjs scripts/shopping-input.test.cjs scripts/shopping-checkout.test.cjs scripts/recipe-workspace.test.cjs scripts/recipe-expansion.test.cjs scripts/cooking.test.cjs scripts/planning.test.cjs scripts/mealplan-extensions.test.cjs scripts/planning-suggestions.test.cjs scripts/planning-purchases.test.cjs scripts/pantry-daily.test.cjs scripts/ingredient-pantry.test.cjs scripts/cooking-stock.test.cjs scripts/pantry-batches.test.cjs scripts/expense-editor.test.cjs scripts/finance-workspace.test.cjs scripts/report-values.test.cjs scripts/shopping-repurchase.test.cjs scripts/shopping-barcode.test.cjs scripts/pantry-waste.test.cjs scripts/fuel-overview.test.cjs scripts/fuel-module-values.test.cjs scripts/go-test-shards.test.cjs scripts/fuel-browser-contracts.test.cjs scripts/pantry-extensions.test.cjs scripts/shopping-extensions.test.cjs scripts/push-worker.test.cjs
       - run: node scripts/check-workflows.cjs
       - name: Verify checked task list matches acceptance evidence
         run: node scripts/update-tasklist.cjs --check

@@ -61,8 +61,8 @@ func TestFinancialEditorPolicyContentionFailsBeforeReleaseAndKeyCanRetry(t *test
 func TestFinancialEditorBrokenCurrentAccessDeniesMutationAndOldReceipt(t *testing.T) {
 	for _, test := range []struct{ name, statement string }{
 		{"retired policy", "UPDATE core.financial_policies SET retired_at=clock_timestamp() WHERE resource_id=$1"},
-		{"missing parent subject", "DELETE FROM core.financial_subjects WHERE resource_type='entries' AND resource_id=$1"},
-		{"missing child subject", "DELETE FROM core.financial_subjects WHERE resource_type='entry_lines' AND policy_id IN(SELECT id FROM core.financial_policies WHERE resource_id=$1)"},
+		{"missing parent origin", "DELETE FROM core.finance_origin_resources WHERE resource_type='entries' AND resource_id=$1"},
+		{"missing child origin", "DELETE FROM core.finance_origin_resources WHERE resource_type='entry_lines' AND subject_id IN(SELECT id FROM core.financial_subjects WHERE policy_id IN(SELECT id FROM core.financial_policies WHERE resource_id=$1))"},
 		{"old policy generation", "UPDATE core.financial_policies SET module_generation=module_generation+1 WHERE resource_id=$1"},
 	} {
 		t.Run(test.name, func(t *testing.T) {

@@ -87,6 +87,9 @@ func (w *Worker) Tick(ctx context.Context) error {
 	if err := fuelStore.FuelModuleCaptureHousekeeping(ctx, w.Cfg.OCREnabled, w.fuelOCR); err != nil {
 		return fmt.Errorf("fuel capture: %w", err)
 	}
+	if err := fuelStore.ScheduleFinanceRecurrences(ctx); err != nil {
+		return fmt.Errorf("finance recurrence scheduling: %w", err)
+	}
 	for range 10 {
 		if err := w.job(ctx); err != nil {
 			return err
@@ -104,7 +107,7 @@ func (w *Worker) deliver(ctx context.Context) error {
 	if _, err = tx.Exec(ctx, "SELECT id FROM core.households FOR SHARE"); err != nil {
 		return err
 	}
-	rows, err := tx.Query(ctx, `SELECT r.id,r.household_id,r.module_id,r.resource_type,r.resource_id,r.kind,r.recipient_user_id,r.dedupe_key FROM core.reminders r JOIN core.module_states m ON m.household_id=r.household_id AND m.module_id=r.module_id AND m.state='enabled' AND m.data_generation=r.module_generation WHERE r.state='pending' AND r.scheduled_at<=now() ORDER BY r.scheduled_at LIMIT 50 FOR UPDATE OF r SKIP LOCKED`)
+	rows, err := tx.Query(ctx, `SELECT r.id,r.household_id,r.module_id,r.resource_type,r.resource_id,r.kind,r.recipient_user_id,r.dedupe_key FROM core.reminders r JOIN core.module_states m ON m.household_id=r.household_id AND m.module_id=r.module_id AND m.state='enabled' AND m.data_generation=r.module_generation WHERE r.state='pending' AND r.module_id<>'expenses' AND r.scheduled_at<=now() ORDER BY r.scheduled_at LIMIT 50 FOR UPDATE OF r SKIP LOCKED`)
 	if err != nil {
 		return err
 	}
@@ -182,6 +185,9 @@ func (w *Worker) job(ctx context.Context) (jobErr error) {
 	if kind == store.ShoppingPushJobKind {
 		return w.shoppingPush(ctx, id, lease)
 	}
+	if kind == store.FinanceRecurrenceJobKind {
+		return store.New(w.Pool, modules.Registry()).CompleteFinanceRecurrenceJob(ctx, id, lease)
+	}
 	tx, err := audit.Begin(ctx, w.Pool)
 	if err != nil {
 		return err
@@ -204,9 +210,10 @@ func (w *Worker) job(ctx context.Context) (jobErr error) {
 		}
 		return tx.Commit(ctx)
 	}
-	for _, query := range []string{"DELETE FROM core.rate_limit_buckets WHERE window_end<now()-interval '1 day'", "DELETE FROM core.sessions WHERE absolute_expires_at<now()-interval '7 days' OR revoked_at<now()-interval '7 days'", "DELETE FROM core.auth_challenges WHERE expires_at<now()-interval '1 day'", "DELETE FROM core.idempotency_records WHERE expires_at<now()", "DELETE FROM core.capture_jobs WHERE expires_at<now() AND state<>'confirmed'", `DELETE FROM core.import_batches WHERE id IN(
- SELECT id FROM core.import_batches WHERE purpose='recipe_review' AND expires_at<=clock_timestamp()
- ORDER BY expires_at,id LIMIT 100 FOR UPDATE SKIP LOCKED)`, "DELETE FROM core.import_batches WHERE created_at<now()-interval '30 days' AND state='preview'"} {
+	if _, err = tx.Exec(ctx, "SELECT core.finance_prune_artifacts($1,$2)", id, lease); err != nil {
+		return fmt.Errorf("finance artifact retention: %w", err)
+	}
+	for _, query := range []string{"DELETE FROM core.rate_limit_buckets WHERE window_end<now()-interval '1 day'", "DELETE FROM core.sessions WHERE absolute_expires_at<now()-interval '7 days' OR revoked_at<now()-interval '7 days'", "DELETE FROM core.auth_challenges WHERE expires_at<now()-interval '1 day'", "DELETE FROM core.idempotency_records WHERE expires_at<now()"} {
 		if _, err = tx.Exec(ctx, query); err != nil {
 			return fmt.Errorf("housekeeping: %w", err)
 		}
@@ -357,6 +364,8 @@ func reviewCaptures(ctx context.Context, tx pgx.Tx, jobID *string, state, messag
 		AND c.household_id=j.household_id AND c.module_id=j.module_id AND c.module_generation=j.module_generation
 		AND m.household_id=c.household_id AND m.module_id=c.module_id AND m.state='enabled' AND m.data_generation=c.module_generation
 		AND a.id=c.source_attachment_id AND a.household_id=c.household_id AND a.module_id=c.module_id
-		AND a.module_generation=c.module_generation AND a.state='ready'`, jobID, state, message)
+		AND a.module_generation=c.module_generation AND a.state='ready'
+		AND NOT EXISTS(SELECT 1 FROM core.finance_origin_resources f WHERE f.household_id=c.household_id
+		AND f.resource_type='capture' AND f.resource_id=c.id)`, jobID, state, message)
 	return err
 }

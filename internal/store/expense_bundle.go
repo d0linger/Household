@@ -46,6 +46,8 @@ type ExpenseBundleLine struct {
 }
 
 type ExpenseBundle struct {
+	Advanced       bool                      `json:"advanced"`
+	FinanceURL     string                    `json:"finance_url,omitempty"`
 	Generation     int64                     `json:"generation"`
 	AccessVersion  int64                     `json:"access_version"`
 	ReadAt         time.Time                 `json:"read_at"`
@@ -96,10 +98,35 @@ func (s *Store) ExpenseBundle(ctx context.Context, id auth.Identity, entry strin
 	if entry == "" {
 		out.Header = ExpenseHeader{OccurredOn: out.Today, Kind: "expense", State: "draft"}
 	} else {
-		scope := financialScope{householdID: id.HouseholdID, generation: out.Generation}
+		scope, scopeErr := readFinancialScope(ctx, tx, id)
+		if scopeErr != nil {
+			return ExpenseBundle{}, scopeErr
+		}
 		out.AccessVersion, err = readFinancialAccessVersion(ctx, tx, scope, entry)
 		if err != nil {
 			return ExpenseBundle{}, err
+		}
+		access, accessErr := financeAccessProjection(ctx, tx, id, scope, "entries", entry)
+		if accessErr != nil {
+			return ExpenseBundle{}, accessErr
+		}
+		canEdit, _ := access["can_edit"].(bool)
+		if !canEdit {
+			out.Editable = false
+			out.LockReason = "Du hast Lesezugriff auf diese Buchung."
+		}
+		if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM expenses.entry_finance WHERE household_id=$1 AND entry_id=$2)`, id.HouseholdID, entry).Scan(&out.Advanced); err != nil {
+			return ExpenseBundle{}, err
+		}
+		if out.Advanced {
+			out.Header.ID = entry
+			out.Editable = false
+			out.LockReason = "Diese Buchung mit Finanzdetails im Finanzarbeitsbereich prüfen."
+			out.FinanceURL = "/m/expenses/workspace/entries?id=" + entry
+			if err = tx.Commit(ctx); err != nil {
+				return ExpenseBundle{}, err
+			}
+			return out, nil
 		}
 		if err = readExpenseBundleContent(ctx, tx, id, entry, &out); err != nil {
 			return ExpenseBundle{}, err

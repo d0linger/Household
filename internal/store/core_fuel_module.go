@@ -168,6 +168,24 @@ func (s *Store) fuelModuleCoreExpense(ctx context.Context, tx pgx.Tx, id auth.Id
 		title = string(chars[:300])
 	}
 	entryID := value.UUID()
+	financeScope, err := readFinancialScope(ctx, tx, id)
+	if err != nil {
+		return nil, err
+	}
+	sourceKind := "shared_fuel_fillups"
+	if source == "vehicle_costs" {
+		sourceKind = "shared_fuel_vehicle_costs"
+	} else if source != "fillups" {
+		return nil, ErrNotFound
+	}
+	financeSources := []FinanceResourceRef{{Kind: sourceKind, ID: rid}}
+	if replacement := String(data["replaces_entry_id"]); replacement != "" {
+		financeSources = append(financeSources, FinanceResourceRef{Kind: "entries", ID: replacement})
+	}
+	financeOperation, err := prepareFinanceOrigin(ctx, tx, id, financeScope, "entries", entryID, "fuel", financeSources)
+	if err != nil {
+		return nil, err
+	}
 	entry, err := save(ctx, tx, id, m, e, entryID, Record{"occurred_on": data["occurred_on"], "description": title, "payee": String(data["station"]), "amount_minor": Int(data["total_minor"]), "kind": "expense"}, true, 0)
 	if err != nil {
 		return nil, err
@@ -187,6 +205,9 @@ func (s *Store) fuelModuleCoreExpense(ctx context.Context, tx pgx.Tx, id auth.Id
 		return nil, err
 	}
 	if err = s.afterWrite(ctx, tx, id, m, e, entry, generation); err != nil {
+		return nil, err
+	}
+	if err = completeFinanceOrigin(ctx, tx, id, financeScope, financeOperation); err != nil {
 		return nil, err
 	}
 	return fuelModuleCoreSaveBinding(ctx, tx, id, source, rid, 0, "expenses", "entries", entryID, "fuel_expense", String(data["vehicle_id"]), generation)
@@ -241,6 +262,14 @@ func (s *Store) fuelModuleCoreCorrectExpense(ctx context.Context, tx pgx.Tx, id 
 		return entryID, nil
 	}
 	reversalID := value.UUID()
+	financeScope, err := readFinancialScope(ctx, tx, id)
+	if err != nil {
+		return "", err
+	}
+	financeOperation, err := prepareFinanceOrigin(ctx, tx, id, financeScope, "entries", reversalID, "correction", []FinanceResourceRef{{Kind: "entries", ID: entryID}})
+	if err != nil {
+		return "", err
+	}
 	description := []rune("Storno Fahrzeugkosten: " + String(entry["description"]))
 	if len(description) > 300 {
 		description = description[:300]
@@ -268,6 +297,9 @@ func (s *Store) fuelModuleCoreCorrectExpense(ctx context.Context, tx pgx.Tx, id 
 	m, _ := s.Module("expenses")
 	e, _ := m.Entity("entries")
 	if err = s.afterWrite(ctx, tx, id, m, e, reversal, generation); err != nil {
+		return "", err
+	}
+	if err = completeFinanceOrigin(ctx, tx, id, financeScope, financeOperation); err != nil {
 		return "", err
 	}
 	return entryID, nil
@@ -452,7 +484,11 @@ func fuelModuleCoreAttachment(ctx context.Context, tx pgx.Tx, id auth.Identity, 
  FROM core.attachments a JOIN core.module_states ms ON ms.household_id=a.household_id AND ms.module_id='fuel'
  AND ms.state='enabled' AND ms.data_generation=a.module_generation JOIN fuel.vehicles v ON v.household_id=a.household_id AND v.id=a.resource_id
  WHERE a.household_id=$1 AND a.id=$2 AND a.module_id='fuel' AND a.resource_type='vehicles' AND a.state='ready'
- AND a.size_bytes<=10485760 AND a.media_type IN('image/jpeg','image/png','application/pdf')`, id.HouseholdID, attachmentID).Scan(&raw)
+ AND a.size_bytes<=10485760 AND a.media_type IN('image/jpeg','image/png','application/pdf')
+ AND core.finance_artifact_visible($1,$3,$4,$5,$6,'attachment',a.id,'view')
+ AND(SELECT s.classification FROM core.financial_artifact_scope_versions v JOIN core.financial_requirement_sets s ON s.household_id=v.household_id AND s.id=v.set_id
+ WHERE v.household_id=a.household_id AND v.artifact_kind='attachment' AND v.object_id=a.id ORDER BY v.revision DESC LIMIT 1)='nonfinancial'`, id.HouseholdID, attachmentID,
+		id.UserID, id.MembershipID, id.SessionID, id.AuthVersion).Scan(&raw)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNotFound
 	}

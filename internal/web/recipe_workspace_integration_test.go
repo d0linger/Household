@@ -369,6 +369,9 @@ func TestRecipeVersionsPopulatedUpgrade(t *testing.T) {
 		if schema == "fuel" {
 			version = 5
 		}
+		if schema == "expenses" {
+			version = 4 // Preserve Core26/27 before the Finance29 cutover.
+		}
 		migratePriorAuditSchema(t, f, schema, version)
 	}
 	migratePriorAuditSchema(t, f, "core", 27)

@@ -17,7 +17,7 @@ func recheckFinancialTarget(ctx context.Context, tx pgx.Tx, id auth.Identity, en
 	if err != nil {
 		return err
 	}
-	predicate, args, err := financialPredicate(scope, entity, intent, 4)
+	predicate, args, err := financialPredicate(scope, entity, intent, 6)
 	if err != nil {
 		return err
 	}
@@ -26,9 +26,9 @@ func recheckFinancialTarget(ctx context.Context, tx pgx.Tx, id auth.Identity, en
 	// required subject pins this new RC snapshot to the policy already held.
 	err = tx.QueryRow(ctx, "SELECT t.id FROM "+pgx.Identifier{"expenses", entity}.Sanitize()+
 		` t WHERE t.household_id=$1 AND t.id=$2 AND EXISTS(SELECT 1 FROM core.financial_subjects required
- WHERE required.household_id=t.household_id AND required.module_id='expenses' AND required.module_generation=$5
- AND required.resource_type=$6 AND required.resource_id=t.id AND required.policy_id=$3 AND required.retired_at IS NULL) AND `+predicate,
-		append(append([]any{id.HouseholdID, resource, access.policyID}, args...), entity)...).Scan(&found)
+ WHERE required.household_id=t.household_id AND required.module_id='expenses' AND required.module_generation=$4
+ AND required.resource_type=$5 AND required.resource_id=t.id AND required.policy_id=$3 AND required.retired_at IS NULL) AND `+predicate,
+		append([]any{id.HouseholdID, resource, access.policyID, scope.generation, entity}, args...)...).Scan(&found)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return ErrNotFound
 	}

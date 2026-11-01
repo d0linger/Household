@@ -5,10 +5,13 @@ package web
 import (
 	"bytes"
 	"fmt"
+	"mime/multipart"
 	"net/http"
+	"strconv"
 	"strings"
 	"testing"
 
+	"household/internal/store"
 	"household/internal/value"
 )
 
@@ -57,15 +60,53 @@ func capturePrivacyFixture(t *testing.T) (*integrationFixture, string, string, s
 	if err := f.app.Store.SetModule(f.ctx, f.identity, "documents", true, state.Version, value.UUID()); err != nil {
 		t.Fatal(err)
 	}
-	source, attachment, capture := value.UUID(), value.UUID(), value.UUID()
+	document, _ := auditCreate(t, f, "documents", "documents", store.Record{"title": "Capture privacy source"})
+	source := store.String(document["id"])
 	sentinel := "private-capture-" + value.UUID()
-	if _, err := f.owner.Exec(f.ctx, "INSERT INTO documents.documents(id,household_id,title,created_by) VALUES($1,$2,'Capture privacy source',$3)", source, f.identity.HouseholdID, f.identity.UserID); err != nil {
+	var body bytes.Buffer
+	form := multipart.NewWriter(&body)
+	for key, text := range map[string]string{"csrf": f.app.Auth.CSRF(f.token, "session"), "generation": strconv.FormatInt(state.Generation, 10), "capture": "true"} {
+		if err := form.WriteField(key, text); err != nil {
+			t.Fatal(err)
+		}
+	}
+	part, err := form.CreateFormFile("file", "capture-privacy.png")
+	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := f.owner.Exec(f.ctx, "INSERT INTO core.attachments(id,household_id,module_id,module_generation,resource_type,resource_id,storage_key,original_name,media_type,size_bytes,sha256,uploaded_by) VALUES($1,$2,'documents',$3,'documents',$4,$5,'fixture.png','image/png',1,$6,$7)", attachment, f.identity.HouseholdID, state.Generation, source, value.UUID(), make([]byte, 32), f.identity.UserID); err != nil {
+	if _, err = part.Write(financeReceiptTestImage(t)); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := f.owner.Exec(f.ctx, "INSERT INTO core.capture_jobs(id,household_id,module_id,module_generation,source_attachment_id,target_schema,source_text,extracted_values) VALUES($1,$2,'documents',$3,$4,'documents',$5,jsonb_build_object('title',$5::text))", capture, f.identity.HouseholdID, state.Generation, attachment, sentinel); err != nil {
+	if err = form.Close(); err != nil {
+		t.Fatal(err)
+	}
+	response, _, err := f.request(http.MethodPost, "/api/v1/m/documents/documents/"+source+"/attachments", f.token, f.app.Auth.CSRF(f.token, "session"), form.FormDataContentType(), &body, nil)
+	if err != nil || response.StatusCode != http.StatusSeeOther {
+		t.Fatal("actual nonfinancial capture upload", response, err)
+	}
+	capture := strings.TrimPrefix(response.Header.Get("Location"), "/capture/")
+	var attachment string
+	if err = f.pool.QueryRow(f.ctx, "SELECT source_attachment_id FROM core.capture_jobs WHERE household_id=$1 AND id=$2", f.identity.HouseholdID, capture).Scan(&attachment); err != nil {
+		t.Fatal(err)
+	}
+	// This is synthetic pending text, not an OCR accuracy or worker claim.
+	// Its actual App artifact reservation preserves the classified source.
+	tx, err := f.app.Store.BeginMutation(f.ctx, f.identity, "documents", state.Generation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = tx.Rollback(f.ctx) }()
+	operation, err := f.app.Store.PrepareFinanceArtifact(f.ctx, tx, f.identity, "capture", capture, []store.FinanceResourceRef{{Kind: "attachment", ID: attachment}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = tx.Exec(f.ctx, "UPDATE core.capture_jobs SET source_text=$3,extracted_values=jsonb_build_object('title',$3::text) WHERE household_id=$1 AND id=$2", f.identity.HouseholdID, capture, sentinel); err != nil {
+		t.Fatal(err)
+	}
+	if err = f.app.Store.CompleteFinanceArtifact(f.ctx, tx, f.identity, operation); err != nil {
+		t.Fatal(err)
+	}
+	if err = tx.Commit(f.ctx); err != nil {
 		t.Fatal(err)
 	}
 	return f, source, attachment, capture, sentinel

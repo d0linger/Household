@@ -40,6 +40,8 @@ func pantryExtensionsPriorCatalog(t *testing.T, f *integrationFixture, pantryVer
 			version = 7 // Mealplan8 requires the later Core28 extension stage.
 		case "pantry":
 			version = pantryVersion
+		case "expenses":
+			version = 4 // Finance5 is outside this genuine Core26 predecessor.
 		}
 		migratePriorAuditSchema(t, f, schema, version)
 	}

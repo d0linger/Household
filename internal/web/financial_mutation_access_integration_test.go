@@ -118,11 +118,11 @@ func TestFinancialMutationBrokenBindingDeniesPostDeleteAndAttachmentLock(t *test
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = f.owner.Exec(f.ctx, "DELETE FROM core.financial_subjects WHERE resource_type='entry_lines' AND resource_id=$1", line["id"]); err != nil {
+	in := auditMutation(t, f, "expenses", store.Record{}, store.Int(current["version"]))
+	if _, err = f.owner.Exec(f.ctx, "DELETE FROM core.finance_origin_resources WHERE resource_type='entry_lines' AND resource_id=$1", line["id"]); err != nil {
 		t.Fatal(err)
 	}
 	before := financialMutationSnapshot(t, f)
-	in := auditMutation(t, f, "expenses", store.Record{}, store.Int(current["version"]))
 	if got, err := f.app.Store.Action(f.ctx, f.identity, m, e, store.String(entry["id"]), "post", value.UUID(), value.UUID(), in); !errors.Is(err, store.ErrNotFound) || got != nil {
 		t.Fatal("posting read or changed an incomplete financial source", got, err)
 	}
@@ -354,12 +354,7 @@ func TestFinancialMutationFuelLegacyOnlyMalformedTargetNeverCreatesSecondEntry(t
 			f := newIntegrationFixture(t)
 			fuelModuleUpgradePriorCatalog(t, f)
 			category, _ := auditCreate(t, f, "expenses", "categories", store.Record{"name": "Genuine Fuel2 legacy category"})
-			input := expenseEditNewInput(t, f, store.String(category["id"]))
-			input.Action, input.Header.AmountEUR, input.Lines[0].AmountEUR = "post", "20.00", "20.00"
-			posted, err := f.app.Store.SaveExpense(f.ctx, f.identity, value.UUID(), value.UUID(), input)
-			if err != nil {
-				t.Fatal("real posted legacy-link target", err)
-			}
+			posted := value.UUID()
 			vehicle, series, fill := value.UUID(), value.UUID(), value.UUID()
 			ctx := audit.WithRequest(audit.WithActor(f.ctx, f.identity.UserID, f.identity.HouseholdID), value.UUID())
 			tx, err := f.app.Store.BeginMutation(ctx, f.identity, "fuel", f.app.Store.States()["fuel"].Generation)
@@ -371,6 +366,21 @@ func TestFinancialMutationFuelLegacyOnlyMalformedTargetNeverCreatesSecondEntry(t
 				defer cancel()
 				_ = tx.Rollback(cleanup)
 			}()
+			// This synthetic predecessor fixture executes the real prior App SQL
+			// guards, not the current Go writer against a schema without its API.
+			// Draft, allocation and posting retain the old schema's real audit,
+			// financial-subject, immutability and deferred-total constraints.
+			if _, err = tx.Exec(ctx, `INSERT INTO expenses.entries(id,household_id,occurred_on,description,amount_minor,created_by)
+ VALUES($1,$2,'2026-10-26','Genuine prior Fuel2 linked expense',2000,$3)`, posted, f.identity.HouseholdID, f.identity.UserID); err != nil {
+				t.Fatal("prior App expense draft", err)
+			}
+			if _, err = tx.Exec(ctx, `INSERT INTO expenses.entry_lines(household_id,entry_id,category_id,amount_minor,created_by)
+ VALUES($1,$2,$3,2000,$4)`, f.identity.HouseholdID, posted, category["id"], f.identity.UserID); err != nil {
+				t.Fatal("prior App expense allocation", err)
+			}
+			if _, err = tx.Exec(ctx, "UPDATE expenses.entries SET state='posted',posted_at=clock_timestamp(),version=version+1 WHERE household_id=$1 AND id=$2 AND state='draft'", f.identity.HouseholdID, posted); err != nil {
+				t.Fatal("prior App expense posting", err)
+			}
 			// Actual prior Fuel2 schema and App authority seed prior source facts
 			// and its one legacy Core link. Modern private tables do not exist.
 			if _, err = tx.Exec(ctx, `INSERT INTO fuel.vehicles(id,household_id,name,fuel_type,created_by)
@@ -387,7 +397,7 @@ func TestFinancialMutationFuelLegacyOnlyMalformedTargetNeverCreatesSecondEntry(t
 				t.Fatal(err)
 			}
 			if _, err = tx.Exec(ctx, `INSERT INTO core.resource_links(household_id,source_module,source_type,source_id,target_module,target_type,target_id,relation)
- VALUES($1,'fuel','fillups',$2,'expenses','entries',$3,'fuel_expense')`, f.identity.HouseholdID, fill, posted.EntryID); err != nil {
+ VALUES($1,'fuel','fillups',$2,'expenses','entries',$3,'fuel_expense')`, f.identity.HouseholdID, fill, posted); err != nil {
 				t.Fatal(err)
 			}
 			if err = tx.Commit(ctx); err != nil {
@@ -395,7 +405,7 @@ func TestFinancialMutationFuelLegacyOnlyMalformedTargetNeverCreatesSecondEntry(t
 			}
 			switch damage {
 			case "retired":
-				_, err = f.owner.Exec(f.ctx, "UPDATE core.financial_policies SET retired_at=clock_timestamp() WHERE resource_id=$1", posted.EntryID)
+				_, err = f.owner.Exec(f.ctx, "UPDATE core.financial_policies SET retired_at=clock_timestamp() WHERE resource_id=$1", posted)
 			case "wrong type":
 				_, err = f.owner.Exec(f.ctx, "UPDATE core.resource_links SET target_type='categories' WHERE source_id=$1 AND relation='fuel_expense'", fill)
 			case "ambiguous":
