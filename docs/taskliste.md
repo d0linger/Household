@@ -1,12 +1,12 @@
 # Household – Aufgabenliste
 
-Stand: 01.11.2026, 16:14 (Europe/Vienna).
+Stand: 01.11.2026, 16:15 (Europe/Vienna).
 
-**120 / 180 verifiziert und abgehakt · 20 in Arbeit · 40 offen.**
+**140 / 180 verifiziert und abgehakt · 0 in Arbeit · 40 offen.**
 
 Ein Haken bedeutet: umgesetzt und durch ausgeführte Prüfungen belegt. Vorbereitete Änderungen und einzelne bestandene Zwischentests schließen einen Verbesserungspunkt noch nicht ab.
 
-Aktuell in Arbeit: **CH01 – Heute für mich**, **CH02 – Räume und Bereiche**, **CH03 – Wiederholung erklären**, **CH04 – Arbeitsansicht**, **CH05 – Verschieben und Pausieren**, **CH06 – Kalenderwiederholungen**, **CH07 – Wiederholungsanker**, **CH08 – Zuständigkeitsrotation**, **CH09 – Aufwand und Eignung**, **CH10 – Unteraufgaben und Abhängigkeiten**, **CH11 – Tagesplanung**, **CH12 – Abwesenheiten**, **CH13 – Modulereignisse**, **CH14 – Aufgaben-Kalender**, **CH15 – Erinnerungsbündel**, **CH16 – Vorkommenshorizont**, **CH17 – Erledigungshistorie**, **CH18 – Paralleler Abschluss**, **CH19 – Serienänderungen**, **CH20 – Zeitzonen und Sommerzeit**.
+Derzeit ist kein Punkt als „In Arbeit“ markiert.
 
 **Essensplanung vollständig lokal abgenommen: 20 / 20 Punkte.** Geplante Reste, Wochenbudget, Kalender und Autoplan sind nach nativen Tests, Browserprüfung und verschlüsseltem Restore/Purge gemeinsam abgehakt. [Modulplan](mealplan-module-plan.md) · [Abnahmenachweise und Grenzen](mealplan-module-validation.md).
 
@@ -15,8 +15,6 @@ Aktuell in Arbeit: **CH01 – Heute für mich**, **CH02 – Räume und Bereiche*
 **Rezepte vollständig lokal abgenommen: 20 / 20 Punkte.** Alle zehn Erweiterungen sind nach nativer Komposition, Linux-Race, eigener und vollständiger Browserprüfung sowie echtem Restore/Purge gemeinsam abgehakt. [Modulplan](recipes-module-plan.md) · [Abnahmenachweise und Grenzen](recipes-module-validation.md).
 
 **Finanzen vollständig lokal abgenommen: 20 / 20 Punkte.** Vollständige 717-Test-Linux-Race-Kampagne plus zwei separat quellenqualifizierte Race-Tests, 70,86 % Statement-Abdeckung, 31 Browserkomponenten und tatsächlicher verschlüsselter Restore/Purge bestanden. Exakter Index-Geheimnisscan ohne Funde; lokaler Code-Checkpoint 0102380. [Modulplan mit Haken](finance-module-plan.md) · [Kriterien und Nachweise](finance-module-validation.md).
-
-**Aktueller Modulblock: Aufgaben (CH01–CH20).** 117/120 abgearbeitete Phasenunterpunkte. Die Implementierung ist vollständig; die gemeinsame Modulabnahme bleibt offen. Nach den in der breiten Regression gefundenen Pantry-Versionsgrenzen werden die Nachweise auf dem korrigierten gemeinsamen Quellstand erneuert. Frühere Prüfungen bleiben mit ihren tatsächlichen Quellen und Fehlern dokumentiert; Unterpunkt 114 verfolgt die notwendigen Wiederholungen. [120-Schritte-Plan mit Haken](chores-module-plan.md) · [Aktuelle Prüfnachweise](chores-module-validation.md). Alle 20 CH-Kriterien werden erst nach vollständigen Tests, exakter Indexprüfung und lokalem Checkpoint abgehakt.
 
 Diese Ansicht wird aus der [verbindlichen Liste mit Abnahmekriterien und Nachweisen](improvements-180.md) erzeugt. Aktualisieren: `node scripts/update-tasklist.cjs`.
 
@@ -27,7 +25,7 @@ Diese Ansicht wird aus der [verbindlichen Liste mit Abnahmekriterien und Nachwei
 | Rezepte | 20 / 20 | 0 | 0 |
 | Vorrat | 20 / 20 | 0 | 0 |
 | Finanzen | 20 / 20 | 0 | 0 |
-| Aufgaben | 0 / 20 | 20 | 0 |
+| Aufgaben | 20 / 20 | 0 | 0 |
 | Zähler und Energie | 0 / 20 | 0 | 20 |
 | Dokumente | 0 / 20 | 0 | 20 |
 | Essensplanung | 20 / 20 | 0 | 0 |
@@ -149,26 +147,26 @@ Diese Ansicht wird aus der [verbindlichen Liste mit Abnahmekriterien und Nachwei
 
 ## Aufgaben
 
-- [ ] **CH01 Heute für mich** — **In Arbeit** — Zugewiesene, fällige und übernommene Aufgaben persönlich bündeln.
-- [ ] **CH02 Räume und Bereiche** — **In Arbeit** — Aufgaben nach Bereichen mit Anzahl und Fälligkeit ordnen.
-- [ ] **CH03 Wiederholung erklären** — **In Arbeit** — Letzte Erledigung und Berechnung der nächsten Fälligkeit sichtbar machen.
-- [ ] **CH04 Arbeitsansicht** — **In Arbeit** — Anleitung, Material, Unteraufgaben und Abschluss konzentriert bedienen.
-- [ ] **CH05 Verschieben und Pausieren** — **In Arbeit** — Termin verschieben, Vorkommen auslassen und Serie pausieren unterscheiden und vorab zeigen.
-- [ ] **CH06 Kalenderwiederholungen** — **In Arbeit** — Wochentage, Monate und Saison mit begrenzten Regeln und Vorschau unterstützen.
-- [ ] **CH07 Wiederholungsanker** — **In Arbeit** — Festen Zeitplan oder letzte Erledigung als ausdrücklichen Anker verwenden.
-- [ ] **CH08 Zuständigkeitsrotation** — **In Arbeit** — Rotation, Ausnahmen und Vertretung nachvollziehbar anwenden.
-- [ ] **CH09 Aufwand und Eignung** — **In Arbeit** — Optionale Dauer, Schwierigkeit und geeignete Personen pflegen.
-- [ ] **CH10 Unteraufgaben und Abhängigkeiten** — **In Arbeit** — Abhängigkeiten ohne Zyklen validieren und Abschlussbedingungen zeigen.
-- [ ] **CH11 Tagesplanung** — **In Arbeit** — Zeitbudget und Priorität für einen erklärbaren Tagesvorschlag verwenden.
-- [ ] **CH12 Abwesenheiten** — **In Arbeit** — Personenbezogene Pausen und Ersatzregeln in Zuweisungen beachten.
-- [ ] **CH13 Modulereignisse** — **In Arbeit** — Aufgaben aus Kernereignissen mit deduplizierter Herkunft erstellen.
-- [ ] **CH14 Aufgaben-Kalender** — **In Arbeit** — ICS-Export und widerrufbare Feeds mit stabilen Ereigniskennungen anbieten.
-- [ ] **CH15 Erinnerungsbündel** — **In Arbeit** — Ruhezeiten, Zusammenfassungen und ausdrücklich gewählte Eskalation berücksichtigen.
-- [ ] **CH16 Vorkommenshorizont** — **In Arbeit** — Begrenzten rollierenden Horizont mit eindeutigen Vorkommenskennungen erzeugen.
-- [ ] **CH17 Erledigungshistorie** — **In Arbeit** — Aufwand, Häufigkeit und tatsächliche Person ohne erzwungene Rangliste zeigen.
-- [ ] **CH18 Paralleler Abschluss** — **In Arbeit** — Gleichzeitige Erledigung genau einmal buchen und Ergebnis verständlich zurückgeben.
-- [ ] **CH19 Serienänderungen** — **In Arbeit** — Einzeltermin und zukünftige Serie unterscheiden; historische Vorlage erhalten.
-- [ ] **CH20 Zeitzonen und Sommerzeit** — **In Arbeit** — Lokale Wiederholung über Zeitumstellungen hinweg deterministisch berechnen.
+- [x] **CH01 Heute für mich** — Zugewiesene, fällige und übernommene Aufgaben persönlich bündeln.
+- [x] **CH02 Räume und Bereiche** — Aufgaben nach Bereichen mit Anzahl und Fälligkeit ordnen.
+- [x] **CH03 Wiederholung erklären** — Letzte Erledigung und Berechnung der nächsten Fälligkeit sichtbar machen.
+- [x] **CH04 Arbeitsansicht** — Anleitung, Material, Unteraufgaben und Abschluss konzentriert bedienen.
+- [x] **CH05 Verschieben und Pausieren** — Termin verschieben, Vorkommen auslassen und Serie pausieren unterscheiden und vorab zeigen.
+- [x] **CH06 Kalenderwiederholungen** — Wochentage, Monate und Saison mit begrenzten Regeln und Vorschau unterstützen.
+- [x] **CH07 Wiederholungsanker** — Festen Zeitplan oder letzte Erledigung als ausdrücklichen Anker verwenden.
+- [x] **CH08 Zuständigkeitsrotation** — Rotation, Ausnahmen und Vertretung nachvollziehbar anwenden.
+- [x] **CH09 Aufwand und Eignung** — Optionale Dauer, Schwierigkeit und geeignete Personen pflegen.
+- [x] **CH10 Unteraufgaben und Abhängigkeiten** — Abhängigkeiten ohne Zyklen validieren und Abschlussbedingungen zeigen.
+- [x] **CH11 Tagesplanung** — Zeitbudget und Priorität für einen erklärbaren Tagesvorschlag verwenden.
+- [x] **CH12 Abwesenheiten** — Personenbezogene Pausen und Ersatzregeln in Zuweisungen beachten.
+- [x] **CH13 Modulereignisse** — Aufgaben aus Kernereignissen mit deduplizierter Herkunft erstellen.
+- [x] **CH14 Aufgaben-Kalender** — ICS-Export und widerrufbare Feeds mit stabilen Ereigniskennungen anbieten.
+- [x] **CH15 Erinnerungsbündel** — Ruhezeiten, Zusammenfassungen und ausdrücklich gewählte Eskalation berücksichtigen.
+- [x] **CH16 Vorkommenshorizont** — Begrenzten rollierenden Horizont mit eindeutigen Vorkommenskennungen erzeugen.
+- [x] **CH17 Erledigungshistorie** — Aufwand, Häufigkeit und tatsächliche Person ohne erzwungene Rangliste zeigen.
+- [x] **CH18 Paralleler Abschluss** — Gleichzeitige Erledigung genau einmal buchen und Ergebnis verständlich zurückgeben.
+- [x] **CH19 Serienänderungen** — Einzeltermin und zukünftige Serie unterscheiden; historische Vorlage erhalten.
+- [x] **CH20 Zeitzonen und Sommerzeit** — Lokale Wiederholung über Zeitumstellungen hinweg deterministisch berechnen.
 
 ## Zähler und Energie
 

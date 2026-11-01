@@ -1,6 +1,6 @@
 # Chores workspace contract
 
-Status: implementation sources and test sources prepared; execution and joint acceptance are separate gates in [the module plan](chores-module-plan.md) and [validation ledger](chores-module-validation.md). All CH01–CH20 improvements remain in progress until that acceptance. The accepted Finance predecessor is checkpoint `66e63c5`; its 92 SQL files remain byte-identical.
+Status: locally accepted after complete implementation, joint executed validation and local code checkpoint `74e049f`. AllCH01–CH20criteria are verified; source-bound evidence and explicit limits are in [the validation ledger](chores-module-validation.md). All92predecessor SQL files remain byte-identical.
 
 ## Application boundary
 

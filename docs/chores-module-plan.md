@@ -239,30 +239,17 @@ Konkrete Request-/Response-Felder, Konfliktregeln, DST-Verhalten, Feed-Grenzen u
 - [x] 115. Aktuelle non-root Docker-/OCR-/Backup-Images und lokale OCI-Evidenz prüfen.
 - [x] 116. Echten verschlüsselten Restore und restaurierten Chores-Purge ausführen.
 - [x] 117. Vollständige bestehende Modul-Browserregression ausführen.
-- [ ] 118. Abschließenden exakten Index-/Geheimnis-/SQL-Rohbyte-Scan ausführen.
+- [x] 118. Abschließenden exakten Index-/Geheimnis-/SQL-Rohbyte-Scan ausführen.
 
 ### Phase 4 – erst nach bestandenen gemeinsamen Gates abhaken
 
-- [ ] 119. Alle 20 CH-Kriterien mit tatsächlichen Nachweisen verifizieren und lokal checkpointen.
-- [ ] 120. Aufgabenliste aktualisieren und erst danach den Zählermodulblock beginnen.
+- [x] 119. Alle 20 CH-Kriterien mit tatsächlichen Nachweisen verifizieren und lokal checkpointen.
+- [x] 120. Aufgabenliste aktualisieren und erst danach den Zählermodulblock beginnen.
 
 ## Ausführungsstand
 
-117 von 120 Unterpunkten sind erledigt; offen bleiben 118–120. Die Haken dokumentieren ausgeführte Arbeitsschritte mit ihren jeweiligen Quellen. Unterpunkt114 bleibt bis zu den erforderlichen Wiederholungen auf der korrigierten Quelle offen; die20CH-Abnahmekriterien werden erst gemeinsam freigegeben.
+**120/120Phasenunterpunkte abgeschlossen;20/20CH-Kriterien lokal abgenommen.** Gesamtstand:140/180verifiziert,40offen. Alle notwendigen Korrekturen und Wiederholungen sind abgeschlossen.
 
-Aktuelle gemeinsame Quelle8b31a1ef (712Dateien): alle zwölf Qualitätsgates,318gewöhnliche Go-Haupttests/1.674Terminals,297Node-Tests, drei non-root Images und lokale OCI-/SBOM-/Provenienzprüfung bestanden. Aktuelle native Modulwiederholung9682d89b:20Haupttests/28Terminals bestanden, einschließlich Rezept-Upgrade mit unverändertem20Sekunden-Budget und Fahrzeugwartung. Separate aktuelle Prüfung01b56fd7: vollständiger AuditTrail, tatsächlicher Quellenexport mit Zukunfts-/Dirty-Sperre und Quellen-/Lizenzzugriff für Reader bestanden. Alle169Produktionsdateien unter Web sind bytegleich mit der tatsächlich anhand von16Bildern manuell geprüften Quelle.
+All20CHcriteria are locally accepted after complete implementation, actual tests/fixes and exact-index review. Code checkpoint `74e049f`; exact scan41981ce8 verifies930blobs, no secret findings,97raw SQL pins and92byte-identical released migrations. All746registered identities have complete actual passing trees on identical source (726original plus18and2repeated); original three60minute package-timeout attempts remain failed. Actual complete-success-profile statement coverage is56.86%. Current quality12/Go318/Node297, native20plus3, standalone74/16cleanAxe, full32components/1,438checks/183cleanAxe and15-stage encrypted restore/purge pass. The recovery upload inventory is explicitly empty. Live8100, siblings and publication remain untouched. Meters and Documents are next.
 
-Die neue vollständige746er Linux-Race-Regression b0081891 läuft mit drei unabhängigen Workern über alle sechs unveränderten strikten Shards. Der vorherige fehlerhafte Lauf27d309a3 ist nach618bestandenen/vier fehlgeschlagenen Haupttests kontrolliert beendet; unveränderte Quellen und19entfernte eigene Ressourcen sind verifiziert, private Belege bleiben geschützt erhalten. Die Befunde betreffen die alte Audit-Zahl92statt106, ein20Sekunden-Migrationsbudget unter Sechsfachlast und die zweite echte Pantry-Versionsgrenze im Quellenexport, die auch Reader betraf. Produktionsgrenze und Audit-Erwartung sind korrigiert; kein Zeitbudget wurde erhöht.
-
-Im aktuellen Lauf erreichen zwei Web-Pakete ihr unverändertes60Minuten-Gesamtbudget, ohne fehlgeschlagene fachliche Assertion. Alle18dadurch unvollständigen Testidentitäten sind anschließend auf identischen Quellen vollständig unter Linux-Race nachgeprüft:18Haupttests/50Terminals bestanden, keine Fehler/Skips/Race-Warnungen, keine Overlays, keine erhöhten Budgets und verifizierte eigene Bereinigung. Die ursprünglichen Paket-Timeouts bleiben Fehler. Erst nach den übrigen vier vollständig erfolgreichen Shards und verifizierter Eltern-Bereinigung darf die strikte Gesamtauswertung746eindeutige vollständige Testbäume freigeben; ein einzelner komplett bestandener746er Versuch wird nicht behauptet.
-
-Der aktuelle Standalone-Browser848d9184 besteht74Prüfungen/16Screenshots/16saubereAxe-Scans. Echter aktueller Restore75470633 besteht15Stufen und12verifizierte Bereinigungen mit ausdrücklich leerem Uploadbestand. Aktuelle32er Browserkettebc6cd1ef besteht1.438Prüfungen/195Screenshots/183saubereAxe-Scans; Quellen und eigene Bereinigung sind verifiziert. Ein vorheriger Finanz-Browsertest hing nach erfolgreicher Buchung in unbegrenztem Transportwarten; ausschließlich der Prüfer wurde auf begrenzte sichtbare Bestätigung plus echten gleichschlüsseligen Dauerbeleg gehärtet. Separate298er Finanzprüfung und neueGesamtkette bestehen; Go-/Produktionsquellen bleiben unverändert. Frühere erfolgreiche AFD-Nachweise und alle Fehlversuche bleiben historisch erhalten. Census-only-Qualifikations-/Übertragungswerkzeuge wurden nur vorbereitet und wegen der realen Produktionsänderung nie ausgeführt.
-
-Die Hauptliste bleibt 120 verifiziert/20 in Arbeit/40 offen. Details: docs/chores-module-validation.md; Kriterienzuordnung: docs/chores-acceptance-map.md. Finanzvorgänger66e63c5, Live8100, Geschwisterprojekte und Veröffentlichung bleiben unverändert.
-
-Aktueller Abschlussstand: Der ursprüngliche Laufb0081891 ist nach726vollständigen Haupttest-Erfolgen beendet. Drei Web-Pakete überschreiten das unveränderte60Minuten-Budget; alle13eigenen Laufzeitressourcen sind nachweislich entfernt. Keine Testassertion ist fehlgeschlagen/übersprungen und kein Data Race beobachtet.18der20unvollständigen Identitäten sind vollständig erfolgreich wiederholt; die letzten zwei laufen auf identischen Quellen. Die ursprünglichen Versuche bleiben fehlgeschlagen. Gemeinsame Qualifikation, Indexscan und Abnahme sind noch offen.
-
-
-### Tatsächlich abgeschlossene Laufzeitprüfungen
-
-Alle746Testidentitäten sind vollständig auf identischen Quellen bestanden:726im ursprünglichen Versuch sowie18und2in vollständigen Wiederholungen. Die drei ursprünglichen Paket-Timeouts bleiben fehlgeschlagen. Ausschließlich vollständige erfolgreiche Coverage-Profile ergeben56,86%beobachtete Statement-Abdeckung. Alle zwölf gemeinsamen Laufzeitgates sowie die Nachweiszuordnung aller20CH-Kriterien sind geprüft; exakter Indexscan, lokaler Checkpoint und Statusfreigabe bleiben offen.
+Historische Fehler, tatsächlich ausgeführte Wiederholungen und Quellenbindungen bleiben in [den Prüfnachweisen](chores-module-validation.md) erhalten. Die vollständige Kriterienzuordnung steht in [der Abnahmematrix](chores-acceptance-map.md). Zähler und Energie folgen als nächster vollständiger Modulblock.
