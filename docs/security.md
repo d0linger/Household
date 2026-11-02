@@ -22,7 +22,7 @@ TOTP secrets are encrypted with AES-GCM using an independent deployment key. Acc
 
 Every HTML response has a new CSP nonce. Scripts are local and nonce-authorized; styles/fonts/images/connect/worker/manifest are local. Frames and plugins are forbidden. HSTS, nosniff, frame denial, a restrictive permissions policy, and same-origin referrers are set. Production rejects an incorrect Host, untrusted HTTPS forwarding, cross-origin unsafe requests and cross-site Fetch Metadata.
 
-Unsafe authenticated requests require a session-bound HMAC CSRF token. Login has a separately bound pre-authentication cookie/token. JSON decoders reject unknown fields and trailing documents; bodies and multipart files are bounded. Errors expose a stable user message/request ID and keep internal details in operator logs.
+Unsafe authenticated requests require a session-bound HMAC CSRF token. Login has a separately bound pre-authentication cookie/token. JSON decoders reject unknown fields and trailing documents; bodies and multipart files are bounded. Errors expose a stable user message/request ID and keep internal details in operator logs. User-correctable account refusals (password rules, re-authentication for factor changes, factor already active or not yet set up) are HTTP 422 with their message, not generic failures. Panic logs contain the panic type and a value-free call path only.
 
 ## Files and extraction
 

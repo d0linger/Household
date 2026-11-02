@@ -22,6 +22,20 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
+// originalName bounds an uploaded filename to 200 characters, keeping a short
+// extension. Rune conversion also replaces invalid UTF-8, which PostgreSQL rejects.
+func originalName(name string) string {
+	runes := []rune(name)
+	if len(runes) <= 200 {
+		return string(runes)
+	}
+	extension := []rune(filepath.Ext(name))
+	if len(extension) > 10 {
+		extension = nil
+	}
+	return string(runes[:200-len(extension)]) + string(extension)
+}
+
 func sanitizeUpload(data []byte) ([]byte, string, error) {
 	kind := http.DetectContentType(data)
 	if kind == "application/pdf" {
@@ -230,12 +244,7 @@ func (s *Server) upload(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, err)
 		return
 	}
-	name := filepath.Base(strings.ReplaceAll(header.Filename, "\\", "/"))
-	if m.ID == "documents" {
-		name = documentOriginalName(name)
-	} else if len(name) > 200 {
-		name = name[:200]
-	}
+	name := originalName(filepath.Base(strings.ReplaceAll(header.Filename, "\\", "/")))
 	sum := sha256.Sum256(clean)
 	var financeSources []store.FinanceResourceRef
 	if m.ID == "expenses" && (e.ID == "entries" || e.ID == "entry_lines") {

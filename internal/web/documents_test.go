@@ -49,11 +49,3 @@ func TestDocumentRoutesKeepArchiveAndUploadsExplicit(t *testing.T) {
 		})
 	}
 }
-
-func TestDocumentOriginalNameKeepsUnicodeAndExtension(t *testing.T) {
-	input := "abc" + strings.Repeat("ö", 200) + ".png"
-	actual := documentOriginalName(input)
-	if len([]rune(actual)) != 200 || !strings.HasSuffix(actual, ".png") || strings.ContainsRune(actual, '�') {
-		t.Fatal(actual)
-	}
-}

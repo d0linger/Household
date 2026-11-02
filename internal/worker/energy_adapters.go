@@ -3,12 +3,13 @@ package worker
 import (
 	"context"
 	"errors"
-	"fmt"
 	"time"
 
 	"household/internal/meterfeed"
 	"household/internal/modules"
 	"household/internal/store"
+
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 func (w *Worker) energyAdapterLoop(ctx context.Context) {
@@ -22,9 +23,13 @@ func (w *Worker) energyAdapterLoop(ctx context.Context) {
 			return
 		}
 		if err != nil && w.Log != nil {
-			// Neither remote bodies nor database error details expose measurements or credentials;
-			// a recovered panic is reported only as worker.panicked.
-			w.Log.Error("meter adapter processing failed", "error_type", fmt.Sprintf("%T", err))
+			// Neither remote bodies nor database error details expose measurements or credentials.
+			attrs := []any{"reason", failureReason(err)}
+			var caught panicked
+			if errors.As(err, &caught) {
+				attrs = append(attrs, "panic_type", caught.kind, "call_path", caught.path)
+			}
+			w.Log.Error("meter adapter processing failed", attrs...)
 		}
 		if handled && err == nil {
 			continue
@@ -36,6 +41,31 @@ func (w *Worker) energyAdapterLoop(ctx context.Context) {
 			return
 		case <-timer.C:
 		}
+	}
+}
+
+// failureReason names an adapter failure class without echoing remote bodies,
+// URLs or values. Feed errors are recorded on the source itself; failures that
+// reach the log come from the lease's database work, deadlines or panics.
+func failureReason(err error) string {
+	var caught panicked
+	var database *pgconn.PgError
+	var connect *pgconn.ConnectError
+	switch {
+	case errors.As(err, &caught):
+		return "panic"
+	case errors.Is(err, context.DeadlineExceeded):
+		return "deadline"
+	case errors.Is(err, store.ErrConflict):
+		return "lease_lost"
+	case errors.Is(err, store.ErrForbidden):
+		return "lease_refused"
+	case errors.As(err, &connect):
+		return "database_unreachable"
+	case errors.As(err, &database):
+		return "database_" + database.Code
+	default:
+		return "unclassified"
 	}
 }
 

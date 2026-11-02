@@ -3,6 +3,7 @@ package web
 import (
 	"bytes"
 	"fmt"
+	"household/internal/auth"
 	"household/internal/config"
 	"household/internal/modules"
 	"household/internal/store"
@@ -46,19 +47,31 @@ func TestHandlerRoutesAndHeaders(t *testing.T) {
 		t.Fatal("unrecognized Host accepted")
 	}
 }
-func TestFailBusyModuleGate(t *testing.T) {
+func TestFail(t *testing.T) {
 	t.Parallel()
-	var logs bytes.Buffer
-	s := &Server{Log: slog.New(slog.NewTextHandler(&logs, nil))}
-	request := httptest.NewRequest(http.MethodPost, "http://localhost:8100/settings/modules/pantry", nil)
-	request.Header.Set("Accept", "application/json")
-	response := httptest.NewRecorder()
-	s.fail(response, request, fmt.Errorf("toggle module: %w", store.ErrBusy))
-	if response.Code != http.StatusServiceUnavailable || response.Header().Get("Retry-After") != "5" || !strings.Contains(response.Body.String(), "erneut versuchen") {
-		t.Fatalf("busy gate = %d %q %s", response.Code, response.Header().Get("Retry-After"), response.Body)
-	}
-	if logs.Len() != 0 {
-		t.Fatalf("an expected retryable refusal was logged as a failure: %s", logs.String())
+	for _, tc := range []struct {
+		name, path, message, retry string
+		err                        error
+		status                     int
+	}{
+		{"busy module gate", "/settings/modules/pantry", "erneut versuchen", "5", fmt.Errorf("toggle module: %w", store.ErrBusy), http.StatusServiceUnavailable},
+		{"correctable auth refusal", "/change-password", "mindestens 14 Zeichen", "", fmt.Errorf("change: %w", auth.Rejection("neues Passwort: mindestens 14 Zeichen")), http.StatusUnprocessableEntity},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			var logs bytes.Buffer
+			s := &Server{Log: slog.New(slog.NewTextHandler(&logs, nil))}
+			request := httptest.NewRequest(http.MethodPost, "http://localhost:8100"+tc.path, nil)
+			request.Header.Set("Accept", "application/json")
+			response := httptest.NewRecorder()
+			s.fail(response, request, tc.err)
+			if response.Code != tc.status || response.Header().Get("Retry-After") != tc.retry || !strings.Contains(response.Body.String(), tc.message) {
+				t.Fatalf("fail = %d %q %s", response.Code, response.Header().Get("Retry-After"), response.Body)
+			}
+			if logs.Len() != 0 {
+				t.Fatalf("an expected refusal was logged as a failure: %s", logs.String())
+			}
+		})
 	}
 }
 func TestReadJSON(t *testing.T) {

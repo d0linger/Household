@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -29,6 +30,23 @@ func main() {
 		os.Exit(1)
 	}
 }
+
+// healthURL probes the configured listener; wildcard binds are reached on loopback.
+// The health check runs without secrets, so it cannot use config.Load.
+func healthURL(listen string) (string, error) {
+	if listen == "" {
+		listen = config.DefaultListen
+	}
+	host, port, err := net.SplitHostPort(listen)
+	if err != nil || port == "" {
+		return "", errors.New("invalid HOUSEHOLD_LISTEN for health check")
+	}
+	if ip := net.ParseIP(host); host == "" || ip != nil && ip.IsUnspecified() {
+		host = "127.0.0.1"
+	}
+	return "http://" + net.JoinHostPort(host, port) + "/health/ready", nil
+}
+
 func run(log *slog.Logger) error {
 	command := "serve"
 	if len(os.Args) > 1 {
@@ -42,8 +60,13 @@ func run(log *slog.Logger) error {
 		return runPushKeygen(os.Args[2:])
 	}
 	if command == "healthcheck" {
+		target, err := healthURL(os.Getenv("HOUSEHOLD_LISTEN"))
+		if err != nil {
+			return err
+		}
 		client := &http.Client{Timeout: 3 * time.Second}
-		response, err := client.Get("http://127.0.0.1:8080/health/ready")
+		// security: the operator-owned listen address selects only this process's own listener.
+		response, err := client.Get(target) // #nosec G704 -- operator configuration, never request input
 		if err != nil {
 			return errors.New("health endpoint unavailable")
 		}

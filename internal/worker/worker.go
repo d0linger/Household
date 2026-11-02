@@ -6,7 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"runtime/debug"
+	"runtime"
+	"strings"
 	"sync"
 	"time"
 
@@ -125,20 +126,43 @@ func runSteps(ctx context.Context, steps []step) error {
 	return errors.Join(failures...)
 }
 
-// panicked is a recovered panic. Its type name alone is safe for redacted logs.
+// panicked describes a recovered panic by type and call path only: the value
+// and argument words can carry household data, so they never reach logs.
 type panicked struct {
-	value any
-	stack []byte
+	kind, path string
 }
 
-func (p panicked) Error() string { return fmt.Sprintf("panic: %v\n%s", p.value, p.stack) }
+func recovered(value any) panicked {
+	return panicked{kind: fmt.Sprintf("%T", value), path: callPath()}
+}
+
+func (p panicked) Error() string { return "panic (" + p.kind + ") at\n" + p.path }
+
+// callPath lists the panicking frames as function and file:line. Call it
+// directly from the recovering deferred function.
+func callPath() string {
+	pcs := make([]uintptr, 32)
+	frames := runtime.CallersFrames(pcs[:runtime.Callers(4, pcs)])
+	var path strings.Builder
+	origin := false
+	for {
+		frame, more := frames.Next()
+		// Skip the runtime's own panic frames above the panicking function.
+		if origin = origin || !strings.HasPrefix(frame.Function, "runtime."); origin {
+			fmt.Fprintf(&path, "%s %s:%d\n", frame.Function, frame.File, frame.Line)
+		}
+		if !more {
+			return path.String()
+		}
+	}
+}
 
 // guarded turns a panic into an error: background work shares its process with
 // the HTTP server, and an unrecovered goroutine panic would stop both.
 func guarded(ctx context.Context, run func(context.Context) error) (err error) {
 	defer func() {
-		if recovered := recover(); recovered != nil {
-			err = panicked{value: recovered, stack: debug.Stack()}
+		if value := recover(); value != nil {
+			err = recovered(value)
 		}
 	}()
 	return run(ctx)
@@ -229,8 +253,8 @@ func (w *Worker) job(ctx context.Context) (jobErr error) {
 	}
 	defer func() {
 		// A panicking handler must still release its lease and enter backoff.
-		if recovered := recover(); recovered != nil {
-			jobErr = panicked{value: recovered, stack: debug.Stack()}
+		if value := recover(); value != nil {
+			jobErr = recovered(value)
 		}
 		if jobErr != nil {
 			retryCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 3*time.Second)

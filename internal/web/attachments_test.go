@@ -5,8 +5,31 @@ import (
 	"image"
 	"image/color"
 	"image/png"
+	"strings"
 	"testing"
+	"unicode/utf8"
 )
+
+func TestOriginalName(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name, input, want string
+	}{
+		{"short", "Beleg März.pdf", "Beleg März.pdf"},
+		{"long multibyte keeps extension", "abc" + strings.Repeat("ö", 200) + ".png", "abc" + strings.Repeat("ö", 193) + ".png"},
+		{"long without extension cuts on a character", strings.Repeat("ä", 250), strings.Repeat("ä", 200)},
+		{"overlong extension is dropped", strings.Repeat("a", 195) + "." + strings.Repeat("x", 20), strings.Repeat("a", 195) + "." + strings.Repeat("x", 4)},
+		{"invalid bytes are replaced", "scan\xff\xfe.jpg", "scan��.jpg"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got := originalName(tc.input)
+			if got != tc.want || !utf8.ValidString(got) || utf8.RuneCountInString(got) > 200 {
+				t.Fatalf("originalName(%q) = %q, want %q", tc.input, got, tc.want)
+			}
+		})
+	}
+}
 
 func TestSanitizeUpload(t *testing.T) {
 	t.Parallel()

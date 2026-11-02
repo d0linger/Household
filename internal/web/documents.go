@@ -12,7 +12,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"path/filepath"
 	"slices"
 	"strings"
 
@@ -22,18 +21,6 @@ import (
 )
 
 var documentPanes = []string{"inbox", "library", "review", "deadlines", "rules", "processing", "integrations", "duplicates"}
-
-func documentOriginalName(name string) string {
-	runes := []rune(name)
-	if len(runes) <= 200 {
-		return string(runes)
-	}
-	extension := []rune(filepath.Ext(name))
-	if len(extension) > 10 {
-		extension = nil
-	}
-	return string(runes[:200-len(extension)]) + string(extension)
-}
 
 func (s *Server) registerDocumentRoutes(mux *http.ServeMux) {
 	mux.Handle("GET /m/documents/workspace/{pane}", s.require(s.documentPage))

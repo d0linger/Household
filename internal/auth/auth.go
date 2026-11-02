@@ -33,6 +33,11 @@ var (
 	ErrLimited     = errors.New("zu viele Versuche; bitte später erneut versuchen")
 )
 
+// Rejection is a refusal the user can correct; its message is safe to display.
+type Rejection string
+
+func (r Rejection) Error() string { return string(r) }
+
 type Identity struct {
 	UserID       string    `json:"id"`
 	HouseholdID  string    `json:"household_id"`
@@ -323,7 +328,7 @@ func (s *Service) ChangePassword(ctx context.Context, id Identity, current, next
 		return ctx.Err()
 	}
 	if !PasswordValid(next) || next == current {
-		return errors.New("neues Passwort: mindestens 14 Zeichen, höchstens 72 Bytes, vom bisherigen verschieden")
+		return Rejection("neues Passwort: mindestens 14 Zeichen, höchstens 72 Bytes, vom bisherigen verschieden")
 	}
 	var old string
 	if err := s.pool.QueryRow(ctx, "SELECT password_hash FROM core.users WHERE id=$1", id.UserID).Scan(&old); err != nil {
@@ -378,7 +383,7 @@ func (s *Service) Open(data []byte) ([]byte, error) {
 func (s *Service) SetupTOTP(ctx context.Context, id Identity) (string, string, error) {
 	ctx = audit.WithActor(ctx, id.UserID, id.HouseholdID)
 	if !id.Recent() {
-		return "", "", errors.New("für diese Aktion erneut anmelden")
+		return "", "", Rejection("für diese Aktion erneut anmelden")
 	}
 	key, err := totp.Generate(totp.GenerateOpts{Issuer: "Household", AccountName: id.Username})
 	if err != nil {
@@ -397,7 +402,7 @@ func (s *Service) SetupTOTP(ctx context.Context, id Identity) (string, string, e
 		return "", "", err
 	}
 	if tag.RowsAffected() != 1 {
-		return "", "", errors.New("zweiter Faktor ist bereits aktiv")
+		return "", "", Rejection("zweiter Faktor ist bereits aktiv")
 	}
 	if err = audit.Event(ctx, tx, "core", "users", id.UserID, "totp_setup", nil); err != nil {
 		return "", "", err
@@ -411,7 +416,7 @@ func (s *Service) SetupTOTP(ctx context.Context, id Identity) (string, string, e
 func (s *Service) EnableTOTP(ctx context.Context, id Identity, code string) ([]string, error) {
 	ctx = audit.WithActor(ctx, id.UserID, id.HouseholdID)
 	if !id.Recent() {
-		return nil, errors.New("für diese Aktion erneut anmelden")
+		return nil, Rejection("für diese Aktion erneut anmelden")
 	}
 	tx, err := audit.Begin(ctx, s.pool)
 	if err != nil {
@@ -423,11 +428,15 @@ func (s *Service) EnableTOTP(ctx context.Context, id Identity, code string) ([]s
 	}
 	var encrypted []byte
 	var enabled *time.Time
-	if err = tx.QueryRow(ctx, "SELECT encrypted_secret,enabled_at FROM core.totp_credentials WHERE user_id=$1 FOR UPDATE", id.UserID).Scan(&encrypted, &enabled); err != nil {
+	err = tx.QueryRow(ctx, "SELECT encrypted_secret,enabled_at FROM core.totp_credentials WHERE user_id=$1 FOR UPDATE", id.UserID).Scan(&encrypted, &enabled)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, Rejection("zuerst einen zweiten Faktor einrichten")
+	}
+	if err != nil {
 		return nil, err
 	}
 	if enabled != nil {
-		return nil, errors.New("zweiter Faktor ist bereits aktiv")
+		return nil, Rejection("zweiter Faktor ist bereits aktiv")
 	}
 	secret, err := s.Open(encrypted)
 	if err != nil {
@@ -538,12 +547,8 @@ func (s *Service) HashPassword(ctx context.Context, user, password string) ([]by
 	return bcrypt.GenerateFromPassword([]byte(password), 12)
 }
 
-func rollback(ctx context.Context, tx pgx.Tx) {
-	err := tx.Rollback(ctx)
-	if err != nil && !errors.Is(err, pgx.ErrTxClosed) {
-		return
-	}
-}
+// rollback releases an unfinished transaction; after Commit it is a no-op.
+func rollback(ctx context.Context, tx pgx.Tx) { _ = tx.Rollback(ctx) }
 
 func (s *Service) RecoverPassword(ctx context.Context, username, password string, resetFactor ...bool) error {
 	ctx = audit.WithSystem(ctx, "operator")

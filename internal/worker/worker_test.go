@@ -35,12 +35,15 @@ func TestRunStepsIsolatesFailuresAndPanics(t *testing.T) {
 	if !slices.Equal(ran, []string{"reminders", "low stock", "jobs"}) {
 		t.Fatalf("a failing step starved later work: ran %v", ran)
 	}
-	var recovered panicked
-	if !errors.As(err, &recovered) || recovered.value != "nil projection" || len(recovered.stack) == 0 {
-		t.Fatalf("panic not recovered with its stack: %v", err)
+	var caught panicked
+	if !errors.As(err, &caught) || caught.kind != "string" || !strings.HasPrefix(caught.path, "household/internal/worker.TestRunStepsIsolatesFailuresAndPanics.") {
+		t.Fatalf("panic not recovered with its type and originating frame: %v", err)
 	}
-	if !strings.Contains(err.Error(), "reminders: bad reminder row") || !strings.Contains(err.Error(), "low stock: panic: nil projection") {
+	if !strings.Contains(err.Error(), "reminders: bad reminder row") || !strings.Contains(err.Error(), "low stock: panic (string) at") {
 		t.Fatalf("step failures lost their names: %v", err)
+	}
+	if strings.Contains(err.Error(), "nil projection") {
+		t.Fatalf("panic value reached the error text: %v", err)
 	}
 	if err = runSteps(t.Context(), []step{{"jobs", func(context.Context) error { return nil }}}); err != nil {
 		t.Fatalf("successful steps reported %v", err)

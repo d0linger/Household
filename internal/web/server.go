@@ -17,6 +17,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -425,8 +426,14 @@ func (s *Server) middleware(next http.Handler) http.Handler {
 		recorder := &response{ResponseWriter: w, status: 200}
 		defer func() {
 			if recovered := recover(); recovered != nil {
-				s.Log.Error("request panic", "request_id", requestID)
-				http.Error(recorder, "Interner Fehler", 500)
+				if err, ok := recovered.(error); ok && errors.Is(err, http.ErrAbortHandler) {
+					panic(recovered) // net/http aborts the connection without logging
+				}
+				// The panic value may hold request data; log only its type and call path.
+				s.Log.Error("request panic", "request_id", requestID, "route", r.Pattern, "panic_type", fmt.Sprintf("%T", recovered), "call_path", callPath())
+				if !recorder.wrote {
+					http.Error(recorder, "Interner Fehler", 500)
+				}
 			}
 			s.Log.Info("http request", "request_id", requestID, "method", r.Method, "route", r.Pattern, "status", recorder.status, "duration_ms", time.Since(started).Milliseconds())
 		}()
@@ -458,9 +465,38 @@ func (s *Server) middleware(next http.Handler) http.Handler {
 type response struct {
 	http.ResponseWriter
 	status int
+	wrote  bool
 }
 
-func (w *response) WriteHeader(status int) { w.status = status; w.ResponseWriter.WriteHeader(status) }
+func (w *response) WriteHeader(status int) {
+	if !w.wrote {
+		w.status, w.wrote = status, true
+	}
+	w.ResponseWriter.WriteHeader(status)
+}
+func (w *response) Write(b []byte) (int, error) { w.wrote = true; return w.ResponseWriter.Write(b) }
+
+// Unwrap lets http.ResponseController reach the underlying writer.
+func (w *response) Unwrap() http.ResponseWriter { return w.ResponseWriter }
+
+// callPath lists the panicking frames as function and file:line only. Unlike
+// debug.Stack it omits argument words, which can carry request data.
+func callPath() string {
+	pcs := make([]uintptr, 32)
+	frames := runtime.CallersFrames(pcs[:runtime.Callers(3, pcs)])
+	var path strings.Builder
+	origin := false
+	for {
+		frame, more := frames.Next()
+		// Skip the runtime's own panic frames above the panicking function.
+		if origin = origin || !strings.HasPrefix(frame.Function, "runtime."); origin {
+			fmt.Fprintf(&path, "%s %s:%d\n", frame.Function, frame.File, frame.Line)
+		}
+		if !more {
+			return path.String()
+		}
+	}
+}
 
 func (s *Server) trusted(r *http.Request) bool {
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
@@ -612,10 +648,13 @@ func (s *Server) render(w http.ResponseWriter, r *http.Request, p Page) {
 func (s *Server) fail(w http.ResponseWriter, r *http.Request, err error) {
 	status, message := 500, "Vorgang fehlgeschlagen; bitte erneut versuchen"
 	var invalid store.Invalid
+	var rejection auth.Rejection
 	var pgerr *pgconn.PgError
 	switch {
 	case errors.As(err, &invalid):
 		status, message = 422, invalid.Message
+	case errors.As(err, &rejection):
+		status, message = 422, string(rejection)
 	case errors.Is(err, store.ErrNotFound):
 		status, message = 404, "Nicht gefunden"
 	case errors.Is(err, store.ErrConflict):

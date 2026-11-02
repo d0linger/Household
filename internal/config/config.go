@@ -34,7 +34,6 @@ type Config struct {
 	SessionIdle        time.Duration
 	SessionAbsolute    time.Duration
 	UploadQuota        int64
-	OCRCommand         string
 	OCREnabled         bool
 	FoodFactsEnabled   bool
 	FoodFactsUserAgent string
@@ -46,6 +45,9 @@ type Config struct {
 	MeterFeeds         meterfeed.Config
 	DocumentInputs     documentinput.Config
 }
+
+// DefaultListen is the HTTP listen address when HOUSEHOLD_LISTEN is unset.
+const DefaultListen = ":8080"
 
 var hostnameLabel = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$`)
 var numericHostLabel = regexp.MustCompile(`^(?:[0-9]+|0x[0-9a-f]*)$`)
@@ -71,7 +73,7 @@ func Load() (Config, error) {
 	if mode != "production" && mode != "development" {
 		return Config{}, errors.New("HOUSEHOLD_ENV must be production or development")
 	}
-	c := Config{Listen: env("HOUSEHOLD_LISTEN", ":8080"), Origin: env("HOUSEHOLD_ORIGIN", "http://localhost:8100"), AdminUsername: env("HOUSEHOLD_ADMIN_USERNAME", "admin"), HouseholdName: env("HOUSEHOLD_NAME", "Mein Haushalt"), UploadDir: env("HOUSEHOLD_UPLOAD_DIR", ".local/uploads"), Production: env("HOUSEHOLD_ENV", "production") == "production", MaxConnections: 10, SessionIdle: 24 * time.Hour, SessionAbsolute: 30 * 24 * time.Hour, UploadQuota: 2 << 30, OCRCommand: os.Getenv("HOUSEHOLD_OCR_COMMAND")}
+	c := Config{Listen: env("HOUSEHOLD_LISTEN", DefaultListen), Origin: env("HOUSEHOLD_ORIGIN", "http://localhost:8100"), AdminUsername: env("HOUSEHOLD_ADMIN_USERNAME", "admin"), HouseholdName: env("HOUSEHOLD_NAME", "Mein Haushalt"), UploadDir: env("HOUSEHOLD_UPLOAD_DIR", ".local/uploads"), Production: mode == "production", MaxConnections: 10, SessionIdle: 24 * time.Hour, SessionAbsolute: 30 * 24 * time.Hour, UploadQuota: 2 << 30}
 	var err error
 	if raw := os.Getenv("HOUSEHOLD_OCR_ENABLED"); raw != "" {
 		c.OCREnabled, err = strconv.ParseBool(raw)

@@ -56,7 +56,7 @@ func Migrate(ctx context.Context, dsn string) error {
 		return fmt.Errorf("parse migration configuration: %w", err)
 	}
 	migrationConfig.ConnectTimeout = 5 * time.Second
-	lock, err := pgx.Connect(ctx, dsn)
+	lock, err := pgx.ConnectConfig(ctx, migrationConfig)
 	if err != nil {
 		return fmt.Errorf("connect migration lock: %w", err)
 	}
