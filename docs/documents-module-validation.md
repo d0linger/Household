@@ -1,6 +1,20 @@
 # Documents validation ledger
 
-Status: complete phase-2 source 0f3e992d is frozen; joint testing and systematic fixes have started. No DO criterion is accepted.
+Status: **all 20 Documents criteria are locally accepted; all 180 approved improvements are verified.** All 120 Documents phase steps are checked in the [module plan](documents-module-plan.md), and the [overall task list](taskliste.md) shows 180/180.
+
+Final application/test source `90f93db1` contains one executed test-only fixture correction. Every production, asset and SQL byte matches the operationally tested `18b9aeda` source. The completed local evidence includes:
+
+- All 797 registered Linux race test identities have complete passing trees, with 68.99% observed Go statement coverage from whole successful command profiles. Original failed and interrupted attempts remain preserved; no single all-passing campaign is claimed.
+- All 12 final quality gates pass, including 348 ordinary Go mains, 1,822 terminals, tagged vet/lint, Gosec, Govulncheck and dependency/workflow/migration checks. All 297 Node tests pass.
+- The full 34-component browser regression passes 1,676 checks with 225 PNGs and 213 clean axe scans; all 16 Documents visual-review screenshots were displayed and inspected.
+- The actual nonempty encrypted restore/purge passes all 16 stages, including exact PDF/PNG bytes, two encrypted cycles, current authorization/concurrency checks and restored-copy-only deletion.
+- Exact index review verifies 1,020 blobs, 107 SQL pins and 102 byte-identical predecessor migrations, with zero secret findings. Local code checkpoint: `a7fe5f1`; acceptance checkpoint: `815e1f1`.
+
+The final qualification is `outputs/documents-module-validation/final-gates-a6d7461e83bb4c7885b867926d1fe8be/qualification.json`. All owned test containers and the unused Linux compiler caches are removed. Optional production providers still require operator configuration and administrator approval. The local recovery test does not establish an off-host backup or RPO arrangement. The live instance on port 8100 is unchanged; nothing was pushed or published.
+
+## Historical preparation and execution record
+
+Initial status before testing: complete phase-2 source 0f3e992d was frozen and joint testing/systematic fixes had started. No DO criterion was accepted at that stage.
 
 Predecessor locally accepted: Meters code e25b88b/acceptance 4674388; 160/180 criteria. All twenty DO criteria stay in progress until joint tests, systematic fixes and final source-qualified evidence complete.
 

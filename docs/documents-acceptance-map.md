@@ -1,6 +1,6 @@
 # Documents criteria and verification contracts
 
-Status: **all20 criteria locally accepted**. Final application/test source `90f93db1` contains one executed test-only fixture correction; every production byte equals the actual browser/image/recovery-tested18b9aeda source. All797 registered identities have complete actual Linux-race passing trees:150 before the reboot,645 in the continuation,1 separately passed unchanged cleanup retry and1 corrected contract. Original failed/interrupted attempts remain preserved; only whole successful coverage profiles count. Exact index review and local code checkpoint `a7fe5f1` pass. See [the executed validation ledger](documents-module-validation.md).
+Status: **all 20 criteria are locally accepted**. Final application/test source `90f93db1` contains one executed test-only fixture correction; every production byte equals the actual browser/image/recovery-tested `18b9aeda` source. All 797 registered identities have complete passing Linux race test trees: 150 before the reboot, 645 in the continuation, one separately passed unchanged cleanup retry and one corrected application contract. Original failed/interrupted attempts remain preserved; only whole successful coverage profiles count. Exact index review and local code checkpoint `a7fe5f1` pass. See [the executed validation ledger](documents-module-validation.md).
 
 | ID | Approved behavior | Concrete implementation and verification |
 |---|---|---|
