@@ -28,3 +28,13 @@ Two active GitHub rulesets were applied and read back: `Household branch history
 Repository-level Actions permissions were set to read-only, Actions approving pull requests was disabled, and dependency vulnerability alerts were enabled. The settings were verified through GitHub's API and recorded locally in `repository-settings.json`. The existing public visibility was retained.
 
 Hosted Actions begin only after a successful push. Local preparation does not imply that those hosted jobs passed. Remote commit identity and run status are verified separately after synchronization. The local Docker deployment is outside this operation.
+
+## First hosted run corrections
+
+The initial pushes exposed Linux-only workflow lint findings and missing PDF/OCR integration prerequisites. Both browser readiness loops now use an intentionally unused loop variable accepted by ShellCheck. The integration shards and full browser job explicitly install Poppler, Liberation fonts and Tesseract with English/German language data, log tool versions, and require both languages. Tests remain mandatory; no assertion, timeout or coverage gate was relaxed.
+
+The first mobile browser sweep also rejected the meal-planning page. Its long module title and primary action were constrained to one flex row. Mobile headings now wrap the action onto another row when needed. A local reproduction at 320px measured 374px document width before the fix and 320px afterwards; 18 title/viewport combinations passed overflow, non-overlap and 44px action-target checks. The actual isolated application subsequently passed all 32 module entity pages at 390px and the meal-plan page at 320px. This focused CSS verification does not substitute for the hosted full browser suite.
+
+Actual Linux actionlint1.7.12 with ShellCheck0.11.0 passed all five workflows in an isolated, resource-bounded container after these corrections. Installation and end-to-end acceptance remain the responsibility of the following hosted run. Detailed original failures and focused verification are retained in ignored outputs/github-sync-review/.
+
+The dedicated shopping browser job failed twice on GitHub while reopening a saved list after going offline. A full local reproduction against the committed application plus the CSS correction passed 37 functional checks, three Axe scans and three screenshots, including that same offline reload, expiry, session refresh and logout. No speculative application change or weakened assertion was made for this unresolved hosted-only difference. Failure diagnostics are added to the browser runner for the next hosted run. The reproduction used its own bounded PostgreSQL container and server on 8101; production 8100 was untouched.

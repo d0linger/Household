@@ -9,6 +9,25 @@ const output=path.resolve('outputs/shopping-extensions-review'),report={checks:[
 const must=(value,label)=>{if(!value)throw Error(label);report.checks.push(label);};
 const user=process.env.HOUSEHOLD_BROWSER_USER,initial=process.env.HOUSEHOLD_BROWSER_PASSWORD,changed='Shopping owner '+crypto.randomUUID(),readerPassword='Shopping reader '+crypto.randomUUID(),secrets=[initial,changed,readerPassword];
 function safe(failure){let result=String(failure);for(const value of secrets)if(value)result=result.split(value).join('[redacted]');return result;}
+async function failureDiagnostics(page){
+ let timer;
+ try{
+  const state=await Promise.race([page.evaluate(async()=>({
+   path:location.pathname,online:navigator.onLine,ready_state:document.readyState,
+   worker_state:navigator.serviceWorker.controller?.state||null,
+   offline_module_ready:!!window.HouseholdShoppingOffline,
+   device_module_ready:!!window.HouseholdShoppingDevice,
+   cached_shopping_shell:!!(await caches.match('/offline/shopping')),
+   library_hidden:document.querySelector('#so-library')?.hidden??null,
+   view_hidden:document.querySelector('#so-view')?.hidden??null,
+   open_disabled:document.querySelector('#so-open')?.disabled??null,
+   stored_list_buttons:document.querySelectorAll('#so-stored button').length,
+   status:document.querySelector('#so-status')?.textContent.slice(0,1000)||'',
+   error:document.querySelector('#so-error')?.textContent.slice(0,1000)||'',
+  })),new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error('Failure diagnostics exceeded five seconds')),5000);})]);
+  return Object.fromEntries(Object.entries(state).map(([key,value])=>[key,typeof value==='string'?safe(value):value]));
+ }catch(failure){return {unavailable:safe(failure).slice(0,500)};}finally{clearTimeout(timer);}
+}
 const uuid=/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/;
 async function waitForActual(predicate,{timeout,interval,message}){
  if(typeof predicate!=='function'||!Number.isSafeInteger(timeout)||timeout<1||!Number.isSafeInteger(interval)||interval<1||typeof message!=='string')throw Error('Invalid bounded actual-state wait');
@@ -27,7 +46,7 @@ async function rawDevice(page){return page.evaluate(async()=>{
  return new Promise((resolve,reject)=>{let db,done=false;const timer=setTimeout(()=>finish(Error('Raw Shopping storage deadline')),5000),finish=(error,value)=>{if(done)return;done=true;clearTimeout(timer);db?.close();error?reject(error):resolve(value);};const open=indexedDB.open('household-shopping-readlists');open.onupgradeneeded=()=>{open.transaction.abort();finish(Error('Raw observation cannot create a missing store'));};open.onerror=()=>finish(Error('Raw storage open failed'));open.onblocked=()=>finish(Error('Raw storage blocked'));open.onsuccess=()=>{db=open.result;if(done){db.close();return;}if(db.version!==1||db.objectStoreNames.length!==2||!db.objectStoreNames.contains('meta')||!db.objectStoreNames.contains('snapshots')){finish(Error('Unknown raw Shopping stores'));return;}const tx=db.transaction(['meta','snapshots'],'readonly'),count=tx.objectStore('snapshots').count(),meta=tx.objectStore('meta').get('device');tx.oncomplete=()=>finish(null,{absent:false,count:count.result,owner:meta.result?.owner||null,epoch:meta.result?.epoch,revision:meta.result?.revision});tx.onerror=tx.onabort=()=>finish(Error('Raw storage transaction failed'));};});
  });}
 (async()=>{
- await fs.mkdir(output,{recursive:true});const browser=await chromium.launch({headless:true,executablePath:process.env.CHROME_PATH||(process.platform==='win32'?'C:/Program Files/Google/Chrome/Application/chrome.exe':undefined)});
+ await fs.mkdir(output,{recursive:true});const browser=await chromium.launch({headless:true,executablePath:process.env.CHROME_PATH||(process.platform==='win32'?'C:/Program Files/Google/Chrome/Application/chrome.exe':undefined)});let diagnosticPage=null;
  try{
   const context=await browser.newContext({viewport:{width:1440,height:1000},serviceWorkers:'allow',...(process.env.HOUSEHOLD_BROWSER_HANDOFF?{storageState:process.env.HOUSEHOLD_BROWSER_HANDOFF}:{})});
   async function isolate(ctx){await ctx.route('**/*',route=>{const url=new URL(route.request().url());if(url.origin!==origin.origin){report.externalRequests.push(url.origin);return route.abort();}return route.continue();});}
@@ -47,7 +66,7 @@ async function rawDevice(page){return page.evaluate(async()=>{
   const list=await create('lists',{name:suffix+' complete list',description:'Not copied list description'}),other=await create('lists',{name:suffix+' second list'});
   const readerName='shopread_'+crypto.randomBytes(6).toString('hex');
   await page.goto(base+'/settings/users');await page.locator('form[action="/settings/users"] [name=username]').fill(readerName);await page.locator('form[action="/settings/users"] [name=display_name]').fill('Shopping reader');await page.locator('form[action="/settings/users"] [name=password]').fill(readerPassword);await page.locator('form[action="/settings/users"] [name=role]').selectOption('reader');await Promise.all([page.waitForURL(url=>url.pathname==='/settings/users'),page.locator('form[action="/settings/users"]').getByRole('button',{name:'Benutzer anlegen',exact:true}).click()]);
-  const readerContext=await browser.newContext({viewport:{width:390,height:844},serviceWorkers:'allow'});await isolate(readerContext);const reader=await readerContext.newPage();reader.on('dialog',dialog=>dialog.accept());reader.on('pageerror',failure=>report.errors.push(safe(failure)));await login(reader,readerName,readerPassword);
+  const readerContext=await browser.newContext({viewport:{width:390,height:844},serviceWorkers:'allow'});await isolate(readerContext);const reader=await readerContext.newPage();diagnosticPage=reader;reader.on('dialog',dialog=>dialog.accept());reader.on('pageerror',failure=>report.errors.push(safe(failure)));await login(reader,readerName,readerPassword);
   let currentReaderPassword=readerPassword;if(new URL(reader.url()).pathname==='/change-password'){const own='Shopping reader changed '+crypto.randomUUID();secrets.push(own);currentReaderPassword=own;await reader.locator('[name=current]').fill(readerPassword);await reader.locator('[name=next]').fill(own);await Promise.all([reader.waitForURL(url=>url.pathname==='/login'),reader.getByRole('button',{name:'Passwort speichern',exact:true}).click()]);await login(reader,readerName,own);}
   await reader.goto(base+'/m/shopping/lists/'+list.id);const watch=reader.locator('[data-shopping-watch="'+list.id+'"]');await watch.locator('summary').focus();await reader.keyboard.press('Enter');await watch.locator('[data-watch-load]').click();await watch.locator('[data-watch-form]:not([hidden])').waitFor();must(await reader.locator('[data-shopping-list]').getAttribute('data-can-write')==='false','Reader has personal controls without domain editing');await watch.locator('[data-watch-enabled]').check();await saveWatch(reader,watch,list.id);
   const own=(await api(reader,'/api/v1/shopping/lists/'+list.id+'/notification-preferences?generation='+generation));must(own.preference.enabled===true&&typeof own.revision==='string','Reader watch is actually committed with string revision');
@@ -86,5 +105,11 @@ async function rawDevice(page){return page.evaluate(async()=>{
   await reader.goto(base+'/settings/security');const logout=reader.locator('form#logout-form[action="/logout"][method="post"]');must(await logout.count()===1,'Logout uses actual Security form');const responsePromise=reader.waitForResponse(response=>response.request().method()==='POST'&&new URL(response.url()).pathname==='/logout');await logout.getByRole('button').click();const response=await responsePromise;must(response.status()===303&&response.headers().location==='/login','Actual logout POST redirects to Login with303');await reader.waitForURL(url=>url.origin===origin.origin&&url.pathname==='/login');
   const afterLogout=await rawDevice(reader);must(afterLogout.count===0&&afterLogout.owner===null,'Raw logout storage is empty with no previous owner');must(await reader.evaluate(()=>localStorage.getItem('household-offline-owner'))===null,'Logout removes shared opt-in');must(await reader.evaluate(async()=>fetch('/api/v1/core/bootstrap').then(response=>response.status))===401,'Former browser session is no longer authenticated');
   await readerContext.close();if(process.env.HOUSEHOLD_BROWSER_HANDOFF)await context.storageState({path:process.env.HOUSEHOLD_BROWSER_HANDOFF});must(report.externalRequests.length===0&&report.errors.length===0,'No page errors or external page requests');report.passed=true;
- }catch(failure){report.passed=false;report.failure=safe(failure);process.exitCode=1;}finally{await browser.close();await fs.writeFile(path.join(output,'browser-report.json'),JSON.stringify(report,null,2));}
+ }catch(failure){
+  report.passed=false;report.failure=safe(failure);process.exitCode=1;
+  if(diagnosticPage){
+   report.diagnostics=await failureDiagnostics(diagnosticPage);
+   try{const file=path.join(output,'failure.png');await diagnosticPage.screenshot({path:file,fullPage:true,animations:'disabled',timeout:5000});report.screenshots.push(file);}catch(error){report.diagnostic_screenshot_error=safe(error).slice(0,500);}
+  }
+ }finally{await browser.close();await fs.writeFile(path.join(output,'browser-report.json'),JSON.stringify(report,null,2));}
 })();

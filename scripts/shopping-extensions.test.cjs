@@ -162,3 +162,15 @@ test('actual browser wait awaits false Promise results and retries until the rea
 test('actual browser wait bounds both false and unresolved predicates without leaking a deadline timer',async()=>{
  for(const predicate of [async()=>false,()=>new Promise(()=>{})]){const helper=browserWait();await assert.rejects(helper.wait(predicate,{timeout:5,interval:1,message:'bounded actual-state deadline'}),/bounded actual-state deadline/);assert.equal(helper.timers.size,0);}
 });
+
+function browserDiagnostics(){
+ const source=fs.readFileSync(path.join(__dirname,'browser-shopping-extensions-check.cjs'),'utf8'),start=source.indexOf('async function failureDiagnostics('),end=source.indexOf('\nconst uuid=',start);assert.ok(start>=0&&end>start);
+ const timers=new Set(),later=fn=>{const handle=setTimeout(()=>{timers.delete(handle);fn();},1);timers.add(handle);return handle;},cancel=handle=>{timers.delete(handle);clearTimeout(handle);};
+ return {read:vm.runInNewContext(source.slice(start,end)+';failureDiagnostics',{safe:value=>String(value).replaceAll('test-secret','[redacted]'),setTimeout:later,clearTimeout:cancel}),timers};
+}
+test('shopping browser failure evidence redacts text and releases its diagnostic timer',async()=>{
+ const helper=browserDiagnostics(),result=await helper.read({evaluate:async()=>({online:false,status:'test-secret',stored_list_buttons:0})});assert.equal(result.online,false);assert.equal(result.status,'[redacted]');assert.equal(result.stored_list_buttons,0);assert.equal(helper.timers.size,0);
+});
+test('shopping browser failure diagnostics cannot hang or replace the original failure',async()=>{
+ for(const evaluate of [async()=>{throw Error('test-secret');},()=>new Promise(()=>{})]){const helper=browserDiagnostics(),result=await helper.read({evaluate});assert.equal(typeof result.unavailable,'string');assert.doesNotMatch(result.unavailable,/test-secret/);assert.equal(helper.timers.size,0);}
+});

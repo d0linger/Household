@@ -29,6 +29,20 @@ jobs:
         with: {go-version-file: go.mod, cache: true}
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with: {node-version: '24', cache: npm}
+      - name: Install and verify PDF and OCR test prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends poppler-utils fonts-liberation tesseract-ocr tesseract-ocr-deu tesseract-ocr-eng
+          pdfinfo -v
+          pdftotext -v
+          pdftoppm -v
+          pdfseparate -v
+          pdfunite -v
+          tesseract --version
+          tesseract --list-langs > "$RUNNER_TEMP/household-ocr-languages.txt"
+          cat "$RUNNER_TEMP/household-ocr-languages.txt"
+          grep -Fxq eng "$RUNNER_TEMP/household-ocr-languages.txt"
+          grep -Fxq deu "$RUNNER_TEMP/household-ocr-languages.txt"
       - name: Initialize isolated roles
         env: {PGPASSWORD: ci-database-only}
         run: |
@@ -60,7 +74,7 @@ jobs:
           ./bin/household serve > outputs/runtime-review/server.log 2>&1 &
           server_pid=$!
           trap 'kill "$server_pid" 2>/dev/null || true' EXIT
-          for attempt in $(seq 1 60); do
+          for _ in $(seq 1 60); do
             if curl --fail --silent http://localhost:8101/health/ready >/dev/null; then break; fi
             sleep 1
           done
