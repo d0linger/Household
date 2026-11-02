@@ -55,7 +55,7 @@ jobs:
       - run: go mod download && go mod verify
       - run: go mod tidy && git diff --exit-code -- go.mod go.sum
       - run: go run ./cmd/dependency-check > dependency-report.md
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with: {node-version: '24'}
       - name: Verify migration manifest and immutable history
         env:
@@ -109,7 +109,7 @@ jobs:
           ALTER DATABASE household_test OWNER TO household_owner;
           REVOKE CREATE ON SCHEMA public FROM PUBLIC;
           SQL
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with: {node-version: '24'}
       - run: go vet -tags=integration,testtools ./...
       - name: Discover and run one deterministic shard with race detection
@@ -141,7 +141,7 @@ jobs:
         with: {persist-credentials: false}
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
         with: {go-version-file: go.mod, cache: true}
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with: {node-version: '24'}
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
@@ -170,7 +170,7 @@ jobs:
         with: {fetch-depth: 0, persist-credentials: false}
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
         with: {go-version-file: go.mod, cache: true}
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with: {node-version: '24'}
       - run: npm ci --ignore-scripts
       - run: node --test scripts/quality-tools.test.cjs scripts/shopping-input.test.cjs scripts/shopping-checkout.test.cjs scripts/recipe-workspace.test.cjs scripts/recipe-expansion.test.cjs scripts/cooking.test.cjs scripts/planning.test.cjs scripts/mealplan-extensions.test.cjs scripts/planning-suggestions.test.cjs scripts/planning-purchases.test.cjs scripts/pantry-daily.test.cjs scripts/ingredient-pantry.test.cjs scripts/cooking-stock.test.cjs scripts/pantry-batches.test.cjs scripts/expense-editor.test.cjs scripts/finance-workspace.test.cjs scripts/report-values.test.cjs scripts/shopping-repurchase.test.cjs scripts/shopping-barcode.test.cjs scripts/pantry-waste.test.cjs scripts/fuel-overview.test.cjs scripts/fuel-module-values.test.cjs scripts/go-test-shards.test.cjs scripts/fuel-browser-contracts.test.cjs scripts/pantry-extensions.test.cjs scripts/shopping-extensions.test.cjs scripts/push-worker.test.cjs scripts/design-preview.test.cjs
