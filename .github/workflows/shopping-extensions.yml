@@ -10,6 +10,7 @@ concurrency:
   cancel-in-progress: true
 jobs:
   browser:
+    name: ShoppingExtensionsBrowser
     runs-on: ubuntu-latest
     timeout-minutes: 20
     services:
