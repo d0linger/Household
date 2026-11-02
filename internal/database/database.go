@@ -130,6 +130,7 @@ func Migrate(ctx context.Context, dsn string) error {
 	expensePredecessor := uint(4)
 	chorePredecessor := uint(1)
 	meterPredecessor := uint(1)
+	documentPredecessor := uint(1)
 	for _, schema := range Schemas[1:] {
 		var through *uint
 		switch schema {
@@ -147,6 +148,8 @@ func Migrate(ctx context.Context, dsn string) error {
 			through = &chorePredecessor
 		case "meters":
 			through = &meterPredecessor
+		case "documents":
+			through = &documentPredecessor
 		}
 		if err = migrateSchema(schema, through); err != nil {
 			return err
@@ -172,7 +175,8 @@ func Migrate(ctx context.Context, dsn string) error {
 		{"core", 29}, {"expenses", 5}, {"core", 30}, {"core", 31},
 		{"fuel", 8}, {"pantry", 14}, {"mealplan", 9},
 		{"chores", 2}, {"core", 32}, {"fuel", 9}, {"pantry", 15}, {"mealplan", 10},
-		{"meters", 2}, {"core", 33}, {"fuel", 10}, {"pantry", 16}, {"mealplan", 11}} {
+		{"meters", 2}, {"core", 33}, {"fuel", 10}, {"pantry", 16}, {"mealplan", 11},
+		{"documents", 2}, {"core", 34}, {"fuel", 11}, {"pantry", 17}, {"mealplan", 12}} {
 		if err = migrateSchema(stage.schema, &stage.version); err != nil {
 			return err
 		}
@@ -242,6 +246,7 @@ func Ready(ctx context.Context, pool *pgxpool.Pool) error {
 		{"SELECT expenses.finance_ready(),core.finance_ready()", "inspect complete finance contract: %w", "incomplete finance authority or domain contract", 2},
 		{"SELECT chores.expansion_ready()", "inspect chore workspace contract: %w", "incomplete chore workspace contract", 1},
 		{"SELECT meters.expansion_ready()", "inspect energy workspace contract: %w", "incomplete energy workspace contract", 1},
+		{"SELECT documents.expansion_ready()", "inspect document workspace contract: %w", "incomplete document workspace contract", 1},
 	})
 }
 

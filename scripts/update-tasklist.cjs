@@ -35,6 +35,13 @@ if (args.includes('--check')) {
   fs.writeFileSync(sourceFile, source.replace(summaryPattern, sourceSummary));
 }
 const active = items.filter(item => item.status === 'In Arbeit');
+let documentPhaseProgress = '';
+if (active.some(item => item.id.startsWith('DO'))) {
+  const plan = fs.readFileSync(path.join(root, 'docs/documents-module-plan.md'), 'utf8');
+  const phases = [...plan.matchAll(/^- \[([ x])\] (\d{3})\./gm)];
+  if (phases.length !== 120 || new Set(phases.map(row => row[2])).size !== 120) throw Error('Documents must retain all 120 unique phase steps');
+  documentPhaseProgress = phases.filter(row => row[1] === 'x').length + '/120 abgearbeitete Phasenunterpunkte. ';
+}
 let meterPhaseProgress = '';
 if (active.some(item => item.id.startsWith('ME'))) {
   const plan = fs.readFileSync(path.join(root, 'docs/meters-module-plan.md'), 'utf8');
@@ -63,6 +70,7 @@ const lines = [
   'Ein Haken bedeutet: umgesetzt und durch ausgeführte Prüfungen belegt. Vorbereitete Änderungen und einzelne bestandene Zwischentests schließen einen Verbesserungspunkt noch nicht ab.', '',
   active.length ? `Aktuell in Arbeit: ${active.map(item => `**${item.id} – ${item.title}**`).join(', ')}.` : 'Derzeit ist kein Punkt als „In Arbeit“ markiert.', '',
   ...(source.includes('Abgenommener Modulblock: **Aufgaben (') ? ['**Aufgaben vollständig lokal abgenommen: 20/20 Punkte.** Alle746Testidentitäten haben vollständige Erfolge auf identischen Quellen; ursprüngliche Paket-Timeouts bleiben dokumentiert. Browser, Barrierefreiheit, echte Wiederherstellung und exakter Indexscan bestanden. [Modulplan mit Haken](chores-module-plan.md) · [Nachweise und Grenzen](chores-module-validation.md).', ''] : []),
+  ...(active.some(item => item.id.startsWith('DO')) ? ['**Aktueller Modulblock: Dokumente (DO01–DO20).** ' + documentPhaseProgress + 'Zuerst vollständige Umsetzung, danach gemeinsame Tests und Fehlerbehebung. Noch kein Dokumentenkriterium als bestanden bewertet. [120-Schritte-Checkliste](documents-module-plan.md).', ''] : []),
   ...(active.some(item => item.id.startsWith('ME')) ? ['**Aktueller Modulblock: Zähler und Energie (ME01–ME20).** ' + meterPhaseProgress + 'Die gesamte Implementierung wird zuerst abgeschlossen; danach folgen gemeinsame Tests und Fehlerbehebung. Geschriebene Quellen sind noch keine bestandenen Prüfungen. Dokumente beginnen nach der vollständigen Zählerabnahme. [120-Schritte-Checkliste](meters-module-plan.md).', ''] : []),
   ...(active.some(item => item.id.startsWith('MP')) ? ['**Aktueller Modulblock: Essensplanung.** Geplante Reste, Wochenbudget, Kalender und Autoplan sind umgesetzt und funktional abgenommen. Der genaue Git-Index-Geheimnisscan und der lokale Checkpoint werden abgeschlossen. Der [Modulplan mit116Checkboxen](mealplan-module-plan.md) zeigt die abgehakten Unteraufgaben.', ''] : []),
   ...(source.includes('Abgenommener Modulblock: **Essensplanung (') ? ['**Essensplanung vollständig lokal abgenommen: 20 / 20 Punkte.** Geplante Reste, Wochenbudget, Kalender und Autoplan sind nach nativen Tests, Browserprüfung und verschlüsseltem Restore/Purge gemeinsam abgehakt. [Modulplan](mealplan-module-plan.md) · [Abnahmenachweise und Grenzen](mealplan-module-validation.md).', ''] : []),

@@ -1,0 +1,12 @@
+{{define "documents-workspace"}}
+<link rel="stylesheet" href="{{index .Asset "documents.css"}}">
+<section id="documents-workspace" data-pane="{{index .Extra "pane"}}" data-document="{{index .Extra "document_id"}}" aria-busy="true">
+ <div class="page-heading"><div><h1>Dokumente &amp; Fristen</h1><p class="muted">Originale bewahren. Angaben prüfen. Fristen im Blick behalten.</p></div>{{if .User.CanWrite}}<button id="doc-new" class="primary" type="button">Neues Dokument</button>{{end}}</div>
+ <nav class="doc-nav" aria-label="Dokumentenbereiche"><a href="/m/documents/workspace/inbox" data-doc-pane="inbox">Eingang</a><a href="/m/documents/workspace/library" data-doc-pane="library">Bibliothek</a><a href="/m/documents/workspace/deadlines" data-doc-pane="deadlines">Fristen</a><a href="/m/documents/workspace/rules" data-doc-pane="rules">Regeln</a><a href="/m/documents/workspace/processing" data-doc-pane="processing">Verarbeitung</a><a href="/m/documents/workspace/duplicates" data-doc-pane="duplicates">Dubletten</a>{{if eq .User.Role "admin"}}<a href="/m/documents/workspace/integrations" data-doc-pane="integrations">Eingänge</a>{{end}}</nav>
+ <p id="doc-status" class="notice" role="status">Dokumente werden geladen …</p>
+ <section id="doc-error" class="notice error" role="alert" tabindex="-1" hidden><h2>Bitte prüfen</h2><p id="doc-error-text"></p><div class="actions"><button id="doc-retry" type="button" hidden>Unveränderten Vorgang wiederholen</button><button id="doc-current" type="button" hidden>Aktuellen Stand daneben laden</button></div><div id="doc-conflict"></div></section>
+ <div id="doc-filters"></div><div id="doc-batch"></div><div id="doc-content"></div><div id="doc-editor"></div><div id="doc-paging" class="actions"></div>
+ <noscript><p>Die geführte Prüfung benötigt das lokal bereitgestellte JavaScript. <a href="/m/documents/documents">Bisherige Dokumentenliste öffnen</a>.</p></noscript>
+</section>
+<script nonce="{{.Nonce}}" src="{{index .Asset "documents-workspace.js"}}" defer></script>
+{{end}}

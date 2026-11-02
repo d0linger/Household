@@ -34,10 +34,7 @@ func TestApplicationContract(t *testing.T) {
 	cfg, token, id, server := app.Cfg, fixture.token, fixture.identity, fixture.server
 	uid, hid, username := id.UserID, id.HouseholdID, id.Username
 	var err error
-	defer func() {
-		_, _ = owner.Exec(ctx, "DELETE FROM core.capture_jobs WHERE source_attachment_id IN(SELECT id FROM core.attachments WHERE uploaded_by=$1)", uid)
-		_, _ = owner.Exec(ctx, "DELETE FROM core.attachments WHERE uploaded_by=$1", uid)
-	}()
+	// The isolated fixture owns schema/file cleanup for immutable originals.
 	for _, m := range app.Store.Modules {
 		st := app.Store.States()[m.ID]
 		if st.State != "enabled" {
@@ -316,80 +313,157 @@ func TestApplicationContract(t *testing.T) {
 	if call("POST", "/api/v1/m/pantry/stock_movements/"+transferID+"/actions/reverse", mutation("pantry", store.Record{}, transferVersion), value.UUID()).status != 422 {
 		t.Fatal("one transfer leg could be reversed")
 	}
-	// Real multipart upload, manual review confirmation, thumbnail and private download.
-	document := create("documents", "documents", store.Record{"title": "Attachment test " + prefix, "valid_until": "2020-01-01"})
+	// Managed Documents originals, explicit review, thumbnail and private download.
+	document := create("documents", "documents", store.Record{"title": "Attachment test " + prefix})
 	var picture bytes.Buffer
 	if err = png.Encode(&picture, image.NewRGBA(image.Rect(0, 0, 2, 2))); err != nil {
 		t.Fatal(err)
 	}
-	var multipartBody bytes.Buffer
-	multipartWriter := multipart.NewWriter(&multipartBody)
-	part, err := multipartWriter.CreateFormFile("file", "receipt.png")
-	if err != nil {
-		t.Fatal(err)
+	uploadDocument := func(legacyCapture bool) result {
+		t.Helper()
+		var body bytes.Buffer
+		form := multipart.NewWriter(&body)
+		fields := map[string]string{
+			"generation":       fmt.Sprint(app.Store.States()["documents"].Generation),
+			"document_version": fmt.Sprint(store.Int(document["version"])),
+			"current":          "true",
+		}
+		if legacyCapture {
+			fields["capture"] = "true"
+		}
+		for field, text := range fields {
+			if writeErr := form.WriteField(field, text); writeErr != nil {
+				t.Fatal(writeErr)
+			}
+		}
+		part, formErr := form.CreateFormFile("file", "receipt.png")
+		if formErr != nil {
+			t.Fatal(formErr)
+		}
+		if _, formErr = part.Write(picture.Bytes()); formErr != nil {
+			t.Fatal(formErr)
+		}
+		if formErr = form.Close(); formErr != nil {
+			t.Fatal(formErr)
+		}
+		path := "/api/v1/documents/" + store.String(document["id"]) + "/original"
+		if legacyCapture {
+			path = "/api/v1/m/documents/documents/" + store.String(document["id"]) + "/attachments"
+		}
+		response, data, requestErr := fixture.request(http.MethodPost, path, token,
+			app.Auth.CSRF(token, "session"), form.FormDataContentType(), &body,
+			map[string]string{"Idempotency-Key": value.UUID()})
+		if requestErr != nil {
+			t.Fatal(requestErr)
+		}
+		record := store.Record{}
+		decoder := json.NewDecoder(bytes.NewReader(data))
+		decoder.UseNumber()
+		decodeErr := decoder.Decode(&record)
+		if response.StatusCode < 400 && decodeErr != nil {
+			t.Fatal(decodeErr)
+		}
+		return result{response.StatusCode, record, data}
 	}
-	if _, err = part.Write(picture.Bytes()); err != nil {
-		t.Fatal(err)
+	if rejected := uploadDocument(true); rejected.status != http.StatusUnprocessableEntity {
+		t.Fatalf("legacy document capture accepted: %d %s", rejected.status, rejected.body)
 	}
-	for k, v := range map[string]string{"csrf": app.Auth.CSRF(token, "session"), "generation": fmt.Sprint(app.Store.States()["documents"].Generation), "capture": "true"} {
-		if err = multipartWriter.WriteField(k, v); err != nil {
-			t.Fatal(err)
+	var rejectedFiles int
+	if err = owner.QueryRow(ctx, "SELECT count(*) FROM core.attachments WHERE resource_id=$1",
+		document["id"]).Scan(&rejectedFiles); err != nil || rejectedFiles != 0 {
+		t.Fatal("rejected legacy capture left an original", rejectedFiles, err)
+	}
+	uploaded := uploadDocument(false)
+	if uploaded.status != http.StatusCreated {
+		t.Fatalf("original upload status %d %s", uploaded.status, uploaded.body)
+	}
+	attachment := store.String(uploaded.record["attachment_id"])
+	if !value.ValidUUID(attachment) || !value.ValidUUID(store.String(uploaded.record["version_id"])) {
+		t.Fatal("original upload omitted immutable identities")
+	}
+	review := call("GET", "/m/documents/workspace/review?id="+store.String(document["id"]), nil, "")
+	if review.status != 200 || !bytes.Contains(review.body, []byte("documents-workspace")) {
+		t.Fatal("managed document review unavailable")
+	}
+	documentCommand := func(action string, data store.Record, version int64) store.DocumentCommand {
+		t.Helper()
+		raw, encodeErr := json.Marshal(data)
+		if encodeErr != nil {
+			t.Fatal(encodeErr)
+		}
+		return store.DocumentCommand{
+			Action: action, ID: store.String(document["id"]), Version: version,
+			Generation: app.Store.States()["documents"].Generation, Data: raw,
 		}
 	}
-	if err = multipartWriter.Close(); err != nil {
-		t.Fatal(err)
+	documentState := call("GET", "/api/v1/documents/detail?id="+store.String(document["id"]), nil, "")
+	if documentState.status != 200 {
+		t.Fatal("current original state unavailable")
 	}
-	request, err := http.NewRequestWithContext(ctx, "POST", server.URL+"/api/v1/m/documents/documents/"+store.String(document["id"])+"/attachments", &multipartBody)
-	if err != nil {
-		t.Fatal(err)
+	deadlineCommand := documentCommand("deadline", store.Record{
+		"deadline_id": "", "deadline_version": 0, "kind": "warranty", "due_on": "2020-01-01",
+		"label": "Reviewed warranty", "remind_days": 0, "source": "Explicit receipt review",
+		"confirmed": true, "cancelled": false,
+	}, store.Int(documentState.record["version"]))
+	if response := call("POST", "/api/v1/documents/commands", deadlineCommand, value.UUID()); response.status != 200 {
+		t.Fatalf("confirmed deadline: %d %s", response.status, response.body)
 	}
-	request.AddCookie(&http.Cookie{Name: app.cookieName(), Value: token})
-	request.Header.Set("Content-Type", multipartWriter.FormDataContentType())
-	uploadResponse, err := fixture.client.Do(request)
-	if err != nil {
-		t.Fatal(err)
-	}
-	_ = uploadResponse.Body.Close()
-	if uploadResponse.StatusCode != 303 {
-		t.Fatalf("upload status %d", uploadResponse.StatusCode)
-	}
-	capturePath := uploadResponse.Header.Get("Location")
-	capture := call("GET", capturePath, nil, "")
-	if capture.status != 200 || !bytes.Contains(capture.body, []byte("Erfassung prüfen")) {
-		t.Fatal("capture review unavailable")
-	}
-	var attachment string
-	if err = owner.QueryRow(ctx, "SELECT id FROM core.attachments WHERE resource_id=$1", document["id"]).Scan(&attachment); err != nil {
-		t.Fatal(err)
+	documentState = call("GET", "/api/v1/documents/detail?id="+store.String(document["id"]), nil, "")
+	extract := documentCommand("extract", store.Record{"version_id": uploaded.record["version_id"]},
+		store.Int(documentState.record["version"]))
+	if response := call("POST", "/api/v1/documents/commands", extract, value.UUID()); response.status != 200 {
+		t.Fatalf("explicit original processing: %d %s", response.status, response.body)
 	}
 	background := &worker.Worker{Pool: pool, Log: slog.New(slog.NewTextHandler(io.Discard, nil)), Cfg: cfg}
 	t.Cleanup(func() { _ = background.Close() })
-	if err = background.Tick(ctx); err != nil {
-		t.Fatal(err)
+	processed := false
+	for range 20 {
+		if err = background.Tick(ctx); err != nil {
+			t.Fatal(err)
+		}
+		if err = owner.QueryRow(ctx,
+			"SELECT EXISTS(SELECT 1 FROM documents.processing WHERE document_id=$1 AND state='done')",
+			document["id"]).Scan(&processed); err != nil {
+			t.Fatal(err)
+		}
+		if processed {
+			break
+		}
 	}
-	if err = background.Tick(ctx); err != nil {
-		t.Fatal(err)
+	if !processed {
+		t.Fatal("actual managed original processing did not finish")
 	}
 	preview := call("GET", "/attachments/"+attachment+"/preview", nil, "")
 	if preview.status != 200 || !bytes.HasPrefix(preview.body, []byte{137, 80, 78, 71}) {
 		t.Fatalf("private thumbnail failed: %d %s", preview.status, preview.body)
 	}
-	confirmed := mutation("documents", store.Record{"title": "Captured " + prefix, "remind_days": 0}, 0)
-	first := call("POST", capturePath+"/confirm", confirmed, value.UUID())
-	second := call("POST", capturePath+"/confirm", confirmed, value.UUID())
-	if first.status != 200 || second.status != 200 || first.record["id"] != second.record["id"] {
-		t.Fatal("capture confirmation duplicated or failed")
+	original := call("GET", "/attachments/"+attachment, nil, "")
+	if original.status != 200 || !bytes.Equal(original.body, picture.Bytes()) {
+		t.Fatal("original bytes changed")
 	}
-	confirmed.Data["title"] = json.RawMessage(`"Changed"`)
-	if call("POST", capturePath+"/confirm", confirmed, value.UUID()).status != 409 {
-		t.Fatal("confirmed capture accepted a different payload")
+	documentState = call("GET", "/api/v1/documents/detail?id="+store.String(document["id"]), nil, "")
+	metadata := store.Record{"title": "Captured " + prefix, "category": "", "issuer": "", "notes": "",
+		"document_type": "other", "fields": store.Record{}, "reviewed": true}
+	confirmed := documentCommand("save", metadata, store.Int(documentState.record["version"]))
+	confirmKey := value.UUID()
+	first := call("POST", "/api/v1/documents/commands", confirmed, confirmKey)
+	second := call("POST", "/api/v1/documents/commands", confirmed, confirmKey)
+	if first.status != 200 || second.status != 200 ||
+		first.record["id"] != second.record["id"] || first.record["id"] != document["id"] {
+		t.Fatal("managed review changed identity or duplicated its source")
+	}
+	metadata["title"] = "Changed"
+	changed := documentCommand("save", metadata, confirmed.Version)
+	if call("POST", "/api/v1/documents/commands", changed, confirmKey).status != 409 {
+		t.Fatal("review receipt accepted a different payload")
 	}
 	var notifications int
-	if err = owner.QueryRow(ctx, "SELECT count(*) FROM core.notifications WHERE target_path=$1 AND user_id=$2", "/m/documents/documents/"+store.String(document["id"]), uid).Scan(&notifications); err != nil {
+	if err = owner.QueryRow(ctx, "SELECT count(*) FROM core.notifications WHERE target_path=$1 AND user_id=$2",
+		"/m/documents/documents/"+store.String(document["id"]), uid).Scan(&notifications); err != nil {
 		t.Fatal(err)
 	}
 	if notifications != 1 {
-		t.Fatalf("reminder delivery count %d", notifications)
+		t.Fatalf("confirmed reminder delivery count %d", notifications)
 	}
 	// Approved values remain canonical even when storage maps zero timers to NULL.
 	seedCapture := func(mid, entity, rid string) string {
@@ -426,13 +500,35 @@ func TestApplicationContract(t *testing.T) {
 	if stepFirst.status != 200 || stepReplay.status != 200 || stepFirst.record["id"] != stepReplay.record["id"] {
 		t.Fatalf("canonical capture replay failed: %d %s / %d %s", stepFirst.status, stepFirst.body, stepReplay.status, stepReplay.body)
 	}
-	orphanCapture := seedCapture("documents", "documents", store.String(document["id"]))
-	if call("DELETE", "/api/v1/m/documents/documents/"+store.String(document["id"]), mutation("documents", store.Record{}, store.Int(document["version"])), value.UUID()).status != 200 {
-		t.Fatal("capture source deletion failed")
+	orphanCapture := seedCapture("recipes", "steps", store.String(step["id"]))
+	if call("DELETE", "/api/v1/m/recipes/steps/"+store.String(step["id"]),
+		mutation("recipes", store.Record{}, store.Int(step["version"])), value.UUID()).status != 200 {
+		t.Fatal("mutable capture source deletion failed")
 	}
-	orphanResult := call("POST", orphanCapture+"/confirm", mutation("documents", store.Record{"title": "Must not resurrect"}, 0), value.UUID())
+	orphanResult := call("POST", orphanCapture+"/confirm", mutation("recipes",
+		store.Record{"recipe_id": recipe["id"], "instruction": "Must not resurrect", "timer_seconds": 0}, 0),
+		value.UUID())
 	if orphanResult.status != 409 && orphanResult.status != 404 {
 		t.Fatal("deleted capture source was resurrected")
+	}
+	documentState = call("GET", "/api/v1/documents/detail?id="+store.String(document["id"]), nil, "")
+	if call("DELETE", "/api/v1/m/documents/documents/"+store.String(document["id"]),
+		mutation("documents", store.Record{}, store.Int(documentState.record["version"])),
+		value.UUID()).status != 422 {
+		t.Fatal("immutable original could be deleted through generic CRUD")
+	}
+	archiveOriginal := documentCommand("archive", store.Record{"archived": true}, store.Int(documentState.record["version"]))
+	if response := call("POST", "/api/v1/documents/commands", archiveOriginal, value.UUID()); response.status != 200 {
+		t.Fatalf("explicit original archive: %d %s", response.status, response.body)
+	}
+	var preservedArchivedOriginal bool
+	if err = owner.QueryRow(ctx,
+		"SELECT d.archived_at IS NOT NULL AND EXISTS(SELECT 1 FROM core.attachments a "+
+			"JOIN documents.file_versions v ON v.attachment_id=a.id "+
+			"WHERE a.id=$2 AND a.resource_id=d.id AND v.document_id=d.id) "+
+			"FROM documents.documents d WHERE d.id=$1",
+		document["id"], attachment).Scan(&preservedArchivedOriginal); err != nil || !preservedArchivedOriginal {
+		t.Fatal("archive lost the immutable original binding", err)
 	}
 	// Re-verifying an old snapshot must not make it eligible for a new module pause.
 	docState := app.Store.States()["documents"]

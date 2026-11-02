@@ -107,6 +107,10 @@ func (s *Server) upload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	clean, kind, err := sanitizeUpload(raw)
+	if m.ID == "documents" && err == nil {
+		// Documents retain exact original bytes; previews are separate sanitized derivatives.
+		clean = raw
+	}
 	if energyPhoto && err == nil && kind != "image/jpeg" && kind != "image/png" {
 		err = errors.New("ablesefoto muss JPEG oder PNG sein")
 	}
@@ -129,6 +133,12 @@ func (s *Server) upload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer func() { _ = tx.Rollback(r.Context()) }()
+	if m.ID == "documents" {
+		if _, err = tx.Exec(r.Context(), "SELECT pg_advisory_xact_lock(hashtextextended('household/documents/'||$1::text,0))", identity(r).HouseholdID); err != nil {
+			s.fail(w, r, err)
+			return
+		}
+	}
 	if _, err = tx.Exec(r.Context(), "SELECT pg_advisory_xact_lock(hashtextextended($1,0))", "upload-quota/"+identity(r).HouseholdID); err != nil {
 		s.fail(w, r, err)
 		return
@@ -147,6 +157,32 @@ func (s *Server) upload(w http.ResponseWriter, r *http.Request) {
 		}
 		if replayed {
 			writeJSON(w, http.StatusOK, photoReceipt)
+			return
+		}
+	}
+	var documentReceipt store.Record
+	var documentDigest [32]byte
+	if m.ID == "documents" {
+		version, parseErr := strconv.ParseInt(r.FormValue("document_version"), 10, 64)
+		if parseErr != nil || version < 1 || r.FormValue("capture") == "true" {
+			s.fail(w, r, store.Invalid{Message: "Dokumentversion bestätigen; Texterkennung im Dokumentarbeitsbereich starten"})
+			return
+		}
+		rawHash := sha256.Sum256(raw)
+		proof, proofErr := json.Marshal([]any{rid, generation, version, header.Filename, r.FormValue("current"), rawHash[:]})
+		if proofErr != nil {
+			s.fail(w, r, proofErr)
+			return
+		}
+		documentDigest = sha256.Sum256(proof)
+		var replayed bool
+		documentReceipt, replayed, err = store.PrepareDocumentUpload(r.Context(), tx, identity(r), rid, r.Header.Get("Idempotency-Key"), version, generation, documentDigest[:])
+		if err != nil {
+			s.fail(w, r, err)
+			return
+		}
+		if replayed {
+			writeJSON(w, http.StatusOK, documentReceipt)
 			return
 		}
 	}
@@ -195,7 +231,9 @@ func (s *Server) upload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	name := filepath.Base(strings.ReplaceAll(header.Filename, "\\", "/"))
-	if len(name) > 200 {
+	if m.ID == "documents" {
+		name = documentOriginalName(name)
+	} else if len(name) > 200 {
 		name = name[:200]
 	}
 	sum := sha256.Sum256(clean)
@@ -243,6 +281,12 @@ func (s *Server) upload(w http.ResponseWriter, r *http.Request) {
 		photoReceipt, err = store.SaveEnergyPhotoReceipt(r.Context(), tx, identity(r), r.Header.Get("Idempotency-Key"),
 			rid, aid, generation, photoRevision, photoDigest[:])
 	}
+	if err == nil && m.ID == "documents" {
+		documentReceipt, err = store.RegisterDocumentOriginal(r.Context(), tx, identity(r), rid, aid, "upload", generation, r.FormValue("current") == "true")
+		if err == nil {
+			err = store.SaveDocumentUploadReceipt(r.Context(), tx, identity(r), r.Header.Get("Idempotency-Key"), generation, documentDigest[:], documentReceipt)
+		}
+	}
 	if err == nil {
 		err = tx.Commit(r.Context())
 	}
@@ -251,6 +295,10 @@ func (s *Server) upload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	committed = true
+	if m.ID == "documents" {
+		writeJSON(w, http.StatusCreated, documentReceipt)
+		return
+	}
 	if energyPhoto {
 		writeJSON(w, http.StatusCreated, photoReceipt)
 		return
@@ -431,8 +479,13 @@ func (s *Server) capturePage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// OCR content follows the same live source boundary as private downloads.
-	if _, err = s.Store.Get(r.Context(), identity(r), m, sourceEntity, sourceID); err != nil {
-		s.fail(w, r, err)
+	sourceRecord, sourceErr := s.Store.Get(r.Context(), identity(r), m, sourceEntity, sourceID)
+	if sourceErr != nil {
+		s.fail(w, r, sourceErr)
+		return
+	}
+	if mid == "documents" && sourceRecord["archived_at"] != nil {
+		s.fail(w, r, store.ErrNotFound)
 		return
 	}
 	if state == "extracting" {
@@ -461,7 +514,11 @@ func (s *Server) capturePage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	p.View = "capture"
-	p.Extra = map[string]any{"id": r.PathValue("id"), "attachment_id": aid, "source_text": source}
+	extra := map[string]any{"id": r.PathValue("id"), "attachment_id": aid, "source_text": source}
+	if mid == "documents" {
+		extra["document_review_path"] = "/m/documents/workspace/review?id=" + sourceID
+	}
+	p.Extra = extra
 	s.render(w, r, p)
 }
 func (s *Server) confirmCapture(w http.ResponseWriter, r *http.Request) {

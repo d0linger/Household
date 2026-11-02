@@ -207,7 +207,7 @@ func TestPlanningExtensionsSchemaRepeatReadinessAndFutureFence(t *testing.T) {
 	}
 	var policies int
 	var planning, pantry, fuel bool
-	if err := f.owner.QueryRow(f.ctx, `SELECT (SELECT count(*) FROM core.audit_policies),mealplan.expansion_ready(),pantry.prepared_capture_ready(),fuel.module_ready()`).Scan(&policies, &planning, &pantry, &fuel); err != nil || policies != 152 || !planning || !pantry || !fuel {
+	if err := f.owner.QueryRow(f.ctx, `SELECT (SELECT count(*) FROM core.audit_policies),mealplan.expansion_ready(),pantry.prepared_capture_ready(),fuel.module_ready()`).Scan(&policies, &planning, &pantry, &fuel); err != nil || policies != 163 || !planning || !pantry || !fuel {
 		t.Fatal("joint planning/optional-module compatibility", policies, planning, pantry, fuel, err)
 	}
 	if _, err := f.owner.Exec(f.ctx, "UPDATE core.schema_migrations SET version=$1", database.ExpectedVersion("core")+1); err != nil {

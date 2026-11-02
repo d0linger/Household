@@ -520,6 +520,12 @@ func save(ctx context.Context, tx pgx.Tx, id auth.Identity, m module.Descriptor,
 }
 
 func (s *Store) afterWrite(ctx context.Context, tx pgx.Tx, id auth.Identity, m module.Descriptor, e module.Entity, r Record, generation int64) error {
+	if m.ID == "documents" {
+		if _, err := tx.Exec(ctx, `INSERT INTO documents.profiles(document_id,household_id,manual_keys) VALUES($1,$2,ARRAY['title','issuer','category','notes']) ON CONFLICT(document_id) DO UPDATE SET manual_keys=ARRAY(SELECT DISTINCT unnest(documents.profiles.manual_keys||ARRAY['title','issuer','category','notes']))`, r["id"], id.HouseholdID); err != nil {
+			return err
+		}
+		return documentIndex(ctx, tx, id, String(r["id"]), generation)
+	}
 	title := String(r[e.Primary])
 	if title == "" {
 		title = e.Title
@@ -558,6 +564,9 @@ func (s *Store) afterWrite(ctx context.Context, tx pgx.Tx, id auth.Identity, m m
 }
 
 func (s *Store) Delete(ctx context.Context, id auth.Identity, m module.Descriptor, e module.Entity, rid string, version, generation int64, requestID string) error {
+	if m.ID == "documents" {
+		return Invalid{"Dokument im Arbeitsbereich archivieren; Originale und Versionshistorie bleiben erhalten"}
+	}
 	if m.ID == "fuel" {
 		return s.fuelModuleLegacyDelete(ctx, id, e.ID, rid, version, generation, requestID)
 	}

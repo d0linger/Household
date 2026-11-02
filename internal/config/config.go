@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"household/internal/documentinput"
 	"household/internal/meterfeed"
 )
 
@@ -43,6 +44,7 @@ type Config struct {
 	WebPushContact     string
 	MetricsToken       string
 	MeterFeeds         meterfeed.Config
+	DocumentInputs     documentinput.Config
 }
 
 var hostnameLabel = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$`)
@@ -105,6 +107,9 @@ func Load() (Config, error) {
 		return Config{}, err
 	}
 	if err = loadMeterFeeds(&c); err != nil {
+		return Config{}, err
+	}
+	if err = loadDocumentInputs(&c); err != nil {
 		return Config{}, err
 	}
 	for name, target := range map[string]*string{"HOUSEHOLD_DATABASE_URL": &c.DatabaseURL, "HOUSEHOLD_CSRF_SECRET": &c.CSRFSecret, "HOUSEHOLD_ENCRYPTION_KEY": &c.EncryptionKey, "HOUSEHOLD_RATE_SECRET": &c.RateSecret, "HOUSEHOLD_ADMIN_PASSWORD": &c.AdminPassword, "HOUSEHOLD_METRICS_TOKEN": &c.MetricsToken} {

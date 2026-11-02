@@ -239,7 +239,7 @@ func TestRecipeExpansionFreshReadinessAndImportPurpose(t *testing.T) {
 		t.Fatalf("fresh contracts core=%t recipes=%t audit=%t fuel=%t error=%v",
 			coreReady, recipesReady, audited, fuelReady, err)
 	}
-	if err := f.owner.QueryRow(f.ctx, `SELECT count(*) FROM core.audit_policies`).Scan(&policies); err != nil || policies != 152 {
+	if err := f.owner.QueryRow(f.ctx, `SELECT count(*) FROM core.audit_policies`).Scan(&policies); err != nil || policies != 163 {
 		t.Fatalf("fresh audit policy count %d: %v", policies, err)
 	}
 	var teaspoons, tablespoons bool

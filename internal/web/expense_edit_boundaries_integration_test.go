@@ -175,6 +175,9 @@ func TestExpenseEditPopulatedCore23UpgradePreservesSharedFinancialFacts(t *testi
 	}
 	for _, schema := range database.Schemas {
 		version := uint(database.ExpectedVersion(schema))
+		if schema == "documents" {
+			version = 1 // Documents2 requires the later complete Core33 predecessor.
+		}
 		if schema == "meters" {
 			version = 1 // Meters2 requires the later complete Core32 predecessor.
 		}
@@ -235,7 +238,7 @@ func TestExpenseEditPopulatedCore23UpgradePreservesSharedFinancialFacts(t *testi
 	}
 	assertLegacyFinanceMoneyMode(t, f)
 	var proofs, policies int
-	if err := f.owner.QueryRow(f.ctx, "SELECT (SELECT count(*) FROM core.expense_edit_operations),(SELECT count(*) FROM core.audit_policies)").Scan(&proofs, &policies); err != nil || proofs != 0 || policies != 152 {
+	if err := f.owner.QueryRow(f.ctx, "SELECT (SELECT count(*) FROM core.expense_edit_operations),(SELECT count(*) FROM core.audit_policies)").Scan(&proofs, &policies); err != nil || proofs != 0 || policies != 163 {
 		t.Fatal("upgrade fabricated editor proofs or lost audit policy", proofs, policies, err)
 	}
 	if err := database.Ready(f.ctx, f.pool); err != nil {

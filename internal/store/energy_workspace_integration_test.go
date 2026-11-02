@@ -263,7 +263,7 @@ func TestEnergyNativePopulatedCore32UpgradePreservesLegacyFactsAndReadiness(t *t
 	var exact, ready bool
 	var policies, domain int
 	err := f.owner.QueryRow(f.ctx, `SELECT EXISTS(SELECT 1 FROM meters.readings x JOIN meters.device_registers d ON d.device_id=x.device_id AND d.register_id=x.register_id WHERE x.id=$1 AND x.value=125.123456 AND x.measured_at=$2 AND d.legacy_boundary),meters.expansion_ready() AND core.audit_ready() AND fuel.module_ready() AND pantry.prepared_capture_ready() AND mealplan.expansion_ready(),(SELECT count(*) FROM core.audit_policies),(SELECT count(*) FROM pg_tables WHERE schemaname='meters' AND tablename<>'schema_migrations')`, reading, at).Scan(&exact, &ready, &policies, &domain)
-	if err != nil || !exact || !ready || policies != 152 || domain != 20 {
+	if err != nil || !exact || !ready || policies != 163 || domain != 20 {
 		t.Fatal(exact, ready, policies, domain, err)
 	}
 	if _, err = f.owner.Exec(f.ctx, `GRANT EXECUTE ON FUNCTION meters.guard_measurement() TO household_app`); err != nil {

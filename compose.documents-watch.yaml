@@ -1,0 +1,10 @@
+# Producer must atomically rename completed immutable files to *.ready.pdf/jpg/jpeg/png.
+services:
+  app:
+    environment:
+      HOUSEHOLD_DOCUMENT_WATCH_DIR: /inbox
+    volumes:
+      - type: bind
+        source: ${HOUSEHOLD_DOCUMENT_WATCH_HOST_DIR:?Set the absolute Household-only scanner inbox path}
+        target: /inbox
+        read_only: true

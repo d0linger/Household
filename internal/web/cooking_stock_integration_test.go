@@ -124,6 +124,9 @@ func TestCookingStockPopulatedUpgrade(t *testing.T) {
 	}
 	for _, schema := range database.Schemas {
 		v := uint(database.ExpectedVersion(schema))
+		if schema == "documents" {
+			v = 1 // Documents2 requires the later complete Core33 predecessor.
+		}
 		if schema == "meters" {
 			v = 1 // Meters2 requires the later complete Core32 predecessor.
 		}

@@ -30,6 +30,9 @@ func fuelModuleUpgradePriorCatalog(t *testing.T, f *integrationFixture, fuelVers
 	}
 	for _, schema := range database.Schemas {
 		version := uint(database.ExpectedVersion(schema))
+		if schema == "documents" {
+			version = 1 // Documents2 requires the later complete Core33 predecessor.
+		}
 		if schema == "meters" {
 			version = 1 // Meters2 requires the later complete Core32 predecessor.
 		}

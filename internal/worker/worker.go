@@ -97,6 +97,9 @@ func (w *Worker) Tick(ctx context.Context) error {
 		return err
 	}
 	fuelStore := store.New(w.Pool, modules.Registry())
+	if err := w.scheduleDocumentInputs(ctx); err != nil {
+		return err
+	}
 	if err := fuelStore.FuelModuleHousekeeping(ctx, 1); err != nil {
 		return fmt.Errorf("fuel projections: %w", err)
 	}
@@ -203,6 +206,12 @@ func (w *Worker) job(ctx context.Context) (jobErr error) {
 	}
 	if kind == "thumbnail" {
 		return w.thumbnail(ctx, id, lease)
+	}
+	if kind == "document_processing" {
+		return w.documentJob(ctx, id, lease)
+	}
+	if kind == "document_input" {
+		return w.documentInput(ctx, id, lease)
 	}
 	if kind == store.ShoppingDigestJobKind {
 		return store.New(w.Pool, modules.Registry()).CompleteShoppingNotificationJob(ctx, id, lease)
@@ -328,6 +337,15 @@ func (w *Worker) failJob(ctx context.Context, id, lease string) error {
 	}
 	if tag.RowsAffected() == 0 {
 		return nil
+	}
+	var documentFailed bool
+	if err = tx.QueryRow(ctx, `SELECT kind='document_processing' AND state='failed' FROM core.jobs WHERE id=$1`, id).Scan(&documentFailed); err != nil {
+		return err
+	}
+	if documentFailed {
+		if _, err = tx.Exec(ctx, `UPDATE documents.processing SET state='failed',status_code='worker_failed',updated_at=clock_timestamp() WHERE job_id=$1 AND state IN('pending','running')`, id); err != nil {
+			return err
+		}
 	}
 	if err = recordJobFailure(ctx, tx, id, "worker_job_failed"); err != nil {
 		return err

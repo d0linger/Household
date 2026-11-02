@@ -23,6 +23,9 @@ func TestPlanningParticipantsPopulatedPriorUpgradePreservesIndependentQuantities
 	}
 	for _, schema := range database.Schemas {
 		version := uint(database.ExpectedVersion(schema))
+		if schema == "documents" {
+			version = 1 // Documents2 requires the later complete Core33 predecessor.
+		}
 		if schema == "meters" {
 			version = 1 // Meters2 requires the later complete Core32 predecessor.
 		}
@@ -82,7 +85,7 @@ func TestPlanningParticipantsPopulatedPriorUpgradePreservesIndependentQuantities
 		Scan(&mealQuantity, &componentQuantity, &mealMode, &componentMode, &guests, &roster); err != nil || mealQuantity != "1.000001" || componentQuantity != "2.500001" || mealMode != "manual" || componentMode != "independent" || guests != 0 || roster != 0 {
 		t.Fatal("upgrade rewrote old quantities or fabricated participant intent", mealQuantity, componentQuantity, mealMode, componentMode, guests, roster, policies, err)
 	}
-	if err := f.owner.QueryRow(f.ctx, "SELECT count(*) FROM core.audit_policies").Scan(&policies); err != nil || policies != 152 {
+	if err := f.owner.QueryRow(f.ctx, "SELECT count(*) FROM core.audit_policies").Scan(&policies); err != nil || policies != 163 {
 		t.Fatal("owner-only policy census", policies, err)
 	}
 	if err := database.Ready(f.ctx, f.pool); err != nil {

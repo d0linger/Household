@@ -245,7 +245,7 @@ func TestFinancialRequirementsOwnerRolePreservesIdentityAndReadiness(t *testing.
 		}
 	}
 	var policies int
-	if err = f.owner.QueryRow(f.ctx, "SELECT count(*) FROM core.audit_policies").Scan(&policies); err != nil || policies != 152 {
+	if err = f.owner.QueryRow(f.ctx, "SELECT count(*) FROM core.audit_policies").Scan(&policies); err != nil || policies != 163 {
 		t.Fatal("security infrastructure recursively joined row audit", policies, err)
 	}
 	if _, err = f.owner.Exec(f.ctx, "ALTER TABLE core.financial_artifact_scope_versions ALTER COLUMN object_id TYPE text USING object_id::text"); err != nil {

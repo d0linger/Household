@@ -45,6 +45,9 @@ func (s *Store) ConfirmCapture(ctx context.Context, id auth.Identity, captureID,
 		return "", "", "", err
 	}
 	defer rollback(tx)
+	if mid == "documents" {
+		return "", "", "", Invalid{"Dokument im Dokumentenarbeitsbereich prüfen; das unveränderte Original wird dort als Dateiversion erhalten"}
+	}
 	if err = s.LockFinanceArtifact(ctx, tx, id, "capture", captureID, "edit"); err != nil {
 		return "", "", "", err
 	}

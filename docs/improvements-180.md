@@ -1,6 +1,6 @@
 # Checkliste: 180 genehmigte Verbesserungen
 
-Stand: 2026-11-01. Auftrag: alle 180 Vorschläge aus dem Modulvergleich implementieren und gründlich testen.
+Stand: 2026-11-02. Auftrag: alle 180 Vorschläge aus dem Modulvergleich implementieren und gründlich testen.
 
 **[Aufgabenliste mit abgehakten Punkten öffnen](taskliste.md)**. Die Checkboxansicht wird bei Statusänderungen mit `node scripts/update-tasklist.cjs` aus dieser verbindlichen Nachweisliste aktualisiert.
 
@@ -33,7 +33,7 @@ Abgenommener Modulblock: **Finanzen (EX01–EX20)**. Alle 20 Punkte sind nach vo
 
 Abgenommener Modulblock: **Aufgaben (CH01–CH20)**. Alle20Verbesserungen sind gemeinsam lokal geprüft und verifiziert; Code-Checkpoint `74e049f`. Alle746Identitäten haben vollständige quellenidentische Race-Erfolge, ursprüngliche Paket-Timeouts bleiben dokumentiert. [Modulplan](chores-module-plan.md) · [Kriterien](chores-acceptance-map.md) · [Nachweise](chores-module-validation.md). Abgenommener Modulblock: **Zähler und Energie (ME01–ME20)**. Alle20Verbesserungen sind gemeinsam lokal geprüft; Code`e25b88b`,776quellenqualifizierte Race-Haupttests,70,51%Abdeckung, reale Browser/Restore/Purge/Images und exakter Indexscan. [120-Schritte-Plan](meters-module-plan.md) · [Nachweise](meters-module-validation.md). Nächster Modulblock: **Dokumente (DO01–DO20)**.
 
-180 Punkte: **160 verifiziert, 0 implementiert, 0 in Arbeit, 20 offen**. Dieser Zähler wird mit jedem abgeschlossenen Arbeitspaket abgeglichen.
+180 Punkte: **160 verifiziert, 0 implementiert, 20 in Arbeit, 0 offen**. Dieser Zähler wird mit jedem abgeschlossenen Arbeitspaket abgeglichen.
 
 Abgenommener Modulblock: **Fahrzeuge & Tanken (FU01–FU20)** – vollständige Implementierung und gemeinsame lokale Tests/Fehlerbehebung abgeschlossen. [Modulplan](fuel-module-plan.md).
 
@@ -224,26 +224,26 @@ Abgenommener Modulblock: **Essensplanung (MP08/MP13/MP15/MP19)** – alle20Verbe
 
 | ID | Verbesserung | Abnahmekriterium | Status | Nachweis |
 |---|---|---|---|---|
-| DO01 | Dokumenteneingang | Neue, ungeprüfte und fehlgeschlagene Dokumente mit nächstem Schritt bündeln. | Offen | — |
-| DO02 | Dokumentenprüfung | Vorschau und Metadaten gemeinsam mit mobil erhaltenem Bearbeitungsstand zeigen. | Offen | — |
-| DO03 | Gespeicherte Dokumentansichten | Rechnungen, Garantien und Fristen über kombinierte Filter anbieten. | Offen | — |
-| DO04 | Fristenagenda | Fristen anzeigen und zugehörige Aufgaben über Kernverträge erstellen oder bearbeiten. | Offen | — |
-| DO05 | Stapelbearbeitung | Ausgewählte Metadaten begrenzt, geprüft und transaktional ändern. | Offen | — |
-| DO06 | Dokumenttypen | Typisierte, validierte Zusatzfelder pro Dokumenttyp unterstützen. | Offen | — |
-| DO07 | Dateiversionen | Originale unverändert erhalten und aktuelle Version ausdrücklich festlegen. | Offen | — |
-| DO08 | Mehrseitige Scans | Seitenreihenfolge, Zusammenführen und Aufteilen vorab zeigen; Originale erhalten. | Offen | — |
-| DO09 | Fristarten | Rückgabe, Garantie und weitere Fristen mit Nutzerbestätigung und Quelle unterscheiden. | Offen | — |
-| DO10 | Objektverknüpfungen | Fahrzeuge, Geräte und Buchungen über berechtigte Kernverträge verknüpfen. | Offen | — |
-| DO11 | PDF-Erfassung | Vorhandenen PDF-Text nutzen; lokale OCR begrenzt im Hintergrund ausführen. | Offen | — |
-| DO12 | Klassifikationsregeln | Regelwirkung vor Übernahme erklären und manuelle Korrektur bewahren. | Offen | — |
-| DO13 | Scannerordner | Optionalen überwachten Eingang atomar, dedupliziert und wiederholbar verarbeiten. | Offen | — |
-| DO14 | IMAP-Eingang | Optional eingegrenzte Anhänge prüfen; keine ungefragte Mail-Löschung. | Offen | — |
-| DO15 | Paperless-Anbindung | Optionalen Adapter mit dokumentierter Datenhoheit und Synchronisationsumfang anbieten. | Offen | — |
-| DO16 | Verarbeitungsstatus | Fortschritt, Abbruch und Wiederholung über bestehende Jobverträge bereitstellen. | Offen | — |
-| DO17 | Dokumentvolltext | Autorisierte PostgreSQL-Suche mit geschützten OCR-Textausschnitten anbieten. | Offen | — |
-| DO18 | Dokumentdubletten | Identische und wahrscheinliche Dubletten anzeigen; nie automatisch löschen. | Offen | — |
-| DO19 | Dokumentrechte | Metadaten, Dateien, Volltext, Export und Verknüpfungen konsistent autorisieren. | Offen | — |
-| DO20 | Portables Archiv | Originale, Metadaten und Links exportieren; Aufbewahrung, Audit und Backups erklären. | Offen | — |
+| DO01 | Dokumenteneingang | Neue, ungeprüfte und fehlgeschlagene Dokumente mit nächstem Schritt bündeln. | In Arbeit | Vollständiger Modulblock vor Tests: [120-Schritte-Plan](documents-module-plan.md). |
+| DO02 | Dokumentenprüfung | Vorschau und Metadaten gemeinsam mit mobil erhaltenem Bearbeitungsstand zeigen. | In Arbeit | Vollständiger Modulblock vor Tests: [120-Schritte-Plan](documents-module-plan.md). |
+| DO03 | Gespeicherte Dokumentansichten | Rechnungen, Garantien und Fristen über kombinierte Filter anbieten. | In Arbeit | Vollständiger Modulblock vor Tests: [120-Schritte-Plan](documents-module-plan.md). |
+| DO04 | Fristenagenda | Fristen anzeigen und zugehörige Aufgaben über Kernverträge erstellen oder bearbeiten. | In Arbeit | Vollständiger Modulblock vor Tests: [120-Schritte-Plan](documents-module-plan.md). |
+| DO05 | Stapelbearbeitung | Ausgewählte Metadaten begrenzt, geprüft und transaktional ändern. | In Arbeit | Vollständiger Modulblock vor Tests: [120-Schritte-Plan](documents-module-plan.md). |
+| DO06 | Dokumenttypen | Typisierte, validierte Zusatzfelder pro Dokumenttyp unterstützen. | In Arbeit | Vollständiger Modulblock vor Tests: [120-Schritte-Plan](documents-module-plan.md). |
+| DO07 | Dateiversionen | Originale unverändert erhalten und aktuelle Version ausdrücklich festlegen. | In Arbeit | Vollständiger Modulblock vor Tests: [120-Schritte-Plan](documents-module-plan.md). |
+| DO08 | Mehrseitige Scans | Seitenreihenfolge, Zusammenführen und Aufteilen vorab zeigen; Originale erhalten. | In Arbeit | Vollständiger Modulblock vor Tests: [120-Schritte-Plan](documents-module-plan.md). |
+| DO09 | Fristarten | Rückgabe, Garantie und weitere Fristen mit Nutzerbestätigung und Quelle unterscheiden. | In Arbeit | Vollständiger Modulblock vor Tests: [120-Schritte-Plan](documents-module-plan.md). |
+| DO10 | Objektverknüpfungen | Fahrzeuge, Geräte und Buchungen über berechtigte Kernverträge verknüpfen. | In Arbeit | Vollständiger Modulblock vor Tests: [120-Schritte-Plan](documents-module-plan.md). |
+| DO11 | PDF-Erfassung | Vorhandenen PDF-Text nutzen; lokale OCR begrenzt im Hintergrund ausführen. | In Arbeit | Vollständiger Modulblock vor Tests: [120-Schritte-Plan](documents-module-plan.md). |
+| DO12 | Klassifikationsregeln | Regelwirkung vor Übernahme erklären und manuelle Korrektur bewahren. | In Arbeit | Vollständiger Modulblock vor Tests: [120-Schritte-Plan](documents-module-plan.md). |
+| DO13 | Scannerordner | Optionalen überwachten Eingang atomar, dedupliziert und wiederholbar verarbeiten. | In Arbeit | Vollständiger Modulblock vor Tests: [120-Schritte-Plan](documents-module-plan.md). |
+| DO14 | IMAP-Eingang | Optional eingegrenzte Anhänge prüfen; keine ungefragte Mail-Löschung. | In Arbeit | Vollständiger Modulblock vor Tests: [120-Schritte-Plan](documents-module-plan.md). |
+| DO15 | Paperless-Anbindung | Optionalen Adapter mit dokumentierter Datenhoheit und Synchronisationsumfang anbieten. | In Arbeit | Vollständiger Modulblock vor Tests: [120-Schritte-Plan](documents-module-plan.md). |
+| DO16 | Verarbeitungsstatus | Fortschritt, Abbruch und Wiederholung über bestehende Jobverträge bereitstellen. | In Arbeit | Vollständiger Modulblock vor Tests: [120-Schritte-Plan](documents-module-plan.md). |
+| DO17 | Dokumentvolltext | Autorisierte PostgreSQL-Suche mit geschützten OCR-Textausschnitten anbieten. | In Arbeit | Vollständiger Modulblock vor Tests: [120-Schritte-Plan](documents-module-plan.md). |
+| DO18 | Dokumentdubletten | Identische und wahrscheinliche Dubletten anzeigen; nie automatisch löschen. | In Arbeit | Vollständiger Modulblock vor Tests: [120-Schritte-Plan](documents-module-plan.md). |
+| DO19 | Dokumentrechte | Metadaten, Dateien, Volltext, Export und Verknüpfungen konsistent autorisieren. | In Arbeit | Vollständiger Modulblock vor Tests: [120-Schritte-Plan](documents-module-plan.md). |
+| DO20 | Portables Archiv | Originale, Metadaten und Links exportieren; Aufbewahrung, Audit und Backups erklären. | In Arbeit | Vollständiger Modulblock vor Tests: [120-Schritte-Plan](documents-module-plan.md). |
 
 ## Essensplanung
 
