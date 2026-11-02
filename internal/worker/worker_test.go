@@ -2,6 +2,9 @@ package worker
 
 import (
 	"context"
+	"errors"
+	"slices"
+	"strings"
 	"testing"
 )
 
@@ -18,5 +21,41 @@ func TestRunCanceledBeforeStart(t *testing.T) {
 	}
 	if err := worker.Close(); err != nil || directory.closed != 1 {
 		t.Fatalf("repeated worker close: err=%v closes=%d", err, directory.closed)
+	}
+}
+
+func TestRunStepsIsolatesFailuresAndPanics(t *testing.T) {
+	t.Parallel()
+	var ran []string
+	err := runSteps(t.Context(), []step{
+		{"reminders", func(context.Context) error { ran = append(ran, "reminders"); return errors.New("bad reminder row") }},
+		{"low stock", func(context.Context) error { ran = append(ran, "low stock"); panic("nil projection") }},
+		{"jobs", func(context.Context) error { ran = append(ran, "jobs"); return nil }},
+	})
+	if !slices.Equal(ran, []string{"reminders", "low stock", "jobs"}) {
+		t.Fatalf("a failing step starved later work: ran %v", ran)
+	}
+	var recovered panicked
+	if !errors.As(err, &recovered) || recovered.value != "nil projection" || len(recovered.stack) == 0 {
+		t.Fatalf("panic not recovered with its stack: %v", err)
+	}
+	if !strings.Contains(err.Error(), "reminders: bad reminder row") || !strings.Contains(err.Error(), "low stock: panic: nil projection") {
+		t.Fatalf("step failures lost their names: %v", err)
+	}
+	if err = runSteps(t.Context(), []step{{"jobs", func(context.Context) error { return nil }}}); err != nil {
+		t.Fatalf("successful steps reported %v", err)
+	}
+}
+
+func TestRunStepsStopsWhenCanceled(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithCancel(t.Context())
+	ran := false
+	err := runSteps(ctx, []step{
+		{"reminders", func(context.Context) error { cancel(); return errors.New("interrupted") }},
+		{"jobs", func(context.Context) error { ran = true; return nil }},
+	})
+	if ran || !errors.Is(err, context.Canceled) || !strings.Contains(err.Error(), "reminders: interrupted") {
+		t.Fatalf("shutdown continued background work or dropped a failure: ran=%v err=%v", ran, err)
 	}
 }

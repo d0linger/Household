@@ -103,7 +103,11 @@ func (s *Service) SendJob(ctx context.Context, jobID, lease string) error {
 	if !current {
 		return finishJob(ctx, tx, claim, "done", "registering_authority_ended", time.Time{})
 	}
-	endpoint, _ := validateEndpoint(claim.data.Subscription.Endpoint)
+	// A stored endpoint that a later release no longer allows is superseded, not dereferenced.
+	endpoint, err := validateEndpoint(claim.data.Subscription.Endpoint)
+	if err != nil {
+		return finishJob(ctx, tx, claim, "done", "connection_superseded", time.Time{})
+	}
 	next, err := s.reserveSend(ctx, tx, claim.data.UserID, endpoint.Hostname())
 	if errors.Is(err, ErrLimited) {
 		return finishJob(ctx, tx, claim, "pending", "send_budget_limited", next)

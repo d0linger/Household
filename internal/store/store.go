@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"household/internal/audit"
 	"household/internal/auth"
@@ -26,6 +27,10 @@ import (
 var ErrNotFound = errors.New("nicht gefunden")
 var ErrConflict = errors.New("inzwischen geändert; bitte neu laden und prüfen")
 var ErrForbidden = errors.New("keine Berechtigung")
+var ErrBusy = errors.New("module werden gerade verwendet")
+
+// gateWait bounds how long a module change waits for in-flight requests.
+const gateWait = 10 * time.Second
 
 type Invalid struct{ Message string }
 
@@ -135,7 +140,9 @@ func (s *Store) SetModule(ctx context.Context, id auth.Identity, mid string, ena
 	if _, ok := s.Module(mid); !ok {
 		return ErrNotFound
 	}
-	s.Gate.Lock()
+	if err := s.lockGate(ctx, gateWait); err != nil {
+		return err
+	}
 	defer s.Gate.Unlock()
 	tx, err := audit.Begin(ctx, s.Pool)
 	if err != nil {
@@ -169,6 +176,26 @@ func (s *Store) SetModule(ctx context.Context, id auth.Identity, mid string, ena
 		return err
 	}
 	return s.LoadStates(ctx)
+}
+
+// lockGate takes the module gate for writing without queueing behind readers.
+// A blocked Gate.Lock would stall every new request until one slow reader ended.
+func (s *Store) lockGate(ctx context.Context, wait time.Duration) error {
+	ctx, cancel := context.WithTimeout(ctx, wait)
+	defer cancel()
+	poll := time.NewTicker(10 * time.Millisecond)
+	defer poll.Stop()
+	for !s.Gate.TryLock() {
+		select {
+		case <-ctx.Done():
+			if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+				return ErrBusy
+			}
+			return ctx.Err()
+		case <-poll.C:
+		}
+	}
+	return nil
 }
 
 func (s *Store) List(ctx context.Context, id auth.Identity, m module.Descriptor, e module.Entity, query string, limit, offset int) ([]Record, error) {

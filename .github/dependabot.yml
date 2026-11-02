@@ -2,19 +2,26 @@ version: 2
 updates:
   - package-ecosystem: gomod
     directory: /
-    schedule: {interval: weekly}
+    schedule: {interval: weekly, day: monday}
     open-pull-requests-limit: 5
+    commit-message: {prefix: gomod}
   - package-ecosystem: npm
     directory: /
-    schedule: {interval: weekly}
+    schedule: {interval: weekly, day: monday}
     open-pull-requests-limit: 5
+    commit-message: {prefix: npm}
   - package-ecosystem: github-actions
     directory: /
-    schedule: {interval: weekly}
+    schedule: {interval: weekly, day: monday}
     open-pull-requests-limit: 5
+    commit-message: {prefix: ci}
   - package-ecosystem: docker
     directory: /
-    schedule: {interval: weekly}
+    schedule: {interval: weekly, day: monday}
+    open-pull-requests-limit: 5
+    commit-message: {prefix: docker}
   - package-ecosystem: docker
     directory: /deploy/backup
-    schedule: {interval: weekly}
+    schedule: {interval: weekly, day: monday}
+    open-pull-requests-limit: 5
+    commit-message: {prefix: docker}

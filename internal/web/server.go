@@ -624,6 +624,9 @@ func (s *Server) fail(w http.ResponseWriter, r *http.Request, err error) {
 		status, message = 409, "Gleichzeitige Änderung; bitte aktuelle Werte laden und prüfen"
 	case errors.Is(err, store.ErrForbidden):
 		status, message = 403, "Keine Berechtigung"
+	case errors.Is(err, store.ErrBusy):
+		status, message = 503, "Module werden gerade verwendet; bitte in einigen Sekunden erneut versuchen"
+		w.Header().Set("Retry-After", "5")
 	case errors.Is(err, auth.ErrLimited):
 		status, message = 429, auth.ErrLimited.Error()
 		w.Header().Set("Retry-After", "900")

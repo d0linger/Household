@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/netip"
 	"strings"
 	"time"
 
@@ -155,7 +156,13 @@ func (s *Service) Login(ctx context.Context, username, password, code, ip, ua st
 	if err := s.Limit(ctx, "login-network", ip, 100, 15*time.Minute); err != nil {
 		return "", Identity{}, err
 	}
-	if err := s.Limit(ctx, "login-account", strings.ToLower(username), 20, time.Hour); err != nil {
+	// The tight budget is per account and client network, so one network cannot
+	// lock the owner out from another; the account-wide cap is a distributed backstop.
+	account := strings.ToLower(username)
+	if err := s.Limit(ctx, "login-account-network", account+"\x00"+networkPrefix(ip), 20, time.Hour); err != nil {
+		return "", Identity{}, err
+	}
+	if err := s.Limit(ctx, "login-account", account, 500, time.Hour); err != nil {
 		return "", Identity{}, err
 	}
 	// Only credential attempts admitted by both durable limits create an event.
@@ -224,6 +231,24 @@ func (s *Service) Login(ctx context.Context, username, password, code, ip, ua st
 	}
 	identity, err := s.Resolve(ctx, raw, false)
 	return raw, identity, err
+}
+
+// networkPrefix groups a client address with its /24 (IPv4) or /56 (IPv6)
+// neighbours, the typical span one household or attacker controls.
+func networkPrefix(ip string) string {
+	addr, err := netip.ParseAddr(ip)
+	if err != nil {
+		return ip
+	}
+	bits := 56
+	if addr.Unmap().Is4() {
+		addr, bits = addr.Unmap(), 24
+	}
+	prefix, err := addr.Prefix(bits)
+	if err != nil {
+		return ip
+	}
+	return prefix.String()
 }
 
 func (s *Service) createSession(ctx context.Context, tx pgx.Tx, uid, ip, ua string) (string, error) {

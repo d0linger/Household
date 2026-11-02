@@ -1,0 +1,49 @@
+/* Hallmark · shape: app screen · theme: quiet workbench and universal Pink palette · v2.0.0 */
+/* Critique: four independently contrasted palettes; signal and ink paired. */
+/* User-brief override to Reflex 37: this catalog compares 100 independent design systems. Each system uses one local type stack; eight available stacks are intentional, with no font downloads. */
+:root, [data-theme="light"] {
+ color-scheme: light;
+ --color-paper:#f2f4f1; --color-paper-2:#fcfdfb; --color-paper-3:#e5ebe5;
+ --color-ink:#17261f; --color-ink-2:#47594e; --color-muted:#536359;
+ --color-rule:#77877b; --color-soft-rule:#ccd5cc;
+ --color-accent:#14664c; --color-accent-ink:#f7fff9; --color-focus:#095cbd;
+ --color-signal:#895011; --color-signal-bg:#faeccc; --color-error:#982e3d;
+ --color-shadow:#26382a; --color-glow:#14664c33; --color-glass:#fcfdfbe8;
+ --color-transparent:transparent; --color-grid:#77877b24;
+ --font-body:"Segoe UI",ui-sans-serif,system-ui,sans-serif; --font-display:var(--font-body); --font-mono:"Cascadia Code",Consolas,monospace;
+ --font-humanist:"Trebuchet MS","Segoe UI",sans-serif; --font-editorial:Georgia,"Times New Roman",serif;
+ --font-geometric:"Century Gothic","Segoe UI",sans-serif; --font-rounded:Verdana,"Segoe UI",sans-serif;
+ --font-condensed:"Bahnschrift SemiCondensed","Arial Narrow",sans-serif; --font-classical:"Palatino Linotype",Georgia,serif; --font-grotesk:"Segoe UI",Arial,sans-serif;
+ --color-backdrop:#11151bcc;
+ --space-2xs:4px; --space-between:20px; --space-room:28px; --space-wide:32px; --space-section:36px; --space-2xl:48px; --space-3xl:64px; --space-xs:8px; --space-sm:12px; --space-md:16px; --space-lg:24px; --space-xl:40px;
+ --text-sm:.875rem; --text-md:1rem; --container:1560px; --gutter:32px; --gap-columns:24px;
+ --ease-out:cubic-bezier(.16,1,.3,1); --dur-micro:120ms; --dur-short:220ms;
+ --radius:12px; --radius-control:8px;
+}
+[data-theme="dark"] {
+ color-scheme:dark;
+ --color-paper:#111b17; --color-paper-2:#1b2822; --color-paper-3:#293c31;
+ --color-ink:#eff5ed; --color-ink-2:#c4d2c7; --color-muted:#afc1b4;
+ --color-rule:#84998a; --color-soft-rule:#3c5143;
+ --color-accent:#9be1bd; --color-accent-ink:#112c20; --color-focus:#b5d7ff;
+ --color-signal:#f2cb84; --color-signal-bg:#49391e; --color-error:#ffabb7;
+ --color-shadow:#060d08; --color-glow:#9be1bd30; --color-glass:#1b2822eb; --color-grid:#84998a24;
+}
+[data-theme="pink-light"] {
+ color-scheme:light;
+ --color-paper:#fceff4; --color-paper-2:#fff8fb; --color-paper-3:#f3dce7;
+ --color-ink:#3d1930; --color-ink-2:#70435d; --color-muted:#795069;
+ --color-rule:#a2718b; --color-soft-rule:#e2bed1;
+ --color-accent:#9c265f; --color-accent-ink:#fff8fb; --color-focus:#7d248f;
+ --color-signal:#87410e; --color-signal-bg:#ffe9d8; --color-error:#9e253b;
+ --color-shadow:#5b2444; --color-glow:#c83b8230; --color-glass:#fff8fbeb; --color-grid:#a2718b26;
+}
+[data-theme="pink-dark"] {
+ color-scheme:dark;
+ --color-paper:#21121f; --color-paper-2:#332030; --color-paper-3:#4a2e43;
+ --color-ink:#ffeef7; --color-ink-2:#e4bfd4; --color-muted:#d5acc5;
+ --color-rule:#ae7f9d; --color-soft-rule:#65445c;
+ --color-accent:#ff93ce; --color-accent-ink:#3b0d2b; --color-focus:#f2b2ff;
+ --color-signal:#ffd29d; --color-signal-bg:#55351f; --color-error:#ffabbc;
+ --color-shadow:#10070f; --color-glow:#ff64b838; --color-glass:#332030eb; --color-grid:#ae7f9d28;
+}

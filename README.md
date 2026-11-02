@@ -1,5 +1,7 @@
 # Household
 
+Source repository: [d0linger/Household](https://github.com/d0linger/Household). Development is synchronized on `dev`; changes are reviewed through pull requests before promotion to `main`. GitHub checks build and verify candidates without deploying the local installation. See [contribution and publication rules](CONTRIBUTING.md).
+
 All **180/180 approved improvements are implemented and locally verified**, including the Documents expansion (DO01–DO20). See the [checked task list](docs/taskliste.md), [120-step Documents plan](docs/documents-module-plan.md), [behavior and ownership contract](docs/documents-module-contract.md) and [executed evidence](docs/documents-module-validation.md). Local verification does not imply a live deployment or publication.
 
 Documents adds a local inbox/review/library workflow, combined personal views, typed metadata, confirmed deadlines, authorized links/task handoff, original file versions, ordered scans, rules with preview, durable processing, PostgreSQL full text, duplicate review and portable ZIP archives. Originals are preserved byte-for-byte; existing legacy image attachments retain only their previously stored sanitized bytes. Use the module workspace at `/m/documents/workspace/inbox` after enabling Documents. Reader/editor/admin household roles apply; there is no separate private-document ACL. Linked Finance data keeps its current Finance rights.
@@ -34,6 +36,25 @@ The current Chores source adds a focused workspace at `/m/chores/workspace/today
 
 The default modules are **shopping, fuel, recipes, pantry, and expenses**. **Chores, meters, documents/warranties, and meal planning** can be enabled in settings. One installation holds one household with administrators, editors and readers. The interface is German, with EUR and Europe/Vienna defaults.
 ## Run locally
+
+### Interactive design laboratory
+
+For choosing a broad visual direction, [eight complete page concepts](design-preview/whole-page-concepts.fragment.html) show entire Household dashboards with different navigation, composition, typography and density. The inline comparison source contains Haushaltsjournal, Wohnküche, Schaltzentrale, Familienplan, Atelier, Wochenkompass, Hausakte and Cockpit. All retain Light, Dark, Pink Light and Pink Dark. Carousel/theme controls are supplied by the conversation preview host; this fragment is not a production route or a standalone replacement for the application.
+
+The separate [design laboratory](design-preview/index.html) contains **100 individually authored design directions**, each combining typography, layout, navigation, density and surface treatment. Every direction has its own Light/Dark palette and supports the shared **Pink Light and Pink Dark** modes. Ten identical household example dialogs make the directions directly comparable: Shopping, Chores, Inventory, Finance, Recipes, Meal Planning, Fuel, Meters, Documents and simulated Smart Home. These are illustrative prototypes without household database or device connections; the running application's design remains unchanged.
+
+```sh
+node scripts/build-design-preview.cjs
+node scripts/serve-design-preview.cjs
+```
+
+Open **http://localhost:8102/design-preview/**. The read-only server binds only to `127.0.0.1`; `HOUSEHOLD_DESIGN_PORT` can select another development port. Search by name/ID, filter by discovery group, bookmark favorites and shortlist up to four designs using **Vergleichen**. Open their comparison to test the same dialog and optionally synchronize example inputs. **Dieses Design wählen** records one preferred direction and its theme. Export the decision as JSON, or use **Code exportieren** for a standalone HTML dialog with four working themes. Browser storage contains design preferences only; edited form values remain in memory. Export does not deploy a design or change the application on port 8100.
+
+The canonical, JavaScript-compatible TypeScript catalog is `design-preview/designDirections.ts`; the build generates its browser copy, palette tokens and the [design guideline](docs/design-preview-guideline.md). Check freshness with `node scripts/build-design-preview.cjs --check`. Run focused tests with `node --test scripts/design-preview.test.cjs`; browser checks use `node scripts/test-design-preview-browser.cjs` with installed Edge. Current reports/screenshots go to ignored `outputs/design-directions-review/`; the checked [validation list](docs/design-preview-validation.md) distinguishes current and historical evidence. Previous component-only prototypes are archived there in `previous-component-lab.zip`. No new dependency or production route is introduced.
+
+### Household application
+
+Local development deployment refreshed on 2026-11-02 from checkpoint `c2d3aa2`: `household:local` was rebuilt and the app, database and migration containers recreated on `http://localhost:8100`. Existing PostgreSQL/uploads volumes and secrets were retained. A pre-upgrade encrypted backup and isolated restore verification succeeded; migrations exited successfully and live/readiness/login HTTP checks returned 200. This supersedes the historical module notes saying port 8100 was unchanged. Optional OCR and external adapters remain opt-in. See the deployment entry in [the implementation log](docs/implementation.md).
 
 Docker Engine with Compose v2 or newer is required. Docker Desktop is optional; its own licensing is separate from this MIT-licensed application. Native Linux Docker Engine is sufficient.
 

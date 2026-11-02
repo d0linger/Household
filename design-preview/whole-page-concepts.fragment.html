@@ -1,0 +1,271 @@
+<style>
+/* Hallmark v2.0.0 | custom household app concepts | eight complete compositions | illustrative household data */
+/* Critique: same content, different navigation, reading order, density and visual rhythm; pink preserves every composition. */
+/* Waivers: installed system typefaces preserve offline portability; app screens use task content instead of marketing word limits. */
+:root { --hw-palette-1: #aa176b; --hw-palette-2: #faf8f2; --hw-palette-3: #282820; --hw-palette-4: #fffef9; --hw-palette-5: #eeede4; --hw-palette-6: #c2c1b4; --hw-palette-7: #58584c; --hw-palette-8: #425c30; --hw-palette-9: #ffffff; --hw-palette-10: #f4efe7; --hw-palette-11: #fffaf2; --hw-palette-12: #e9ded0; --hw-palette-13: #3f3027; --hw-palette-14: #6b5444; --hw-palette-15: #bda998; --hw-palette-16: #905039; --hw-palette-17: #edf1f2; --hw-palette-18: #dce5e8; --hw-palette-19: #1c303a; --hw-palette-20: #455d69; --hw-palette-21: #a9bdc5; --hw-palette-22: #0c536b; --hw-palette-23: #f4f0fb; --hw-palette-24: #fffefd; --hw-palette-25: #e8dff2; --hw-palette-26: #3c284e; --hw-palette-27: #624d74; --hw-palette-28: #baa4c9; --hw-palette-29: #69418b; --hw-palette-30: #f4f34b; --hw-palette-31: #ffffef; --hw-palette-32: #e4e44c; --hw-palette-33: #202019; --hw-palette-34: #535329; --hw-palette-35: #f3f6f3; --hw-palette-36: #e0eae2; --hw-palette-37: #20382f; --hw-palette-38: #4b6357; --hw-palette-39: #b8cbbd; --hw-palette-40: #285d43; --hw-palette-41: #e9e4dc; --hw-palette-42: #faf7ef; --hw-palette-43: #dfd7c8; --hw-palette-44: #34332b; --hw-palette-45: #605c50; --hw-palette-46: #ada58e; --hw-palette-47: #695139; --hw-palette-48: #101d29; --hw-palette-49: #192a39; --hw-palette-50: #233c4c; --hw-palette-51: #e7f4fa; --hw-palette-52: #adc8d5; --hw-palette-53: #4d6a7a; --hw-palette-54: #83d9ee; --hw-palette-55: #102936; --hw-palette-56: #20231f; --hw-palette-57: #2b3028; --hw-palette-58: #3b4235; --hw-palette-59: #f2f1e7; --hw-palette-60: #c1c9b6; --hw-palette-61: #75806a; --hw-palette-62: #b8d68e; --hw-palette-63: #202b14; --hw-palette-64: #11150e; --hw-palette-65: #f2a6d0; --hw-palette-66: #2b211c; --hw-palette-67: #382b24; --hw-palette-68: #4a382d; --hw-palette-69: #d3bbae; --hw-palette-70: #8b7161; --hw-palette-71: #edac8a; --hw-palette-72: #382216; --hw-palette-73: #251d33; --hw-palette-74: #342943; --hw-palette-75: #443656; --hw-palette-76: #d1bddf; --hw-palette-77: #8d76a1; --hw-palette-78: #d8b5f4; --hw-palette-79: #31203f; --hw-palette-80: #222218; --hw-palette-81: #303024; --hw-palette-82: #44442e; --hw-palette-83: #eeee65; --hw-palette-84: #27251f; --hw-palette-85: #363329; --hw-palette-86: #464131; --hw-palette-87: #d1c8af; --hw-palette-88: #92876b; --hw-palette-89: #dfc58f; --hw-palette-90: #302514; --hw-palette-91: #eaf1f5; --hw-palette-92: #f9fdff; --hw-palette-93: #d5e4ec; --hw-palette-94: #193346; --hw-palette-95: #486374; --hw-palette-96: #9bb7c6; --hw-palette-97: #0b5674; --hw-palette-98: #fff0f6; --hw-palette-99: #fffafd; --hw-palette-100: #f6dbe8; --hw-palette-101: #492538; --hw-palette-102: #775066; --hw-palette-103: #c698af; --hw-palette-104: #992759; --hw-palette-105: #7c1749; --hw-palette-106: #55213b; --hw-palette-107: #251322; --hw-palette-108: #361d30; --hw-palette-109: #4a2840; --hw-palette-110: #ffeaf5; --hw-palette-111: #dfb5d0; --hw-palette-112: #9b6689; --hw-palette-113: #ff9bce; --hw-palette-114: #3e1230; --hw-palette-115: #ffc4e6; --hw-palette-116: #120a10; }
+html, body { overflow-x: clip; }
+#household-worlds { --hw-sans: 'Segoe UI', system-ui, sans-serif; --hw-serif: Georgia, 'Times New Roman', serif; --hw-mono: Consolas, monospace; --hw-focus: var(--hw-palette-1); --hw-paper: var(--hw-palette-2); --hw-ink: var(--hw-palette-3); --hw-panel: var(--hw-palette-4); --hw-soft: var(--hw-palette-5); --hw-line: var(--hw-palette-6); --hw-muted: var(--hw-palette-7); --hw-accent: var(--hw-palette-8); --hw-on: var(--hw-palette-9); --hw-radius: 0px; --hw-shadow: var(--hw-palette-3); font-family: var(--hw-sans); }
+#household-worlds * { box-sizing: border-box; }
+#household-worlds [hidden] { display: none !important; }
+#household-worlds .hw-app { color: var(--hw-ink); background: var(--hw-paper); min-height: 960px; font: 16px/1.5 var(--hw-sans); display: grid; grid-template: 'brand' auto 'nav' auto 'main' 1fr 'footer' auto / minmax(0,1fr); padding: 32px; gap: 24px; overflow-wrap: break-word; min-width: 0; }
+#household-worlds .hw-app *, #household-worlds .hw-app *::before { border-color: var(--hw-line); }
+#household-worlds .hw-brand { grid-area: brand; display: flex; gap: 24px; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--hw-line); padding-bottom: 16px; }
+#household-worlds .hw-brand strong { font-size: 26px; letter-spacing: -.025em; display: block; }
+#household-worlds .hw-brand small, #household-worlds .hw-muted { color: var(--hw-muted); }
+#household-worlds .hw-nav { grid-area: nav; display: flex; gap: 8px; flex-wrap: wrap; align-content: start; }
+#household-worlds .hw-app button { color: var(--hw-ink); background: var(--hw-panel); border: 1px solid var(--hw-line); border-radius: var(--hw-radius); min-height: 44px; padding: 8px 16px; font: inherit; transition: background-color .15s ease, color .15s ease; }
+#household-worlds .hw-app button:active { transform: translateY(1px); }
+#household-worlds .hw-app button:disabled { opacity: .5; cursor: not-allowed; }
+#household-worlds .hw-app button:hover { background: var(--hw-soft); }
+#household-worlds .hw-app button[aria-pressed=true], #household-worlds .hw-nav button[aria-current=page] { background: var(--hw-accent); color: var(--hw-on); border-color: var(--hw-accent); }
+#household-worlds .hw-app button:focus-visible, #household-worlds .hw-app input:focus-visible { outline: 3px solid var(--hw-focus); outline-offset: 3px; }
+#household-worlds ::selection { background: var(--hw-accent); color: var(--hw-on); }
+#household-worlds .hw-app input { accent-color: var(--hw-accent); caret-color: var(--hw-accent); }
+#household-worlds main { grid-area: main; min-width: 0; }
+#household-worlds h1, #household-worlds h2, #household-worlds h3, #household-worlds p { margin: 0; }
+#household-worlds h1 { font-size: clamp(32px, 5vw, 54px); line-height: 1.08; letter-spacing: -.035em; overflow-wrap: break-word; min-width: 0; text-wrap: balance; }
+#household-worlds h2 { font-size: 21px; line-height: 1.25; margin-bottom: 16px; }
+#household-worlds h3 { font-size: 17px; margin-bottom: 8px; }
+#household-worlds .hw-intro { margin-bottom: 32px; max-width: 65ch; }
+#household-worlds .hw-intro p { margin-top: 12px; color: var(--hw-muted); }
+#household-worlds .hw-board { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 28px; align-items: start; }
+#household-worlds .hw-section { min-width: 0; border-top: 1px solid var(--hw-line); padding-top: 16px; }
+#household-worlds .hw-section p + p { margin-top: 8px; }
+#household-worlds .hw-row { display: flex; justify-content: space-between; gap: 16px; padding: 12px 0; border-bottom: 1px solid var(--hw-line); }
+#household-worlds .hw-row span { min-width: 0; }
+#household-worlds .hw-row strong { font-variant-numeric: tabular-nums; white-space: nowrap; }
+#household-worlds .hw-check { display: flex; gap: 12px; align-items: center; min-height: 52px; padding: 8px 0; border-bottom: 1px solid var(--hw-line); }
+#household-worlds .hw-check input { width: 20px; height: 20px; flex: 0 0 20px; margin: 0; }
+#household-worlds .hw-check span { flex: 1; }
+#household-worlds .hw-check small { color: var(--hw-muted); }
+#household-worlds .hw-check:has(input:checked) span { text-decoration: line-through; color: var(--hw-muted); }
+#household-worlds .hw-amount { display: block; font-size: 32px; font-variant-numeric: tabular-nums; line-height: 1.2; margin-bottom: 8px; }
+#household-worlds .hw-meter { height: 8px; background: var(--hw-soft); margin: 16px 0 8px; border-radius: var(--hw-radius); overflow: clip; }
+#household-worlds .hw-meter i { display: block; width: 58%; height: 100%; background: var(--hw-accent); }
+#household-worlds .hw-meal-name { font-family: var(--hw-serif); font-size: 26px; line-height: 1.2; margin-bottom: 12px; }
+#household-worlds .hw-recipe { background: var(--hw-soft); padding: 20px; margin-top: 16px; border-radius: var(--hw-radius); }
+#household-worlds .hw-day { display: grid; grid-template-columns: 54px minmax(0,1fr); gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--hw-line); }
+#household-worlds .hw-day b { font-weight: 600; color: var(--hw-accent); }
+#household-worlds .hw-foot { grid-area: footer; border-top: 1px solid var(--hw-line); padding-top: 16px; display: flex; flex-wrap: wrap; gap: 12px; justify-content: space-between; font-size: 13px; color: var(--hw-muted); }
+#household-worlds .hw-local { min-height: 24px; margin-top: 16px; color: var(--hw-accent); font-size: 14px; }
+#household-worlds .hw-section-focus .hw-board { display: block; max-width: 760px; }
+#household-worlds .hw-section-focus .hw-section { padding: 24px; }
+#household-worlds .hw-journal h1, #household-worlds .hw-journal h2, #household-worlds .hw-journal .hw-brand strong { font-family: var(--hw-serif); font-weight: 400; }
+#household-worlds .hw-journal .hw-brand { border-bottom: 4px double var(--hw-ink); }
+#household-worlds .hw-journal .hw-nav button { border: 0; background: var(--hw-paper); border-radius: 0; border-bottom: 2px solid var(--hw-line); }
+#household-worlds .hw-journal .hw-nav button[aria-current=page] { border-color: var(--hw-accent); color: var(--hw-accent); }
+#household-worlds .hw-journal .hw-board { grid-template-columns: minmax(0,1.35fr) minmax(0,1fr); }
+#household-worlds .hw-kitchen { --hw-paper:var(--hw-palette-10); --hw-panel:var(--hw-palette-11); --hw-soft:var(--hw-palette-12); --hw-ink:var(--hw-palette-13); --hw-muted:var(--hw-palette-14); --hw-line:var(--hw-palette-15); --hw-accent:var(--hw-palette-16); --hw-radius:18px; grid-template: 'brand main' 1fr 'nav main' 3fr 'footer footer' auto / 190px minmax(0,1fr); padding: 24px; gap: 28px; }
+#household-worlds .hw-kitchen .hw-brand { display: block; align-self: start; border: 0; }
+#household-worlds .hw-kitchen .hw-brand button { margin-top: 20px; }
+#household-worlds .hw-kitchen .hw-nav { flex-direction: column; }
+#household-worlds .hw-kitchen .hw-board { gap: 20px; }
+#household-worlds .hw-kitchen .hw-section { background: var(--hw-panel); border: 0; border-radius: var(--hw-radius); padding: 20px; }
+#household-worlds .hw-kitchen .hw-intro h1 { font-family: var(--hw-serif); font-weight: 400; }
+#household-worlds .hw-kitchen .hw-recipe { padding: 0; background: var(--hw-panel); }
+#household-worlds .hw-console { --hw-paper:var(--hw-palette-17); --hw-panel:var(--hw-palette-9); --hw-soft:var(--hw-palette-18); --hw-ink:var(--hw-palette-19); --hw-muted:var(--hw-palette-20); --hw-line:var(--hw-palette-21); --hw-accent:var(--hw-palette-22); padding: 20px; gap: 16px; }
+#household-worlds .hw-console h1 { font-size: 30px; }
+#household-worlds .hw-console .hw-intro { margin-bottom: 20px; }
+#household-worlds .hw-console .hw-board { grid-template-columns: repeat(3,minmax(0,1fr)); gap: 0; border: 1px solid var(--hw-line); }
+#household-worlds .hw-console .hw-section { padding: 16px; border: 1px solid var(--hw-line); background: var(--hw-panel); align-self: stretch; }
+#household-worlds .hw-console .hw-check { flex-wrap: wrap; }
+#household-worlds .hw-console .hw-check small { margin-left: 32px; flex-basis: 100%; }
+#household-worlds .hw-console .hw-brand strong { font-size: 22px; }
+#household-worlds .hw-console .hw-nav button { flex: 1; }
+#household-worlds .hw-family { --hw-paper:var(--hw-palette-23); --hw-panel:var(--hw-palette-24); --hw-soft:var(--hw-palette-25); --hw-ink:var(--hw-palette-26); --hw-muted:var(--hw-palette-27); --hw-line:var(--hw-palette-28); --hw-accent:var(--hw-palette-29); --hw-radius:24px; grid-template: 'brand' auto 'main' 1fr 'nav' auto 'footer' auto / minmax(0,1fr); }
+#household-worlds .hw-family .hw-brand { border: 0; }
+#household-worlds .hw-family h1 { font-size: 44px; max-width: 12ch; }
+#household-worlds .hw-family .hw-board { grid-template-columns: repeat(3,minmax(0,1fr)); gap: 20px; }
+#household-worlds .hw-family .hw-section { border: 0; border-radius: var(--hw-radius); padding: 20px; background: var(--hw-panel); }
+#household-worlds .hw-family .hw-section[data-part=week] { grid-column: 1 / -1; background: var(--hw-soft); }
+#household-worlds .hw-family .hw-week { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 24px; }
+#household-worlds .hw-family .hw-day { display: block; border: 0; }
+#household-worlds .hw-family .hw-day b { display: block; margin-bottom: 8px; }
+#household-worlds .hw-family .hw-section[data-part=home] { grid-column: span 2; }
+#household-worlds .hw-family .hw-check { flex-wrap: wrap; }
+#household-worlds .hw-family .hw-check small { flex-basis: 100%; margin-left: 32px; }
+#household-worlds .hw-family .hw-nav { justify-content: center; }
+#household-worlds .hw-family .hw-recipe { padding: 0; background: var(--hw-panel); }
+#household-worlds .hw-atelier { --hw-paper:var(--hw-palette-30); --hw-panel:var(--hw-palette-31); --hw-soft:var(--hw-palette-32); --hw-ink:var(--hw-palette-33); --hw-muted:var(--hw-palette-34); --hw-line:var(--hw-palette-33); --hw-accent:var(--hw-palette-33); --hw-on:var(--hw-palette-31); --hw-radius:0px; grid-template: 'brand brand' auto 'nav main' 1fr 'footer footer' auto / 150px minmax(0,1fr); gap: 32px; }
+#household-worlds .hw-atelier .hw-brand { border-bottom: 3px solid var(--hw-ink); }
+#household-worlds .hw-atelier .hw-brand strong { font-size: 36px; }
+#household-worlds .hw-atelier .hw-nav { flex-direction: column; }
+#household-worlds .hw-atelier button { border: 2px solid var(--hw-ink); box-shadow: 3px 3px 0 var(--hw-shadow); }
+#household-worlds .hw-atelier h1 { font-size: 64px; font-weight: 800; max-width: 10ch; }
+#household-worlds .hw-atelier .hw-board { gap: 24px; }
+#household-worlds .hw-atelier .hw-section { padding: 20px; border: 2px solid var(--hw-ink); background: var(--hw-panel); box-shadow: 5px 5px 0 var(--hw-shadow); }
+#household-worlds .hw-atelier .hw-section[data-part=chores] { grid-column: 1 / -1; }
+#household-worlds .hw-atelier .hw-recipe { background: var(--hw-panel); padding: 0; }
+#household-worlds .hw-compass { --hw-paper:var(--hw-palette-35); --hw-panel:var(--hw-palette-9); --hw-soft:var(--hw-palette-36); --hw-ink:var(--hw-palette-37); --hw-muted:var(--hw-palette-38); --hw-line:var(--hw-palette-39); --hw-accent:var(--hw-palette-40); --hw-radius:8px; grid-template: 'brand nav' auto 'main main' 1fr 'footer footer' auto / minmax(0,1fr) minmax(0,1.2fr); padding: 40px; gap: 32px; }
+#household-worlds .hw-compass .hw-brand { border: 0; display: block; }
+#household-worlds .hw-compass .hw-brand button { margin-top: 12px; }
+#household-worlds .hw-compass .hw-nav { justify-content: end; }
+#household-worlds .hw-compass h1 { font-family: var(--hw-serif); font-weight: 400; font-size: 48px; }
+#household-worlds .hw-compass .hw-board { grid-template-columns: minmax(0,1.6fr) minmax(0,1fr); column-gap: 48px; }
+#household-worlds .hw-compass .hw-section[data-part=week] { grid-row: span 2; }
+#household-worlds .hw-compass .hw-day { padding: 24px 0; grid-template-columns: 64px minmax(0,1fr); }
+#household-worlds .hw-compass .hw-section[data-part=home] { grid-column: 1 / -1; }
+#household-worlds .hw-archive { --hw-paper:var(--hw-palette-41); --hw-panel:var(--hw-palette-42); --hw-soft:var(--hw-palette-43); --hw-ink:var(--hw-palette-44); --hw-muted:var(--hw-palette-45); --hw-line:var(--hw-palette-46); --hw-accent:var(--hw-palette-47); grid-template: 'brand' auto 'nav' auto 'main' 1fr 'footer' auto / minmax(0,1fr); padding: 36px; gap: 0; }
+#household-worlds .hw-archive .hw-brand { border-bottom: 0; padding-bottom: 24px; }
+#household-worlds .hw-archive .hw-brand strong { font-family: var(--hw-serif); font-size: 30px; }
+#household-worlds .hw-archive .hw-nav { gap: 4px; }
+#household-worlds .hw-archive .hw-nav button { border-radius: 10px 10px 0 0; border-bottom: 0; }
+#household-worlds .hw-archive main { padding: 28px; border: 1px solid var(--hw-line); background: var(--hw-panel); }
+#household-worlds .hw-archive h1 { font-family: var(--hw-serif); font-weight: 400; font-size: 38px; }
+#household-worlds .hw-archive .hw-board { display: block; }
+#household-worlds .hw-archive .hw-section { display: grid; grid-template-columns: 160px minmax(0,1fr); gap: 16px; padding: 20px 0; }
+#household-worlds .hw-archive .hw-section h2 { font-size: 18px; }
+#household-worlds .hw-archive .hw-section > :not(h2) { grid-column: 2; }
+#household-worlds .hw-archive .hw-section > :nth-child(2) { grid-row: 1 / span 3; }
+#household-worlds .hw-archive .hw-foot { padding-top: 24px; border-top: 0; }
+#household-worlds .hw-cockpit { --hw-paper:var(--hw-palette-48); --hw-panel:var(--hw-palette-49); --hw-soft:var(--hw-palette-50); --hw-ink:var(--hw-palette-51); --hw-muted:var(--hw-palette-52); --hw-line:var(--hw-palette-53); --hw-accent:var(--hw-palette-54); --hw-on:var(--hw-palette-55); --hw-radius:4px; grid-template: 'brand brand' auto 'nav main' 1fr 'footer footer' auto / 155px minmax(0,1fr); padding: 24px; gap: 24px; }
+#household-worlds .hw-cockpit .hw-brand { border-bottom: 1px solid var(--hw-accent); }
+#household-worlds .hw-cockpit .hw-nav { flex-direction: column; }
+#household-worlds .hw-cockpit h1 { font-size: 36px; }
+#household-worlds .hw-cockpit .hw-board { gap: 16px; }
+#household-worlds .hw-cockpit .hw-section { background: var(--hw-panel); padding: 20px; border: 1px solid var(--hw-line); border-radius: var(--hw-radius); }
+#household-worlds .hw-cockpit .hw-section[data-part=home] { grid-column: 1 / -1; }
+#household-worlds .hw-cockpit .hw-amount, #household-worlds .hw-cockpit .hw-row strong { font-family: var(--hw-mono); }
+#household-worlds .hw-cockpit .hw-recipe { padding: 0; background: var(--hw-panel); }
+#household-worlds[data-mode=dark] .hw-app { --hw-paper:var(--hw-palette-56); --hw-panel:var(--hw-palette-57); --hw-soft:var(--hw-palette-58); --hw-ink:var(--hw-palette-59); --hw-muted:var(--hw-palette-60); --hw-line:var(--hw-palette-61); --hw-accent:var(--hw-palette-62); --hw-on:var(--hw-palette-63); --hw-shadow:var(--hw-palette-64); --hw-focus:var(--hw-palette-65); }
+#household-worlds[data-mode=dark] .hw-kitchen { --hw-paper:var(--hw-palette-66); --hw-panel:var(--hw-palette-67); --hw-soft:var(--hw-palette-68); --hw-muted:var(--hw-palette-69); --hw-line:var(--hw-palette-70); --hw-accent:var(--hw-palette-71); --hw-on:var(--hw-palette-72); }
+#household-worlds[data-mode=dark] .hw-console, #household-worlds[data-mode=dark] .hw-cockpit { --hw-paper:var(--hw-palette-48); --hw-panel:var(--hw-palette-49); --hw-soft:var(--hw-palette-50); --hw-ink:var(--hw-palette-51); --hw-muted:var(--hw-palette-52); --hw-line:var(--hw-palette-53); --hw-accent:var(--hw-palette-54); --hw-on:var(--hw-palette-55); }
+#household-worlds[data-mode=dark] .hw-family { --hw-paper:var(--hw-palette-73); --hw-panel:var(--hw-palette-74); --hw-soft:var(--hw-palette-75); --hw-muted:var(--hw-palette-76); --hw-line:var(--hw-palette-77); --hw-accent:var(--hw-palette-78); --hw-on:var(--hw-palette-79); }
+#household-worlds[data-mode=dark] .hw-atelier { --hw-paper:var(--hw-palette-80); --hw-panel:var(--hw-palette-81); --hw-soft:var(--hw-palette-82); --hw-accent:var(--hw-palette-83); --hw-on:var(--hw-palette-80); --hw-line:var(--hw-palette-83); }
+#household-worlds[data-mode=dark] .hw-archive { --hw-paper:var(--hw-palette-84); --hw-panel:var(--hw-palette-85); --hw-soft:var(--hw-palette-86); --hw-muted:var(--hw-palette-87); --hw-line:var(--hw-palette-88); --hw-accent:var(--hw-palette-89); --hw-on:var(--hw-palette-90); }
+#household-worlds[data-mode=light] .hw-cockpit { --hw-paper:var(--hw-palette-91); --hw-panel:var(--hw-palette-92); --hw-soft:var(--hw-palette-93); --hw-ink:var(--hw-palette-94); --hw-muted:var(--hw-palette-95); --hw-line:var(--hw-palette-96); --hw-accent:var(--hw-palette-97); --hw-on:var(--hw-palette-9); }
+#household-worlds[data-mode=pink-light] .hw-app { --hw-paper:var(--hw-palette-98); --hw-panel:var(--hw-palette-99); --hw-soft:var(--hw-palette-100); --hw-ink:var(--hw-palette-101); --hw-muted:var(--hw-palette-102); --hw-line:var(--hw-palette-103); --hw-accent:var(--hw-palette-104); --hw-on:var(--hw-palette-9); --hw-focus:var(--hw-palette-105); --hw-shadow:var(--hw-palette-106); }
+#household-worlds[data-mode=pink-dark] .hw-app { --hw-paper:var(--hw-palette-107); --hw-panel:var(--hw-palette-108); --hw-soft:var(--hw-palette-109); --hw-ink:var(--hw-palette-110); --hw-muted:var(--hw-palette-111); --hw-line:var(--hw-palette-112); --hw-accent:var(--hw-palette-113); --hw-on:var(--hw-palette-114); --hw-focus:var(--hw-palette-115); --hw-shadow:var(--hw-palette-116); }
+@media (max-width: 760px) {
+  #household-worlds .hw-app { grid-template: 'brand' auto 'nav' auto 'main' 1fr 'footer' auto / minmax(0,1fr); padding: 20px; gap: 20px; min-height: 1380px; }
+  #household-worlds .hw-app .hw-brand { display: flex; align-items: start; gap: 12px; }
+  #household-worlds .hw-app .hw-brand strong { font-size: 24px; }
+  #household-worlds .hw-app .hw-brand button { margin-top: 0; padding: 8px 12px; }
+  #household-worlds .hw-app .hw-nav { flex-direction: row; justify-content: start; gap: 8px; }
+  #household-worlds .hw-app .hw-nav button { flex: 0 1 auto; padding: 8px 12px; }
+  #household-worlds .hw-app .hw-board { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 20px; }
+  #household-worlds .hw-app .hw-section { grid-column: auto !important; grid-row: auto !important; }
+  #household-worlds .hw-family .hw-section[data-part=week] { grid-column: 1 / -1 !important; }
+  #household-worlds .hw-family .hw-week { gap: 16px; }
+  #household-worlds .hw-atelier h1 { font-size: 48px; }
+  #household-worlds .hw-archive main { padding: 20px; }
+  #household-worlds .hw-archive .hw-section { grid-template-columns: 120px minmax(0,1fr); }
+}
+@media (max-width: 520px) {
+  #household-worlds .hw-app { padding: 16px; min-height: 2160px; }
+  #household-worlds .hw-app .hw-board { display: grid; grid-template-columns: minmax(0,1fr); }
+  #household-worlds .hw-app .hw-intro h1 { font-size: 36px; }
+  #household-worlds .hw-app .hw-brand { flex-wrap: wrap; }
+  #household-worlds .hw-family .hw-week { display: block; }
+  #household-worlds .hw-family .hw-day { display: grid; grid-template-columns: 48px minmax(0,1fr); }
+  #household-worlds .hw-archive main { padding: 16px; }
+  #household-worlds .hw-archive .hw-section { display: block; }
+  #household-worlds .hw-archive .hw-nav button { border-bottom: 1px solid var(--hw-line); border-radius: 6px; }
+  #household-worlds .hw-app .hw-check small { font-size: 12px; }
+  #household-worlds .hw-app .hw-meal-name { font-size: 24px; }
+}
+@media (prefers-reduced-motion: reduce) { #household-worlds .hw-app button { transition: none; } }
+</style>
+<div id="household-worlds" aria-label="Household: acht komplette Website-Entwürfe" data-mode="light">
+  <div class="viz-carousel" aria-label="Household Designrichtungen" data-previous-label="Vorheriger Entwurf" data-next-label="Nächster Entwurf">
+    <section data-variant="Haushaltsjournal" aria-label="Haushaltsjournal: redaktionell und übersichtlich"><div class="hw-app hw-journal" data-world="journal"><header class="hw-brand"><div><strong>household / Journal</strong><small>Haushaltsjournal: redaktionell, vertraut</small></div><button class="hw-favorite cursor-interaction" type="button" aria-pressed="false">Vormerken</button></header><nav class="hw-nav" aria-label="Journal-Bereiche"></nav><main><div class="hw-intro"><h1>Ein guter Tag beginnt zuhause.</h1><p>Montag, 2. November. Das steht bei euch an.</p></div><div class="hw-board"></div><p class="hw-local" aria-live="polite"></p></main><footer class="hw-foot"><span>Haushalt Lindenstraße</span><span>Entwurf mit Beispieldaten. Änderungen bleiben lokal.</span></footer></div></section>
+    <section data-variant="Wohnküche" aria-label="Wohnküche: warm und gemeinschaftlich" hidden><div class="hw-app hw-kitchen" data-world="kitchen"><header class="hw-brand"><div><strong>household</strong><small>Wohnküche: warm, gemeinschaftlich</small></div><button class="hw-favorite cursor-interaction" type="button" aria-pressed="false">Vormerken</button></header><nav class="hw-nav" aria-label="Wohnküche-Bereiche"></nav><main><div class="hw-intro"><h1>Schön, dass du da bist.</h1><p>Euer Montag zuhause. Zeit für das, was zusammen zählt.</p></div><div class="hw-board"></div><p class="hw-local" aria-live="polite"></p></main><footer class="hw-foot"><span>Lindenstraße, euer Zuhause</span><span>Entwurf mit Beispieldaten. Änderungen bleiben lokal.</span></footer></div></section>
+    <section data-variant="Schaltzentrale" aria-label="Schaltzentrale: kompakt und direkt" hidden><div class="hw-app hw-console" data-world="console"><header class="hw-brand"><div><strong>household / Schaltzentrale</strong><small>Kompakt, direkt, alles im Blick</small></div><button class="hw-favorite cursor-interaction" type="button" aria-pressed="false">Vormerken</button></header><nav class="hw-nav" aria-label="Schaltzentrale-Bereiche"></nav><main><div class="hw-intro"><h1>Haushalt im Überblick</h1><p>Montag, 2. November | Lindenstraße</p></div><div class="hw-board"></div><p class="hw-local" aria-live="polite"></p></main><footer class="hw-foot"><span>Arbeitsansicht</span><span>Entwurf mit Beispieldaten. Änderungen bleiben lokal.</span></footer></div></section>
+    <section data-variant="Familienplan" aria-label="Familienplan: lebendig und wochenorientiert" hidden><div class="hw-app hw-family" data-world="family"><header class="hw-brand"><div><strong>household zusammen</strong><small>Familienplan: lebendig, wochenorientiert</small></div><button class="hw-favorite cursor-interaction" type="button" aria-pressed="false">Vormerken</button></header><nav class="hw-nav" aria-label="Familienplan-Bereiche"></nav><main><div class="hw-intro"><h1>Unsere Woche, unser Zuhause.</h1><p>Gemeinsam geplant. Für alle sichtbar.</p></div><div class="hw-board"></div><p class="hw-local" aria-live="polite"></p></main><footer class="hw-foot"><span>Anna, Alex und Sam</span><span>Entwurf mit Beispieldaten. Änderungen bleiben lokal.</span></footer></div></section>
+    <section data-variant="Atelier" aria-label="Atelier: mutig und plakativ" hidden><div class="hw-app hw-atelier" data-world="atelier"><header class="hw-brand"><div><strong>household.</strong><small>Atelier: mutig, plakativ</small></div><button class="hw-favorite cursor-interaction" type="button" aria-pressed="false">Vormerken</button></header><nav class="hw-nav" aria-label="Atelier-Bereiche"></nav><main><div class="hw-intro"><h1>Unser Alltag. Klar geregelt.</h1><p>Montag, 2. November. Packen wir es an.</p></div><div class="hw-board"></div><p class="hw-local" aria-live="polite"></p></main><footer class="hw-foot"><span>Lindenstraße. Zusammen organisiert.</span><span>Entwurf mit Beispieldaten. Änderungen bleiben lokal.</span></footer></div></section>
+    <section data-variant="Wochenkompass" aria-label="Wochenkompass: ruhig und fokussiert" hidden><div class="hw-app hw-compass" data-world="compass"><header class="hw-brand"><div><strong>household</strong><small>Wochenkompass: ruhig, fokussiert</small></div><button class="hw-favorite cursor-interaction" type="button" aria-pressed="false">Vormerken</button></header><nav class="hw-nav" aria-label="Wochenkompass-Bereiche"></nav><main><div class="hw-intro"><h1>Platz für einen ruhigen Montag.</h1><p>Das Wesentliche zuerst. Der Rest hat seinen Platz.</p></div><div class="hw-board"></div><p class="hw-local" aria-live="polite"></p></main><footer class="hw-foot"><span>Zuhause in der Lindenstraße</span><span>Entwurf mit Beispieldaten. Änderungen bleiben lokal.</span></footer></div></section>
+    <section data-variant="Hausakte" aria-label="Hausakte: sachlich und geordnet" hidden><div class="hw-app hw-archive" data-world="archive"><header class="hw-brand"><div><strong>household / Hausakte</strong><small>Sachlich, geordnet, beständig</small></div><button class="hw-favorite cursor-interaction" type="button" aria-pressed="false">Vormerken</button></header><nav class="hw-nav" aria-label="Hausakte-Bereiche"></nav><main><div class="hw-intro"><h1>Die Übersicht für euer Zuhause.</h1><p>Lindenstraße | Wochenakte ab 2. November</p></div><div class="hw-board"></div><p class="hw-local" aria-live="polite"></p></main><footer class="hw-foot"><span>Private Haushaltsorganisation</span><span>Entwurf mit Beispieldaten. Änderungen bleiben lokal.</span></footer></div></section>
+    <section data-variant="Cockpit" aria-label="Cockpit: technisch und präzise" hidden><div class="hw-app hw-cockpit" data-world="cockpit"><header class="hw-brand"><div><strong>household / Cockpit</strong><small>Technisch, präzise, statusorientiert</small></div><button class="hw-favorite cursor-interaction" type="button" aria-pressed="false">Vormerken</button></header><nav class="hw-nav" aria-label="Cockpit-Bereiche"></nav><main><div class="hw-intro"><h1>Zuhause unter Kontrolle.</h1><p>Lindenstraße | Montag, 2. November</p></div><div class="hw-board"></div><p class="hw-local" aria-live="polite"></p></main><footer class="hw-foot"><span>Lokale Vorschau, keine Geräteverbindung</span><span>Entwurf mit Beispieldaten. Änderungen bleiben lokal.</span></footer></div></section>
+  </div>
+  <template id="hw-chores"><section class="hw-section" data-part="chores"><h2>Heute erledigen</h2><div><label class="hw-check cursor-interaction"><input type="checkbox" data-task="plants"><span>Pflanzen gießen</span><small>Anna</small></label><label class="hw-check cursor-interaction"><input type="checkbox" data-task="laundry"><span>Wäsche aufhängen</span><small>Alex</small></label><label class="hw-check cursor-interaction"><input type="checkbox" data-task="paper"><span>Altpapier rausbringen</span><small>Sam</small></label></div></section></template>
+  <template id="hw-shopping"><section class="hw-section" data-part="shopping"><h2>Noch einkaufen</h2><div><label class="hw-check cursor-interaction"><input type="checkbox" data-task="oats"><span>Hafermilch</span><small>2 Liter</small></label><label class="hw-check cursor-interaction"><input type="checkbox" data-task="apples"><span>Äpfel</span><small>1 kg</small></label><label class="hw-check cursor-interaction"><input type="checkbox" data-task="bread"><span>Vollkornbrot</span><small>1 Laib</small></label></div></section></template>
+  <template id="hw-finance"><section class="hw-section" data-part="finance"><h2>Haushaltsbudget</h2><div><strong class="hw-amount">420,00 € übrig</strong><p class="hw-muted">November: 580,00 € von 1.000,00 € ausgegeben.</p><div class="hw-meter" role="meter" aria-label="Verbrauchtes Novemberbudget" aria-valuenow="580" aria-valuemin="0" aria-valuemax="1000"><i></i></div><div class="hw-row"><span>Lebensmittel</span><strong>340,00 €</strong></div><div class="hw-row"><span>Haushalt &amp; Freizeit</span><strong>240,00 €</strong></div></div></section></template>
+  <template id="hw-meals"><section class="hw-section" data-part="meals"><h2>Heute auf dem Tisch</h2><div><p class="hw-meal-name">Ofengemüse mit Feta</p><p class="hw-muted">18:30 Uhr, 3 Portionen, 35 Minuten</p><div class="hw-recipe"><h3>Zuerst aufbrauchen</h3><p>Karotten und Zucchini sind im Vorrat. Den Feta heute verwenden.</p></div></div></section></template>
+  <template id="hw-week"><section class="hw-section" data-part="week"><h2>Diese Woche</h2><div class="hw-week"><div class="hw-day"><b>Mo 2</b><span>18:30<br>Gemeinsam kochen</span></div><div class="hw-day"><b>Di 3</b><span>07:00<br>Papierabholung</span></div><div class="hw-day"><b>Mi 4</b><span>19:00<br>Wocheneinkauf planen</span></div></div></section></template>
+  <template id="hw-home"><section class="hw-section" data-part="home"><h2>Haus &amp; Unterlagen</h2><div><div class="hw-row"><span>Zählerstand Strom<br><small class="hw-muted">Ablesen am 5. November</small></span><strong>Offen</strong></div><div class="hw-row"><span>Haushaltsversicherung<br><small class="hw-muted">Vertragsprüfung am 12. November</small></span><strong>Geplant</strong></div><div class="hw-row"><span>Wohnzimmer<br><small class="hw-muted">Simulierter Messwert</small></span><strong>21,5 °C</strong></div></div></section></template>
+</div>
+<script>
+(() => {
+  const root = document.getElementById('household-worlds');
+  if (!root) return;
+  const modes = ['light', 'dark', 'pink-light', 'pink-dark'];
+  const names = ['journal', 'kitchen', 'console', 'family', 'atelier', 'compass', 'archive', 'cockpit'];
+  const layouts = {
+    journal: ['chores','meals','shopping','finance','week','home'],
+    kitchen: ['meals','chores','shopping','week','finance','home'],
+    console: ['chores','shopping','finance','week','meals','home'],
+    family: ['week','chores','shopping','meals','finance','home'],
+    atelier: ['chores','shopping','meals','finance','week','home'],
+    compass: ['week','chores','shopping','meals','finance','home'],
+    archive: ['home','chores','shopping','finance','meals','week'],
+    cockpit: ['home','finance','chores','shopping','meals','week']
+  };
+  const state = { mode: 'light', favorites: [], checks: {} };
+  const apps = [...root.querySelectorAll('.hw-app')];
+  const navItems = [['all','Übersicht'],['chores','Aufgaben'],['shopping','Einkauf'],['finance','Budget'],['meals','Essen'],['home','Haus']];
+  function save() {
+    const api = window.openai;
+    if (api && typeof api.setWidgetState === 'function') {
+      Promise.resolve(api.setWidgetState({ modelContent: { conceptFavorites: state.favorites.map(key => root.querySelector('[data-world="' + key + '"]').closest('[data-variant]').dataset.variant), colorMode: state.mode }, privateContent: { version: 1, mode: state.mode, favorites: state.favorites, checks: state.checks } })).catch(() => {});
+    }
+  }
+  function render() {
+    root.dataset.mode = state.mode;
+    apps.forEach(app => {
+      const favorite = state.favorites.includes(app.dataset.world);
+      const button = app.querySelector('.hw-favorite');
+      button.setAttribute('aria-pressed', String(favorite));
+      button.textContent = favorite ? 'Vorgemerkt' : 'Vormerken';
+      app.querySelectorAll('[data-task]').forEach(input => { input.checked = Boolean(state.checks[input.dataset.task]); });
+    });
+  }
+  function restore(snapshot) {
+    const value = snapshot && snapshot.privateContent;
+    if (!value || value.version !== 1) return;
+    if (modes.includes(value.mode)) state.mode = value.mode;
+    state.favorites = Array.isArray(value.favorites) ? value.favorites.filter(name => names.includes(name)) : [];
+    state.checks = {};
+    if (value.checks && typeof value.checks === 'object') {
+      ['plants','laundry','paper','oats','apples','bread'].forEach(key => { state.checks[key] = value.checks[key] === true; });
+    }
+  }
+  apps.forEach(app => {
+    const nav = app.querySelector('nav');
+    navItems.forEach(([key, label]) => {
+      const button = document.createElement('button');
+      button.type = 'button'; button.textContent = label; button.className = 'cursor-interaction';
+      if (key === 'all') button.setAttribute('aria-current', 'page');
+      button.addEventListener('click', () => {
+        nav.querySelectorAll('button').forEach(item => item.removeAttribute('aria-current'));
+        button.setAttribute('aria-current', 'page');
+        app.classList.toggle('hw-section-focus', key !== 'all');
+        app.querySelectorAll('[data-part]').forEach(section => { section.hidden = key !== 'all' && section.dataset.part !== key; });
+        app.querySelector('.hw-local').textContent = key === 'all' ? 'Alle Bereiche angezeigt.' : label + ': lokale Vorschau geöffnet.';
+      });
+      nav.append(button);
+    });
+    const board = app.querySelector('.hw-board');
+    layouts[app.dataset.world].forEach(key => board.append(root.querySelector('#hw-' + key).content.cloneNode(true)));
+    app.querySelector('.hw-favorite').addEventListener('click', () => {
+      const key = app.dataset.world;
+      state.favorites = state.favorites.includes(key) ? state.favorites.filter(value => value !== key) : [...state.favorites, key];
+      render(); save();
+      app.querySelector('.hw-local').textContent = state.favorites.includes(key) ? 'Design für deine Auswahl vorgemerkt.' : 'Design aus der Auswahl entfernt.';
+    });
+    app.querySelectorAll('[data-task]').forEach(input => input.addEventListener('change', () => {
+      state.checks[input.dataset.task] = input.checked;
+      render(); save();
+      app.querySelector('.hw-local').textContent = input.checked ? 'Lokal abgehakt, in allen Entwürfen übernommen.' : 'Lokal wieder geöffnet, in allen Entwürfen übernommen.';
+    }));
+  });
+  restore(window.openai && window.openai.widgetState);
+  render();
+  window.addEventListener('openai:set_globals', event => {
+    if (event.detail && event.detail.globals && event.detail.globals.widgetState) { restore(event.detail.globals.widgetState); render(); }
+  });
+  if (globalThis.Tweak) {
+    const tweak = new globalThis.Tweak({ container: root, onChange: () => { render(); save(); } });
+    tweak.addSelect(state, 'mode', { label: 'Farbmodus für alle Entwürfe', options: [{ label: 'Hell', value: 'light' }, { label: 'Dunkel', value: 'dark' }, { label: 'Pink hell', value: 'pink-light' }, { label: 'Pink dunkel', value: 'pink-dark' }] });
+  }
+})();
+</script>

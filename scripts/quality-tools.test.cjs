@@ -7,7 +7,7 @@ const path = require('node:path');
 const {createHash} = require('node:crypto');
 const {summarize} = require('./check-coverage.cjs');
 const {inspect} = require('./check-oci.cjs');
-const {checkActions} = require('./check-workflows.cjs');
+const {checkActions, checkWorkflow} = require('./check-workflows.cjs');
 const {parseDocument} = require('yaml');
 const {resolveBrowserPrivateRoot} = require('./browser-private-root.cjs');
 
@@ -94,6 +94,49 @@ test('workflow guard rejects movable tags and privileged PR triggers', () => {
   assert.equal(checkActions('on: [pull_request_target]').length, 1);
   assert.equal(checkActions('on: pull_request_target').length, 1);
   assert.equal(checkActions('- {uses: actions/checkout@v6}').length, 1);
+});
+
+function workflowFixture() {
+  return {
+    on: ['push', 'pull_request'],
+    permissions: {contents: 'read'},
+    concurrency: {group: 'checks-${{ github.ref }}', 'cancel-in-progress': true},
+    jobs: {Checks: {
+      'runs-on': 'ubuntu-latest', 'timeout-minutes': 15,
+      steps: [{uses: `actions/checkout@${'a'.repeat(40)}`, with: {'persist-credentials': false}}]
+    }}
+  };
+}
+
+test('workflow policy preserves read-only tokens and removes persisted checkout credentials', () => {
+  assert.deepEqual(checkWorkflow(JSON.stringify(workflowFixture())), []);
+  for (const permissions of [undefined, 'write-all', {contents: 'write'}, {contents: 'read', 'id-token': 'write'}]) {
+    const workflow = workflowFixture();
+    workflow.permissions = permissions;
+    assert.match(checkWorkflow(JSON.stringify(workflow)).join('\n'), /read-only permissions/);
+  }
+  const elevated = workflowFixture();
+  elevated.jobs.Checks.permissions = {contents: 'read', 'pull-requests': 'write'};
+  assert.match(checkWorkflow(JSON.stringify(elevated)).join('\n'), /must not grant write/);
+  for (const persist of [undefined, true, 'false']) {
+    const workflow = workflowFixture();
+    workflow.jobs.Checks.steps[0].with['persist-credentials'] = persist;
+    assert.match(checkWorkflow(JSON.stringify(workflow)).join('\n'), /persist-credentials: false/);
+  }
+});
+
+test('workflow policy rejects unbounded runner jobs and uncancelled superseded checks', () => {
+  for (const timeout of [undefined, 0, -1, 361, '15', '${{ inputs.timeout }}']) {
+    const workflow = workflowFixture();
+    workflow.jobs.Checks['timeout-minutes'] = timeout;
+    assert.match(checkWorkflow(JSON.stringify(workflow)).join('\n'), /explicit timeout/);
+  }
+  for (const concurrency of [undefined, 'checks', {group: ''}, {group: 'checks', 'cancel-in-progress': false}]) {
+    const workflow = workflowFixture();
+    workflow.concurrency = concurrency;
+    assert.match(checkWorkflow(JSON.stringify(workflow)).join('\n'), /cancel superseded/);
+  }
+  assert.deepEqual(checkWorkflow('name: first\nname: duplicate'), ['Invalid workflow YAML']);
 });
 
 test('coverage weights statements and merges duplicate instrumentation', () => {

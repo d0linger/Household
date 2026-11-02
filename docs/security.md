@@ -2,7 +2,7 @@
 
 ## Accounts and sessions
 
-Passwords use bcrypt cost 12, at least 14 Unicode characters and at most 72 bytes. Login uses a dummy bcrypt comparison for unknown accounts. Expensive hashing is bounded and credential changes have persistent per-user limits. Network/account limits are HMAC-subject PostgreSQL buckets and survive application restarts.
+Passwords use bcrypt cost 12, at least 14 Unicode characters and at most 72 bytes. Login uses a dummy bcrypt comparison for unknown accounts. Expensive hashing is bounded and credential changes have persistent per-user limits. Network/account limits are HMAC-subject PostgreSQL buckets and survive application restarts. Login admits 100 attempts per client address per 15 minutes, 20 per account from one client network (IPv4 /24, IPv6 /56) per hour, and 500 per account across all networks per hour. Exhausting one network's budget therefore cannot lock the account holder out from another network, while the account-wide cap bounds distributed guessing.
 
 Session tokens contain 256 random bits. Only SHA-256 hashes are stored. Idle expiry slides up to 24 hours on interactive authenticated page access, capped by 30-day absolute expiry; API polling does not keep sessions alive. Cookies are HttpOnly, SameSite=Lax and Secure in production, with the `__Host-` prefix. Explicit local HTTP development uses a separate cookie name.
 

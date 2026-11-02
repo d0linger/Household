@@ -350,79 +350,12 @@ func (s *Server) attachmentList(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, items)
 }
 func (s *Server) download(w http.ResponseWriter, r *http.Request) {
+	// File responses never cross a module disable; a pending change waits (bounded) instead.
 	s.Store.Gate.RLock()
 	defer s.Store.Gate.RUnlock()
-	if !value.ValidUUID(r.PathValue("id")) {
-		s.fail(w, r, store.ErrNotFound)
-		return
-	}
-	var mid, entity, rid, key, name, kind string
-	tx, err := s.Pool.Begin(r.Context())
+	file, name, kind, err := s.openDownload(r)
 	if err != nil {
 		s.fail(w, r, err)
-		return
-	}
-	defer func() { _ = tx.Rollback(r.Context()) }()
-	actor := identity(r)
-	err = tx.QueryRow(r.Context(), `SELECT a.module_id,a.resource_type,a.resource_id,a.storage_key,a.original_name,a.media_type FROM core.attachments a
- JOIN core.module_states m ON m.household_id=a.household_id AND m.module_id=a.module_id AND m.state='enabled' AND m.data_generation=a.module_generation
- WHERE a.id=$1 AND a.household_id=$2 AND a.state='ready' AND core.finance_artifact_visible($2,$3,$4,$5,$6,'attachment',a.id,'view')`,
-		r.PathValue("id"), actor.HouseholdID, actor.UserID, actor.MembershipID, actor.SessionID, actor.AuthVersion).Scan(&mid, &entity, &rid, &key, &name, &kind)
-	if errors.Is(err, pgx.ErrNoRows) {
-		s.fail(w, r, store.ErrNotFound)
-		return
-	}
-	if err != nil {
-		s.fail(w, r, err)
-		return
-	}
-	m, ok := s.Store.Module(mid)
-	if !ok {
-		s.fail(w, r, store.ErrNotFound)
-		return
-	}
-	e, ok := m.Entity(entity)
-	if !ok {
-		s.fail(w, r, store.ErrNotFound)
-		return
-	}
-	if _, err = s.Store.Get(r.Context(), identity(r), m, e, rid); err != nil {
-		s.fail(w, r, err)
-		return
-	}
-	if err = s.Store.LockFinanceArtifact(r.Context(), tx, actor, "attachment", r.PathValue("id"), "view"); err != nil {
-		s.fail(w, r, err)
-		return
-	}
-	if !value.ValidUUID(key) {
-		s.fail(w, r, store.ErrNotFound)
-		return
-	}
-	inline := strings.HasSuffix(r.URL.Path, "/preview")
-	if inline {
-		var derivativeID string
-		if err = tx.QueryRow(r.Context(), "SELECT id,storage_key,media_type FROM core.attachment_derivatives WHERE attachment_id=$1 AND variant='preview'", r.PathValue("id")).Scan(&derivativeID, &key, &kind); err != nil {
-			s.fail(w, r, store.ErrNotFound)
-			return
-		}
-		if err = s.Store.LockFinanceArtifact(r.Context(), tx, actor, "attachment_derivative", derivativeID, "view"); err != nil {
-			s.fail(w, r, err)
-			return
-		}
-		if !value.ValidUUID(key) {
-			s.fail(w, r, store.ErrNotFound)
-			return
-		}
-	}
-	root, err := os.OpenRoot(s.Cfg.UploadDir)
-	if err != nil {
-		s.fail(w, r, err)
-		return
-	}
-	defer func() { _ = root.Close() }()
-	file, err := root.Open(key)
-	if err != nil {
-		s.fail(w, r, store.ErrNotFound)
 		return
 	}
 	defer func() { _ = file.Close() }()
@@ -432,12 +365,76 @@ func (s *Server) download(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": name}))
-	if inline {
+	if strings.HasSuffix(r.URL.Path, "/preview") {
 		w.Header().Set("Content-Disposition", "inline")
 	}
 	w.Header().Set("Content-Type", kind)
 	w.Header().Set("Content-Security-Policy", "default-src 'none'; sandbox")
 	http.ServeContent(w, r, name, info.ModTime(), file)
+}
+
+// openDownload authorizes in a short read transaction that ends before a possibly
+// slow client is served, so downloads do not pin pool connections or idle in a
+// transaction; the open descriptor keeps the authorized bytes readable.
+func (s *Server) openDownload(r *http.Request) (file *os.File, name, kind string, err error) {
+	if !value.ValidUUID(r.PathValue("id")) {
+		return nil, "", "", store.ErrNotFound
+	}
+	var mid, entity, rid, key string
+	tx, err := s.Pool.Begin(r.Context())
+	if err != nil {
+		return nil, "", "", err
+	}
+	defer func() { _ = tx.Rollback(r.Context()) }()
+	actor := identity(r)
+	err = tx.QueryRow(r.Context(), `SELECT a.module_id,a.resource_type,a.resource_id,a.storage_key,a.original_name,a.media_type FROM core.attachments a
+ JOIN core.module_states m ON m.household_id=a.household_id AND m.module_id=a.module_id AND m.state='enabled' AND m.data_generation=a.module_generation
+ WHERE a.id=$1 AND a.household_id=$2 AND a.state='ready' AND core.finance_artifact_visible($2,$3,$4,$5,$6,'attachment',a.id,'view')`,
+		r.PathValue("id"), actor.HouseholdID, actor.UserID, actor.MembershipID, actor.SessionID, actor.AuthVersion).Scan(&mid, &entity, &rid, &key, &name, &kind)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, "", "", store.ErrNotFound
+	}
+	if err != nil {
+		return nil, "", "", err
+	}
+	m, ok := s.Store.Module(mid)
+	if !ok {
+		return nil, "", "", store.ErrNotFound
+	}
+	e, ok := m.Entity(entity)
+	if !ok {
+		return nil, "", "", store.ErrNotFound
+	}
+	if _, err = s.Store.Get(r.Context(), identity(r), m, e, rid); err != nil {
+		return nil, "", "", err
+	}
+	if err = s.Store.LockFinanceArtifact(r.Context(), tx, actor, "attachment", r.PathValue("id"), "view"); err != nil {
+		return nil, "", "", err
+	}
+	if !value.ValidUUID(key) {
+		return nil, "", "", store.ErrNotFound
+	}
+	if strings.HasSuffix(r.URL.Path, "/preview") {
+		var derivativeID string
+		if err = tx.QueryRow(r.Context(), "SELECT id,storage_key,media_type FROM core.attachment_derivatives WHERE attachment_id=$1 AND variant='preview'", r.PathValue("id")).Scan(&derivativeID, &key, &kind); err != nil {
+			return nil, "", "", store.ErrNotFound
+		}
+		if err = s.Store.LockFinanceArtifact(r.Context(), tx, actor, "attachment_derivative", derivativeID, "view"); err != nil {
+			return nil, "", "", err
+		}
+		if !value.ValidUUID(key) {
+			return nil, "", "", store.ErrNotFound
+		}
+	}
+	root, err := os.OpenRoot(s.Cfg.UploadDir)
+	if err != nil {
+		return nil, "", "", err
+	}
+	defer func() { _ = root.Close() }()
+	if file, err = root.Open(key); err != nil {
+		return nil, "", "", store.ErrNotFound
+	}
+	return file, name, kind, nil
 }
 func (s *Server) capturePage(w http.ResponseWriter, r *http.Request) {
 	s.Store.Gate.RLock()

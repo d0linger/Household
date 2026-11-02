@@ -1,0 +1,30 @@
+/* Hallmark · shape: app screen · theme: Household laboratory · v2.0.0 */
+/* Critique: native controls, instant focus, bounded canvas, local assets. */
+*,*::before,*::after{box-sizing:border-box}
+html,body{overflow-x:clip}
+html{scrollbar-color:var(--color-muted) var(--color-paper);scroll-padding-top:var(--space-lg)}
+body{margin:0;background:var(--color-paper);color:var(--color-ink);font-family:var(--font-body);font-size:var(--text-md);line-height:1.5;caret-color:var(--color-accent)}
+::selection{background:var(--color-accent);color:var(--color-accent-ink)}
+:focus-visible{outline:3px solid var(--color-focus);outline-offset:3px}
+button,input,select,textarea{font:inherit}
+button,select,input{min-height:44px}
+button,select{cursor:pointer}
+button{background:var(--color-paper-2);color:var(--color-ink);border:1px solid var(--color-rule);border-radius:var(--radius-control);padding:var(--space-xs) var(--space-md);white-space:nowrap;transition:transform var(--dur-micro) var(--ease-out)}
+button:hover{background:var(--color-paper-3)}
+button:active{transform:translateY(1px)}
+button:disabled{opacity:.55;cursor:not-allowed;border-style:dashed;transform:none}
+input,select,textarea{min-width:0;max-width:100%;border:1px solid var(--color-rule);border-radius:var(--radius-control);background:var(--color-paper-2);color:var(--color-ink);padding:var(--space-xs) var(--space-sm)}
+input::placeholder,textarea::placeholder{color:var(--color-muted);opacity:1}
+input[type="checkbox"]{width:20px;height:20px;min-height:20px;accent-color:var(--color-accent);flex-shrink:0}
+input[type="range"]{width:100%;accent-color:var(--color-accent);padding:0}
+h1,h2,h3,h4{margin:0;font-family:var(--font-display);min-width:0;overflow-wrap:break-word;text-wrap:balance;line-height:1.2}
+h1{font-size:2rem;letter-spacing:-.03em}h2{font-size:1.375rem}h3{font-size:1.125rem}
+p{margin:0;text-wrap:pretty}a{color:var(--color-accent);text-underline-offset:.2em}
+svg{display:block;flex-shrink:0;width:20px;height:20px}
+[hidden]{display:none!important}
+.sr-only{position:absolute;width:1px;height:1px;clip-path:inset(50%);overflow:clip;white-space:nowrap}
+.primary{background:var(--color-accent);color:var(--color-accent-ink);border-color:var(--color-accent)}
+.primary:hover{background:var(--color-accent);filter:brightness(.94)}
+.quiet{background:var(--color-transparent)}
+.small{font-size:var(--text-sm);color:var(--color-muted)}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}}

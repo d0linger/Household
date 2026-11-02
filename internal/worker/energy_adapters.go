@@ -13,12 +13,17 @@ import (
 
 func (w *Worker) energyAdapterLoop(ctx context.Context) {
 	for ctx.Err() == nil {
-		handled, err := w.energyAdapterOnce(ctx)
+		var handled bool
+		err := guarded(ctx, func(ctx context.Context) (err error) {
+			handled, err = w.energyAdapterOnce(ctx)
+			return err
+		})
 		if ctx.Err() != nil {
 			return
 		}
 		if err != nil && w.Log != nil {
-			// Neither remote bodies nor database error details expose measurements or credentials.
+			// Neither remote bodies nor database error details expose measurements or credentials;
+			// a recovered panic is reported only as worker.panicked.
 			w.Log.Error("meter adapter processing failed", "error_type", fmt.Sprintf("%T", err))
 		}
 		if handled && err == nil {

@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="de" data-theme="light">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="description" content="100 eigenständige Designrichtungen für Household. Dieselben Dialoge direkt vergleichen, einschließlich Pink Light und Pink Dark.">
+<title>Household: 100 Designrichtungen</title>
+<link rel="icon" href="./mark.svg"><link rel="stylesheet" href="./laboratory.css">
+<script type="module" src="./direction-app.js"></script>
+</head>
+<body>
+<a class="skip-link" href="#gallery">Zu den Designs</a>
+<div class="lab-shell">
+<header class="lab-header"><a href="./" class="wordmark"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11 12 3l9 8v10h-6v-7H9v7H3Z"/></svg>household <span>Designatelier</span></a><nav aria-label="Designatelier"><a href="#gallery">100 Designs</a><a href="./guideline.html">Designrichtlinie</a><button type="button" id="export-choice" disabled>Entscheidung exportieren</button></nav></header>
+<main>
+<section class="intro" aria-labelledby="page-title"><div><h1 id="page-title">100 Ideen für dein Zuhause.</h1><p>Eigene Farbwelten. Unterschiedliche Formensprache. Dieselben Dialoge.</p></div><label>Farbmodus<select id="theme"><option value="light">Eigene Palette: Hell</option><option value="dark">Eigene Palette: Dunkel</option><option value="pink-light">Pink Light</option><option value="pink-dark">Pink Dark</option></select></label></section>
+<p class="lab-note">Interaktive Beispieldaten. Pink bleibt in jedem Design verfügbar. Keine Änderungen an Haushaltsdaten oder Geräten.</p>
+<section class="comparison-tray" aria-labelledby="tray-title"><div><h2 id="tray-title">Direkt vergleichen</h2><p class="small">Bis zu vier Designs, ein gemeinsamer Dialog.</p></div><ol id="shortlist"></ol><button type="button" id="compare" class="primary" disabled>Dialogvergleich öffnen</button></section>
+<details id="filter-disclosure" class="filter-disclosure" open><summary>Suche & Filter</summary><form id="filters" class="filters" role="search"><label>Design finden<input type="search" id="query" name="query" placeholder="Zum Beispiel Bauhaus, Leinen oder Terminal" maxlength="100" autocomplete="off"></label><label>Gestaltungswelt<select id="group" name="group"><option value="all">Alle Gestaltungswelten</option></select></label><label>Gleicher Vorschaudialog<select id="fixture" name="fixture"></select></label><label class="check-label"><input type="checkbox" id="favorites-only">Nur Favoriten</label></form></details>
+<div class="results"><h2 id="results-title">100 eigenständige Designs</h2><button type="button" id="reset-filters" class="quiet">Filter zurücksetzen</button></div>
+<p class="small" id="result-description">Jedes Design funktioniert in allen zehn Vergleichsdialogen.</p>
+<div id="gallery" class="design-gallery" tabindex="-1" aria-labelledby="results-title"></div>
+<section id="empty" class="empty-state" hidden><h3>Kein Design gefunden</h3><p>Ändere die Suche oder zeige wieder alle Designs.</p><button type="button" id="empty-reset">Alle Designs zeigen</button></section>
+<noscript><section class="empty-state"><h2>Interaktive Vorschau benötigt JavaScript</h2><p>Die <a href="./guideline.html">Designrichtlinie</a> ist ohne JavaScript lesbar.</p></section></noscript>
+<section class="decision" aria-labelledby="decision-title"><h2 id="decision-title">Deine bevorzugte Designrichtung</h2><p id="final-choice">Noch keine endgültige Richtung gewählt.</p><div><button type="button" id="export-final" disabled>Entscheidung exportieren</button><button type="button" id="clear-final" disabled>Entscheidung zurücknehmen</button></div><p class="small">Die Auswahl ist ein Entwurf. Sie wird nicht automatisch auf die Anwendung übertragen.</p></section>
+<p id="storage-warning" role="status" hidden></p>
+</main>
+<footer><span>100 Designkonzepte / 10 Dialoge / 4 Farbmodi</span><a href="./guideline.html">Gestaltungsregeln & Übergabe</a></footer>
+<p id="announcement" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></p>
+</div>
+<dialog id="compare-dialog" aria-labelledby="compare-title">
+<div class="compare-header"><div><h2 id="compare-title">Ein Dialog. Mehrere Designs.</h2><p class="small">Gleiche Ausgangsdaten machen Unterschiede in Aufbau und Bedienung sichtbar.</p></div><button type="button" id="close-compare" autofocus>Schließen</button></div>
+<div class="compare-toolbar"><label>Dialog<select id="compare-fixture"></select></label><label>Farbmodus<select id="compare-theme"><option value="light">Eigene Palette: Hell</option><option value="dark">Eigene Palette: Dunkel</option><option value="pink-light">Pink Light</option><option value="pink-dark">Pink Dark</option></select></label><label class="check-label"><input type="checkbox" id="sync-inputs" checked>Eingaben synchronisieren</label><button type="button" id="reset-dialog">Beispieldaten zurücksetzen</button></div>
+<p class="small compare-help">Jedes Formular bleibt lokal. Auf Mobilgeräten stehen die Entwürfe untereinander.</p>
+<div id="comparison-grid" class="comparison-grid"></div>
+</dialog>
+</body></html>

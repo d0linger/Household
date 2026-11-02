@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"runtime/debug"
 	"sync"
 	"time"
 
@@ -77,47 +78,81 @@ func (w *Worker) Close() error {
 
 func (w *Worker) Tick(ctx context.Context) error {
 	ctx = audit.WithRequest(audit.WithSystem(ctx, "worker"), value.UUID())
-	// Housekeeping is a real durable job; only its current lease holder may finish it.
-	if _, err := audit.Exec(ctx, w.Pool, `INSERT INTO core.jobs(household_id,kind,dedupe_key) SELECT id,'housekeeping','housekeeping/'||to_char(now(),'YYYY-MM-DD-HH24-MI') FROM core.households ON CONFLICT(dedupe_key) DO NOTHING`); err != nil {
-		return err
+	// An unreachable database would fail every step; report it once instead.
+	if err := w.Pool.Ping(ctx); err != nil {
+		return fmt.Errorf("database unavailable: %w", err)
 	}
-	if err := w.deliver(ctx); err != nil {
-		return err
+	records := store.New(w.Pool, modules.Registry())
+	return runSteps(ctx, []step{
+		{"housekeeping schedule", w.scheduleHousekeeping},
+		{"reminders", w.deliver},
+		{"low stock", w.lowStock},
+		{"outbox", w.outbox},
+		{"shopping notifications", w.shoppingNotifications},
+		{"files", w.files},
+		{"document inputs", w.scheduleDocumentInputs},
+		{"fuel projections", func(ctx context.Context) error { return records.FuelModuleHousekeeping(ctx, 1) }},
+		{"fuel capture", func(ctx context.Context) error {
+			return records.FuelModuleCaptureHousekeeping(ctx, w.Cfg.OCREnabled, w.fuelOCR)
+		}},
+		{"finance recurrence scheduling", records.ScheduleFinanceRecurrences},
+		{"chores workspace scheduling", records.ScheduleChoreWorkspace},
+		{"energy workspace scheduling", records.ScheduleEnergyWorkspace},
+		{"energy adapter scheduling", func(ctx context.Context) error {
+			return records.ScheduleEnergyAdapters(ctx, w.Cfg.MeterFeeds.HAURL != "", w.Cfg.MeterFeeds.MQTTURL != "")
+		}},
+		{"jobs", w.jobs},
+	})
+}
+
+type step struct {
+	name string
+	run  func(context.Context) error
+}
+
+// runSteps runs every step even after another fails, so one broken subsystem
+// cannot starve reminders, jobs or document inputs. Failures keep their names.
+func runSteps(ctx context.Context, steps []step) error {
+	var failures []error
+	for _, st := range steps {
+		if err := ctx.Err(); err != nil {
+			return errors.Join(append(failures, err)...)
+		}
+		if err := guarded(ctx, st.run); err != nil {
+			failures = append(failures, fmt.Errorf("%s: %w", st.name, err))
+		}
 	}
-	if err := w.lowStock(ctx); err != nil {
-		return err
-	}
-	if err := w.outbox(ctx); err != nil {
-		return err
-	}
-	if err := w.shoppingNotifications(ctx); err != nil {
-		return err
-	}
-	if err := w.files(ctx); err != nil {
-		return err
-	}
-	fuelStore := store.New(w.Pool, modules.Registry())
-	if err := w.scheduleDocumentInputs(ctx); err != nil {
-		return err
-	}
-	if err := fuelStore.FuelModuleHousekeeping(ctx, 1); err != nil {
-		return fmt.Errorf("fuel projections: %w", err)
-	}
-	if err := fuelStore.FuelModuleCaptureHousekeeping(ctx, w.Cfg.OCREnabled, w.fuelOCR); err != nil {
-		return fmt.Errorf("fuel capture: %w", err)
-	}
-	if err := fuelStore.ScheduleFinanceRecurrences(ctx); err != nil {
-		return fmt.Errorf("finance recurrence scheduling: %w", err)
-	}
-	if err := fuelStore.ScheduleChoreWorkspace(ctx); err != nil {
-		return fmt.Errorf("chores workspace scheduling: %w", err)
-	}
-	if err := fuelStore.ScheduleEnergyWorkspace(ctx); err != nil {
-		return fmt.Errorf("energy workspace scheduling: %w", err)
-	}
-	if err := fuelStore.ScheduleEnergyAdapters(ctx, w.Cfg.MeterFeeds.HAURL != "", w.Cfg.MeterFeeds.MQTTURL != ""); err != nil {
-		return fmt.Errorf("energy adapter scheduling: %w", err)
-	}
+	return errors.Join(failures...)
+}
+
+// panicked is a recovered panic. Its type name alone is safe for redacted logs.
+type panicked struct {
+	value any
+	stack []byte
+}
+
+func (p panicked) Error() string { return fmt.Sprintf("panic: %v\n%s", p.value, p.stack) }
+
+// guarded turns a panic into an error: background work shares its process with
+// the HTTP server, and an unrecovered goroutine panic would stop both.
+func guarded(ctx context.Context, run func(context.Context) error) (err error) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			err = panicked{value: recovered, stack: debug.Stack()}
+		}
+	}()
+	return run(ctx)
+}
+
+// Housekeeping is a real durable job; only its current lease holder may finish it.
+func (w *Worker) scheduleHousekeeping(ctx context.Context) error {
+	_, err := audit.Exec(ctx, w.Pool, `INSERT INTO core.jobs(household_id,kind,dedupe_key) SELECT id,'housekeeping','housekeeping/'||to_char(now(),'YYYY-MM-DD-HH24-MI') FROM core.households ON CONFLICT(dedupe_key) DO NOTHING`)
+	return err
+}
+
+// jobs claims up to ten due jobs. A failure ends this tick's claims; failJob
+// has already scheduled its retry.
+func (w *Worker) jobs(ctx context.Context) error {
 	for range 10 {
 		if err := w.job(ctx); err != nil {
 			return err
@@ -193,12 +228,17 @@ func (w *Worker) job(ctx context.Context) (jobErr error) {
 		return err
 	}
 	defer func() {
+		// A panicking handler must still release its lease and enter backoff.
+		if recovered := recover(); recovered != nil {
+			jobErr = panicked{value: recovered, stack: debug.Stack()}
+		}
 		if jobErr != nil {
 			retryCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 3*time.Second)
 			defer cancel()
 			if err := w.failJob(retryCtx, id, lease); err != nil {
 				w.Log.Error("record job failure", "job_id", id, "error", err)
 			}
+			jobErr = fmt.Errorf("%s job %s: %w", kind, id, jobErr)
 		}
 	}()
 	if kind == "capture_ocr" {

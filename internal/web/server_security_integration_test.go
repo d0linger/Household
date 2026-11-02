@@ -243,6 +243,29 @@ func TestRateLimitPersistenceContract(t *testing.T) {
 	}
 }
 
+func TestLoginAccountLimitIsScopedToNetwork(t *testing.T) {
+	f := newIntegrationFixture(t)
+	// Login budgets use fixed hourly windows; start well clear of a rollover.
+	var remaining float64
+	if err := f.owner.QueryRow(f.ctx, "SELECT 3600-mod(extract(epoch FROM clock_timestamp())::numeric,3600)").Scan(&remaining); err != nil {
+		t.Fatal(err)
+	}
+	if remaining < 90 {
+		time.Sleep(time.Duration(remaining+1) * time.Second)
+	}
+	for range 20 {
+		if _, _, err := f.app.Auth.Login(f.ctx, f.identity.Username, "wrong integration password", "", "203.0.113.7", "attacker"); !errors.Is(err, auth.ErrCredentials) {
+			t.Fatalf("failed attempt within budget: %v", err)
+		}
+	}
+	if _, _, err := f.app.Auth.Login(f.ctx, f.identity.Username, integrationPassword, "", "203.0.113.200", "attacker neighbour"); !errors.Is(err, auth.ErrLimited) {
+		t.Fatalf("exhausted network budget accepted a further attempt: %v", err)
+	}
+	if _, _, err := f.app.Auth.Login(f.ctx, strings.ToUpper(f.identity.Username), integrationPassword, "", "198.51.100.4", "owner"); err != nil {
+		t.Fatalf("another network was locked out of the account: %v", err)
+	}
+}
+
 func TestLastAdministratorContract(t *testing.T) {
 	for _, tc := range []struct {
 		name, role, disabled string
