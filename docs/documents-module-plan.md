@@ -1,6 +1,6 @@
 # Documents whole-module implementation and acceptance
 
-Status: implementation, tests, source qualification and exact index review complete; local checkpoint and joint acceptance remain pending.
+Status: all 20 DO criteria locally accepted after complete implementation, actual tests/fixes, source qualification, exact index scan and local code checkpoint a7fe5f1.
 Accepted predecessor: Meters code e25b88b and acceptance 4674388; 160/180 criteria verified.
 This block covers all DO01–DO20. Finish its entire implementation before running application tests; resolve all module failures before final acceptance. No live deployment or publication is authorized.
 
@@ -158,8 +158,8 @@ Independent Documents tables own metadata, fields, versions, pages, deadlines, v
 - [x] 116. Verify OCI/SBOM/provenance against actual runtime.
 - [x] 117. Resolve failures and qualify complete evidence against final sources.
 - [x] 118. Scan exact staged blobs and all immutable predecessor SQL bytes.
-- [ ] 119. Create local reviewed checkpoint and remove owned unused resources.
-- [ ] 120. Promote DO01–DO20 only after evidence; update checklist to 180/180.
+- [x] 119. Create local reviewed checkpoint and remove owned unused resources.
+- [x] 120. Promote DO01–DO20 only after evidence; update checklist to 180/180.
 
 ## Evidence policy
 

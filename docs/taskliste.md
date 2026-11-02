@@ -1,16 +1,14 @@
 # Household – Aufgabenliste
 
-Stand: 02.11.2026, 11:00 (Europe/Vienna).
+Stand: 02.11.2026, 11:04 (Europe/Vienna).
 
-**160 / 180 verifiziert und abgehakt · 20 in Arbeit · 0 offen.**
+**180 / 180 verifiziert und abgehakt · 0 in Arbeit · 0 offen.**
 
 Ein Haken bedeutet: umgesetzt und durch ausgeführte Prüfungen belegt. Vorbereitete Änderungen und einzelne bestandene Zwischentests schließen einen Verbesserungspunkt noch nicht ab.
 
-Aktuell in Arbeit: **DO01 – Dokumenteneingang**, **DO02 – Dokumentenprüfung**, **DO03 – Gespeicherte Dokumentansichten**, **DO04 – Fristenagenda**, **DO05 – Stapelbearbeitung**, **DO06 – Dokumenttypen**, **DO07 – Dateiversionen**, **DO08 – Mehrseitige Scans**, **DO09 – Fristarten**, **DO10 – Objektverknüpfungen**, **DO11 – PDF-Erfassung**, **DO12 – Klassifikationsregeln**, **DO13 – Scannerordner**, **DO14 – IMAP-Eingang**, **DO15 – Paperless-Anbindung**, **DO16 – Verarbeitungsstatus**, **DO17 – Dokumentvolltext**, **DO18 – Dokumentdubletten**, **DO19 – Dokumentrechte**, **DO20 – Portables Archiv**.
+Derzeit ist kein Punkt als „In Arbeit“ markiert.
 
 **Aufgaben vollständig lokal abgenommen: 20/20 Punkte.** Alle746Testidentitäten haben vollständige Erfolge auf identischen Quellen; ursprüngliche Paket-Timeouts bleiben dokumentiert. Browser, Barrierefreiheit, echte Wiederherstellung und exakter Indexscan bestanden. [Modulplan mit Haken](chores-module-plan.md) · [Nachweise und Grenzen](chores-module-validation.md).
-
-**Aktueller Modulblock: Dokumente (DO01–DO20).** 118/120 abgearbeitete Phasenunterpunkte. Zuerst vollständige Umsetzung, danach gemeinsame Tests und Fehlerbehebung. Noch kein Dokumentenkriterium als bestanden bewertet. [120-Schritte-Checkliste](documents-module-plan.md).
 
 **Essensplanung vollständig lokal abgenommen: 20 / 20 Punkte.** Geplante Reste, Wochenbudget, Kalender und Autoplan sind nach nativen Tests, Browserprüfung und verschlüsseltem Restore/Purge gemeinsam abgehakt. [Modulplan](mealplan-module-plan.md) · [Abnahmenachweise und Grenzen](mealplan-module-validation.md).
 
@@ -31,7 +29,7 @@ Diese Ansicht wird aus der [verbindlichen Liste mit Abnahmekriterien und Nachwei
 | Finanzen | 20 / 20 | 0 | 0 |
 | Aufgaben | 20 / 20 | 0 | 0 |
 | Zähler und Energie | 20 / 20 | 0 | 0 |
-| Dokumente | 0 / 20 | 20 | 0 |
+| Dokumente | 20 / 20 | 0 | 0 |
 | Essensplanung | 20 / 20 | 0 | 0 |
 
 ## Einkaufen
@@ -197,26 +195,26 @@ Diese Ansicht wird aus der [verbindlichen Liste mit Abnahmekriterien und Nachwei
 
 ## Dokumente
 
-- [ ] **DO01 Dokumenteneingang** — **In Arbeit** — Neue, ungeprüfte und fehlgeschlagene Dokumente mit nächstem Schritt bündeln.
-- [ ] **DO02 Dokumentenprüfung** — **In Arbeit** — Vorschau und Metadaten gemeinsam mit mobil erhaltenem Bearbeitungsstand zeigen.
-- [ ] **DO03 Gespeicherte Dokumentansichten** — **In Arbeit** — Rechnungen, Garantien und Fristen über kombinierte Filter anbieten.
-- [ ] **DO04 Fristenagenda** — **In Arbeit** — Fristen anzeigen und zugehörige Aufgaben über Kernverträge erstellen oder bearbeiten.
-- [ ] **DO05 Stapelbearbeitung** — **In Arbeit** — Ausgewählte Metadaten begrenzt, geprüft und transaktional ändern.
-- [ ] **DO06 Dokumenttypen** — **In Arbeit** — Typisierte, validierte Zusatzfelder pro Dokumenttyp unterstützen.
-- [ ] **DO07 Dateiversionen** — **In Arbeit** — Originale unverändert erhalten und aktuelle Version ausdrücklich festlegen.
-- [ ] **DO08 Mehrseitige Scans** — **In Arbeit** — Seitenreihenfolge, Zusammenführen und Aufteilen vorab zeigen; Originale erhalten.
-- [ ] **DO09 Fristarten** — **In Arbeit** — Rückgabe, Garantie und weitere Fristen mit Nutzerbestätigung und Quelle unterscheiden.
-- [ ] **DO10 Objektverknüpfungen** — **In Arbeit** — Fahrzeuge, Geräte und Buchungen über berechtigte Kernverträge verknüpfen.
-- [ ] **DO11 PDF-Erfassung** — **In Arbeit** — Vorhandenen PDF-Text nutzen; lokale OCR begrenzt im Hintergrund ausführen.
-- [ ] **DO12 Klassifikationsregeln** — **In Arbeit** — Regelwirkung vor Übernahme erklären und manuelle Korrektur bewahren.
-- [ ] **DO13 Scannerordner** — **In Arbeit** — Optionalen überwachten Eingang atomar, dedupliziert und wiederholbar verarbeiten.
-- [ ] **DO14 IMAP-Eingang** — **In Arbeit** — Optional eingegrenzte Anhänge prüfen; keine ungefragte Mail-Löschung.
-- [ ] **DO15 Paperless-Anbindung** — **In Arbeit** — Optionalen Adapter mit dokumentierter Datenhoheit und Synchronisationsumfang anbieten.
-- [ ] **DO16 Verarbeitungsstatus** — **In Arbeit** — Fortschritt, Abbruch und Wiederholung über bestehende Jobverträge bereitstellen.
-- [ ] **DO17 Dokumentvolltext** — **In Arbeit** — Autorisierte PostgreSQL-Suche mit geschützten OCR-Textausschnitten anbieten.
-- [ ] **DO18 Dokumentdubletten** — **In Arbeit** — Identische und wahrscheinliche Dubletten anzeigen; nie automatisch löschen.
-- [ ] **DO19 Dokumentrechte** — **In Arbeit** — Metadaten, Dateien, Volltext, Export und Verknüpfungen konsistent autorisieren.
-- [ ] **DO20 Portables Archiv** — **In Arbeit** — Originale, Metadaten und Links exportieren; Aufbewahrung, Audit und Backups erklären.
+- [x] **DO01 Dokumenteneingang** — Neue, ungeprüfte und fehlgeschlagene Dokumente mit nächstem Schritt bündeln.
+- [x] **DO02 Dokumentenprüfung** — Vorschau und Metadaten gemeinsam mit mobil erhaltenem Bearbeitungsstand zeigen.
+- [x] **DO03 Gespeicherte Dokumentansichten** — Rechnungen, Garantien und Fristen über kombinierte Filter anbieten.
+- [x] **DO04 Fristenagenda** — Fristen anzeigen und zugehörige Aufgaben über Kernverträge erstellen oder bearbeiten.
+- [x] **DO05 Stapelbearbeitung** — Ausgewählte Metadaten begrenzt, geprüft und transaktional ändern.
+- [x] **DO06 Dokumenttypen** — Typisierte, validierte Zusatzfelder pro Dokumenttyp unterstützen.
+- [x] **DO07 Dateiversionen** — Originale unverändert erhalten und aktuelle Version ausdrücklich festlegen.
+- [x] **DO08 Mehrseitige Scans** — Seitenreihenfolge, Zusammenführen und Aufteilen vorab zeigen; Originale erhalten.
+- [x] **DO09 Fristarten** — Rückgabe, Garantie und weitere Fristen mit Nutzerbestätigung und Quelle unterscheiden.
+- [x] **DO10 Objektverknüpfungen** — Fahrzeuge, Geräte und Buchungen über berechtigte Kernverträge verknüpfen.
+- [x] **DO11 PDF-Erfassung** — Vorhandenen PDF-Text nutzen; lokale OCR begrenzt im Hintergrund ausführen.
+- [x] **DO12 Klassifikationsregeln** — Regelwirkung vor Übernahme erklären und manuelle Korrektur bewahren.
+- [x] **DO13 Scannerordner** — Optionalen überwachten Eingang atomar, dedupliziert und wiederholbar verarbeiten.
+- [x] **DO14 IMAP-Eingang** — Optional eingegrenzte Anhänge prüfen; keine ungefragte Mail-Löschung.
+- [x] **DO15 Paperless-Anbindung** — Optionalen Adapter mit dokumentierter Datenhoheit und Synchronisationsumfang anbieten.
+- [x] **DO16 Verarbeitungsstatus** — Fortschritt, Abbruch und Wiederholung über bestehende Jobverträge bereitstellen.
+- [x] **DO17 Dokumentvolltext** — Autorisierte PostgreSQL-Suche mit geschützten OCR-Textausschnitten anbieten.
+- [x] **DO18 Dokumentdubletten** — Identische und wahrscheinliche Dubletten anzeigen; nie automatisch löschen.
+- [x] **DO19 Dokumentrechte** — Metadaten, Dateien, Volltext, Export und Verknüpfungen konsistent autorisieren.
+- [x] **DO20 Portables Archiv** — Originale, Metadaten und Links exportieren; Aufbewahrung, Audit und Backups erklären.
 
 ## Essensplanung
 

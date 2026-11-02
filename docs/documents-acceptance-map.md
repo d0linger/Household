@@ -1,6 +1,6 @@
 # Documents criteria and verification contracts
 
-Status: **20 criteria in joint validation; no final acceptance yet**. Complete implementation precedes all tests. Current application/test source is18b9aeda; actual quality, HTTP, local providers,119-check standalone, full34-component browser/visual, images/OCI and nonempty encrypted recovery results are recorded in [the validation ledger](documents-module-validation.md). Complete797-identity race, exact-index review and local checkpoint remain independent gates.
+Status: **all20 criteria locally accepted**. Final application/test source `90f93db1` contains one executed test-only fixture correction; every production byte equals the actual browser/image/recovery-tested18b9aeda source. All797 registered identities have complete actual Linux-race passing trees:150 before the reboot,645 in the continuation,1 separately passed unchanged cleanup retry and1 corrected contract. Original failed/interrupted attempts remain preserved; only whole successful coverage profiles count. Exact index review and local code checkpoint `a7fe5f1` pass. See [the executed validation ledger](documents-module-validation.md).
 
 | ID | Approved behavior | Concrete implementation and verification |
 |---|---|---|
