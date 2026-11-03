@@ -2,38 +2,97 @@ name: Container and release candidate
 on:
   pull_request:
   push:
-    branches: [main,dev]
+    branches: [dev]
+  workflow_call:
   workflow_dispatch:
 permissions:
   contents: read
 concurrency:
-  group: container-${{ github.ref }}
+  group: container-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 jobs:
   container:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: {persist-credentials: false}
-      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
-      - uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
           target: runtime
+          platforms: linux/amd64
+          labels: |
+            org.opencontainers.image.source=https://github.com/d0linger/Household
+            org.opencontainers.image.revision=${{ github.sha }}
           tags: household:ci
           push: false
           outputs: type=oci,dest=/tmp/household.oci.tar
           provenance: mode=max
           sbom: true
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with: {node-version: '24'}
       - name: Verify exported Household image and attestations
         run: |
           mkdir -p /tmp/household-oci
           tar -xf /tmp/household.oci.tar -C /tmp/household-oci
           node scripts/check-oci.cjs /tmp/household-oci /tmp/household-candidate.json
-      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+      - name: Scan the verified runtime digest for fixable high and critical vulnerabilities
+        timeout-minutes: 10
+        env:
+          GOMAXPROCS: '2'
+          TRIVY_CACHE_DIR: ${{ runner.temp }}/household-trivy-cache
+        run: |
+          task_scanner_dir="$(mktemp -d "$RUNNER_TEMP/household-trivy.XXXXXX")"
+          trap 'rm -rf -- "$task_scanner_dir"' EXIT
+          task_version=0.76.1
+          task_checksum=c7cbe3137fb8a48a17574bede3dd6beb16742d1e9772929940fc90082c39d9c0
+          curl --proto '=https' --tlsv1.2 --fail --silent --show-error --location \
+            --retry 2 --connect-timeout 15 --max-time 120 \
+            --output "$task_scanner_dir/trivy.tgz" \
+            "https://github.com/aquasecurity/trivy/releases/download/v${task_version}/trivy_${task_version}_Linux-64bit.tar.gz"
+          printf '%s  %s\n' "$task_checksum" "$task_scanner_dir/trivy.tgz" | sha256sum --check --strict
+          tar --extract --gzip --file "$task_scanner_dir/trivy.tgz" --directory "$task_scanner_dir" --no-same-owner trivy
+          # Trivy selects digests from the top-level index. Buildx can nest
+          # the runtime below another index, so give it a temporary direct view
+          # of the verified manifest while preserving the original OCI bytes.
+          task_digest="$(node - "$task_scanner_dir/layout" <<'NODE'
+          const fs = require('node:fs');
+          const crypto = require('node:crypto');
+          const report = JSON.parse(fs.readFileSync('/tmp/household-candidate.json', 'utf8'));
+          if (report.verified !== true || report.images?.length !== 1 || !/^sha256:[a-f0-9]{64}$/.test(report.images[0].digest)) {
+            throw Error('Expected one verified runtime digest');
+          }
+          const digest = report.images[0].digest;
+          const bytes = fs.readFileSync('/tmp/household-oci/blobs/sha256/' + digest.slice(7));
+          if ('sha256:' + crypto.createHash('sha256').update(bytes).digest('hex') !== digest) throw Error('Runtime manifest changed');
+          const manifest = JSON.parse(bytes);
+          if (manifest.mediaType !== 'application/vnd.oci.image.manifest.v1+json' || !manifest.config || !Array.isArray(manifest.layers)) {
+            throw Error('Expected an OCI runtime manifest');
+          }
+          const target = process.argv[2];
+          fs.mkdirSync(target);
+          fs.symlinkSync('/tmp/household-oci/blobs', target + '/blobs');
+          fs.copyFileSync('/tmp/household-oci/oci-layout', target + '/oci-layout');
+          fs.writeFileSync(target + '/index.json', JSON.stringify({schemaVersion: 2, manifests: [{mediaType: manifest.mediaType, digest, size: bytes.length}]}));
+          process.stdout.write(digest);
+          NODE
+          )"
+          mkdir -p outputs/container-scan
+          printf 'Scanning verified Household runtime %s. Gate covers fixable HIGH/CRITICAL vulnerabilities; unfixed findings are excluded.\n' "$task_digest" >> "$GITHUB_STEP_SUMMARY"
+          "$task_scanner_dir/trivy" image --input "$task_scanner_dir/layout@$task_digest" \
+            --scanners vuln --ignore-unfixed --severity HIGH,CRITICAL --exit-code 1 \
+            --timeout 5m --format json --output outputs/container-scan/trivy.json
+      - name: Retain vulnerability evidence including a failing scan
+        if: always() && hashFiles('outputs/container-scan/trivy.json') != ''
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: household-container-vulnerabilities
+          path: outputs/container-scan/trivy.json
+          retention-days: 7
+          if-no-files-found: error
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: household-container-candidate
           path: |

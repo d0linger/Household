@@ -2,11 +2,12 @@ name: Shopping extensions and offline privacy
 on:
   pull_request:
   push:
-    branches: [main,dev]
+    branches: [dev]
+  workflow_call:
   workflow_dispatch:
 permissions: {contents: read}
 concurrency:
-  group: shopping-extensions-${{ github.ref }}
+  group: shopping-extensions-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 jobs:
   browser:
