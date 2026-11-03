@@ -31,7 +31,7 @@ jobs:
         with: {go-version-file: go.mod, cache: true}
       - run: go install github.com/securego/gosec/v2/cmd/gosec@v2.30.0
       - run: gosec -fmt=sarif -out=gosec.sarif ./cmd/... ./internal/...
-      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with: {name: gosec-report, path: gosec.sarif, retention-days: 14, if-no-files-found: error}
   GOVul:
@@ -61,7 +61,7 @@ jobs:
         env:
           MIGRATION_BASE: ${{ github.event.pull_request.base.sha }}
         run: node scripts/check-migrations.cjs
-      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with: {name: dependency-review, path: dependency-report.md, retention-days: 14}
   Tests:
     runs-on: ubuntu-latest
@@ -117,14 +117,14 @@ jobs:
       - name: Exercise optional push jobs against controlled HTTP
         if: matrix.shard == 0
         run: node scripts/run-shopping-push-testtools.cjs
-      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always() && matrix.shard == 0
         with:
           name: shopping-controlled-push
           path: outputs/qa/shopping-push-testtools
           retention-days: 14
           if-no-files-found: warn
-      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: go-test-shard-${{ matrix.shard }}
@@ -159,7 +159,7 @@ jobs:
         run: go test ./internal/value -run=^$ -fuzz=FuzzMinor -fuzztime=15s -parallel=2
       - name: Fuzz exact decimal parsing
         run: go test ./internal/value -run=^$ -fuzz=FuzzDecimal -fuzztime=15s -parallel=2
-      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with: {name: go-coverage-evidence, path: outputs/qa, retention-days: 14, if-no-files-found: error}
   WorkflowAndSecrets:
