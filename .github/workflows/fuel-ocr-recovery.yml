@@ -3,11 +3,12 @@ name: Fuel OCR and real recovery
 on:
   pull_request:
   push:
-    branches: [main, dev]
+    branches: [dev]
+  workflow_call:
   workflow_dispatch:
 permissions: {contents: read}
 concurrency:
-  group: fuel-ocr-recovery-${{ github.ref }}
+  group: fuel-ocr-recovery-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 defaults:
   run:
