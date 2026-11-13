@@ -53,3 +53,29 @@ test('Meter workspace and management retain only the selected register, includin
  for(const bad of['00000000-0000-0000-0000-000000000000','x',register+'&record=other'])assert.throws(()=>link('history',bad));
  for(const pane of['../settings','unknown','https://evil.invalid'])assert.throws(()=>link(pane,register));
 });
+
+test('Meter browser commands retain actual upstream bytes without replay or CDP body reads',async()=>{
+ const source=fs.readFileSync(path.join(__dirname,'browser-meters-workspace-check.cjs'),'utf8');
+ const start=source.indexOf('async function post(action,click){'),end=source.indexOf("  await pane('settings');",start);
+ assert.ok(start>=0&&end>start);
+ for(const action of ['meter.save','reading.save','import.preview'])for(const failure of ['', 'fetch', 'body', 'fulfill', 'status', 'json']){
+  const url='http://localhost:8101/api/v1/meters/commands',bytes=Buffer.from(failure==='json'?'invalid JSON':JSON.stringify({id:'actual-record',value:'125.123456',state:'preview',rows:1}));
+  const events=[];let handler,match,resolve,reject;
+  const request={method:()=> 'POST',postDataJSON:()=>({action})};
+  const upstream={body:async()=>{events.push('body');if(failure==='body')throw Error('upstream body failed');return bytes;}};
+  const response={url:()=>url,request:()=>request,status:()=>failure==='status'?409:200,json:()=>{throw Error('CDP body unavailable');}};
+  const route={request:()=>request,fetch:async options=>{events.push('fetch');assert.deepEqual(JSON.parse(JSON.stringify(options)),{maxRedirects:0,maxRetries:0,timeout:15000});if(failure==='fetch')throw Error('upstream fetch failed');return upstream;},fulfill:async value=>{events.push('fulfill');assert.equal(value.response,upstream);assert.equal(value.body,bytes);if(failure==='fulfill')throw Error('upstream fulfill failed');resolve(response);},abort:async reason=>{events.push('abort');assert.equal(reason,'failed');reject(Error('request aborted'));},fallback:async()=>{throw Error('expected command was not captured');}};
+  const page={route:async(m,h)=>{match=m;handler=h;},waitForResponse:predicate=>{assert.equal(predicate(response),true);return new Promise((ok,bad)=>{resolve=ok;reject=bad;});},unroute:async(m,h)=>{assert.equal(m,match);assert.equal(h,handler);events.push('cleanup');}};
+  const scope={page,URL,origin:new URL(url),must:assert.ok,ready:async()=>{events.push('ready');}};
+  vm.runInNewContext(source.slice(start,end),scope);
+  const result=scope.post(action,async()=>{
+   assert.equal(match(new URL(url)),true);assert.equal(match(new URL('https://foreign.invalid/api/v1/meters/commands')),false);assert.equal(match(new URL('http://localhost:8101/api/v1/meters/history')),false);
+   let fellBack=false;await handler({request:()=>({method:()=> 'POST',postDataJSON:()=>({action:'unrelated'})}),fallback:async()=>{fellBack=true;}});assert.equal(fellBack,true);
+   await handler(route);
+  });
+  if(failure)await assert.rejects(result);else assert.equal((await result).value,'125.123456');
+  assert.equal(events.filter(e=>e==='fetch').length,1,'Never replay the actual command');assert.equal(events.at(-1),'cleanup');
+  if(['fetch','body','fulfill'].includes(failure)){assert.ok(events.includes('abort'));assert.ok(!events.includes('ready'));}
+  if(failure==='status')assert.ok(!events.includes('ready'),'Reject failed HTTP before accepting UI state');
+ }
+});
