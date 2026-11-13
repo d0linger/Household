@@ -67,8 +67,10 @@ const must=(value,name)=>{if(!value)throw Error(name);report.checks.push(name);}
   await page.getByRole('button',{name:'Rückgängig',exact:true}).click();await page.getByRole('button',{name:'Erledigen: Vollkornreis',exact:true}).waitFor();await page.locator('#shopping-mode').check();
   async function capture(name){await page.evaluate(()=>scrollTo(0,0));const file=path.join(output,name+'.png');await page.screenshot({path:file,fullPage:true,animations:'disabled'});report.screenshots.push(file);const result=await new AxeBuilder({page}).withTags(['wcag2a','wcag2aa','wcag21aa']).analyze();report.accessibility.push({name,violations:result.violations});must(!result.violations.length,'Accessibility '+name);}
   await capture('reuse-desktop');await page.setViewportSize({width:390,height:844});await page.evaluate(()=>document.documentElement.dataset.theme='dark');await capture('reuse-mobile-dark');
+  await page.locator('.workspace-primary').getByRole('link',{name:'Listen',exact:true}).click();
+  must(new URL(page.url()).pathname==='/m/shopping/lists'&&!new URL(page.url()).search,'Primary Lists navigation returns from a list detail to its collection');
   await page.getByRole('link',{name:'Vorlagen',exact:true}).click();
-  must(new URL(page.url()).pathname==='/m/shopping/lists'&&new URL(page.url()).searchParams.get('q')==='is:template','Template tab leaves a list detail for the filtered overview');
+  must(new URL(page.url()).pathname==='/m/shopping/lists'&&new URL(page.url()).searchParams.get('q')==='is:template','Collection template filter opens the reusable-list overview');
   await page.goto(base+'/m/shopping/products/'+fixture.product.id);await page.getByRole('link',{name:'Favoriten',exact:true}).click();
   must(new URL(page.url()).pathname==='/m/shopping/products'&&new URL(page.url()).searchParams.get('q')==='is:favorite','Favorite tab leaves a product detail for the filtered overview');
   await page.waitForLoadState('networkidle');await page.evaluate(()=>Promise.all(document.getAnimations().map(animation=>animation.finished.catch(()=>{}))));

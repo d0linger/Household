@@ -25,12 +25,12 @@ async function apply(trigger){
 async function choose(name,id,label){const select=page.locator('[name='+name+']:visible'),field=select.locator('xpath=ancestor::div[contains(@class,"reference-field")][1]');await field.getByRole('searchbox').fill(label);await field.getByRole('button',{name:'Suchen',exact:true}).click();await select.locator('option[value="'+id+'"]').waitFor({state:'attached'});await select.selectOption(id);}
 async function openReminder(){await page.locator('#finance-entry-current-actions').getByRole('button',{name:/^(Zahlungserinnerung|Payment reminder)$/,exact:true}).click();await page.locator('#finance-reminder-dialog[open]').waitFor();await page.waitForFunction(()=>document.querySelector('#finance-reminder-dialog')?.getAttribute('aria-busy')==='false');}
 async function saveReminder(action){
- const response=page.waitForResponse(r=>/\/payment-reminder$/.test(new URL(r.url()).pathname)&&r.request().method()==='POST').then(async result=>{
-  must(result.status()===200,'Actual reminder '+action+' succeeds');
-  return result.json();
- });
- await page.locator('[data-reminder-action='+action+']').click();const state=await response;
- await page.waitForFunction(()=>document.querySelector('#finance-reminder-dialog')?.getAttribute('aria-busy')==='false');return state;
+ const response=page.waitForResponse(r=>/\/payment-reminder$/.test(new URL(r.url()).pathname)&&r.request().method()==='POST');
+ await page.locator('[data-reminder-action='+action+']').click();const result=await response;
+ must(result.status()===200,'Actual reminder '+action+' succeeds');
+ await page.waitForFunction(()=>document.querySelector('#finance-reminder-dialog')?.getAttribute('aria-busy')==='false');
+ // Verify committed state independently; Chromium may discard the streamed POST body.
+ return read(new URL(result.url()).pathname);
 }
 async function closeReminder(){await page.locator('#finance-reminder-dialog').getByRole('button',{name:/^(Schließen|Close)$/,exact:true}).click();await page.locator('#finance-reminder-dialog').waitFor({state:'hidden'});}
 async function capture(name){

@@ -59,7 +59,7 @@ jobs:
           if($LASTEXITCODE){throw 'Job-owned isolated database did not become healthy'}
       - name: Record full actual Fuel native campaign
         id: native
-        timeout-minutes: 23
+        timeout-minutes: 33
         run: |
           $ErrorActionPreference='Stop'
           function Read-Private([string]$name){return [IO.File]::ReadAllText((Join-Path $PWD ".local/secrets/$name")).TrimEnd("`r","`n")}

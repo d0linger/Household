@@ -97,3 +97,18 @@ test('native dismissal returns focus and pagehide removes private form data',asy
 test('bounded member list discloses additional candidates and preserves named current assignment',async()=>{
  const f=harness({...snapshot(),members:[],members_more:true,reminder:reminder()});await f.open();assert.match(f.dialog.textContent,/50 berechtigte Mitglieder/);assert.equal(f.find(n=>n.name==='responsible_member_id').value,member);assert.equal(f.find(n=>n.tag==='option'&&n.value===member).textContent,'Taylor');
 });
+
+
+test('browser reminder verification reads committed state after the real POST without relying on CDP response bodies',async()=>{
+ const driver=fs.readFileSync(path.join(__dirname,'browser-finance-notifications-check.cjs'),'utf8');
+ const start=driver.indexOf('async function saveReminder(action){'),end=driver.indexOf('async function closeReminder()',start);
+ assert.ok(start>=0&&end>start);
+ for(const [action,state]of Object.entries({save:'draft',confirm:'confirmed',complete:'completed',cancel:'cancelled'})){
+  const events=[],url='http://localhost:8101/api/v1/expenses/finance/entries/'+entry+'/payment-reminder';let status=200;
+  const page={waitForResponse:async()=>({url:()=>url,status:()=>status,json:()=>{throw Error('CDP response body is unavailable');}}),locator:()=>({click:async()=>{events.push('post');}}),waitForFunction:async()=>{events.push('ready');}};
+  const scope={page,URL,must:assert.ok,read:async route=>{assert.equal(route,new URL(url).pathname);events.push('read');return{reminder:{state},verified_paid:false};}};
+  vm.runInNewContext(driver.slice(start,end),scope);
+  const result=await scope.saveReminder(action);assert.equal(result.reminder.state,state);assert.equal(result.verified_paid,false);assert.deepEqual(events,['post','ready','read']);
+  status=409;events.length=0;await assert.rejects(scope.saveReminder(action));assert.deepEqual(events,['post'],'Failed POST must not be replaced by a successful GET');
+ }
+});

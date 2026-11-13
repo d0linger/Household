@@ -1,15 +1,38 @@
 package web
 
 import (
+	"bytes"
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"regexp"
 	"strings"
 	"sync"
 	"testing"
 
 	"household/internal/module"
 )
+
+func TestLanguageSwitchAccessibleNameStartsWithVisibleLabel(t *testing.T) {
+	s := serviceWorkerTestServer(t)
+	button := regexp.MustCompile(`aria-label="([^"]+)"[^>]*>([^<]+)</button>`)
+	for _, locale := range []string{"de", "en"} {
+		t.Run(locale, func(t *testing.T) {
+			tmpl := s.templates
+			if locale == "en" {
+				tmpl = s.templatesEN
+			}
+			var output bytes.Buffer
+			if err := tmpl.ExecuteTemplate(&output, "language-control", Page{Locale: locale, ReturnTo: "/"}); err != nil {
+				t.Fatal(err)
+			}
+			match := button.FindStringSubmatch(output.String())
+			if len(match) != 3 || !strings.HasPrefix(match[1], match[2]+" ") {
+				t.Fatalf("language control must start its accessible name with its visible label: %s", output.String())
+			}
+		})
+	}
+}
 
 func TestLocaleBoundariesAndSafeReturn(t *testing.T) {
 	for _, value := range []string{"//evil.test", "https://evil.test", "/\\evil.test", "/%2fexample.test", "settings", "/x%0d%0aLocation:bad", strings.Repeat("a", 2049)} {

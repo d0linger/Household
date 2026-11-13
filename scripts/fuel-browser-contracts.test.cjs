@@ -24,24 +24,24 @@ test('native Go, recorder and CI deadlines preserve cleanup headroom within the 
  const workflow=require('yaml').parse(fs.readFileSync(path.join(__dirname,'../.github/workflows/fuel-ocr-recovery.yml'),'utf8'));
  const job=workflow.jobs['fuel-ocr-recovery'],step=job.steps.find(item=>item.id==='native');
  const goMinutes=Number(C.nativeArguments().find(arg=>/^-timeout=\d+m$/.test(arg)).match(/\d+/)[0]);
- assert.ok(Number.isInteger(goMinutes)&&goMinutes>=17&&goMinutes<=20);
+ assert.ok(Number.isInteger(goMinutes)&&goMinutes===30);
  assert.ok(Object.isFrozen(C.NATIVE_BUDGET));
- assert.ok(C.NATIVE_BUDGET.recorderMinutes>=goMinutes+2&&C.NATIVE_BUDGET.recorderMinutes<=22);
- assert.ok(step['timeout-minutes']>=C.NATIVE_BUDGET.recorderMinutes+1&&step['timeout-minutes']<=23);
+ assert.ok(C.NATIVE_BUDGET.recorderMinutes>=goMinutes+2&&C.NATIVE_BUDGET.recorderMinutes<=32);
+ assert.ok(step['timeout-minutes']>=C.NATIVE_BUDGET.recorderMinutes+1&&step['timeout-minutes']<=33);
  assert.equal(job['timeout-minutes'],75);
- // The browser controller already owns 25 minutes. Leave at least 20 minutes
+ // The browser controller already owns 25 minutes. Leave at least 17 minutes
  // for installation, image builds and owned-resource cleanup, without moving it.
- assert.ok(job['timeout-minutes']-step['timeout-minutes']-25>=20);
+ assert.ok(job['timeout-minutes']-step['timeout-minutes']-25>=17);
 });
 
 test('local recorder has an explicit bounded profile with the identical closed Go selection',()=>{
- assert.deepEqual(C.NATIVE_BUDGET,{testMinutes:20,recorderMinutes:22});
+ assert.deepEqual(C.NATIVE_BUDGET,{testMinutes:30,recorderMinutes:32});
  assert.deepEqual(C.nativeProfile('default',{CI:'true'}),C.NATIVE_BUDGET);
  assert.deepEqual(C.nativeProfile('local',{}),{testMinutes:40,recorderMinutes:42});
  assert.ok(Object.isFrozen(C.NATIVE_LOCAL_BUDGET));
  const ordinary=C.nativeArguments('default',{}),local=C.nativeArguments('local',{});
- assert.deepEqual(local.map(arg=>arg==='-timeout=40m'?'-timeout=20m':arg),ordinary);
- assert.deepEqual(ordinary,['test','-tags=integration','-p','1','-json','./internal/web','-run','^TestFuelModule','-count=1','-timeout=20m']);
+ assert.deepEqual(local.map(arg=>arg==='-timeout=40m'?'-timeout=30m':arg),ordinary);
+ assert.deepEqual(ordinary,['test','-tags=integration','-p','1','-json','./internal/web','-run','^TestFuelModule','-count=1','-timeout=30m']);
  assert.equal(local.filter(arg=>arg.startsWith('-timeout=')).length,1);
  for(const invalid of [null,false,'LOCAL','40','local-60',{testMinutes:40,recorderMinutes:42}])assert.throws(()=>C.nativeProfile(invalid,{}),/Unknown native recorder profile/);
 });
@@ -55,7 +55,7 @@ test('local profile refuses any CI or GitHub Actions marker including false and 
 
 test('budget evidence records selected profile, exact limits and an absolute recorder deadline',()=>{
  const started=new Date('2026-11-03T18:00:00.000Z');
- for(const [profile,testMinutes,recorderMinutes,deadline]of [['default',20,22,'2026-11-03T18:22:00.000Z'],['local',40,42,'2026-11-03T18:42:00.000Z']]){
+ for(const [profile,testMinutes,recorderMinutes,deadline]of [['default',30,32,'2026-11-03T18:32:00.000Z'],['local',40,42,'2026-11-03T18:42:00.000Z']]){
   const evidence=C.nativeBudgetEvidence(profile,started,{});
   assert.deepEqual(evidence,{recorder_profile:profile,test_timeout_minutes:testMinutes,recorder_timeout_minutes:recorderMinutes,recording_started_at:started.toISOString(),recorder_deadline_at:deadline});
   C.validateNativeBudgetEvidence(evidence,{});

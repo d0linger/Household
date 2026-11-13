@@ -5,9 +5,10 @@ const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypt
 const {spawn}=require('node:child_process');
 const SHA=/^[a-f0-9]{64}$/,UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/,RUN=/^[a-f0-9]{32}$/;
 const MAX_LOG=128<<20,MAX_LINE=2<<20,MAX_FILES=5000;
-// Preserve the existing CI limits and cleanup headroom within the 75-minute
-// job. A slower local campaign must explicitly select the separate profile.
-const NATIVE_BUDGET=Object.freeze({testMinutes:20,recorderMinutes:22});
+// Hosted 2026-11-13 evidence: 17/21 mains passed in 1179 seconds before the
+// old 20-minute package deadline. Allow the full suite bounded variance, while
+// keeping recorder cleanup headroom and the existing 75-minute job ceiling.
+const NATIVE_BUDGET=Object.freeze({testMinutes:30,recorderMinutes:32});
 // Local 2026-11-03 evidence: 12/21 mains took 1176.95 seconds. Linear projection
 // is 34m20s; 40m allows bounded variance, plus two minutes for recorder overhead.
 // This opt-in profile is never available to a CI-marked process.
