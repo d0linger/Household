@@ -2,9 +2,11 @@
 <section id="pantry-batches" data-generation="{{with index .States "pantry"}}{{.Generation}}{{end}}" data-draft="{{.Record.draft}}" data-receipt="{{.Record.receipt}}" data-writable="{{.User.CanWrite}}">
  {{template "workspace-nav" .}}
  <a class="back-link" href="/m/pantry/stock">{{t "Zum Vorratsbestand"}}</a>
- <h1>{{t "Einlagern und Inventur"}}</h1><p class="muted">{{t "Mehrere neue Chargen aufnehmen oder ausgewählte Chargen eines Lagerorts zählen. Erst die Gesamtbestätigung bucht Bestand."}}</p>
- <p id="pb-status" role="status">{{t "Gespeicherte Entwürfe werden geladen …"}}</p><div id="pb-error" class="notice error" role="alert" tabindex="-1" hidden></div>
+ <h1>{{t "Einlagern und Inventur"}}</h1>
+ <div id="pb-error" class="notice error" role="alert" tabindex="-1" hidden></div>
  <button id="pb-retry" type="button" hidden>{{t "Dieselbe Anfrage erneut prüfen"}}</button>
+ <p id="pb-introduction" class="muted">{{t "Mehrere neue Chargen aufnehmen oder ausgewählte Chargen eines Lagerorts zählen. Erst die Gesamtbestätigung bucht Bestand."}}</p>
+ <p id="pb-status" role="status">{{t "Gespeicherte Entwürfe werden geladen …"}}</p>
  <button id="pb-reload" type="button">{{t "Gespeicherten Stand laden"}}</button>
  <section id="pb-home" class="panel" hidden><h2>{{t "Meine privaten Entwürfe"}}</h2><p class="fine">{{t "Höchstens zehn aktive Entwürfe. Jeder ausdrücklich gespeicherte Entwurf bleibt 30 Tage verfügbar. Speichern reserviert keinen Bestand."}}</p><div id="pb-drafts"></div><div class="actions"><button id="pb-new-intake" type="button" class="primary">{{t "Neue Einlagerung"}}</button><button id="pb-new-inventory" type="button">{{t "Neue Inventur"}}</button></div></section>
  <section id="pb-editor" class="panel" hidden><h2 id="pb-heading" tabindex="-1"></h2><p id="pb-save-state"></p>
