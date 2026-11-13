@@ -111,7 +111,7 @@ test('registration discovery uses the execution race build selection and fails c
   assert.equal(listing[listing.indexOf('-list') + 1], '.');
   assert.doesNotThrow(() => validateBuildParity(listing, execution));
   // A //go:build race file participates only when -race is present. Otherwise
-  // a self-consistent six-shard inventory could silently omit every such test.
+  // a self-consistent sixteen-shard inventory could silently omit every such test.
   assert.throws(() => validateBuildParity(listing.filter(value => value !== '-race'), execution), /race build selection/);
   assert.throws(() => validateBuildParity(listing.map(value => value === '-tags=integration,testtools' ? '-tags=testtools' : value), execution), /build selection/);
   assert.throws(() => validateBuildParity(listing, execution.filter(value => value !== '-race')), /build selection/);
@@ -145,7 +145,7 @@ test('controlled source census discovers future tagged files and refuses source 
   assert.throws(()=>validateAndMerge(artifacts,fullSource,changed),/census differs/);
 });
 
-test('six actual execution ledgers merge exactly once into presence-only coverage without losing large atomic counter precision', () => {
+test('sixteen actual execution ledgers merge exactly once into presence-only coverage without losing large atomic counter precision', () => {
   const {source, inventory, artifacts} = fixture();
   const merged = validateAndMerge(artifacts, source);
   assert.equal(merged.summary.mainCount, inventory.tests.length);
@@ -157,7 +157,7 @@ test('six actual execution ledgers merge exactly once into presence-only coverag
 
 test('merger refuses missing, duplicate or failed shard artifacts', () => {
   const {artifacts, source} = fixture();
-  assert.throws(() => validateAndMerge(artifacts.slice(1), source), /six/);
+  assert.throws(() => validateAndMerge(artifacts.slice(1), source), /sixteen/);
   const duplicated = artifacts.slice();
   duplicated[5] = duplicated[0];
   assert.throws(() => validateAndMerge(duplicated, source), /duplicate/);
@@ -239,7 +239,7 @@ test('claimed inventory cannot omit a main present in the actual discovered regi
   assert.throws(() => validateAndMerge(artifacts, source), /discovery differs/);
 });
 
-test('coverage definitions and source bindings must match across all six observations', () => {
+test('coverage definitions and source bindings must match across all sixteen observations', () => {
   const {artifacts, source, inventory} = fixture();
   artifacts[5].coverage = artifacts[5].coverage.replace('1.1,2.2 2', '1.1,3.2 2');
   rebind(artifacts[5]);
@@ -266,10 +266,12 @@ test('inventory digest binds source files, compiler target and command settings'
   }
 });
 
-test('quality workflow uses isolated six-job matrix and validates complete artifacts before fifty-five-percent coverage and HTML', () => {
+test('quality workflow uses isolated sixteen-job matrix and validates complete artifacts before fifty-five-percent coverage and HTML', () => {
   const workflow = parse(fs.readFileSync('.github/workflows/quality.yml', 'utf8'));
   const tests = workflow.jobs.Tests, coverage = workflow.jobs.Coverage;
-  assert.deepEqual(tests.strategy.matrix.shard, [0, 1, 2, 3, 4, 5]);
+  assert.deepEqual(tests.strategy.matrix.shard, Array.from({length: 16}, (_, index) => index));
+  assert.equal(tests.strategy['max-parallel'], 6);
+  assert.match(tests.steps.find(step=>step.name==='Discover and run one deterministic shard with race detection').run, /matrix\.shard }}" 16 /);
   assert.equal(tests.strategy['fail-fast'], false);
   assert.equal(tests['timeout-minutes'], 75);
   assert.ok(!tests.steps.some(step=>(step.run||'').includes('run-shopping-push-testtools.cjs')));
@@ -289,4 +291,45 @@ test('quality workflow uses isolated six-job matrix and validates complete artif
   assert.match(download.uses, /@[a-f0-9]{40}$/);
   assert.equal(download.with['merge-multiple'], false);
   assert.equal(download.with['digest-mismatch'], 'error');
+});
+const path = require('node:path');
+const os = require('node:os');
+const {spawnSync} = require('node:child_process');
+
+test('runner CLI accepts only canonical indices zero through fifteen and the exact shard count', () => {
+ const script=path.resolve('scripts/run-go-test-shard.cjs');
+ const env={...process.env};delete env.HOUSEHOLD_REQUIRE_INTEGRATION;delete env.HOUSEHOLD_TEST_OWNER_URL;delete env.HOUSEHOLD_TEST_APP_URL;
+ const run=(index,count='16')=>spawnSync(process.execPath,[script,index,count,path.resolve('outputs/never-created-shard-cli')],{encoding:'utf8',env});
+ for(const index of Array.from({length:16},(_,n)=>String(n))){const result=run(index);assert.equal(result.status,1);assert.match(result.stderr,/Required isolated integration authority is missing/);}
+ for(const index of ['-1','16','99','00','01','1.0','1e1',' 1','1 ','+1'])assert.match(run(index).stderr,/Usage:/);
+ for(const count of ['6','12','016','16.0'])assert.match(run('10',count).stderr,/Usage:/);
+});
+
+test('merge CLI validates all sixteen real artifact directories including multi-digit indices', t => {
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'household-shards16-'));
+ t.after(()=>{assert.equal(path.dirname(path.resolve(root)),path.resolve(os.tmpdir()));assert.match(path.basename(root),/^household-shards16-/);fs.rmSync(root,{recursive:true,force:true});});
+ const input=path.join(root,'outputs','shards'),output=path.join(root,'outputs','merged');
+ const {source,artifacts}=fixture();
+ for(let index=0;index<SHARDS;index++){
+  const dir=path.join(input,'go-test-shard-'+index);fs.mkdirSync(dir,{recursive:true});
+  for(const [key,name]of Object.entries({inventory:'inventory.json',result:'result.json',discovery:'discovery.jsonl',tests:'tests.jsonl',coverage:'coverage.out'}))fs.writeFileSync(path.join(dir,name),artifacts[index][key]);
+ }
+ const script=path.resolve('scripts/merge-go-test-shards.cjs');
+ const run=()=>spawnSync(process.execPath,[script,input,output,source.commit],{cwd:root,encoding:'utf8'});
+ // A valid synthetic artifact set advances to the real checkout check. This
+ // fixture deliberately contains no source checkout and cannot qualify as CI.
+ let result=run();assert.equal(result.status,1);assert.match(result.stderr,/ENOENT.*cmd/);assert.doesNotMatch(result.stderr,/shard artifact directories/);
+ const tenth=path.join(input,'go-test-shard-10'),renamed=path.join(input,'go-test-shard-010');
+ fs.renameSync(tenth,renamed);assert.match(run().stderr,/Missing or unexpected shard artifact directories/);fs.renameSync(renamed,tenth);
+ const identityFile=path.join(tenth,'result.json'),identityResult=JSON.parse(fs.readFileSync(identityFile));
+ fs.writeFileSync(identityFile,JSON.stringify({...identityResult,shard:1}));assert.match(run().stderr,/directory\/shard identity differs/);fs.writeFileSync(identityFile,JSON.stringify(identityResult));
+ fs.mkdirSync(path.join(input,'go-test-shard-16'));assert.match(run().stderr,/Missing or unexpected shard artifact directories/);
+});
+
+test('legacy six-shard evidence cannot qualify under the sixteen-shard inventory', () => {
+ const {inventory}=fixture();
+ for(const patch of [{shards:6},{algorithm:'sha256-name-first32-mod6-v1'}]){
+  const changed={...inventory,...patch};const {digest,...body}=changed;changed.digest=sha(canonical(body));
+  assert.throws(()=>validateInventory(changed),/Unsupported shard inventory/);
+ }
 });

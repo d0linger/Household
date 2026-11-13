@@ -1,5 +1,5 @@
 'use strict';
-// Optional explicitly selected local controlled-HTTP campaign; CI uses the six unified shards.
+// Optional explicitly selected local controlled-HTTP campaign; CI uses the unified CI shards; this local diagnostic retains its own six-way partition.
 const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto');
 const {spawnSync}=require('node:child_process');
 const G=require('./fuel-browser-contracts.cjs');

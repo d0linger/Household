@@ -27,7 +27,7 @@ The snapshots were downloaded into ignored Household-local storage. No sibling c
 
 Keep the existing nine required GitHub check names and branch rules. The explicitly authorized release setup on 3 November adds PromotionSource and fuel-ocr-recovery for eleven main-promotion gates; see [the release contract](release-process.md). New unit checks feed the existing Coverage gate; PR dependency review feeds GODep; image scanning feeds container. The separate scheduled workflow is advisory to maintenance and is not a required PR context that could remain absent.
 
-Retain six independently isolated PostgreSQL integration shards, complete test-inventory validation, race detection, migration checksums, full-history Gitleaks, browser/axe/privacy checks, actual recovery tests, OCI blob/SBOM/provenance inspection and the Go standard-library/embedded frontend architecture. Explicit failures remain failures; a local pass does not erase an earlier failed hosted run.
+Retain16 independently isolated PostgreSQL integration shards with at most six running concurrently, complete test-inventory validation, race detection, migration checksums, full-history Gitleaks, browser/axe/privacy checks, actual recovery tests, OCI blob/SBOM/provenance inspection and the Go standard-library/embedded frontend architecture. Explicit failures remain failures; a local pass does not erase an earlier failed hosted run.
 
 ## Deliberately not copied
 

@@ -6,7 +6,7 @@ const {spawn, execFileSync} = require('node:child_process');
 const {StringDecoder} = require('node:string_decoder');
 const {controlledSourceInventory, validateControlledInventory} = require('./controlled-test-inventory.cjs');
 
-const SHARDS = 6;
+const SHARDS = 16;
 const MAX_LOG = 128 << 20;
 const MAX_LINE = 2 << 20;
 const NAME = /^(Test|Fuzz|Example)[\p{L}\p{N}_]*$/u;
@@ -72,14 +72,14 @@ function sourceSnapshot(root, expectedCommit) {
 }
 
 function makeInventory(discovery, source, go, controlled) {
-  const body = {schema: 1, algorithm: 'sha256-name-first32-mod6-v1', shards: SHARDS, settings: SETTINGS, source, go, controlled, packages: discovery.packages, tests: discovery.tests};
+  const body = {schema: 1, algorithm: 'sha256-name-first32-mod16-v1', shards: SHARDS, settings: SETTINGS, source, go, controlled, packages: discovery.packages, tests: discovery.tests};
   const result = {...body, digest: sha(canonical(body))};
   validateInventory(result);
   return result;
 }
 
 function validateInventory(inventory) {
-  if (!inventory || inventory.schema !== 1 || inventory.algorithm !== 'sha256-name-first32-mod6-v1' || inventory.shards !== SHARDS || canonical(inventory.settings) !== canonical(SETTINGS)) throw Error('Unsupported shard inventory/settings');
+  if (!inventory || inventory.schema !== 1 || inventory.algorithm !== 'sha256-name-first32-mod16-v1' || inventory.shards !== SHARDS || canonical(inventory.settings) !== canonical(SETTINGS)) throw Error('Unsupported shard inventory/settings');
   const {digest, ...body} = inventory;
   if (digest !== sha(canonical(body))) throw Error('Inventory digest mismatch');
   const source = inventory.source;
@@ -219,7 +219,7 @@ function runGo(args, env, prefix, consume) {
 async function main(args) {
   const [rawShard, rawCount, rawOutput, expectedCommit] = args;
   const shard = Number(rawShard);
-  if (args.length < 3 || args.length > 4 || !/^[0-5]$/.test(rawShard) || rawCount !== String(SHARDS) || !rawOutput) throw Error('Usage: run-go-test-shard.cjs INDEX 6 OUTPUT [EXPECTED_COMMIT]');
+  if (args.length < 3 || args.length > 4 || !/^(?:[0-9]|1[0-5])$/.test(rawShard) || rawCount !== String(SHARDS) || !rawOutput) throw Error('Usage: run-go-test-shard.cjs INDEX 16 OUTPUT [EXPECTED_COMMIT]');
   const root = process.cwd(), output = path.resolve(rawOutput), allowed = path.join(root, 'outputs') + path.sep;
   if (!output.startsWith(allowed)) throw Error('Shard output must be inside workspace outputs');
   if (process.env.HOUSEHOLD_REQUIRE_INTEGRATION !== '1' || !process.env.HOUSEHOLD_TEST_OWNER_URL || !process.env.HOUSEHOLD_TEST_APP_URL) throw Error('Required isolated integration authority is missing');

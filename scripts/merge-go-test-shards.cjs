@@ -28,7 +28,7 @@ function parseCoverage(text, inventory) {
 }
 
 function validateAndMerge(shards, expectedSource, expectedControlled) {
-  if (!Array.isArray(shards) || shards.length !== SHARDS) throw Error('Exactly six complete shard artifacts are required');
+  if (!Array.isArray(shards) || shards.length !== SHARDS) throw Error('Exactly sixteen complete shard artifacts are required');
   const seenShards = new Set(), executed = new Set(), inputs = [];
   let reference, definitions, merged;
   for (const artifact of shards) {
@@ -82,7 +82,7 @@ function main(args) {
   const root = process.cwd(), input = path.resolve(rawInput), output = path.resolve(rawOutput), allowed = path.join(root, 'outputs') + path.sep;
   if (!input.startsWith(allowed) || !output.startsWith(allowed)) throw Error('Evidence paths must be inside workspace outputs');
   const names = fs.readdirSync(input).sort();
-  const expectedNames = Array.from({length: SHARDS}, (_, index) => 'go-test-shard-' + index);
+  const expectedNames = Array.from({length: SHARDS}, (_, index) => 'go-test-shard-' + index).sort();
   if (canonical(names) !== canonical(expectedNames)) throw Error('Missing or unexpected shard artifact directories');
   const artifacts = names.map(name => {
     const directory = path.join(input, name), stat = fs.lstatSync(directory);
@@ -97,7 +97,7 @@ function main(args) {
   fs.mkdirSync(output, {recursive: true});
   fs.writeFileSync(path.join(output, 'coverage.out'), merged.profile, {flag: 'wx'});
   fs.writeFileSync(path.join(output, 'shards.json'), canonical(merged.summary) + '\n', {flag: 'wx'});
-  console.log(`Verified six shards and ${merged.summary.mainCount} exactly-once terminal passes; merged mode:set observation profile`);
+  console.log(`Verified sixteen shards and ${merged.summary.mainCount} exactly-once terminal passes; merged mode:set observation profile`);
 }
 
 module.exports = {parseCoverage, validateAndMerge};
