@@ -39,7 +39,7 @@ The first `main` branch is seeded from the pre-existing remote `dev` commit `430
 
 Dependabot version updates explicitly target `dev`. Existing dependency PRs keep that base. GitHub security updates always target the default branch; if one targets `main`, apply the fix on `dev` and promote through the same procedure rather than bypassing `PromotionSource`. Security alerts remain enabled. [GitHub Dependabot target-branch behavior](https://docs.github.com/en/code-security/reference/supply-chain-security/dependabot-options-reference#target-branch).
 
-The local working tree contains separately validated but unpublished application changes. The release setup was isolated from those changes; publishing this setup does not silently publish them. Remote setup commit `d07f6e8` has been reconciled into local `dev` through local merge `0cf1e3c`, preserving unrelated application bytes and the existing unpublished commit. That local merge/application work has not been pushed. [PR #11](https://github.com/d0linger/Household/pull/11) contains only the release setup and remains gated on actual hosted checks.
+The initial release setup was isolated from unpublished application changes. On 13 November 2026, the user explicitly authorized promotion of the completed application work. The reconciled history and reviewed application changes were pushed to `dev` in `49b55f1`; [PR #11](https://github.com/d0linger/Household/pull/11) now includes that application scope and subsequent CI corrections. Its description records Core35–40 migration, backup and rollback requirements. Merge and publication remain gated on the final exact-candidate hosted checks; earlier setup-only evidence is historical.
 
 ## Validation and rollback
 

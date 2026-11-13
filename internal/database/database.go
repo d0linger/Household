@@ -221,12 +221,20 @@ func Ready(ctx context.Context, pool *pgxpool.Pool) error {
 			return fmt.Errorf("incompatible schema %s", schema)
 		}
 	}
-	return inspectReadiness(ctx, pool, []readinessCheck{
-		{"SELECT fuel.overview_ready()", "inspect vehicle overview contract: %w", "incomplete vehicle overview contract", 1},
+	return inspectReadiness(ctx, pool, readinessChecks())
+}
+
+// Start deep inspectors first so their dependency scans do not form a serial tail.
+func readinessChecks() []readinessCheck {
+	return []readinessCheck{
 		{"SELECT fuel.module_ready()", "inspect vehicle module contract: %w", "incomplete vehicle module contract", 1},
+		{"SELECT pantry.prepared_capture_ready()", "inspect prepared food and scan contract: %w", "incomplete prepared food and scan contract", 1},
+		{"SELECT core.audit_ready()", "inspect audit contract: %w", "incomplete audit trigger contract", 1},
+		{"SELECT expenses.finance_ready(),core.finance_ready()", "inspect complete finance contract: %w", "incomplete finance authority or domain contract", 2},
+		{"SELECT core.financial_requirements_ready()", "inspect financial requirement foundation: %w", "incomplete financial requirement foundation", 1},
+		{"SELECT fuel.overview_ready()", "inspect vehicle overview contract: %w", "incomplete vehicle overview contract", 1},
 		{"SELECT shopping.repurchase_ready()", "inspect shopping history contract: %w", "incomplete shopping history contract", 1},
 		{"SELECT shopping.barcode_ready()", "inspect shopping barcode contract: %w", "incomplete shopping barcode contract", 1},
-		{"SELECT core.audit_ready()", "inspect audit contract: %w", "incomplete audit trigger contract", 1},
 		{"SELECT core.notification_foundation_ready()", "inspect notification foundation: %w", "incomplete notification foundation contract", 1},
 		{"SELECT core.crypto_envelopes_ready(),core.security_events_ready()", "inspect protected records and security events: %w", "incomplete encryption or security event contract", 2},
 		{"SELECT pantry.projection_ready()", "inspect stock projection contract: %w", "incomplete stock projection contract", 1},
@@ -237,7 +245,6 @@ func Ready(ctx context.Context, pool *pgxpool.Pool) error {
 		{"SELECT pantry.stock_batch_ready()", "inspect stock batch contract: %w", "incomplete stock batch contract", 1},
 		{"SELECT pantry.replenishment_ready()", "inspect replenishment contract: %w", "incomplete replenishment contract", 1},
 		{"SELECT pantry.waste_ready()", "inspect waste analysis contract: %w", "incomplete waste analysis contract", 1},
-		{"SELECT pantry.prepared_capture_ready()", "inspect prepared food and scan contract: %w", "incomplete prepared food and scan contract", 1},
 		{"SELECT pantry.notification_observations_ready()", "inspect pantry notification observations: %w", "incomplete pantry notification observation contract", 1},
 		{"SELECT fuel.notification_ready()", "inspect fuel notification sources: %w", "incomplete fuel notification source contract", 1},
 		{"SELECT core.notification_financial_ready()", "inspect financial notification authority: %w", "incomplete financial notification authority contract", 1},
@@ -250,15 +257,13 @@ func Ready(ctx context.Context, pool *pgxpool.Pool) error {
 		{"SELECT expenses.editing_ready()", "inspect expense editor integrity: %w", "incomplete expense editor integrity contract", 1},
 		{"SELECT core.expense_editing_ready()", "inspect durable expense operations: %w", "incomplete durable expense operation contract", 1},
 		{"SELECT expenses.financial_bindings_ready()", "inspect financial identity foundation: %w", "incomplete financial identity foundation", 1},
-		{"SELECT core.financial_requirements_ready()", "inspect financial requirement foundation: %w", "incomplete financial requirement foundation", 1},
-		{"SELECT expenses.finance_ready(),core.finance_ready()", "inspect complete finance contract: %w", "incomplete finance authority or domain contract", 2},
 		{"SELECT chores.expansion_ready()", "inspect chore workspace contract: %w", "incomplete chore workspace contract", 1},
 		{"SELECT meters.expansion_ready()", "inspect energy workspace contract: %w", "incomplete energy workspace contract", 1},
 		{"SELECT meters.notification_ready()", "inspect meter notification sources: %w", "incomplete meter notification source contract", 1},
 		{"SELECT documents.expansion_ready()", "inspect document workspace contract: %w", "incomplete document workspace contract", 1},
 		{"SELECT documents.notification_ready()", "inspect document notification sources: %w", "incomplete document notification source contract", 1},
 		{"SELECT mealplan.notification_ready()", "inspect meal notification sources: %w", "incomplete meal notification source contract", 1},
-	})
+	}
 }
 
 func ExpectedVersion(schema string) int {

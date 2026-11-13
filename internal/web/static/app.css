@@ -209,6 +209,19 @@ progress {accent-color:var(--accent)}
 }
 @media(max-width:760px) {
   .shopping-board {padding-inline:0}
+  /* Shopping mode keeps the first check within reach, even with a long active shopper name. */
+  body:has(.shopping-mode) main {padding-top:12px}
+  body:has(.shopping-mode) .workspace-navigation {margin-bottom:0}
+  .shopping-board.shopping-mode {padding-top:4px}
+  .shopping-mode>.section-heading {margin-bottom:4px}
+  .shopping-mode #shopping-progress {margin-bottom:4px}
+  .shopping-mode #shopping-progress-bar {margin-bottom:4px}
+  .shopping-mode #shopping-live-activity {margin-bottom:4px}
+  .shopping-mode .shopping-controls {margin-block:4px}
+  .shopping-mode #shopping-message {margin-block:4px}
+  .shopping-mode .shopping-group {margin-block:8px}
+  .shopping-mode .shopping-group h3 {padding-bottom:4px}
+  .shopping-mode .shopping-group .record-row {padding-block:10px}
   .page-heading {flex-wrap:wrap}
   .page-heading>.primary {margin-top:0}
 }

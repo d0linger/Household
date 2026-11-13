@@ -15,3 +15,15 @@ First production publication is a separate acceptance result: it remains pending
 
 - [ ] Resolve the existing application CI failure on the exact PR source, complete every hosted check and review the promotion diff before merging.
 - [ ] Observe an actual successful main production run and verify the published GHCR digest/tags. No physical deployment is part of this setup.
+
+## Application promotion — 13 November 2026
+
+- [x] Review the completed application scope and push it to `dev` under the user's explicit promotion instruction (`49b55f1` plus focused CI corrections).
+- [x] Update existing PR #11 with the application scope, Core35–40 upgrade/backup requirements and rollback limits.
+- [x] Resolve the Gosec package-loading failure without omitting packages or rules; exact `e2536df` push and PR GOSec jobs pass.
+- [x] Build and scan the next local candidate; defer activation until the final application source passes acceptance.
+- [ ] Complete the remaining browser correction and all final-head hosted checks.
+- [ ] Merge the exact accepted `dev` head into `main` and reconcile the merge back into `dev`.
+- [ ] Verify the resulting production image publication and final local development refresh.
+
+Earlier setup-only entries above describe their recorded historical state. Physical-device notification acceptance remains deferred; publication does not authorize remote deployment.
