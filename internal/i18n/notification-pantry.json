@@ -1,0 +1,12 @@
+{
+  "Eine Tageszusammenfassung verfällt spätestens um Mitternacht in dieser Zeitzone. Ruhezeiten verschieben sie nicht in den nächsten Tag.": "A daily summary expires no later than midnight in this time zone. Quiet hours do not carry it over into the next day.",
+  "Ungültiger Vorrats-Beobachtungsbereich": "Invalid pantry observation range",
+  "Erlaube Vorrat hier und unten bei jedem gewünschten Gerät ausdrücklich, bevor ein neuer Hinweis entsteht. Bestehende Geräte werden nicht automatisch freigegeben.": "Explicitly allow Pantry here and below on each chosen device before a new alert arises. Existing devices are not enabled automatically.",
+  "Neue Vorratshinweise werden gebündelt: höchstens eine allgemeine Nachricht pro Tag in der hier gewählten Zeitzone. Verspätete Hinweise bleiben nur bis zu ihrem ursprünglichen Ablauf gültig.": "New pantry alerts are grouped into at most one general notification per day in the time zone selected here. Delayed alerts remain valid only until their original expiry.",
+  "Wann du Vorratshinweise erhältst": "When you receive pantry alerts",
+  "Mindestbestand: Nach deiner Freigabe muss zuerst ein ausreichender Bestand erkannt werden. Erst ein danach erkannter niedriger Bestand löst einen Hinweis aus. Bereits bestehende Engpässe werden nicht nachgemeldet.": "Low stock: after you opt in, sufficient stock must first be observed. Only a later observed shortage triggers an alert. Existing shortages are not sent retroactively.",
+  "Die Bestände werden regelmäßig geprüft. Ein kurzer Engpass zwischen zwei Prüfungen kann unbemerkt bleiben.": "Stock is checked regularly. A brief shortage between checks can go unnoticed.",
+  "Ablaufdaten werden ab 09:00 Uhr in der Haushaltszeitzone berücksichtigt. Ein Verbrauchsdatum hat Vorrang vor dem Mindesthaltbarkeitsdatum. Verbrauchte oder entfernte Chargen werden nicht gemeldet; Hinweise nach dem Öffnen sind keine Ablaufalarme.": "Expiry dates are considered from 09:00 in the household time zone. A use-by date takes precedence over a best-before date. Consumed or removed batches are not reported; after-opening guidance is not an expiry alarm.",
+  "Vorrat und Ablaufdaten prüfen": "Review pantry stock and expiry dates",
+  "Für Gerätehinweise muss das Vorratsmodul aktiv sein.": "The Pantry module must be active to send device notifications."
+}

@@ -4,12 +4,13 @@ const path = require('node:path');
 const {createHash} = require('node:crypto');
 const {spawn, execFileSync} = require('node:child_process');
 const {StringDecoder} = require('node:string_decoder');
+const {controlledSourceInventory, validateControlledInventory} = require('./controlled-test-inventory.cjs');
 
 const SHARDS = 6;
 const MAX_LOG = 128 << 20;
 const MAX_LINE = 2 << 20;
 const NAME = /^(Test|Fuzz|Example)[\p{L}\p{N}_]*$/u;
-const SETTINGS = Object.freeze({race: true, parallelPackages: 1, tags: 'integration', shuffle: 'on', count: 1, timeout: '60m', coverpkg: './internal/...', covermode: 'atomic'});
+const SETTINGS = Object.freeze({race: true, parallelPackages: 1, tags: 'integration,testtools', shuffle: 'on', count: 1, timeout: '60m', coverpkg: './internal/...', covermode: 'atomic'});
 const sha = value => createHash('sha256').update(value).digest('hex');
 const canonical = value => JSON.stringify(value);
 const identity = test => test.package + '/' + test.name;
@@ -59,7 +60,7 @@ function sourceSnapshot(root, expectedCommit) {
       files.push({path: relative, sha256: sha(fs.readFileSync(filename))});
     }
   };
-  for (const relative of ['cmd', 'internal', 'go.mod', 'go.sum', 'scripts/run-go-test-shard.cjs', 'scripts/merge-go-test-shards.cjs', 'scripts/check-coverage.cjs', '.github/workflows/quality.yml']) visit(relative);
+  for (const relative of ['cmd', 'internal', 'go.mod', 'go.sum', 'scripts/run-go-test-shard.cjs', 'scripts/merge-go-test-shards.cjs', 'scripts/check-coverage.cjs', 'scripts/controlled-test-inventory.cjs', '.github/workflows/quality.yml']) visit(relative);
   files.sort((a, b) => a.path.localeCompare(b.path, 'en'));
   const commit = execFileSync('git', ['rev-parse', 'HEAD'], {cwd: root, encoding: 'utf8'}).trim();
   if (!/^[a-f0-9]{40,64}$/.test(commit) || (expectedCommit && commit !== expectedCommit)) throw Error('Checkout commit differs from expected source');
@@ -70,8 +71,8 @@ function sourceSnapshot(root, expectedCommit) {
   return {commit, dirty, module: moduleName, manifest: files, digest: sha(canonical(files))};
 }
 
-function makeInventory(discovery, source, go) {
-  const body = {schema: 1, algorithm: 'sha256-name-first32-mod6-v1', shards: SHARDS, settings: SETTINGS, source, go, packages: discovery.packages, tests: discovery.tests};
+function makeInventory(discovery, source, go, controlled) {
+  const body = {schema: 1, algorithm: 'sha256-name-first32-mod6-v1', shards: SHARDS, settings: SETTINGS, source, go, controlled, packages: discovery.packages, tests: discovery.tests};
   const result = {...body, digest: sha(canonical(body))};
   validateInventory(result);
   return result;
@@ -96,6 +97,7 @@ function validateInventory(inventory) {
     if (!test || !inventory.packages.includes(test.package) || !NAME.test(test.name) || test.shard !== shardFor(test.name) || seen.has(identity(test))) throw Error('Invalid test identity/assignment');
     seen.add(identity(test));
   }
+  validateControlledInventory(inventory.controlled, source, inventory.tests);
   if (new Set(inventory.tests.map(test => test.shard)).size !== SHARDS) throw Error('Empty shard assignment cannot pass');
 }
 
@@ -110,17 +112,17 @@ function discoveryEnvironment(env) {
 }
 
 function discoveryArguments() {
-  return ['test', '-race', '-list', '.', '-json', '-tags=integration', './...'];
+  return ['test', '-race', '-list', '.', '-json', '-tags=integration,testtools', './...'];
 }
 
 function validateBuildParity(discovery, execution) {
   const selection = args => ({race: args.includes('-race'), tags: args.filter(value => value.startsWith('-tags=')), packages: args.filter(value => value === './...')});
   const listed = selection(discovery), executed = selection(execution);
-  if (!listed.race || !executed.race || canonical(listed) !== canonical(executed) || canonical(listed.tags) !== canonical(['-tags=integration']) || listed.packages.length !== 1) throw Error('Discovery/execution race build selection differs');
+  if (!listed.race || !executed.race || canonical(listed) !== canonical(executed) || canonical(listed.tags) !== canonical(['-tags=integration,testtools']) || listed.packages.length !== 1) throw Error('Discovery/execution race build selection differs');
 }
 
 function executionArguments(inventory, shard, profile) {
-  return ['test', '-race', '-p', '1', '-tags=integration', '-shuffle=on', '-coverpkg=./internal/...', '-covermode=atomic', '-coverprofile=' + profile, './...', '-count=1', '-timeout=' + SETTINGS.timeout, '-json', '-run', exactPattern(inventory, shard)];
+  return ['test', '-race', '-p', '1', '-tags=integration,testtools', '-shuffle=on', '-coverpkg=./internal/...', '-covermode=atomic', '-coverprofile=' + profile, './...', '-count=1', '-timeout=' + SETTINGS.timeout, '-json', '-run', exactPattern(inventory, shard)];
 }
 
 class ExecutionLedger {
@@ -229,7 +231,7 @@ async function main(args) {
   const discoveryEnv = discoveryEnvironment(process.env);
   const listing = discoveryArguments();
   await runGo(listing, discoveryEnv, path.join(output, 'discovery'), event => discoveryEvents.push(event));
-  const inventory = makeInventory(discoverEvents(discoveryEvents), source, go);
+  const inventory = makeInventory(discoverEvents(discoveryEvents), source, go, controlledSourceInventory(root, source));
   fs.writeFileSync(path.join(output, 'inventory.json'), canonical(inventory) + '\n', {flag: 'wx'});
   const ledger = new ExecutionLedger(inventory, shard), profile = path.join(output, 'coverage.out');
   const command = executionArguments(inventory, shard, profile);

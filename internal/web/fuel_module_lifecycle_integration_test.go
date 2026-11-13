@@ -93,6 +93,19 @@ func TestFuelModuleNativeDisablePurgeEnableRetainsOnlyProtocolFences(t *testing.
 		t.Fatal("test requires an actually accepted typed fillup")
 	}
 	generation := oldCommand.Generation
+	plan, _, _ := fuelModuleNativeApply(t, f, "maintenance.save", store.String(vehicle["id"]), "", 0,
+		store.Record{"title": "SYNTHETIC lifecycle observation", "due_on": "2099-01-01", "active": true}, nil)
+	for range 2 {
+		if _, err := f.app.Store.StageFuelNotifications(f.ctx, 50); err != nil {
+			t.Fatal("actual lifecycle source scan", err)
+		}
+	}
+	var observed bool
+	if err := f.pool.QueryRow(f.ctx, `SELECT EXISTS(SELECT 1 FROM fuel.notification_maintenance_observations
+ WHERE household_id=$1 AND plan_id=$2 AND module_generation=$3 AND state='ineligible' AND episode=0
+ AND detected_at IS NULL AND consent_cutoff IS NULL)`, f.identity.HouseholdID, plan.RecordID, generation).Scan(&observed); err != nil || !observed {
+		t.Fatal("actual scanner did not record the unassigned date-only plan without inventing an alert", observed, err)
+	}
 	catalog := fuelModuleLifecycleCatalog(t, f)
 	retained, retainedCounts := fuelModuleLifecycleRetained(t, f, generation)
 	if retainedCounts[0] < 4 || retainedCounts[1] < 4 || retainedCounts[2] != 1 {
@@ -101,6 +114,14 @@ func TestFuelModuleNativeDisablePurgeEnableRetainsOnlyProtocolFences(t *testing.
 	state := f.app.Store.States()["fuel"]
 	if err := f.app.Store.SetModule(f.ctx, f.identity, "fuel", false, state.Version, value.UUID()); err != nil {
 		t.Fatal("normal public module disable", err)
+	}
+	if _, err := f.app.Store.StageFuelNotifications(f.ctx, 50); err != nil {
+		t.Fatal("disabled module scan", err)
+	}
+	if err := f.pool.QueryRow(f.ctx, `SELECT EXISTS(SELECT 1 FROM fuel.notification_maintenance_observations
+ WHERE household_id=$1 AND plan_id=$2 AND module_generation=$3 AND state='ineligible' AND episode=0)`,
+		f.identity.HouseholdID, plan.RecordID, generation).Scan(&observed); err != nil || !observed {
+		t.Fatal("deactivation discarded or advanced the retained observation", observed, err)
 	}
 	backup, request := value.UUID(), value.UUID()
 	// Synthetic VERIFIED-BACKUP-ELIGIBILITY metadata only. No backup or restore
@@ -132,7 +153,8 @@ func TestFuelModuleNativeDisablePurgeEnableRetainsOnlyProtocolFences(t *testing.
  (SELECT count(*) FROM fuel.odometer_observations)+(SELECT count(*) FROM fuel.charging_sessions)+(SELECT count(*) FROM fuel.trips)+
  (SELECT count(*) FROM fuel.vehicle_costs)+(SELECT count(*) FROM fuel.maintenance_plans)+(SELECT count(*) FROM fuel.maintenance_events)+
  (SELECT count(*) FROM fuel.integration_bindings)+(SELECT count(*) FROM fuel.import_jobs)+(SELECT count(*) FROM fuel.import_rows)+
- (SELECT count(*) FROM fuel.capture_jobs)+(SELECT count(*) FROM fuel.user_settings),
+ (SELECT count(*) FROM fuel.capture_jobs)+(SELECT count(*) FROM fuel.user_settings)+
+ (SELECT count(*) FROM fuel.notification_maintenance_observations),
  s.data_generation,s.state,p.state FROM core.module_states s JOIN core.module_purge_requests p ON p.id=$3
  WHERE s.household_id=$1 AND s.module_id='fuel'`, f.identity.HouseholdID, generation, request).
 		Scan(&payloads, &businessFacts, &currentGeneration, &moduleState, &purgeState)
@@ -151,6 +173,16 @@ func TestFuelModuleNativeDisablePurgeEnableRetainsOnlyProtocolFences(t *testing.
 	state = f.app.Store.States()["fuel"]
 	if err := f.app.Store.SetModule(f.ctx, f.identity, "fuel", true, state.Version, value.UUID()); err != nil {
 		t.Fatal("normal public module enable", err)
+	}
+	for range 2 {
+		if _, err := f.app.Store.StageFuelNotifications(f.ctx, 50); err != nil {
+			t.Fatal("new-generation source scan", err)
+		}
+	}
+	var oldObservations int
+	if err := f.pool.QueryRow(f.ctx, `SELECT count(*) FROM fuel.notification_maintenance_observations
+ WHERE household_id=$1`, f.identity.HouseholdID).Scan(&oldObservations); err != nil || oldObservations != 0 {
+		t.Fatal("new generation revived a purged maintenance observation", oldObservations, err)
 	}
 	beforeReplay := fuelModuleWriteSnapshot(t, f)
 	if result, err := f.app.Store.FuelModuleExecute(f.ctx, f.identity, oldKey, value.UUID(), oldCommand); err == nil || result.OperationID != "" {

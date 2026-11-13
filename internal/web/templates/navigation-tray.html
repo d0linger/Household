@@ -1,0 +1,12 @@
+{{define "navigation-tray"}}
+<dialog id="more-dialog" class="navigation-tray" aria-labelledby="more-dialog-title">
+  <div class="tray-heading">
+    <div><h2 id="more-dialog-title" class="sr-only">{{t "Navigation"}}</h2><p class="tray-account">{{.User.DisplayName}}</p><p class="tray-role">{{if eq .User.Role "admin"}}{{t "Administrator"}}{{else if eq .User.Role "editor"}}{{t "Bearbeiter"}}{{else}}{{t "Leser"}}{{end}}</p></div>
+    <button type="button" class="tray-close" data-close autofocus aria-label="{{t "Schließen"}}"><svg aria-hidden="true"><use href="{{icon .Asset "x"}}"/></svg></button>
+  </div>
+  <div class="tray-content">
+    <section class="tray-group" aria-labelledby="tray-settings-heading"><h3 id="tray-settings-heading">{{t "Einstellungen"}}</h3>{{template "settings-nav" .}}</section>
+  </div>
+  <div class="tray-session"><h3>{{t "Sitzung"}}</h3><button type="button" id="install" hidden><svg aria-hidden="true"><use href="{{icon .Asset "download"}}"/></svg>{{t "App installieren"}}</button><form method="post" action="/logout">{{template "csrf" .}}<button><svg aria-hidden="true"><use href="{{icon .Asset "log-out"}}"/></svg>{{t "Abmelden"}}</button></form></div>
+</dialog>
+{{end}}

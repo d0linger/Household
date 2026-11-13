@@ -26,12 +26,10 @@ func counter(ctx context.Context, tx pgx.Tx, scope, subject string, limit int) (
 }
 
 func (s *Service) reserveSend(ctx context.Context, tx pgx.Tx, user, host string) (time.Time, error) {
-	var locked bool
-	if err := tx.QueryRow(ctx, "SELECT pg_try_advisory_xact_lock(hashtextextended($1,0))", "webpush-cooldown-v1/"+host).Scan(&locked); err != nil {
+	// Brief sender contention is not a provider cooldown. Wait within the
+	// existing bounded send context before reading the actual cooldown.
+	if _, err := tx.Exec(ctx, "SELECT pg_advisory_xact_lock(hashtextextended($1,0))", "webpush-cooldown-v1/"+host); err != nil {
 		return time.Time{}, err
-	}
-	if !locked {
-		return time.Now().Add(time.Minute), ErrLimited
 	}
 	var cooldown time.Time
 	subject := sha256.Sum256([]byte("webpush-host-v1/" + host))
@@ -68,22 +66,23 @@ func (s *Service) Housekeeping(ctx context.Context, limit int) error {
 		return err
 	}
 	_, err = tx.Exec(ctx, `DELETE FROM core.push_subscriptions WHERE id IN(
- SELECT id FROM core.push_subscriptions WHERE encryption_key_id=$1
+ SELECT id FROM core.push_subscriptions WHERE ((encryption_format=2 AND encryption_key_id=ANY($1::text[]))
+ OR (encryption_format=1 AND encryption_key_id=$3 AND $3<>''))
  AND(created_at<clock_timestamp()-interval '30 days' OR disabled_at IS NOT NULL)
- ORDER BY created_at,id LIMIT $2 FOR UPDATE SKIP LOCKED)`, s.encryptionID, limit)
+ ORDER BY created_at,id LIMIT $2 FOR UPDATE SKIP LOCKED)`, s.keys.ReadableIDs(), limit, s.keys.LegacyID())
 	if err != nil {
 		return err
 	}
 	rows, err := tx.Query(ctx, `SELECT id::text,household_id::text,user_id::text,endpoint_hash,encrypted_subscription,
- encryption_key_id,disabled_at,created_at FROM core.push_subscriptions WHERE disabled_at IS NULL
- AND encryption_key_id=$1 AND octet_length(encrypted_subscription)<=$2 ORDER BY created_at,id LIMIT $3 FOR UPDATE SKIP LOCKED`, s.encryptionID, maxCipher, limit)
+ encryption_key_id,encryption_format,disabled_at,created_at FROM core.push_subscriptions WHERE disabled_at IS NULL
+ AND octet_length(encrypted_subscription)<=$1 ORDER BY created_at,id LIMIT $2 FOR UPDATE SKIP LOCKED`, maxCipher, limit)
 	if err != nil {
 		return err
 	}
 	candidates := []storedSubscription{}
 	for rows.Next() {
 		var row storedSubscription
-		if err = rows.Scan(&row.id, &row.household, &row.user, &row.hash, &row.cipher, &row.keyID, &row.disabled, &row.created); err != nil {
+		if err = rows.Scan(&row.id, &row.household, &row.user, &row.hash, &row.cipher, &row.keyID, &row.format, &row.disabled, &row.created); err != nil {
 			rows.Close()
 			return err
 		}
@@ -96,8 +95,11 @@ func (s *Service) Housekeeping(ctx context.Context, limit int) error {
 	}
 	for _, row := range candidates {
 		data, decodeErr := s.open(row)
+		if decodeErr != nil {
+			return decodeErr
+		}
 		current := false
-		if decodeErr == nil && data.ExpiresAt.After(time.Now()) && data.VAPIDKeyID == s.vapidID {
+		if data.ExpiresAt.After(time.Now()) && data.VAPIDKeyID == s.vapidID {
 			current, err = currentEnvelope(ctx, tx, data)
 			if err != nil {
 				return err

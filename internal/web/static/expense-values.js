@@ -14,7 +14,7 @@ const HouseholdExpenseValues = (() => {
   function minorText(raw) {
     if (typeof raw !== 'string' || !/^-?\d{1,18}$/.test(raw)) return null;
     const value = BigInt(raw), positive = value < 0n ? -value : value;
-    return (value < 0n ? '-' : '') + (positive / 100n).toString() + ',' + (positive % 100n).toString().padStart(2, '0');
+    return (value < 0n ? '-' : '') + (positive / 100n).toString() + (globalThis.HouseholdI18n?.language() === 'en' ? '.' : ',') + (positive % 100n).toString().padStart(2, '0');
   }
   function totals(amount, amounts, kind) {
     const total = euroMinor(amount), lines = amounts.map(euroMinor);

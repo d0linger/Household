@@ -10,13 +10,13 @@ concurrency:
   group: browser-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 jobs:
-  browser:
-    name: BrowserAccessibility
+  baseline:
+    name: Browser baseline
     runs-on: ubuntu-latest
     timeout-minutes: 20
     services:
       postgres:
-        image: postgres:18-alpine@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873
+        image: postgres:18-alpine@sha256:10a5c69a83035ab5239f5620d708520e8b28f5aa1f2b20143e6024532edadfb5
         env: {POSTGRES_DB: household_test, POSTGRES_PASSWORD: ci-database-only}
         ports: ['5432:5432']
         options: --health-cmd="pg_isready -U postgres -d household_test" --health-interval=3s --health-timeout=3s --health-retries=15
@@ -24,11 +24,11 @@ jobs:
       HOUSEHOLD_TEST_OWNER_URL: postgres://household_owner:ci-owner-only@localhost:5432/household_test?sslmode=disable
       HOUSEHOLD_TEST_APP_URL: postgres://household_app:ci-app-only@localhost:5432/household_test?sslmode=disable
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: {persist-credentials: false}
-      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with: {go-version-file: go.mod, cache: true}
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with: {node-version: '24', cache: npm}
       - name: Install and verify PDF and OCR test prerequisites
         run: |
@@ -81,7 +81,7 @@ jobs:
           done
           curl --fail --silent http://localhost:8101/health/ready >/dev/null
           npm run test:browser
-      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: browser-evidence
@@ -116,3 +116,107 @@ jobs:
             outputs/fuel-overview-review
             outputs/qa/a11y-hardening.json
           retention-days: 14
+
+  notifications:
+    name: Notification UI (${{ matrix.suite }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        suite: [settings, fuel, finance, meters, documents, mealplan]
+    services:
+      postgres:
+        image: postgres:18-alpine@sha256:10a5c69a83035ab5239f5620d708520e8b28f5aa1f2b20143e6024532edadfb5
+        env: {POSTGRES_DB: household_test, POSTGRES_PASSWORD: ci-database-only}
+        ports: ['127.0.0.1:55434:5432']
+        options: >-
+          --cpus=2 --memory=1g --memory-swap=1g --pids-limit=128
+          --label com.household.notification-browser-ci=${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.suite }}
+          --health-cmd="pg_isready -U postgres -d household_test"
+          --health-interval=3s --health-timeout=3s --health-retries=15
+    env:
+      GOMAXPROCS: '1'
+      GOMEMLIMIT: 512MiB
+      HOUSEHOLD_TEST_OWNER_URL: postgres://household_owner:ci-owner-only@localhost:55434/household_test?sslmode=disable
+      HOUSEHOLD_TEST_APP_URL: postgres://household_app:ci-app-only@localhost:55434/household_test?sslmode=disable
+      HOUSEHOLD_NOTIFICATION_BROWSER_SUITE: ${{ matrix.suite }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: {persist-credentials: false}
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with: {go-version-file: go.mod, cache: true}
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with: {node-version: '24', cache: npm}
+      - name: Install browser and document prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends poppler-utils fonts-liberation
+          pdftotext -v
+          pdfinfo -v
+          npm ci --ignore-scripts
+          npx playwright install --with-deps chromium
+          npm audit --audit-level=high
+      - name: Initialize isolated notification roles
+        env: {PGPASSWORD: ci-database-only}
+        run: |
+          psql -h localhost -p 55434 -U postgres -d household_test -v ON_ERROR_STOP=1 <<'SQL'
+          CREATE ROLE household_owner LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE PASSWORD 'ci-owner-only';
+          CREATE ROLE household_app LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE PASSWORD 'ci-app-only';
+          ALTER DATABASE household_test OWNER TO household_owner;
+          REVOKE CREATE ON SCHEMA public FROM PUBLIC;
+          SQL
+      - name: Build production application for notification browser checks
+        run: go build -p 1 -o bin/household ./cmd/household
+      - name: Run one isolated notification browser acceptance
+        env:
+          HOUSEHOLD_NOTIFICATION_BROWSER_PG_ID: ${{ job.services.postgres.id }}
+          HOUSEHOLD_ENV: development
+          HOUSEHOLD_ORIGIN: http://localhost:8101
+          HOUSEHOLD_BROWSER_URL: http://localhost:8101
+          HOUSEHOLD_LISTEN: 127.0.0.1:8101
+          HOUSEHOLD_DATABASE_URL: postgres://household_app:ci-app-only@localhost:55434/household_test?sslmode=disable
+          HOUSEHOLD_CSRF_SECRET: ci-csrf-only-012345678901234567890123456789
+          HOUSEHOLD_ENCRYPTION_KEY: ci-encryption-only-012345678901234567890123
+          HOUSEHOLD_RATE_SECRET: ci-rate-only-012345678901234567890123456789
+          HOUSEHOLD_ADMIN_USERNAME: bootstrap
+          HOUSEHOLD_ADMIN_PASSWORD: Bootstrap testing 1234
+          HOUSEHOLD_UPLOAD_DIR: .local/ci-notification-uploads
+          HOUSEHOLD_WEB_PUSH_ENABLED: 'false'
+          HOUSEHOLD_OCR_ENABLED: 'false'
+          HOUSEHOLD_OFF_ENABLED: 'false'
+        run: |
+          umask 077
+          HOUSEHOLD_DATABASE_URL="$HOUSEHOLD_TEST_OWNER_URL" go run -tags=testtools ./cmd/test-fixture
+          mkdir -p .local
+          ./bin/household serve > .local/ci-notification-server.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true; wait "$server_pid" 2>/dev/null || true' EXIT
+          for _ in $(seq 1 60); do
+            if curl --fail --silent http://localhost:8101/health/ready >/dev/null; then break; fi
+            sleep 1
+          done
+          curl --fail --silent http://localhost:8101/health/ready >/dev/null
+          node scripts/run-notification-browser.cjs "$HOUSEHOLD_NOTIFICATION_BROWSER_SUITE"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: notification-browser-${{ matrix.suite }}
+          path: outputs/notification-browser/${{ matrix.suite }}
+          retention-days: 14
+          if-no-files-found: error
+  browser:
+    name: BrowserAccessibility
+    needs: [baseline, notifications]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Require baseline and every notification browser result
+        env:
+          BASELINE_RESULT: ${{ needs.baseline.result }}
+          NOTIFICATION_RESULT: ${{ needs.notifications.result }}
+        run: |
+          test "$BASELINE_RESULT" = success
+          test "$NOTIFICATION_RESULT" = success

@@ -1,0 +1,7 @@
+{
+  "Bestehende Geräte werden nicht automatisch für Einkauf freigegeben. Erlaube die Kategorie unten bei jedem gewünschten Gerät ausdrücklich; die Push-Freigabe der jeweiligen Liste bleibt zusätzlich erforderlich.": "Existing devices are not automatically enabled for Shopping. Explicitly allow the category below on each chosen device; each list still needs its own push permission.",
+  "Listenfreigaben und Stummschaltungen prüfen": "Review list permissions and muted lists",
+  "Für Gerätehinweise muss das Einkaufsmodul aktiv sein.": "The Shopping module must be active to send device notifications.",
+  "Diese Auswahl steuert deine Einkaufs-Gerätehinweise jetzt dauerhaft. Beim Ausschalten bleibt der frühere Listenversand aus; In-App-Hinweise und Listenfreigaben bleiben unabhängig davon erhalten.": "This selection now permanently controls your Shopping device notifications. Turning it off keeps the previous list delivery off; in-app notifications and list permissions remain independent.",
+  "Mit dem ersten Speichern ersetzt diese Auswahl dauerhaft die bisherigen Gerätehinweise für Einkaufslisten. Das gilt auch, wenn du die Kategorie ausgeschaltet speicherst.": "The first save permanently replaces previous shopping-list device notifications with this selection. This also applies when you save the category as off."
+}

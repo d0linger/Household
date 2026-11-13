@@ -1,0 +1,15 @@
+# Optional: use after compose.yaml, compose.keyring.yaml and compose.backup.yaml.
+# Backup/restore must receive exactly the same ring as the application/migrator.
+services:
+  backup:
+    environment:
+      HOUSEHOLD_ENCRYPTION_KEY: !reset null
+      HOUSEHOLD_ENCRYPTION_KEY_FILE: !reset null
+      HOUSEHOLD_ENCRYPTION_KEYRING: !reset null
+      HOUSEHOLD_ENCRYPTION_KEYRING_FILE: /run/secrets/encryption_key
+    secrets:
+      - source: encryption_keyring
+        target: encryption_key
+secrets:
+  encryption_keyring:
+    file: ${HOUSEHOLD_ENCRYPTION_KEYRING_PATH:?Set the private reviewed encryption keyring file path}

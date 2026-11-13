@@ -1,0 +1,12 @@
+{
+  "Neue verwaltete Serien verwenden Zusammenfassungen. Bestehende Einzel-Erinnerungen bleiben im Altmodus erhalten. Zusätzliche Gerätehinweise aktivierst du getrennt für dein Konto und deine Geräte.": "New managed series use summaries. Existing individual reminders remain in legacy mode. Additional device notifications require separate permission for your account and devices.",
+  "Diese Zeitzone und Ruhezeiten gelten auch für Gerätehinweise. Die Tagesübersicht folgt bei Zeitumstellungen der lokalen Uhrzeit. Im Modus Aus werden keine Aufgabenhinweise gesendet.": "This time zone and quiet hours also apply to device notifications. The daily summary follows local time across daylight-saving changes. Off mode stops all task notifications.",
+  "Gerätehinweise für Aufgaben verwalten": "Manage task notifications on devices",
+  "Dein Aufgabenmodus, deine Zeitzone, Ruhezeiten und Eskalationsfreigaben bleiben maßgeblich. Im Modus Aus werden keine Aufgabenhinweise gesendet.": "Your task mode, time zone, quiet hours and escalation permissions still apply. Off mode stops all task notifications.",
+  "Einzelne Fälligkeiten kannst du hier zusätzlich zur Tagesübersicht aktivieren. Gemeldet werden deine aktuell zugewiesenen oder übernommenen Aufgaben.": "You can enable individual due reminders here in addition to the daily summary. They cover tasks currently assigned to or claimed by you.",
+  "Für Gerätehinweise muss das Aufgabenmodul aktiv sein.": "The Tasks module must be active to send device notifications.",
+  "Wähle dafür in den Aufgabeneinstellungen den Modus Persönliche Zusammenfassung.": "Select Personal summary mode in your task settings to use this category.",
+  "Du erhältst nur ausdrücklich an dich gerichtete Eskalationen, denen du in den Aufgabeneinstellungen zugestimmt hast.": "You only receive escalations explicitly addressed to you that you have agreed to receive in your task settings.",
+  "Geräte-Erinnerungen unterstützen höchstens 500 Personen je Haushalt": "Device reminders support at most 500 people per household",
+  "Ungültige Aufgaben-Erinnerungsstufe": "Invalid task reminder stage"
+}

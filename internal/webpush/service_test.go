@@ -35,7 +35,7 @@ func TestPushConfigurationAndGeneratedKeyConsistency(t *testing.T) {
 	if err != nil || base64.RawURLEncoding.EncodeToString(key.PublicKey().Bytes()) != public {
 		t.Fatal("generated key pair differs")
 	}
-	cfg := config.Config{WebPushEnabled: true, WebPushPrivateKey: private, WebPushContact: "mailto:operator@example.org"}
+	cfg := config.Config{EncryptionKey: strings.Repeat("e", 32), WebPushEnabled: true, WebPushPrivateKey: private, WebPushContact: "mailto:operator@example.org"}
 	s, err := New(nil, nil, nil, cfg, nil)
 	if err != nil {
 		t.Fatal("valid setup refused")
@@ -59,6 +59,7 @@ func TestPushConfigurationAndGeneratedKeyConsistency(t *testing.T) {
 		{"wrong port", config.Config{WebPushContact: "https://example.org:8443/contact"}, "", true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			tc.cfg.EncryptionKey = strings.Repeat("e", 32)
 			candidate, err := New(nil, nil, nil, tc.cfg, nil)
 			if tc.invalid {
 				if err == nil {
@@ -74,6 +75,9 @@ func TestPushConfigurationAndGeneratedKeyConsistency(t *testing.T) {
 				t.Fatal("incorrect setup state")
 			}
 		})
+	}
+	if candidate, err := New(nil, nil, nil, config.Config{}, nil); err == nil || candidate != nil {
+		t.Fatal("missing encryption reader accepted")
 	}
 }
 

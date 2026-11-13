@@ -3,6 +3,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -59,6 +60,21 @@ func run(log *slog.Logger) error {
 	if command == "push-keygen" {
 		return runPushKeygen(os.Args[2:])
 	}
+	if command == "encryption-keygen" {
+		return runEncryptionKeygen(os.Args[2:])
+	}
+	var cryptoBatch int
+	var retirementID string
+	var argumentErr error
+	switch command {
+	case "encryption-reencrypt":
+		cryptoBatch, argumentErr = encryptionBatch(os.Args[2:])
+	case "encryption-retirement-check":
+		retirementID, argumentErr = encryptionRetirementID(os.Args[2:])
+	}
+	if argumentErr != nil {
+		return argumentErr
+	}
 	if command == "healthcheck" {
 		target, err := healthURL(os.Getenv("HOUSEHOLD_LISTEN"))
 		if err != nil {
@@ -93,6 +109,22 @@ func run(log *slog.Logger) error {
 	}
 	defer pool.Close()
 	switch command {
+	case "encryption-reencrypt":
+		rotationCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+		defer cancel()
+		report, err := maintenance.Reencrypt(rotationCtx, pool, cfg, cryptoBatch)
+		if err != nil {
+			return err
+		}
+		return json.NewEncoder(os.Stdout).Encode(report)
+	case "encryption-retirement-check":
+		checkCtx, cancel := context.WithTimeout(ctx, 5*time.Minute)
+		defer cancel()
+		report, err := maintenance.CheckKeyRetirement(checkCtx, pool, cfg, retirementID)
+		if err != nil {
+			return err
+		}
+		return json.NewEncoder(os.Stdout).Encode(report)
 	case "pantry-check", "pantry-rebuild":
 		checkCtx, cancel := context.WithTimeout(ctx, 5*time.Minute)
 		defer cancel()
@@ -174,7 +206,7 @@ func run(log *slog.Logger) error {
 		return a.RecoverPassword(ctx, os.Args[2], cfg.AdminPassword, len(os.Args) == 4)
 	}
 	if command != "serve" {
-		return errors.New("unknown command; use serve, migrate, healthcheck, recover, version, or push-keygen")
+		return errors.New("unknown command; use serve, migrate, healthcheck, recover, version, push-keygen, encryption-keygen, encryption-reencrypt or encryption-retirement-check")
 	}
 	if err = database.Ready(ctx, pool); err != nil {
 		return err

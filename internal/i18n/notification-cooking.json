@@ -1,0 +1,17 @@
+{
+  "Ton ausschalten": "Turn sound off",
+  "Ton aktivieren und testen": "Enable and test sound",
+  "Ton ist für diese sichtbare Sitzung aktiviert. Beim Verlassen wird er ausgeschaltet.": "Sound is enabled for this visible session. Leaving it turns sound off.",
+  "Ton ist nicht verfügbar. Prüfe die Browserfreigabe; der sichtbare Timer bleibt nutzbar.": "Sound is unavailable. Check your browser permission; the visible timer still works.",
+  "Ton ist aus. Aktiviere ihn nur, wenn du hier einen kurzen Hinweis hören möchtest.": "Sound is off. Enable it if you want a short alert here.",
+  "Timer „%s“ ist abgelaufen.": "Timer “%s” has expired.",
+  "Die Anmeldung oder Gerätefreigabe wurde geändert. Öffne die Kochsitzung nach der Anmeldung erneut.": "Your sign-in or device permission changed. Reopen the cooking session after signing in.",
+  "Offline: Bestätigte Timer laufen anhand ihres gespeicherten Endes weiter. Neue oder geänderte Timer sind erst nach Serverbestätigung gespeichert.": "Offline: confirmed timers continue using their saved deadline. New or changed timers are only saved after server confirmation.",
+  "Verbindung wieder verfügbar. Lade den gespeicherten Stand, bevor du unbestätigte Änderungen wiederholst.": "Connection restored. Load the saved state before retrying unconfirmed changes.",
+  "Bestätigte Timer bleiben beim Neuladen erhalten. Gerätehinweise benötigen deine Freigabe vor dem Start. Bei geschlossenem oder angehaltenem Browser ist kein Alarm garantiert.": "Confirmed timers survive a reload. Device notifications need your permission before the timer starts. Alerts are not guaranteed when the browser is closed or suspended.",
+  "Timer-Geräte auswählen": "Choose timer devices",
+  "Ein kurzer Ton gilt nur für diese sichtbare Sitzung. Hinweise, die mehr als eine Minute verspätet sind, lösen keinen neuen Ton aus. Für einen zwingend pünktlichen Alarm nutze zusätzlich den Gerätewecker.": "A short tone only applies to this visible session. Alerts more than a minute late do not trigger a new tone. If an alarm must ring on time, also use your device's alarm.",
+  "Neue oder geänderte Timer sind erst nach Serverbestätigung gespeichert.": "New or changed timers are only saved after server confirmation.",
+  "Erlaube Kochtimer hier und bei den gewünschten Geräten vor dem Timerstart. Spätere Freigaben holen laufende Timer nicht nach; starte sie bei Bedarf ausdrücklich neu.": "Allow cooking timers here and on your chosen devices before starting a timer. Later permission does not catch up running timers; deliberately restart them if needed.",
+  "Nur deine eigenen laufenden Kochtimer werden gemeldet. Pause, Neustart, Bestätigung oder Sitzungsende entwerten alte Hinweise. Ein Push ist kein garantierter Wecker.": "Only your own running cooking timers are reported. Pausing, restarting, acknowledging or ending a session invalidates old alerts. Push is not a guaranteed alarm."
+}

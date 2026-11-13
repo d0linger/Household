@@ -6,9 +6,12 @@
 - [x] Implement same-revision production gates and exact-candidate GHCR promotion.
 - [x] Keep dependency updates on dev and restrict production PRs to dev → main.
 - [x] Complete 362 Node checks, including 44 release guard/policy/shell checks; workflow policy, Actionlint and source secret scan pass. Staged hygiene is checked immediately before commit.
-- [ ] Publish the reviewed setup to dev without force-pushing.
+- [x] Publish setup commit `d07f6e8cf43b2bf5876a19b349cefc1f0f6f82fe` to dev without force-pushing.
 - [x] Create main from the existing remote baseline, select it as default, and verify eleven required checks with no bypass actors and merge commits only.
-- [ ] Open the dev → main setup PR and record its actual hosted status.
-- [ ] Reconcile the new workflow changes with the local working tree safely.
+- [x] Open [dev → main PR #11](https://github.com/d0linger/Household/pull/11) and inspect actual hosted results: PromotionSource/container pass; the dev BrowserAccessibility run fails on the existing catalog/mobile-navigation assertion. Remaining long-running checks were still running/queued at the recorded inspection.
+- [x] Reconcile workflow history into local dev (`0cf1e3c`), preserve all unrelated existing file bytes and unpublished application edits, and pass 411 Node tests plus workflow policy/Actionlint on the combined local source. The local merge was not pushed.
 
 First production publication is a separate acceptance result: it remains pending until the setup PR and all required hosted checks pass. No registry publication or remote deployment is claimed merely because this configuration exists.
+
+- [ ] Resolve the existing application CI failure on the exact PR source, complete every hosted check and review the promotion diff before merging.
+- [ ] Observe an actual successful main production run and verify the published GHCR digest/tags. No physical deployment is part of this setup.

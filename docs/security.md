@@ -10,6 +10,8 @@ Login rechecks the verified password under a user lock and verifies TOTP/recover
 
 TOTP secrets are encrypted with AES-GCM using an independent deployment key. Accepted counters cannot be replayed. Recovery codes are random, hashed, single-use, and displayed once. Enrollment requires a session created within ten minutes and transactional session validation. User administration protects the final active administrator and revokes affected sessions after role/status changes.
 
+Passkeys validate the configured origin and hostname; their private keys remain on authenticators. Household encrypts stored credential metadata and transient passkey challenges. Core40 writes purpose/account/record-bound AES-GCM envelopes, with household binding for push subscriptions, while retaining explicitly configured legacy readers. A missing read key is an operational failure, not permission to discard encrypted records or disable valid connections. The [key rotation and recovery runbook](operations.md#encryption-keys-and-rotation) defines reader retention, snapshot-bound escrow and the incompatible-schema rollback boundary.
+
 | Action | Reader | Editor | Admin |
 |---|---|---|---|
 | Read active modules/files/search | Yes | Yes | Yes |
@@ -36,9 +38,21 @@ The runtime role has scoped DML privileges; it cannot migrate, truncate, alter s
 
 Audit retains actor/resource identifiers, server-generated request IDs, actions, outcomes and field changes. Explicitly permitted domain names, dates, quantities and amounts remain visible; credentials, document titles, OCR/import content and private free text are masked before insertion. User text in permitted names can still contain personal information. Unknown fields default to masked values. Runtime history is append-only; the database owner remains trusted and can alter it. No automatic audit deletion is enabled. Establish an operator retention policy before collecting long-lived history; module purge retains its audit trail and encrypted backups. See [audit-trail.md](audit-trail.md). External security reporting contacts are not invented; until a repository/contact is configured, report sensitive findings directly to your installation operator.
 
+## Personal security events and notification privacy
+
+Real password changes, TOTP enable/disable, recovery-code regeneration/use, passkey addition/removal, session revocation, administrative account changes and device authorization create a personal inbox event atomically with the change. Only the affected account receives it, even when an administrator performed the change. Anonymous login failures, no-op updates, passkey renaming, routine device refresh and ordinary logout do not produce these messages. The closed event reference contains no passkey label, address, token or private free text.
+
+External Security notifications require explicit account and device consent, current registering-session authority and quiet-hours checks. Their delivery freshness is one hour; enabling consent or registering a later device never replays an earlier event. Dismissing the source prevents a future authorized send. Password recovery or account changes can revoke every current session: the personal inbox event remains available after a legitimate later login, while revoked push sessions stay rejected. This channel is not an independent account-recovery mechanism or a guaranteed emergency alert.
+
+Push uses generic localized lock-screen text and encrypted transport payloads; document titles, filenames, financial amounts and credential contents are excluded. Delivery still involves the browser vendor's gateway and network metadata; self-hosting Household does not make Web Push an entirely local transport. Provider acceptance, a fulfilled display request and the user's confirmation are distinct observations, and already accepted messages cannot reliably be recalled. Keep subscription endpoints and encrypted registration material out of public diagnostics.
+
+Bounded reconciliation removes terminal delivery intents after 30 days and inbox notices after 90 days; cleanup can lag those thresholds. There is no separate attempt-history table or configurable notification-retention setting. This cleanup does not remove audit records or retained encrypted backups. Configure operational retention for those separately. Follow [device notifications](operations.md#device-notifications) for setup, origin changes and troubleshooting; changing `HOUSEHOLD_ORIGIN` alone does not revoke existing subscriptions. Physical device acceptance remains open.
+
 ## Operator account recovery
 
 Stop the app, set a fresh password in `.local/secrets/bootstrap_password`, and run the owner-credential migration service as a one-off:
+
+Use the **same complete Compose file set and environment** as the running installation for every command. The base-only example below applies only to the default configuration. For a keyring installation add `-f compose.yaml -f compose.keyring.yaml` to every invocation; retain configured Web Push/Documents/Meters overlays too. If backup overlays are present, keep `compose.backup-keyring.yaml` after `compose.backup.yaml`. Dropping these can restart an app with the wrong encryption parser or lose configured integration settings. See [the overlay examples](operations.md#encryption-keys-and-rotation).
 
 ```sh
 docker compose stop app
@@ -48,7 +62,7 @@ docker compose up -d app
 
 This forces a password change and revokes all sessions. Existing MFA remains required. If the authenticator and recovery codes are both lost, explicitly add `--reset-mfa` to the recovery command. That action removes the factor/codes and records an audit event. Recovery refuses runtime-role credentials.
 
-Keep secrets outside Git and back up the restic repository password independently. Preserve the stored-secret encryption key. Restoring an encrypted snapshot provides its security-key bundle; perform any key migration as controlled maintenance, never by simply replacing the encryption key file.
+Keep secrets outside Git and back up the restic repository password independently. Preserve every required encryption reader, including the explicit legacy key while legacy records remain. Restoring an encrypted snapshot provides its security-key bundle; perform any key migration as controlled maintenance, never by simply replacing the encryption key file. Preserve the optional VAPID private key separately in encrypted storage: the automatic backup escrow does not include it.
 
 ## Verification interpretation
 

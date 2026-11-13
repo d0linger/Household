@@ -1,23 +1,23 @@
 {{define "recipe-find"}}
 <link rel="stylesheet" href="{{index .Asset "recipe-find.css"}}">
 <section id="recipe-find" class="recipe-surface" data-generation="{{with index .States "recipes"}}{{.Generation}}{{end}}">
- <nav class="entity-tabs" aria-label="Kochbuchbereiche"><a href="/m/recipes/recipes">Rezepte</a><a href="/m/recipes/find" aria-current="page">Finden</a><a href="/m/recipes/cooking">Kochen</a><a href="/m/recipes/import-review">Import prüfen</a></nav>
- <div class="page-heading"><div><h1>Rezepte finden</h1><p class="muted">Dauer, Zutaten und Kochverlauf gemeinsam eingrenzen.</p></div></div>
- <p id="rf-status" role="status" aria-live="polite">Filter bereit.</p><div id="rf-error" class="notice error" role="alert" tabindex="-1" hidden></div>
- <form id="rf-form" class="panel" novalidate><div class="recipe-filter-top"><label>Rezeptname<input name="q" type="search" maxlength="100" autocomplete="off" placeholder="Name durchsuchen"></label><button class="primary" type="submit">Rezepte anzeigen</button></div>
-  <details id="rf-more"><summary>Weitere Filter</summary><div class="form-grid">
-   <label>Tags<select name="tags" multiple data-reference="recipes/tags" size="4"></select><small>Alle gewählten Tags müssen passen.</small></label>
-   <label>Katalogzutaten<select name="catalog" multiple data-reference="recipes/ingredient_catalog" size="4"></select><small>Alle gewählten Zutaten müssen passen.</small></label>
-   <label>Höchstens Minuten<input name="max_minutes" type="number" min="1" max="10080" step="1"></label>
-   <label class="recipe-check"><input name="include_unknown_duration" type="checkbox"> Rezepte ohne eindeutige Dauer einbeziehen</label>
-   <label>Gekocht seit<input name="cooked_after" type="date" min="1900-01-01" max="2199-12-31"></label>
-   <label class="recipe-check"><input name="never_cooked" type="checkbox"> Ohne dokumentierte Zubereitung</label>
-  </div><p class="fine">Dauer ist die eingetragene Vorbereitung plus Kochzeit. Null Minuten kann auch „nicht erfasst“ bedeuten. Kochdaten stammen nur aus abgeschlossenen Zubereitungen bis heute. Ergebnisse erscheinen vom zuletzt geänderten Rezept an.</p></details>
-  <div class="actions"><button type="button" id="rf-reset">Filter zurücksetzen</button></div>
+ {{template "workspace-nav" .}}
+ <div class="page-heading"><div><h1>{{t "Rezepte finden"}}</h1><p class="muted">{{t "Dauer, Zutaten und Kochverlauf gemeinsam eingrenzen."}}</p></div></div>
+ <p id="rf-status" role="status" aria-live="polite">{{t "Filter bereit."}}</p><div id="rf-error" class="notice error" role="alert" tabindex="-1" hidden></div>
+ <form id="rf-form" class="panel" novalidate><div class="recipe-filter-top"><label>{{t "Rezeptname"}}<input name="q" type="search" maxlength="100" autocomplete="off" placeholder="{{t "Name durchsuchen"}}"></label><button class="primary" type="submit">{{t "Rezepte anzeigen"}}</button></div>
+  <details id="rf-more"><summary>{{t "Weitere Filter"}}</summary><div class="form-grid">
+   <label>{{t "Tags"}}<select name="tags" multiple data-reference="recipes/tags" size="4"></select><small>{{t "Alle gewählten Tags müssen passen."}}</small></label>
+   <label>{{t "Katalogzutaten"}}<select name="catalog" multiple data-reference="recipes/ingredient_catalog" size="4"></select><small>{{t "Alle gewählten Zutaten müssen passen."}}</small></label>
+   <label>{{t "Höchstens Minuten"}}<input name="max_minutes" type="number" min="1" max="10080" step="1"></label>
+   <label class="recipe-check"><input name="include_unknown_duration" type="checkbox"> {{t "Rezepte ohne eindeutige Dauer einbeziehen"}}</label>
+   <label>{{t "Gekocht seit"}}<input name="cooked_after" type="date" min="1900-01-01" max="2199-12-31"></label>
+   <label class="recipe-check"><input name="never_cooked" type="checkbox"> {{t "Ohne dokumentierte Zubereitung"}}</label>
+  </div><p class="fine">{{t "Dauer ist die eingetragene Vorbereitung plus Kochzeit. Null Minuten kann auch „nicht erfasst“ bedeuten. Kochdaten stammen nur aus abgeschlossenen Zubereitungen bis heute. Ergebnisse erscheinen vom zuletzt geänderten Rezept an."}}</p></details>
+  <div class="actions"><button type="button" id="rf-reset">{{t "Filter zurücksetzen"}}</button></div>
  </form>
- <div id="rf-chips" class="recipe-chips" aria-label="Aktive Filter"></div>
- <details id="rf-views" class="panel"><summary>Persönliche Ansichten auf diesem Gerät</summary><p class="fine">Nur Name und Filterkriterien werden lokal gespeichert; keine Rezepte, Ergebnisse oder Notizen. Höchstens 20 Ansichten. Sie verschwinden beim Abmelden oder Kontowechsel und werden nicht synchronisiert.</p><p id="rf-view-status" role="status"></p><label>Name der Ansicht<input id="rf-view-name" maxlength="80" autocomplete="off"></label><div class="actions"><button type="button" id="rf-save-view">Ansicht speichern</button><button type="button" id="rf-delete-view">Ausgewählte Ansicht löschen</button></div><ul id="rf-view-list" class="recipe-list"></ul></details>
- <section aria-labelledby="rf-results-title"><h2 id="rf-results-title">Ergebnisse</h2><p id="rf-count" class="muted"></p><div id="rf-results" class="recipe-list" aria-live="polite"></div><div class="actions"><button type="button" id="rf-prev" hidden>Vorherige Seite</button><button type="button" id="rf-next" hidden>Nächste Seite</button></div></section>
+ <div id="rf-chips" class="recipe-chips" aria-label="{{t "Aktive Filter"}}"></div>
+ <details id="rf-views" class="panel"><summary>{{t "Persönliche Ansichten auf diesem Gerät"}}</summary><p class="fine">{{t "Nur Name und Filterkriterien werden lokal gespeichert; keine Rezepte, Ergebnisse oder Notizen. Höchstens 20 Ansichten. Sie verschwinden beim Abmelden oder Kontowechsel und werden nicht synchronisiert."}}</p><p id="rf-view-status" role="status"></p><label>{{t "Name der Ansicht"}}<input id="rf-view-name" maxlength="80" autocomplete="off"></label><div class="actions"><button type="button" id="rf-save-view">{{t "Ansicht speichern"}}</button><button type="button" id="rf-delete-view">{{t "Ausgewählte Ansicht löschen"}}</button></div><ul id="rf-view-list" class="recipe-list"></ul></details>
+ <section aria-labelledby="rf-results-title"><h2 id="rf-results-title">{{t "Ergebnisse"}}</h2><p id="rf-count" class="muted"></p><div id="rf-results" class="recipe-list" aria-live="polite"></div><div class="actions"><button type="button" id="rf-prev" hidden>{{t "Vorherige Seite"}}</button><button type="button" id="rf-next" hidden>{{t "Nächste Seite"}}</button></div></section>
 </section>
 <script nonce="{{.Nonce}}" src="{{index .Asset "recipe-find.js"}}" defer></script>
 {{end}}

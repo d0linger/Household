@@ -17,6 +17,7 @@ const must=(value,name)=>{if(!value)throw Error(name);report.checks.push(name);}
   async function login(password){await page.goto(base+'/login');await page.locator('[name=username]').fill('bootstrap');await page.locator('[name=password]').fill(password);await Promise.all([page.waitForURL(url=>url.pathname!=='/login'),page.getByRole('button',{name:/^Anmelden/}).click()]);}
   await login(process.env.HOUSEHOLD_BROWSER_PASSWORD||'Browser review only 1234');
   if(new URL(page.url()).pathname==='/change-password'){await page.locator('[name=current]').fill(process.env.HOUSEHOLD_BROWSER_PASSWORD||'Browser review only 1234');await page.locator('[name=next]').fill('Browser review only 1234');await Promise.all([page.waitForURL('**/login'),page.getByRole('button',{name:'Passwort speichern'}).click()]);await login('Browser review only 1234');}
+  await require('./browser-locale-helper.cjs').setBrowserLocale(page);
   const fixture=await page.evaluate(async()=>{
    const bootstrap=await fetch('/api/v1/core/bootstrap').then(r=>r.json()),csrf=document.querySelector('meta[name="csrf-token"]').content;
    const create=async(entity,data)=>{const response=await fetch('/api/v1/m/shopping/'+entity,{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf,'Idempotency-Key':crypto.randomUUID()},body:JSON.stringify({data,generation:bootstrap.states.shopping.generation})});if(!response.ok)throw Error(await response.text());return response.json();};

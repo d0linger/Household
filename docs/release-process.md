@@ -39,7 +39,7 @@ The first `main` branch is seeded from the pre-existing remote `dev` commit `430
 
 Dependabot version updates explicitly target `dev`. Existing dependency PRs keep that base. GitHub security updates always target the default branch; if one targets `main`, apply the fix on `dev` and promote through the same procedure rather than bypassing `PromotionSource`. Security alerts remain enabled. [GitHub Dependabot target-branch behavior](https://docs.github.com/en/code-security/reference/supply-chain-security/dependabot-options-reference#target-branch).
 
-The local working tree contains separately validated but unpublished application changes. The release setup was isolated from those changes; publishing this setup does not silently publish them. Reconcile the remote workflow commit into local `dev` while preserving those edits before the next push.
+The local working tree contains separately validated but unpublished application changes. The release setup was isolated from those changes; publishing this setup does not silently publish them. Remote setup commit `d07f6e8` has been reconciled into local `dev` through local merge `0cf1e3c`, preserving unrelated application bytes and the existing unpublished commit. That local merge/application work has not been pushed. [PR #11](https://github.com/d0linger/Household/pull/11) contains only the release setup and remains gated on actual hosted checks.
 
 ## Validation and rollback
 

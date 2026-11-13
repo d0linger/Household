@@ -1,12 +1,12 @@
 {{define "chores-workspace"}}
 <link rel="stylesheet" href="{{index .Asset "chores.css"}}">
 <section id="chores-workspace" class="chores-workspace" data-pane="{{index .Extra "pane"}}" data-resource="{{index .Extra "id"}}" data-generation="{{index .Extra "generation"}}" data-can-write="{{.User.CanWrite}}" aria-busy="true">
- <div class="page-heading"><div><h1 id="chores-heading">Aufgaben</h1><p id="chores-context" class="muted">Aktuellen Aufgabenstand laden …</p></div>{{if .User.CanWrite}}<a class="button primary" href="/m/chores/workspace/series/new">Neue Serie</a>{{end}}</div>
- <nav class="chores-nav" aria-label="Aufgabenbereiche"><a href="/m/chores/workspace/today" data-chores-pane="today">Heute</a><a href="/m/chores/workspace/areas" data-chores-pane="areas">Bereiche</a><a href="/m/chores/workspace/series" data-chores-pane="series">Serien</a><a href="/m/chores/workspace/plan" data-chores-pane="plan">Tagesplan</a><a href="/m/chores/workspace/history" data-chores-pane="history">Verlauf</a><a href="/m/chores/workspace/settings" data-chores-pane="settings">Einstellungen</a></nav>
- <p id="chores-status" class="notice" role="status">Änderungen werden nur mit Verbindung und aktueller Berechtigung übertragen.</p>
- <section id="chores-error" class="notice error" role="alert" tabindex="-1" hidden><h2>Bitte prüfen</h2><p id="chores-error-text"></p><div id="chores-conflict"></div><button id="chores-retry" type="button" hidden>Unveränderten Vorgang erneut prüfen</button></section>
+ {{template "workspace-nav" .}}
+ <div class="page-heading"><div><h1 id="chores-heading">{{t "Aufgaben"}}</h1><p id="chores-context" class="muted">{{t "Aktuellen Aufgabenstand laden …"}}</p></div>{{if .User.CanWrite}}<a class="button primary" href="/m/chores/workspace/series/new">{{t "Neue Serie"}}</a>{{end}}</div>
+ <p id="chores-status" class="notice" role="status">{{t "Änderungen werden nur mit Verbindung und aktueller Berechtigung übertragen."}}</p>
+ <section id="chores-error" class="notice error" role="alert" tabindex="-1" hidden><h2>{{t "Bitte prüfen"}}</h2><p id="chores-error-text"></p><div id="chores-conflict"></div><button id="chores-retry" type="button" hidden>{{t "Unveränderten Vorgang erneut prüfen"}}</button></section>
  <div id="chores-filters"></div><div id="chores-content"></div><div id="chores-paging" class="actions"></div>
- <noscript><p>Für Vorschau und geprüfte Aufgabenaktionen ist das lokal bereitgestellte JavaScript erforderlich.</p></noscript>
+ <noscript><p>{{t "Für Vorschau und geprüfte Aufgabenaktionen ist das lokal bereitgestellte JavaScript erforderlich."}}</p></noscript>
 </section>
 <script nonce="{{.Nonce}}" src="{{index .Asset "chores-workspace.js"}}" defer></script>
 {{end}}

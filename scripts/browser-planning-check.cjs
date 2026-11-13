@@ -2,20 +2,35 @@
 const fs=require('node:fs/promises'),path=require('node:path');const {chromium}=require('playwright');const AxeBuilder=require('@axe-core/playwright').default;
 const base=process.env.HOUSEHOLD_BROWSER_URL||'http://localhost:8101',origin=new URL(base);
 if(!['localhost','127.0.0.1'].includes(origin.hostname)||origin.port!=='8101'||origin.pathname!=='/')throw Error('Requires isolated Household review server 8101');
-const output=path.resolve('outputs/planning-review'),report={checks:[],screenshots:[],accessibility:[],errors:[],externalRequests:[]};
+const output=path.resolve(process.env.HOUSEHOLD_PLANNING_BROWSER_OUTPUT||'outputs/planning-review'),report={checks:[],screenshots:[],accessibility:[],errors:[],externalRequests:[]};
+if(!output.startsWith(path.resolve('outputs')+path.sep))throw Error('Planning evidence must stay inside workspace outputs');
 const must=(value,name)=>{if(!value)throw Error(name);report.checks.push(name);};
 (async()=>{
  await fs.mkdir(output,{recursive:true});const browser=await chromium.launch({headless:true,executablePath:process.env.CHROME_PATH||(process.platform==='win32'?'C:/Program Files/Google/Chrome/Application/chrome.exe':undefined)});
  try{
-  const context=await browser.newContext({viewport:{width:1440,height:1000},serviceWorkers:'block'});await context.route('**/*',route=>{if(new URL(route.request().url()).origin!==origin.origin){report.externalRequests.push(route.request().url());return route.abort();}return route.continue();});
+  const context=await browser.newContext({viewport:{width:1440,height:1000},serviceWorkers:'block',...(process.env.HOUSEHOLD_BROWSER_HANDOFF?{storageState:process.env.HOUSEHOLD_BROWSER_HANDOFF}:{})});await context.route('**/*',route=>{if(new URL(route.request().url()).origin!==origin.origin){report.externalRequests.push(route.request().url());return route.abort();}return route.continue();});
   const page=await context.newPage();page.setDefaultTimeout(20000);page.on('pageerror',e=>report.errors.push(String(e)));page.on('dialog',d=>d.accept());
   async function login(password){await page.goto(base+'/login');await page.locator('[name=username]').fill('bootstrap');await page.locator('[name=password]').fill(password);await Promise.all([page.waitForURL(u=>u.pathname!=='/login'),page.getByRole('button',{name:/^Anmelden/}).click()]);}
-  await login(process.env.HOUSEHOLD_BROWSER_PASSWORD||'Browser review only 1234');if(new URL(page.url()).pathname==='/change-password'){await page.locator('[name=current]').fill(process.env.HOUSEHOLD_BROWSER_PASSWORD||'Browser review only 1234');await page.locator('[name=next]').fill('Browser review only 1234');await Promise.all([page.waitForURL('**/login'),page.getByRole('button',{name:'Passwort speichern'}).click()]);await login('Browser review only 1234');}
+  if(process.env.HOUSEHOLD_BROWSER_HANDOFF){await page.goto(base+'/');must(!['/login','/change-password'].includes(new URL(page.url()).pathname),'Actual shared current planning session accepted');}else{await login(process.env.HOUSEHOLD_BROWSER_PASSWORD||'Browser review only 1234');if(new URL(page.url()).pathname==='/change-password'){await page.locator('[name=current]').fill(process.env.HOUSEHOLD_BROWSER_PASSWORD||'Browser review only 1234');await page.locator('[name=next]').fill('Browser review only 1234');await Promise.all([page.waitForURL('**/login'),page.getByRole('button',{name:'Passwort speichern'}).click()]);await login('Browser review only 1234');}}
+  await require('./browser-locale-helper.cjs').setBrowserLocale(page);
   const fixture=await page.evaluate(async()=>{let boot=await fetch('/api/v1/core/bootstrap').then(r=>r.json());const csrf=document.querySelector('meta[name="csrf-token"]').content;if(boot.states.mealplan.state!=='enabled'){const r=await fetch('/settings/modules/mealplan',{method:'POST',body:new URLSearchParams({csrf,enabled:'true',version:String(boot.states.mealplan.version)})});if(!r.ok)throw Error(await r.text());boot=await fetch('/api/v1/core/bootstrap').then(r=>r.json());}
    const request=async(url,body)=>{const r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf,'Idempotency-Key':crypto.randomUUID()},body:JSON.stringify(body)});if(!r.ok)throw Error(await r.text());return r.json();};
    const recipe=await request('/api/v1/recipes/workspace',{generation:boot.states.recipes.generation,data:{title:'Herbstküche · cremiges Kürbisrisotto '+Date.now(),base_servings:'3',prep_minutes:'5',cook_minutes:'20'},ingredients:[{key:crypto.randomUUID(),data:{name:'Risottoreis',quantity:'100.000001',unit_code:'g'}},{key:crypto.randomUUID(),data:{name:'Muskatnuss',quantity_note:'Nach Geschmack'}}],steps:[{key:crypto.randomUUID(),data:{instruction:'Kürbis schneiden und Reis cremig garen.'}}]});
-   const plan=await request('/api/v1/m/mealplan/plans',{generation:boot.states.mealplan.generation,data:{name:'Unsere Herbstwoche '+Date.now(),starts_on:'2026-10-22',ends_on:'2026-11-04'}});return{recipe:recipe.id,plan:plan.id,generation:boot.states.mealplan.generation,recipeGeneration:boot.states.recipes.generation};});
-  const planningURL=base+'/m/mealplan/workspace/'+fixture.plan+'?week=2026-10-22';await page.goto(planningURL);await page.locator('#planning-days > section').nth(6).waitFor();
+   const planName='Unsere Herbstwoche '+Date.now();const plan=await request('/api/v1/m/mealplan/plans',{generation:boot.states.mealplan.generation,data:{name:planName,starts_on:'2026-10-22',ends_on:'2026-11-04'}});return{recipe:recipe.id,plan:plan.id,planName,generation:boot.states.mealplan.generation,recipeGeneration:boot.states.recipes.generation};});
+  const planningURL=base+'/m/mealplan/workspace/'+fixture.plan+'?week=2026-10-22';
+  await page.goto(base+'/m/mealplan/plans?q='+encodeURIComponent(fixture.planName));
+  await page.locator('.record-main[href="/m/mealplan/workspace/'+fixture.plan+'"]').click();
+  await page.locator('#planning-days > section').nth(6).waitFor();
+  must(new URL(page.url()).pathname==='/m/mealplan/workspace/'+fixture.plan,'A saved plan opens its working week directly');
+  await page.locator('#planning-details-link').click();
+  must(new URL(page.url()).pathname==='/m/mealplan/plans/'+fixture.plan&&new URL(page.url()).searchParams.get('week')==='2026-10-22','Plan metadata retains the selected week');
+  await page.getByRole('link',{name:'← Zur Wochenplanung',exact:true}).click();
+  await page.locator('#planning-days > section').nth(6).waitFor();
+  must(page.url()===planningURL,'Plan details return to the same working week');
+  must(!await page.locator('.planning-tools').evaluate(node=>node.open),'Preparation tools start collapsed');
+  await page.locator('.planning-tools summary').focus();await page.keyboard.press('Enter');
+  must(await page.locator('[data-open-planning=budget]').isVisible(),'Preparation tools open with the keyboard');
+  await page.keyboard.press('Enter');
   async function current(){return page.evaluate(async pid=>fetch('/api/v1/planning/'+pid+'?week=2026-10-22').then(r=>r.json()),fixture.plan);}
   async function saved(action){const response=page.waitForResponse(r=>r.url()===base+'/api/v1/planning/'+fixture.plan&&r.request().method()==='POST');await action();const r=await response;if(!r.ok())throw Error(await r.text());await page.waitForFunction(()=>!document.querySelector('#planning-meal-form fieldset').disabled);return r.json();}
   async function capture(name){const focus=name.includes('conflict')?'#planning-conflict':name.includes('source-review')?'#planning-source-preview':null;await page.evaluate(async focus=>{if(focus)document.querySelector(focus).scrollIntoView({block:'start'});else scrollTo(0,0);await new Promise(requestAnimationFrame);},focus);const file=path.join(output,name+'.png');await page.screenshot({path:file,fullPage:name.endsWith('desktop'),animations:'disabled'});report.screenshots.push(file);const scan=await new AxeBuilder({page}).withTags(['wcag2a','wcag2aa','wcag21aa']).analyze();report.accessibility.push({name,violations:scan.violations});must(!scan.violations.length,'Accessibility '+name);}

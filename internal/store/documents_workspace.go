@@ -148,7 +148,12 @@ func (s *Store) DocumentDetail(ctx context.Context, id auth.Identity, rid string
 	}
 	for _, list := range []struct{ name, sql string }{
 		{"versions", `SELECT jsonb_build_object('id',v.id,'ordinal',v.ordinal,'attachment_id',a.id,'name',a.original_name,'media_type',a.media_type,'size',a.size_bytes,'sha256',encode(v.original_sha256,'hex'),'page_count',v.page_count,'provider',v.text_provider,'source',v.source,'created_at',v.created_at,'preview',EXISTS(SELECT 1 FROM core.attachment_derivatives preview WHERE preview.attachment_id=a.id AND preview.variant='preview')) FROM documents.file_versions v JOIN core.attachments a ON a.id=v.attachment_id AND a.state='ready' AND a.module_generation=$3 WHERE v.household_id=$1 AND v.document_id=$2 ORDER BY v.ordinal DESC LIMIT 101`},
-		{"deadlines", `SELECT to_jsonb(x) FROM documents.deadlines x WHERE household_id=$1 AND document_id=$2 AND $3>0 ORDER BY due_on,id LIMIT 101`},
+		{"deadlines", `SELECT to_jsonb(x)||jsonb_build_object('notification_enabled',coalesce(n.enabled,false),
+ 'notification_responsible_name',u.display_name,'notification_responsible_username',u.username)
+ FROM documents.deadlines x LEFT JOIN documents.notification_settings n ON n.household_id=x.household_id AND n.id=x.id
+ LEFT JOIN core.memberships m ON m.household_id=n.household_id AND m.id=n.responsible_member_id AND m.inactive_at IS NULL
+ LEFT JOIN core.users u ON u.id=m.user_id AND u.disabled_at IS NULL
+ WHERE x.household_id=$1 AND x.document_id=$2 AND $3>0 ORDER BY x.due_on,x.id LIMIT 101`},
 		{"processing", `SELECT jsonb_build_object('id',id,'operation',operation,'version_id',version_id,'state',state,'progress',progress,'status_code',status_code,'created_at',created_at) FROM documents.processing WHERE household_id=$1 AND document_id=$2 AND module_generation=$3 ORDER BY created_at DESC,id LIMIT 101`},
 		{"scan_sets", `SELECT to_jsonb(x)||jsonb_build_object('pages',(SELECT jsonb_agg(jsonb_build_object('version_id',p.version_id,'page_number',p.page_number,'position',p.position) ORDER BY position) FROM documents.scan_pages p WHERE p.set_id=x.id)) FROM documents.scan_sets x WHERE household_id=$1 AND document_id=$2 AND $3>0 ORDER BY created_at DESC,id LIMIT 101`},
 	} {

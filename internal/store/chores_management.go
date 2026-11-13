@@ -293,7 +293,9 @@ func (s *Store) SaveChorePreferences(ctx context.Context, id auth.Identity, key,
 			}
 		}
 		var current int64
-		err := tx.QueryRow(ctx, `SELECT version FROM chores.member_preferences WHERE household_id=$1 AND user_id=$2 FOR UPDATE`, id.HouseholdID, id.UserID).Scan(&current)
+		previousMode, acceptedEscalations := "legacy", false
+		err := tx.QueryRow(ctx, `SELECT version,notification_mode,allow_escalations FROM chores.member_preferences
+ WHERE household_id=$1 AND user_id=$2 FOR UPDATE`, id.HouseholdID, id.UserID).Scan(&current, &previousMode, &acceptedEscalations)
 		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 			return nil, err
 		}
@@ -311,6 +313,12 @@ func (s *Store) SaveChorePreferences(ctx context.Context, id auth.Identity, key,
 			in.DailyMinutes, in.MaxDifficulty, in.NotificationMode, in.DigestMinute, in.QuietStart, in.QuietEnd, in.Timezone, in.EscalationEnabled, in.EscalationAfterDays, in.EscalationRecipientID, in.AllowEscalations)
 		if err != nil {
 			return nil, err
+		}
+		renewAll := previousMode == "off" && in.NotificationMode != "off"
+		if renewAll || !acceptedEscalations && in.AllowEscalations {
+			if err = renewChoreNotificationCutoff(ctx, tx, id.HouseholdID, id.UserID, renewAll); err != nil {
+				return nil, err
+			}
 		}
 		prefs, err := chorePreferences(ctx, tx, id.HouseholdID, id.UserID, in.Timezone)
 		return Record{"preferences": prefs, "generation": in.Generation}, err

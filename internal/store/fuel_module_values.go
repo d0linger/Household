@@ -180,7 +180,7 @@ func fuelModuleNormalizeInput(action string, input map[string]json.RawMessage) (
 		"vehicle.archive":       {"archived"},
 		"vehicle.select_series": {"odometer_series_id", "series_version"},
 		"observation.save":      {"odometer_series_id", "observed_on", "reading", "notes", "acknowledged_warnings"},
-		"vehicle.save":          {"name", "registration", "fuel_type", "notes", "next_service_on", "next_inspection_on", "insurance_renewal_on", "tank_capacity", "battery_capacity"},
+		"vehicle.save":          {"name", "registration", "fuel_type", "notes", "responsible_member_id", "next_service_on", "next_inspection_on", "insurance_renewal_on", "tank_capacity", "battery_capacity"},
 		"series.save":           {"started_on", "ended_on", "initial_reading", "final_reading", "reason"},
 		"fillup.save":           {"odometer_series_id", "occurred_on", "fuel_type", "odometer", "quantity", "quantity_unit", "total_minor", "unit_price", "currency_code", "station", "full_tank", "previous_fill_missing", "notes", "acknowledged_warnings"},
 		"fillup.delete":         {},
@@ -337,7 +337,7 @@ func fuelModuleValidateValues(action string, data Record) (Record, []FuelModuleW
 			return nil, nil, Invalid{"Ungültiges Datum: " + field}
 		}
 	}
-	for _, field := range []string{"odometer_series_id", "default_vehicle_id", "default_series_id", "attachment_id", "job_id"} {
+	for _, field := range []string{"odometer_series_id", "default_vehicle_id", "default_series_id", "attachment_id", "job_id", "responsible_member_id"} {
 		if text := String(data[field]); text != "" {
 			if !value.ValidUUID(text) {
 				return nil, nil, Invalid{"Ungültiger Verweis: " + field}

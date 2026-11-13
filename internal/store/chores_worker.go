@@ -9,6 +9,7 @@ import (
 	"household/internal/audit"
 	"household/internal/auth"
 	chore "household/internal/chores"
+	"household/internal/notification"
 	"household/internal/value"
 
 	"github.com/jackc/pgx/v5"
@@ -30,6 +31,10 @@ func (s *Store) ScheduleChoreWorkspace(ctx context.Context) error {
  OR EXISTS(SELECT 1 FROM chores.series_profiles p JOIN chores.task_templates t ON t.id=p.template_id
  WHERE p.household_id=state.household_id AND t.active AND p.paused AND p.resume_at<=clock_timestamp())
  OR EXISTS(SELECT 1 FROM chores.member_preferences pref WHERE pref.household_id=state.household_id AND pref.notification_mode='digest')
+ OR EXISTS(SELECT 1 FROM chores.task_occurrences o JOIN core.notification_preferences pref ON pref.household_id=o.household_id
+ AND pref.category='chores_due' AND pref.enabled AND pref.enabled_since<=o.due_at
+ WHERE o.household_id=state.household_id AND o.state='open' AND o.due_at<=clock_timestamp()
+ AND o.due_at>clock_timestamp()-interval '1 hour' AND state.changed_at<=o.due_at)
  OR EXISTS(SELECT 1 FROM core.reminders r WHERE r.household_id=state.household_id AND r.module_id='chores'
  AND r.module_generation=state.data_generation AND r.state='pending' AND r.scheduled_at<=clock_timestamp()))
  AND NOT EXISTS(SELECT 1 FROM core.jobs j WHERE j.dedupe_key='chores-workspace/'||state.household_id::text||'/'||state.data_generation::text||'/'||to_char(clock_timestamp(),'YYYY-MM-DD-HH24-MI'))
@@ -92,6 +97,9 @@ func (s *Store) CompleteChoreWorkspaceJob(ctx context.Context, job, lease string
 	if err = audit.Bind(ctx, tx); err != nil {
 		return err
 	}
+	if err = lockChoreNotificationConsent(ctx, tx, household); err != nil {
+		return err
+	}
 	series, err := choreRows(ctx, tx, 5, `SELECT jsonb_build_object('id',t.id,'created_by',t.created_by,'paused',p.paused)
  FROM chores.series_profiles p JOIN chores.task_templates t ON t.id=p.template_id LEFT JOIN chores.schedule_state schedule ON schedule.template_id=t.id
  WHERE t.household_id=$1 AND t.active AND
@@ -128,6 +136,14 @@ func (s *Store) CompleteChoreWorkspaceJob(ctx context.Context, job, lease string
 		return err
 	}
 	more = more || next != ""
+	dueMore, err := enqueueChoreDueNotifications(ctx, tx, household, generation)
+	if err != nil {
+		return err
+	}
+	more = more || dueMore
+	if err = reconcileChoreNotificationIntents(ctx, tx, household); err != nil {
+		return err
+	}
 	state := "done"
 	if more {
 		state = "pending"
@@ -241,7 +257,7 @@ func choreDeliverDigests(ctx context.Context, tx pgx.Tx, household string, gener
 			if due.After(now) || due.Before(created) {
 				continue
 			}
-			if err = choreDigestForDay(ctx, tx, household, generation, pref, day, now); err != nil {
+			if err = choreDigestForDay(ctx, tx, household, generation, pref, day, now, due); err != nil {
 				return "", err
 			}
 		}
@@ -249,7 +265,7 @@ func choreDeliverDigests(ctx context.Context, tx pgx.Tx, household string, gener
 	return next, nil
 }
 
-func choreDigestForDay(ctx context.Context, tx pgx.Tx, household string, generation int64, pref Record, day string, now time.Time) error {
+func choreDigestForDay(ctx context.Context, tx pgx.Tx, household string, generation int64, pref Record, day string, now, eventAt time.Time) error {
 	var count int64
 	err := tx.QueryRow(ctx, `SELECT count(*) FROM chores.task_occurrences o JOIN chores.series_profiles p ON p.template_id=o.template_id
  JOIN chores.task_templates t ON t.id=o.template_id JOIN chores.occurrence_details d ON d.occurrence_id=o.id
@@ -260,7 +276,7 @@ func choreDigestForDay(ctx context.Context, tx pgx.Tx, household string, generat
 	}
 	source := String(pref["user_id"])
 	if err = choreNotifyOnce(ctx, tx, household, generation, String(pref["user_id"]), day, "digest", source, source, count,
-		fmt.Sprintf("%d fällige Haushaltsaufgaben für dich", count)); err != nil {
+		fmt.Sprintf("%d fällige Haushaltsaufgaben für dich", count), eventAt, Int(pref["version"])); err != nil {
 		return err
 	}
 	if pref["escalation_enabled"] != true {
@@ -287,11 +303,7 @@ func choreDigestForDay(ctx context.Context, tx pgx.Tx, household string, generat
 	if chore.QuietAt(local.Hour()*60+local.Minute(), start, end) {
 		return nil
 	}
-	date, _, err := choreLocalDay(now, String(pref["timezone"]))
-	if err != nil {
-		return err
-	}
-	parsed, err := chore.ParseDay(date)
+	parsed, err := chore.ParseDay(day)
 	if err != nil {
 		return err
 	}
@@ -306,10 +318,10 @@ func choreDigestForDay(ctx context.Context, tx pgx.Tx, household string, generat
 		return err
 	}
 	return choreNotifyOnce(ctx, tx, household, generation, userID, day, "escalation", source, source, count,
-		fmt.Sprintf("%d länger überfällige Aufgaben – ausdrücklich freigegebene Erinnerung", count))
+		fmt.Sprintf("%d länger überfällige Aufgaben – ausdrücklich freigegebene Erinnerung", count), eventAt, Int(pref["version"]))
 }
 
-func choreNotifyOnce(ctx context.Context, tx pgx.Tx, household string, generation int64, user, day, stage, source, creator string, count int64, title string) error {
+func choreNotifyOnce(ctx context.Context, tx pgx.Tx, household string, generation int64, user, day, stage, source, creator string, count int64, title string, eventAt time.Time, revision int64) error {
 	var notificationID any
 	if count > 0 {
 		notificationID = value.UUID()
@@ -328,5 +340,28 @@ func choreNotifyOnce(ctx context.Context, tx pgx.Tx, household string, generatio
 	}
 	_, err = tx.Exec(ctx, `INSERT INTO core.notifications(id,household_id,user_id,module_id,kind,title,target_path,dedupe_key)
  VALUES($6,$1,$2,'chores',$3,$4,'/m/chores/workspace/today',$5) ON CONFLICT(dedupe_key) DO NOTHING`, household, user, "chores_"+stage, title, "chores-delivery/"+deliveryID, notificationID)
+	if err != nil {
+		return err
+	}
+	policy, ok := notification.Lookup("chores_" + stage)
+	if !ok {
+		return Invalid{"Ungültige Aufgaben-Erinnerungsstufe"}
+	}
+	intent := notification.Intent{Schema: notification.Schema, HouseholdID: household,
+		UserID: user, Module: "chores", Generation: generation, ResourceType: "reminder_deliveries", ResourceID: deliveryID,
+		Revision: revision, Occurrence: stage + "/" + day, Category: policy.Category,
+		EventAt: eventAt, NotBefore: eventAt, ExpiresAt: eventAt.Add(policy.Freshness)}
+	var consentPredatesEvent bool
+	err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM chores.member_preferences source
+ WHERE source.household_id=$1 AND source.user_id=$2 AND source.updated_at<=$3
+ )`, household, source, eventAt).Scan(&consentPredatesEvent)
+	if err != nil || !consentPredatesEvent {
+		return err
+	}
+	eligible, err := choreNotificationAudience(ctx, tx, intent)
+	if err != nil || !eligible {
+		return err
+	}
+	_, err = EnqueueNotificationIntent(ctx, tx, intent)
 	return err
 }

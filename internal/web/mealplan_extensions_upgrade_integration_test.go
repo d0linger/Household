@@ -5,6 +5,7 @@ package web
 import (
 	"os"
 	"testing"
+	"time"
 
 	"household/internal/database"
 	"household/internal/value"
@@ -69,25 +70,42 @@ func TestPlanningExtensionsPopulatedCore27Mealplan7UpgradePreservesFacts(t *test
 			t.Fatal(err)
 		}
 	}
-	projection := `SELECT jsonb_build_object('plan',(SELECT to_jsonb(p) FROM mealplan.plans p WHERE id=$1),
+	projection := `SELECT jsonb_build_object('plan',(SELECT to_jsonb(p)-'notification_active_since' FROM mealplan.plans p WHERE id=$1),
  'meals',(SELECT jsonb_agg(to_jsonb(m) ORDER BY id) FROM mealplan.meals m WHERE plan_id=$1),
  'components',(SELECT jsonb_agg(to_jsonb(c) ORDER BY c.id) FROM mealplan.components c JOIN mealplan.meals m ON m.id=c.meal_id WHERE m.plan_id=$1))::text`
 	var before, after string
 	if err := f.owner.QueryRow(f.ctx, projection, plan).Scan(&before); err != nil {
 		t.Fatal(err)
 	}
-	for range 2 {
+	var migrationStarted, firstActivation time.Time
+	if err := f.owner.QueryRow(f.ctx, "SELECT clock_timestamp()").Scan(&migrationStarted); err != nil {
+		t.Fatal(err)
+	}
+	for attempt := range 2 {
 		if err := database.Migrate(f.ctx, os.Getenv("HOUSEHOLD_TEST_OWNER_URL")); err != nil {
 			t.Fatal("previous-release forward migration/repeat", err)
 		}
-	}
-	if err := f.owner.QueryRow(f.ctx, projection, plan).Scan(&after); err != nil || before != after {
-		t.Fatal("upgrade rewrote old quantities, roster, snapshots, versions or dates", before, after, err)
-	}
-	var invented int
-	if err := f.owner.QueryRow(f.ctx, `SELECT (SELECT count(*) FROM mealplan.leftover_sources)+(SELECT count(*) FROM mealplan.leftover_allocations)
- +(SELECT count(*) FROM mealplan.weekly_settings)+(SELECT count(*) FROM mealplan.calendar_feeds)+(SELECT count(*) FROM mealplan.calendar_tombstones)`).Scan(&invented); err != nil || invented != 0 {
-		t.Fatal("upgrade inferred unreviewed forecasts, estimates or sharing authority", invented, err)
+		if err := f.owner.QueryRow(f.ctx, projection, plan).Scan(&after); err != nil || before != after {
+			t.Fatal("upgrade rewrote old quantities, roster, snapshots, versions or dates", before, after, err)
+		}
+		var activation, observed time.Time
+		if err := f.owner.QueryRow(f.ctx, `SELECT notification_active_since,clock_timestamp() FROM mealplan.plans WHERE id=$1`, plan).Scan(&activation, &observed); err != nil {
+			t.Fatal("read server-owned notification activation baseline", err)
+		}
+		if activation.Before(migrationStarted) || activation.After(observed) {
+			t.Fatal("notification activation backfill is outside database migration bounds", migrationStarted, activation, observed)
+		}
+		if attempt == 0 {
+			firstActivation = activation
+		} else if !activation.Equal(firstActivation) {
+			t.Fatal("repeated migration renewed notification activation", firstActivation, activation)
+		}
+		var invented int
+		if err := f.owner.QueryRow(f.ctx, `SELECT (SELECT count(*) FROM mealplan.leftover_sources)+(SELECT count(*) FROM mealplan.leftover_allocations)
+ +(SELECT count(*) FROM mealplan.weekly_settings)+(SELECT count(*) FROM mealplan.calendar_feeds)+(SELECT count(*) FROM mealplan.calendar_tombstones)
+ +(SELECT count(*) FROM mealplan.notification_settings)`).Scan(&invented); err != nil || invented != 0 {
+			t.Fatal("upgrade inferred unreviewed forecasts, estimates, sharing authority or notification settings", invented, err)
+		}
 	}
 	if err := database.Ready(f.ctx, f.pool); err != nil {
 		t.Fatal("joint upgraded compatibility", err)

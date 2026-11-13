@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"household/internal/audit"
+	"household/internal/securityevent"
 	"household/internal/value"
 )
 
@@ -27,6 +28,11 @@ func (s *Service) RevokeSession(ctx context.Context, id Identity, session, actio
 		return err
 	}
 	if tag.RowsAffected() == 1 {
+		if action == "session_revoked" {
+			if err = securityevent.Record(ctx, tx, id.HouseholdID, id.UserID, "sessions_revoked"); err != nil {
+				return err
+			}
+		}
 		if err = audit.Event(ctx, tx, "core", "sessions", session, action, nil); err != nil {
 			return err
 		}

@@ -1,0 +1,33 @@
+{{define "notification-settings"}}
+<link rel="stylesheet" href="{{index .Asset "notification-settings.css"}}">
+<div class="notification-settings" data-notification-settings>
+ <div class="page-heading"><div><h1>{{t "Benachrichtigungen"}}</h1><p class="muted">{{t "Entscheide, welche Hinweise deine Geräte erreichen dürfen."}}</p></div><a class="button subtle" href="/notifications">{{t "Mitteilungen öffnen"}}</a></div>
+ <section class="notification-section" aria-labelledby="notification-device-heading" data-notification-push>
+  <div class="notification-section-heading"><div><h2 id="notification-device-heading">{{t "Dieses Gerät verbinden"}}</h2><p>{{t "Die Browserfreigabe wird erst nach deinem Klick angefragt. Eine Verbindung aktiviert keine weiteren Kategorien."}}</p></div></div>
+  <div class="notification-connection">
+   <div><p data-push-server>{{t "Serverkonfiguration wird geprüft …"}}</p><p data-push-permission></p><p data-push-local></p></div>
+   <div class="notification-actions"><button type="button" class="primary" data-push-enable disabled>{{t "Dieses Gerät verbinden"}}</button><button type="button" data-push-refresh disabled>{{t "Aktuellen Gerätestatus prüfen"}}</button></div>
+  </div>
+  <p data-push-status role="status" aria-live="polite"></p>
+  <details class="notification-help"><summary>{{t "Installation, Freigabe und Verbindungen"}}</summary>
+   <p>{{t "Auf iPhone und iPad öffnest du Household als zum Home-Bildschirm hinzugefügte App. Auf allen Geräten müssen Browser und Betriebssystem Benachrichtigungen erlauben."}}</p>
+   <p>{{t "Bei blockierter Freigabe öffne die Website-Einstellungen deines Browsers. In-App-Mitteilungen bleiben verfügbar."}}</p>
+   <button type="button" data-push-clear class="subtle" disabled>{{t "Lokale Browserverbindung entfernen"}}</button>
+   <div data-push-devices class="notification-connections"></div>
+  </details>
+ </section>
+ <section class="notification-section" aria-labelledby="notification-categories-heading">
+  <div class="notification-section-heading"><div><h2 id="notification-categories-heading">{{t "Persönliche Kategorien"}}</h2><p>{{t "Jede Zeile wird einzeln gespeichert. Ein Gerätehinweis braucht sowohl deine persönliche als auch die Gerätefreigabe."}}</p></div><button type="button" data-notification-refresh disabled>{{t "Aktualisieren"}}</button></div>
+  <p class="notification-privacy">{{t "Auf dem Sperrbildschirm erscheinen nur allgemeine Hinweise. Namen, Beträge und Dokumentinhalte werden nicht mitgesendet."}}</p>
+  <p data-notification-status role="status" aria-live="polite">{{t "Benachrichtigungseinstellungen werden geladen …"}}</p>
+  <div data-notification-preferences></div>
+ </section>
+ <section class="notification-section" aria-labelledby="notification-devices-heading">
+  <div class="notification-section-heading"><div><h2 id="notification-devices-heading">{{t "Eigene Geräte"}}</h2><p>{{t "Prüfe Freigaben und sende bei Bedarf eine Testnachricht. Die Annahme durch den Push-Dienst bestätigt keine Anzeige auf dem Gerät."}}</p></div></div>
+  <div data-notification-devices></div>
+ </section>
+ <p class="notification-limits">{{t "Gerätehinweise können verspätet eintreffen oder ausbleiben, etwa bei fehlender Verbindung oder aktiviertem Fokusmodus. Für einen zwingend pünktlichen Kochalarm verwende zusätzlich den Gerätewecker."}}</p>
+ <noscript><p class="error-text">{{t "Aktiviere JavaScript, um Gerätefreigaben und Benachrichtigungen zu verwalten."}}</p></noscript>
+</div>
+<script nonce="{{.Nonce}}" src="{{index .Asset "notification-settings.js"}}" defer></script>
+{{end}}

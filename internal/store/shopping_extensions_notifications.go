@@ -448,7 +448,9 @@ func (s *Store) CompleteShoppingNotificationJob(ctx context.Context, jobID, leas
 	ctx, cancel := context.WithTimeout(audit.WithSystem(ctx, "worker"), 15*time.Second)
 	defer cancel()
 	var household string
-	err := s.Pool.QueryRow(ctx, "SELECT household_id FROM core.jobs WHERE id=$1 AND kind=$2", jobID, ShoppingDigestJobKind).Scan(&household)
+	var candidateRaw []byte
+	err := s.Pool.QueryRow(ctx, `SELECT household_id,CASE WHEN octet_length(payload::text)<=4096 THEN payload END
+ FROM core.jobs WHERE id=$1 AND kind=$2`, jobID, ShoppingDigestJobKind).Scan(&household, &candidateRaw)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return ErrConflict
 	}
@@ -460,6 +462,19 @@ func (s *Store) CompleteShoppingNotificationJob(ctx context.Context, jobID, leas
 		return err
 	}
 	defer shoppingRollback(tx)
+	// Locate the recipient without a source lock, then fence first-time central
+	// ownership before any authentication locks. The leased source is rechecked
+	// below; malformed jobs can still be retired without trusting their payload.
+	var candidate ShoppingNotificationReference
+	var managed, channelLocked bool
+	if shoppingDecodeClosed(candidateRaw, &candidate) == nil && candidate.HouseholdID == household &&
+		shoppingCanonicalUUID(candidate.RecipientID) {
+		managed, err = LockShoppingNotificationManagement(ctx, tx, household, candidate.RecipientID)
+		if err != nil {
+			return err
+		}
+		channelLocked = true
+	}
 	if _, err = tx.Exec(ctx, "SELECT id FROM core.households WHERE id=$1 FOR SHARE", household); err != nil {
 		return err
 	}
@@ -481,6 +496,9 @@ func (s *Store) CompleteShoppingNotificationJob(ctx context.Context, jobID, leas
 	valid := len(raw) > 0 && shoppingDecodeClosed(raw, &ref) == nil && shoppingValidReference(ref) && ref.HouseholdID == household && ref.Generation == generation && ref.NotificationID == "" && ref.SubscriptionID == "" && key == "shopping-digest-v1/"+strings.TrimPrefix(shoppingNoticeKey(ref), "shopping-notice-v1/")
 	reason := "obsolete_audience"
 	if valid {
+		if !channelLocked || candidate.HouseholdID != ref.HouseholdID || candidate.RecipientID != ref.RecipientID {
+			return ErrConflict
+		}
 		audience, e := s.ShoppingNotificationAudience(ctx, tx, ref)
 		if e != nil {
 			return e
@@ -497,7 +515,11 @@ func (s *Store) CompleteShoppingNotificationJob(ctx context.Context, jobID, leas
 			if err != nil {
 				return err
 			}
-			if audience.PushEligible {
+			if audience.PushEligible && managed {
+				if err = enqueueShoppingNotification(ctx, tx, jobID, notification, ref); err != nil {
+					return err
+				}
+			} else if audience.PushEligible {
 				rows, e := tx.Query(ctx, "SELECT id FROM core.push_subscriptions WHERE household_id=$1 AND user_id=$2 AND disabled_at IS NULL ORDER BY id LIMIT 6", household, ref.RecipientID)
 				if e != nil {
 					return e

@@ -1,0 +1,19 @@
+{{define "users"}}
+<link rel="stylesheet" href="{{index .Asset "security.css"}}">
+<div class="page-heading"><div><h1>{{t "Benutzerverwaltung"}}</h1><p class="muted">{{t "Verwalte Zugang und Rollen für deinen Haushalt."}}</p></div><button type="button" class="primary" data-open-user aria-haspopup="dialog" aria-controls="new-household-user" disabled>{{t "Neuer Benutzer"}}</button></div>
+
+<div class="security-freshness"><p>{{if index .Extra "recent"}}{{t "Deine Anmeldung ist für sensible Änderungen bestätigt."}}{{else}}{{t "Bestätige deine Anmeldung vor sensiblen Änderungen erneut. Deine Formulareingaben bleiben dabei erhalten."}}{{end}}</p><a class="button" href="/settings/security/reauth?return_to=/settings/users" data-open-reauth>{{t "Anmeldung bestätigen"}}</a></div>
+<div class="security-users"><section><h2>{{t "Mitglieder"}}</h2><p class="fine">{{t "Lesen erlaubt Einsicht, Bearbeiten erlaubt Änderungen, Administration verwaltet zusätzlich Benutzer und Module."}}</p>
+{{range .Records}}<article class="security-user"><div><h3>{{.display_name}}</h3><p class="muted">{{.username}}{{if eq .id $.User.UserID}} · {{t "Dein Konto"}}{{end}}</p></div><form class="user-row" action="/settings/users/{{.id}}" method="post" data-security-form>{{template "csrf" $}}<div class="security-fields"><label>{{t "Rolle"}}<select name="role"><option value="reader" {{if eq .role "reader"}}selected{{end}}>{{t "Lesen"}}</option><option value="editor" {{if eq .role "editor"}}selected{{end}}>{{t "Bearbeiten"}}</option><option value="admin" {{if eq .role "admin"}}selected{{end}}>{{t "Administration"}}</option></select></label><label>{{t "Status"}}<select name="disabled"><option value="false" {{if not .disabled}}selected{{end}}>{{t "Aktiv"}}</option><option value="true" {{if .disabled}}selected{{end}}>{{t "Gesperrt"}}</option></select></label></div><button>{{t "Speichern und Sitzungen beenden"}}</button><p data-security-status role="status"></p></form></article>{{end}}</section>
+</div>
+<dialog id="new-household-user" aria-labelledby="new-user-title">
+<form action="/settings/users" method="post" data-security-form>{{template "csrf" .}}
+<div class="dialog-heading"><h2 id="new-user-title">{{t "Benutzer hinzufügen"}}</h2><button type="button" class="icon-button" data-close-user aria-label="{{t "Schließen"}}"><svg aria-hidden="true"><use href="{{icon .Asset "x"}}"/></svg></button></div>
+<label>{{t "Benutzername"}}<input name="username" autocomplete="off" pattern="[A-Za-z0-9_.-]{3,64}" minlength="3" maxlength="64" aria-describedby="new-user-name-help" required></label><p class="fine" id="new-user-name-help">{{t "3 bis 64 Buchstaben, Ziffern, Punkte, Bindestriche oder Unterstriche."}}</p>
+<label>{{t "Anzeigename"}}<input name="display_name" maxlength="100" required></label>
+<label>{{t "Startpasswort"}}<input type="password" name="password" minlength="14" maxlength="72" autocomplete="new-password" aria-describedby="new-user-password-help" required></label><p class="fine" id="new-user-password-help">{{t "Mindestens 14 Zeichen, höchstens 72 Bytes. Beim ersten Anmelden ist ein Passwortwechsel erforderlich."}}</p>
+<label>{{t "Rolle"}}<select name="role"><option value="editor">{{t "Bearbeiten"}}</option><option value="reader">{{t "Lesen"}}</option><option value="admin">{{t "Administration"}}</option></select></label>
+<p data-security-status role="status"></p><div class="actions"><button type="button" data-close-user>{{t "Abbrechen"}}</button><button class="primary">{{t "Benutzer anlegen"}}</button></div>
+</form></dialog>
+{{template "security-reauth-dialog" .}}<script nonce="{{.Nonce}}" src="{{index .Asset "security.js"}}" defer></script><script nonce="{{.Nonce}}" src="{{index .Asset "security-users.js"}}" defer></script>
+{{end}}

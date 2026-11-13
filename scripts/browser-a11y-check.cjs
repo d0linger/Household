@@ -73,9 +73,9 @@ module.exports = async function checkAccessibilityHardening(page, report = {chec
 
   await page.setViewportSize({width: 390, height: 844});
   await page.goto(base + '/settings');
-  await page.getByRole('button', {name: 'Mehr', exact: true}).click();
-  must(await page.getByRole('dialog', {name: 'Deine Module', exact: true}).isVisible(), 'More dialog has its visible heading as accessible name');
-  await scanDialog('More', '#more-dialog');
+  await page.locator('.navigation-trigger').click();
+  must(await page.getByRole('dialog', {name: 'Navigation', exact: true}).isVisible(), 'Settings tray has its heading as accessible name');
+  await scanDialog('Settings', '#more-dialog');
   await page.keyboard.press('Escape');
   await page.goto(base + '/m/shopping/lists');
   await page.getByRole('button', {name: '＋ Hinzufügen', exact: true}).click();

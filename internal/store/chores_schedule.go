@@ -47,6 +47,10 @@ func choreCandidateSlots(versions []Record, from, through time.Time, limit int) 
 	result := []choreVersionSlot{}
 	more := false
 	for _, version := range versions {
+		// Completion-anchored history never supplies calendar occurrences.
+		if String(version["anchor_kind"]) == "completion" {
+			continue
+		}
 		schedule, err := choreSchedule(version)
 		if err != nil {
 			return nil, false, Invalid{"Gespeicherte Kalenderregel muss geprüft werden"}
@@ -79,6 +83,11 @@ func choreCandidateSlots(versions []Record, from, through time.Time, limit int) 
 		end := last.Add(-time.Microsecond).In(location).Format(time.DateOnly)
 		if end > "2200-12-31" {
 			end = "2200-12-31"
+		}
+		if schedule.Kind == "once" {
+			// An explicitly captured old one-time task needs one civil date,
+			// even when the effective window spans more than 366 days.
+			start, end = schedule.StartsOn, schedule.StartsOn
 		}
 		projection, err := chore.Project(schedule, start, end, limit+5)
 		if err != nil {
@@ -269,26 +278,9 @@ func (s *Store) materializeChoreSeries(ctx context.Context, tx pgx.Tx, id auth.I
 	windowBacklog, batchLimited := false, false
 	if String(snapshot["anchor_kind"]) == "completion" {
 		candidates, err = choreCompletionSlot(ctx, tx, id.HouseholdID, templateID, snapshot, through)
-	} else if String(snapshot["rule_kind"]) == "once" {
-		schedule, parseErr := choreSchedule(snapshot)
-		if parseErr != nil {
-			return nil, Invalid{parseErr.Error()}
-		}
-		projection, projectErr := chore.Project(schedule, schedule.StartsOn, schedule.StartsOn, 1)
-		err = projectErr
-		for _, slot := range projection.Slots {
-			if !slot.DueAt.Before(materializeFrom) && slot.DueAt.Before(through) {
-				var checks int
-				if err = tx.QueryRow(ctx, "SELECT count(*) FROM chores.version_checklist_items WHERE version_id=$1", snapshot["id"]).Scan(&checks); err != nil {
-					return nil, err
-				}
-				versionID := String(snapshot["id"])
-				candidates = append(candidates, choreVersionSlot{versionID: versionID, slot: slot, checks: checks,
-					key: "v/" + versionID + "/" + slot.Day + "/" + slot.LocalTime})
-			}
-		}
 	} else {
-		// Advance an old backlog in finite windows; never pretend it is current.
+		// Bound the version query as well as calendar projection so an old
+		// backlog with many revisions can advance in finite windows.
 		if through.Sub(from) > 90*24*time.Hour {
 			through = from.AddDate(0, 0, 90)
 			windowBacklog = true
@@ -519,7 +511,7 @@ func (s *Store) publishChoreOccurrence(ctx context.Context, tx pgx.Tx, id auth.I
 	}
 	event := value.UUID()
 	_, err = tx.Exec(ctx, `INSERT INTO core.outbox_events(id,household_id,module_id,module_generation,event_type,event_version,
- actor_user_id,payload,dedupe_key) VALUES($1,$2,'chores',$3,'record_changed',$4,NULL,$5,$1::text)`,
+ actor_user_id,payload,dedupe_key) VALUES($1::uuid,$2,'chores',$3,'record_changed',$4,NULL,$5,($1::uuid)::text)`,
 		event, id.HouseholdID, generation, eventVersion, payload)
 	return err
 }

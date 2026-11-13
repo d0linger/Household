@@ -4,6 +4,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/netip"
 	"net/url"
@@ -15,6 +16,7 @@ import (
 
 	"household/internal/documentinput"
 	"household/internal/meterfeed"
+	"household/internal/secretbox"
 )
 
 type Config struct {
@@ -23,6 +25,7 @@ type Config struct {
 	DatabaseURL        string
 	CSRFSecret         string
 	EncryptionKey      string
+	EncryptionKeys     *secretbox.Keyring
 	RateSecret         string
 	AdminUsername      string
 	AdminPassword      string
@@ -53,17 +56,33 @@ var hostnameLabel = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$`)
 var numericHostLabel = regexp.MustCompile(`^(?:[0-9]+|0x[0-9a-f]*)$`)
 
 func secret(name string) (string, error) {
+	return boundedSecret(name, 32<<10)
+}
+
+func boundedSecret(name string, limit int) (string, error) {
 	v, path := os.Getenv(name), os.Getenv(name+"_FILE")
 	if v != "" && path != "" {
 		return "", fmt.Errorf("both %s and file are configured", name)
 	}
 	if path != "" {
 		// security: secret-file paths come solely from deployment configuration.
-		b, err := os.ReadFile(path) // #nosec G304 G703 -- trusted operator secret path
+		reader, err := os.Open(path) // #nosec G304 G703 -- trusted operator secret path
 		if err != nil {
-			return "", fmt.Errorf("read %s secret file: %w", name, err)
+			return "", fmt.Errorf("%s secret file could not be read", name)
+		}
+		defer func() { _ = reader.Close() }()
+		info, err := reader.Stat()
+		if err != nil || !info.Mode().IsRegular() || info.Size() > int64(limit) {
+			return "", fmt.Errorf("%s secret file exceeds its bounded format", name)
+		}
+		b, err := io.ReadAll(io.LimitReader(reader, int64(limit)+1))
+		if err != nil || len(b) > limit {
+			return "", fmt.Errorf("%s secret file exceeds its bounded format", name)
 		}
 		v = strings.TrimSpace(string(b))
+	}
+	if len(v) > limit {
+		return "", fmt.Errorf("%s secret exceeds its bounded format", name)
 	}
 	return v, nil
 }
@@ -114,11 +133,14 @@ func Load() (Config, error) {
 	if err = loadDocumentInputs(&c); err != nil {
 		return Config{}, err
 	}
-	for name, target := range map[string]*string{"HOUSEHOLD_DATABASE_URL": &c.DatabaseURL, "HOUSEHOLD_CSRF_SECRET": &c.CSRFSecret, "HOUSEHOLD_ENCRYPTION_KEY": &c.EncryptionKey, "HOUSEHOLD_RATE_SECRET": &c.RateSecret, "HOUSEHOLD_ADMIN_PASSWORD": &c.AdminPassword, "HOUSEHOLD_METRICS_TOKEN": &c.MetricsToken} {
+	for name, target := range map[string]*string{"HOUSEHOLD_DATABASE_URL": &c.DatabaseURL, "HOUSEHOLD_CSRF_SECRET": &c.CSRFSecret, "HOUSEHOLD_RATE_SECRET": &c.RateSecret, "HOUSEHOLD_ADMIN_PASSWORD": &c.AdminPassword, "HOUSEHOLD_METRICS_TOKEN": &c.MetricsToken} {
 		*target, err = secret(name)
 		if err != nil {
 			return Config{}, err
 		}
+	}
+	if err = loadEncryption(&c); err != nil {
+		return Config{}, err
 	}
 	c.Origin, err = normalizeOrigin(c.Origin, c.Production)
 	if err != nil {
@@ -127,13 +149,13 @@ func Load() (Config, error) {
 	if c.DatabaseURL == "" {
 		return Config{}, errors.New("database URL is required")
 	}
-	for name, key := range map[string]string{"CSRF": c.CSRFSecret, "encryption": c.EncryptionKey, "rate": c.RateSecret} {
+	for name, key := range map[string]string{"CSRF": c.CSRFSecret, "rate": c.RateSecret} {
 		if len(strings.TrimSpace(key)) < 32 || strings.Contains(strings.ToLower(key), "change-me") {
 			return Config{}, fmt.Errorf("%s secret must contain at least 32 non-placeholder characters", name)
 		}
 	}
-	if c.CSRFSecret == c.EncryptionKey || c.CSRFSecret == c.RateSecret || c.EncryptionKey == c.RateSecret {
-		return Config{}, errors.New("security secrets must be independent")
+	if err = c.EncryptionKeys.ValidateIndependent(c.CSRFSecret, c.RateSecret, c.WebPushPrivateKey); err != nil {
+		return Config{}, err
 	}
 	if raw := os.Getenv("HOUSEHOLD_DB_MAX_CONNECTIONS"); raw != "" {
 		n, e := strconv.Atoi(raw)

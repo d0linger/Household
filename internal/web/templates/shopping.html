@@ -4,61 +4,61 @@
 <script nonce="{{.Nonce}}" src="{{index .Asset "shopping-repurchase.js"}}" defer></script>
 <script nonce="{{.Nonce}}" src="{{index .Asset "shopping-notifications.js"}}" defer></script><script nonce="{{.Nonce}}" src="{{index .Asset "shopping-offline.js"}}" defer></script>
 <section class="panel shopping-board" data-shopping-list="{{.Record.id}}" data-generation="{{with index .States "shopping"}}{{.Generation}}{{end}}" data-can-write="{{.User.CanWrite}}" data-is-admin="{{eq .User.Role "admin"}}">
-  <div class="section-heading"><h2 id="shopping-list-title">{{.Record.name}}</h2><label class="check-label"><input type="checkbox" id="shopping-mode">Einkaufsmodus</label></div>
-  {{if .Record.is_template}}<p class="notice">Vorlage · Artikel hier vorbereiten. <a href="#shopping-copy-form">Neue Einkaufsliste erstellen</a>; ihr Einkaufsverlauf bleibt unabhängig.</p>{{end}}
-  <p id="shopping-progress" role="status">Artikel werden geladen …</p>
-  <progress id="shopping-progress-bar" value="0" max="1" aria-label="Einkaufsfortschritt"></progress>
+  <div class="section-heading"><h2 id="shopping-list-title">{{.Record.name}}</h2><label class="check-label"><input type="checkbox" id="shopping-mode">{{t "Einkaufsmodus"}}</label></div>
+  {{if .Record.is_template}}<p class="notice">{{t "Vorlage · Artikel hier vorbereiten."}} <a href="#shopping-copy-form">{{t "Neue Einkaufsliste erstellen"}}</a>{{t "; ihr Einkaufsverlauf bleibt unabhängig."}}</p>{{end}}
+  <p id="shopping-progress" role="status">{{t "Artikel werden geladen …"}}</p>
+  <progress id="shopping-progress-bar" value="0" max="1" aria-label="{{t "Einkaufsfortschritt"}}"></progress>
   <div id="shopping-live-activity"><p id="shopping-shopper" role="status" hidden></p>
-    {{if and .User.CanWrite (not .Record.archived_at) (not .Record.is_template)}}<div class="shopping-activity"><button type="button" id="shopping-claim" aria-label="Ich kaufe jetzt ein · 30 Minuten">Ich kaufe jetzt ein</button><button type="button" id="shopping-release" aria-label="Einkaufsstatus freigeben" hidden>Freigeben</button></div>{{end}}
+    {{if and .User.CanWrite (not .Record.archived_at) (not .Record.is_template)}}<div class="shopping-activity"><button type="button" id="shopping-claim" aria-label="{{t "Ich kaufe jetzt ein · 30 Minuten"}}">{{t "Ich kaufe jetzt ein"}}</button><button type="button" id="shopping-release" aria-label="{{t "Einkaufsstatus freigeben"}}" hidden>{{t "Freigeben"}}</button></div>{{end}}
   </div>
   {{if and .User.CanWrite (not .Record.archived_at)}}
-  <details id="shopping-entry" open><summary>Artikel ergänzen</summary>
+  <details id="shopping-entry" open><summary>{{t "Artikel ergänzen"}}</summary>
   <form id="shopping-quick-add" action="/api/v1/m/shopping/items" method="post">
     {{template "csrf" .}}<input type="hidden" name="list_id" value="{{.Record.id}}">
-    <div class="shopping-add-line"><label>Artikel hinzufügen<input name="name" maxlength="200" required autocomplete="off" placeholder="Zum Beispiel 2 × 500 g Nudeln"></label><button class="primary">Hinzufügen</button></div>
-    <details id="shopping-favorites"><summary>Aus Favoriten wählen</summary><label>Favorit<select id="shopping-favorite" data-reference="shopping/products" data-favorites="1"><option value="">Favorit auswählen</option></select></label><button type="button" id="shopping-use-favorite">In Entwurf übernehmen</button><p class="fine">Favoriten unter „Produkte“ festlegen. Die Auswahl füllt den Entwurf; erst „Hinzufügen“ speichert den Artikel.</p></details>
-    <div id="shopping-parse" hidden><p></p><button type="button" id="shopping-apply-parse">Erkennung übernehmen</button></div>
-    <details id="shopping-details"><summary>Menge, Gruppe und Notiz</summary><div class="form-grid">
-      <label>Menge<input name="quantity" inputmode="decimal"></label>
-      <label>Einheit<select name="unit_code"><option value="piece">Stück</option><option value="g">g</option><option value="kg">kg</option><option value="ml">ml</option><option value="l">l</option></select></label>
-      <label>Gruppe<input name="group_name" maxlength="300" placeholder="Zum Beispiel Gemüse"></label><label>Notiz<input name="note" maxlength="2000"></label>
-      <label>Produktvariante<select name="product_id" data-reference="shopping/products"><option value="">Freier Artikel</option></select></label>
-      <label>Zuständig<select name="assignee_id" data-reference="core/memberships"><option value="">Nicht zugewiesen</option></select></label>
-      <p class="fine full">Bei einer Produktvariante zählt „Stück“ deren Packungen. Andere Einheiten beziehen sich auf den Inhalt.</p>
+    <div class="shopping-add-line"><label>{{t "Artikel hinzufügen"}}<input name="name" maxlength="200" required autocomplete="off" placeholder="{{t "Zum Beispiel 2 × 500 g Nudeln"}}"></label><button class="primary">{{t "Hinzufügen"}}</button></div>
+    <details id="shopping-favorites"><summary>{{t "Aus Favoriten wählen"}}</summary><label>{{t "Favorit"}}<select id="shopping-favorite" data-reference="shopping/products" data-favorites="1"><option value="">{{t "Favorit auswählen"}}</option></select></label><button type="button" id="shopping-use-favorite">{{t "In Entwurf übernehmen"}}</button><p class="fine">{{t "Favoriten unter „Produkte“ festlegen. Die Auswahl füllt den Entwurf; erst „Hinzufügen“ speichert den Artikel."}}</p></details>
+    <div id="shopping-parse" hidden><p></p><button type="button" id="shopping-apply-parse">{{t "Erkennung übernehmen"}}</button></div>
+    <details id="shopping-details"><summary>{{t "Menge, Gruppe und Notiz"}}</summary><div class="form-grid">
+      <label>{{t "Menge"}}<input name="quantity" inputmode="decimal"></label>
+      <label>{{t "Einheit"}}<select name="unit_code"><option value="piece">{{t "Stück"}}</option><option value="g">{{t "g"}}</option><option value="kg">{{t "kg"}}</option><option value="ml">{{t "ml"}}</option><option value="l">{{t "l"}}</option></select></label>
+      <label>{{t "Gruppe"}}<input name="group_name" maxlength="300" placeholder="{{t "Zum Beispiel Gemüse"}}"></label><label>{{t "Notiz"}}<input name="note" maxlength="2000"></label>
+      <label>{{t "Produktvariante"}}<select name="product_id" data-reference="shopping/products"><option value="">{{t "Freier Artikel"}}</option></select></label>
+      <label>{{t "Zuständig"}}<select name="assignee_id" data-reference="core/memberships"><option value="">{{t "Nicht zugewiesen"}}</option></select></label>
+      <p class="fine full">{{t "Bei einer Produktvariante zählt „Stück“ deren Packungen. Andere Einheiten beziehen sich auf den Inhalt."}}</p>
     </div></details>
     <p class="form-error" role="alert" tabindex="-1" hidden></p>
   </form>
   </details>
   {{end}}
-  <div class="shopping-controls"><details id="shopping-filter-panel" open><summary>Artikel suchen</summary><label>Artikel filtern<input id="shopping-filter" type="search" maxlength="100" placeholder="Name oder Gruppe"></label></details><button type="button" id="shopping-refresh">Aktualisieren</button></div>
+  <div class="shopping-controls"><details id="shopping-filter-panel" open><summary>{{t "Artikel suchen"}}</summary><label>{{t "Artikel filtern"}}<input id="shopping-filter" type="search" maxlength="100" placeholder="{{t "Name oder Gruppe"}}"></label></details><button type="button" id="shopping-refresh">{{t "Aktualisieren"}}</button></div>
   <div id="shopping-message" role="status"></div>
   <div id="shopping-conflict" class="notice" role="alert" tabindex="-1" hidden></div>
   <div id="shopping-items"></div>
-  {{if and (not .Record.archived_at) (not .Record.is_template)}}<p><a class="button" href="/m/shopping/lists/{{.Record.id}}/barcode">Barcode lokal prüfen</a></p>{{end}}
+  {{if and (not .Record.archived_at) (not .Record.is_template)}}<p><a class="button" href="/m/shopping/lists/{{.Record.id}}/barcode">{{t "Barcode lokal prüfen"}}</a></p>{{end}}
   {{if and (not .Record.archived_at) (not .Record.is_template)}}
-  <details id="shopping-repurchase"><summary>Nachkauf anhand meines Einkaufsverlaufs prüfen</summary>
-    <p class="fine">Nur tatsächlich abgeschlossene Einkäufe zählen. Ein Kaufabstand sagt weder Vorrat noch benötigte Menge voraus. Es wird nichts automatisch gekauft oder ergänzt.</p>
-    <button type="button" id="repurchase-load">Kaufabstände prüfen</button>
+  <details id="shopping-repurchase"><summary>{{t "Nachkauf anhand meines Einkaufsverlaufs prüfen"}}</summary>
+    <p class="fine">{{t "Nur tatsächlich abgeschlossene Einkäufe zählen. Ein Kaufabstand sagt weder Vorrat noch benötigte Menge voraus. Es wird nichts automatisch gekauft oder ergänzt."}}</p>
+    <button type="button" id="repurchase-load">{{t "Kaufabstände prüfen"}}</button>
     <p id="repurchase-status" role="status"></p>
     <div id="repurchase-results"></div>
   </details>
   {{end}}
-  <button type="button" id="shopping-more" hidden>Weitere Artikel laden</button>
+  <button type="button" id="shopping-more" hidden>{{t "Weitere Artikel laden"}}</button>
   <p id="shopping-page-note" class="fine"></p>
-  <div aria-label="Persönliche Listenfreigaben">{{template "shopping-watch-controls" .}}{{template "shopping-inline-offline" .}}</div>
+  <div aria-label="{{t "Persönliche Listenfreigaben"}}">{{template "shopping-watch-controls" .}}{{template "shopping-inline-offline" .}}</div>
   {{if and .User.CanWrite (not .Record.archived_at) (not .Record.is_template)}}
-  <details id="shopping-merge"><summary>Artikel kontrolliert zusammenführen</summary>
-    <p class="fine">Zwei offene Positionen dieser Seite wählen. Die erste bleibt erhalten. Produkt, Ersatz, Gruppe, Notiz und Zuständigkeit müssen übereinstimmen; Mengen werden exakt in die Einheit der ersten Position umgerechnet.</p>
-    <div class="form-grid"><label>Position behalten<select id="shopping-merge-keep"><option value="">Artikel auswählen</option></select></label><label>Position dazugeben<select id="shopping-merge-remove"><option value="">Artikel auswählen</option></select></label></div>
-    <button type="button" id="shopping-merge-review">Auswahl vergleichen</button>
-    <section id="shopping-merge-comparison" class="conflict-review" tabindex="-1" aria-label="Vergleich vor dem Zusammenführen" hidden></section>
+  <details id="shopping-merge"><summary>{{t "Artikel kontrolliert zusammenführen"}}</summary>
+    <p class="fine">{{t "Zwei offene Positionen dieser Seite wählen. Die erste bleibt erhalten. Produkt, Ersatz, Gruppe, Notiz und Zuständigkeit müssen übereinstimmen; Mengen werden exakt in die Einheit der ersten Position umgerechnet."}}</p>
+    <div class="form-grid"><label>{{t "Position behalten"}}<select id="shopping-merge-keep"><option value="">{{t "Artikel auswählen"}}</option></select></label><label>{{t "Position dazugeben"}}<select id="shopping-merge-remove"><option value="">{{t "Artikel auswählen"}}</option></select></label></div>
+    <button type="button" id="shopping-merge-review">{{t "Auswahl vergleichen"}}</button>
+    <section id="shopping-merge-comparison" class="conflict-review" tabindex="-1" aria-label="{{t "Vergleich vor dem Zusammenführen"}}" hidden></section>
     <p id="shopping-merge-status" role="status"></p>
   </details>
   {{end}}
-  <details id="shopping-context"><summary id="shopping-context-title">Geschäft und Schätzung</summary><p id="shopping-store"></p><p id="shopping-estimate"></p>
-    <p class="fine">Geschäft in den Listendetails wählen. Gruppen unter „Gangreihenfolge“, Produktbilder unter „Produkte“ und datierte Beobachtungen unter „Preise“ pflegen.</p>
+  <details id="shopping-context"><summary id="shopping-context-title">{{t "Geschäft und Schätzung"}}</summary><p id="shopping-store"></p><p id="shopping-estimate"></p>
+    <p class="fine">{{t "Geschäft in den Listendetails wählen. Gruppen unter „Gangreihenfolge“, Produktbilder unter „Produkte“ und datierte Beobachtungen unter „Preise“ pflegen."}}</p>
   </details>
-  {{if not .Record.is_template}}<p><a class="button" href="/m/shopping/lists/{{.Record.id}}/checkout">Einkauf prüfen und Abschluss öffnen</a></p>{{end}}
-  <noscript><p>Für die Schnellerfassung und den Einkaufsmodus JavaScript aktivieren. Artikel lassen sich auch über den Bereich „Artikel“ bearbeiten.</p><a href="/m/shopping/items">Artikel öffnen</a></noscript>
+  {{if not .Record.is_template}}<p><a class="button" href="/m/shopping/lists/{{.Record.id}}/checkout">{{t "Einkauf prüfen und Abschluss öffnen"}}</a></p>{{end}}
+  <noscript><p>{{t "Für die Schnellerfassung und den Einkaufsmodus JavaScript aktivieren. Artikel lassen sich auch über den Bereich „Artikel“ bearbeiten."}}</p><a href="/m/shopping/items">{{t "Artikel öffnen"}}</a></noscript>
 </section>
 {{end}}

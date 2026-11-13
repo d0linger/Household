@@ -149,9 +149,10 @@ func TestFuelOverviewGenuineFuel1UpgradePreservesAllPriorFacts(t *testing.T) {
 	}
 	var after string
 	var unknown bool
-	if err := f.pool.QueryRow(f.ctx, `SELECT (to_jsonb(v)-ARRAY['next_service_on','next_inspection_on','insurance_renewal_on','tank_capacity','battery_capacity','current_series_id'])::text,
+	if err := f.pool.QueryRow(f.ctx, `SELECT (to_jsonb(v)-ARRAY['next_service_on','next_inspection_on','insurance_renewal_on','tank_capacity','battery_capacity','current_series_id','responsible_member_id','responsible_since'])::text,
  next_service_on IS NULL AND next_inspection_on IS NULL AND insurance_renewal_on IS NULL
- AND tank_capacity IS NULL AND battery_capacity IS NULL AND current_series_id IS NULL FROM fuel.vehicles v WHERE id=$1`, vehicle).Scan(&after, &unknown); err != nil || before != after || !unknown {
+ AND tank_capacity IS NULL AND battery_capacity IS NULL AND current_series_id IS NULL
+ AND responsible_member_id IS NULL AND responsible_since IS NULL FROM fuel.vehicles v WHERE id=$1`, vehicle).Scan(&after, &unknown); err != nil || before != after || !unknown {
 		t.Fatal("invented prior dates or changed data", before, after, unknown, err)
 	}
 	if err := database.Ready(f.ctx, f.pool); err != nil {

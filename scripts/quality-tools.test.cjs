@@ -60,6 +60,22 @@ test('browser private root refuses actual junction or symlink escapes from selec
   assert.throws(() => resolveBrowserPrivateRoot(nested), /leaves the workspace/);
 });
 
+test('notification handoff accepts bounded owned files and rejects escaped, aliased and oversized evidence', async t => {
+  const {containedFile, boundedJSON} = require('./notification-browser-fixture.cjs');
+  const root = await privateBrowserFixture(t), local = resolveBrowserPrivateRoot(root);
+  const owned = path.join(local, 'owned');await fs.mkdir(owned);
+  const file = path.join(owned, 'fixture.json');await fs.writeFile(file, '{"synthetic":true}');
+  assert.equal(containedFile(local, file), await fs.realpath(file));
+  assert.deepEqual(boundedJSON(file), {synthetic:true});
+  const outside = path.join(root, 'outside');await fs.mkdir(outside);
+  const escaped = path.join(outside, 'fixture.json');await fs.writeFile(escaped, '{}');
+  assert.throws(() => containedFile(local, escaped), /escapes/);
+  const link = path.join(local, 'alias');await fs.symlink(owned, link, process.platform === 'win32' ? 'junction' : 'dir');
+  assert.throws(() => containedFile(local, path.join(link, 'fixture.json')), /alias/);
+  await fs.writeFile(file, Buffer.alloc((1 << 20) + 1));
+  assert.throws(() => boundedJSON(file), /bounded/);
+});
+
 test('all explicit Node entry points cover every current pure test suite exactly once', async () => {
   const root = path.resolve(__dirname, '..');
   const sources = (await fs.readdir(__dirname, {withFileTypes: true}))
@@ -145,6 +161,55 @@ test('coverage weights statements and merges duplicate instrumentation', () => {
   assert.equal(report.statements, 4);
   assert.equal(report.packages.a.percent, 100);
   assert.equal(report.packages.b.percent, 0);
+});
+
+test('workflow policy refuses empty jobs and suppressed check failures', () => {
+  for (const jobs of [undefined, {}, [], {Checks: null}]) {
+    const workflow = workflowFixture(); workflow.jobs = jobs;
+    assert.ok(checkWorkflow(JSON.stringify(workflow)).length > 0);
+  }
+  for (const value of [true, 'true', '${{ inputs.allow_failure }}']) {
+    for (const scope of ['job', 'step']) {
+      const workflow = workflowFixture();
+      const target = scope === 'job' ? workflow.jobs.Checks : workflow.jobs.Checks.steps[0];
+      target['continue-on-error'] = value;
+      assert.match(checkWorkflow(JSON.stringify(workflow)).join('\n'), /must not be suppressed/);
+    }
+  }
+});
+
+test('workflow policy requires immutable services and a single Go version source', () => {
+  const workflow = workflowFixture(), job = workflow.jobs.Checks;
+  for (const image of ['postgres:18-alpine', '${{ inputs.image }}', 'postgres@sha256:123']) {
+    job.services = {postgres: {image}};
+    assert.match(checkWorkflow(JSON.stringify(workflow)).join('\n'), /SHA-256 digest/);
+  }
+  job.services.postgres.image = 'postgres:18-alpine@sha256:' + 'a'.repeat(64);
+  job.container = 'alpine@sha256:' + 'b'.repeat(64);
+  assert.deepEqual(checkWorkflow(JSON.stringify(workflow)), []);
+  const setup = {uses: 'actions/setup-go@' + 'a'.repeat(40), with: {'go-version-file': 'go.mod'}};
+  job.steps.push(setup);
+  assert.deepEqual(checkWorkflow(JSON.stringify(workflow)), []);
+  for (const settings of [{}, {'go-version': '1.27.3'}, {'go-version-file': 'go.mod', 'go-version': 'stable'}]) {
+    setup.with = settings;
+    assert.match(checkWorkflow(JSON.stringify(workflow)).join('\n'), /exclusively from go.mod/);
+  }
+});
+
+test('required coverage cannot succeed after a failed unit or integration prerequisite', async () => {
+  const document = parseDocument(await fs.readFile(path.join(__dirname, '../.github/workflows/quality.yml'), 'utf8')).toJS();
+  assert.deepEqual(document.jobs.Coverage.needs, ['Tests', 'UnitTests']);
+  const refusal = document.jobs.Coverage.steps[0];
+  assert.equal(refusal.if, "${{ needs.Tests.result != 'success' || needs.UnitTests.result != 'success' }}");
+  assert.match(refusal.run, /exit 1/);
+  const unit = document.jobs.UnitTests.steps.map(step => step.run || '').join('\n');
+  assert.match(unit, /go test -p 1 \.\/\.\.\. -count=1 -shuffle=on/);
+  assert.match(unit, /check-coverage\.cjs \S+ 14 /);
+  const review = document.jobs.GODep.steps.find(step => step.uses?.startsWith('actions/dependency-review-action@'));
+  assert.equal(review.if, "github.event_name == 'pull_request'");
+  assert.equal(review.with['fail-on-severity'], 'high');
+  assert.equal(review.with['comment-summary-in-pr'], 'never');
+  assert.ok(document.jobs.WorkflowAndSecrets.steps.some(step => step.run === 'node scripts/check-local-artifacts.cjs --index'));
 });
 test('coverage fails closed on missing or malformed observations', () => {
   for (const text of ['', 'mode: atomic\n', 'mode: fake\na/x.go:1.1,2.2 1 1', 'mode: atomic\ncorrupt']) assert.throws(() => summarize(text));

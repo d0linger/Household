@@ -4,7 +4,9 @@ const {chromium}=require('playwright');
 const AxeBuilder=require('@axe-core/playwright').default;
 const base=process.env.HOUSEHOLD_BROWSER_URL||'http://localhost:8101',origin=new URL(base);
 if(!['localhost','127.0.0.1'].includes(origin.hostname)||origin.port!=='8101'||origin.pathname!=='/')throw Error('Requires isolated Household review server8101');
-const output=path.resolve('outputs/pantry-review'),report={checks:[],screenshots:[],accessibility:[],errors:[],externalRequests:[]};
+const workspace=path.resolve(__dirname,'..'),output=path.resolve(workspace,process.env.HOUSEHOLD_PANTRY_BROWSER_OUTPUT||'outputs/pantry-review');
+if(!output.startsWith(path.join(workspace,'outputs')+path.sep))throw Error('Pantry browser evidence must remain inside workspace outputs');
+const report={checks:[],screenshots:[],accessibility:[],errors:[],externalRequests:[]};
 const must=(value,name)=>{if(!value)throw Error(name);report.checks.push(name);};
 (async()=>{
  await fs.mkdir(output,{recursive:true});
@@ -13,11 +15,14 @@ const must=(value,name)=>{if(!value)throw Error(name);report.checks.push(name);}
   const context=await browser.newContext({viewport:{width:1440,height:1000},serviceWorkers:'block'});
   await context.route('**/*',route=>{if(new URL(route.request().url()).origin!==origin.origin){report.externalRequests.push(route.request().url());return route.abort();}return route.continue();});
   const page=await context.newPage();page.setDefaultTimeout(20000);page.on('pageerror',error=>report.errors.push(String(error)));
-  async function login(password){await page.goto(base+'/login');await page.locator('[name=username]').fill('bootstrap');await page.locator('[name=password]').fill(password);await Promise.all([page.waitForURL(url=>url.pathname!=='/login'),page.getByRole('button',{name:/^Anmelden/}).click()]);}
+  async function login(password){await page.goto(base+'/login');await page.locator('[name=username]').fill('bootstrap');await page.locator('[name=password]').fill(password);await Promise.all([page.waitForURL(url=>url.pathname!=='/login'),page.locator('form[action="/login"] button.primary').click()]);}
   await login(process.env.HOUSEHOLD_BROWSER_PASSWORD||'Browser review only 1234');
-  if(new URL(page.url()).pathname==='/change-password'){await page.locator('[name=current]').fill(process.env.HOUSEHOLD_BROWSER_PASSWORD||'Browser review only 1234');await page.locator('[name=next]').fill('Browser review only 1234');await Promise.all([page.waitForURL('**/login'),page.getByRole('button',{name:'Passwort speichern'}).click()]);await login('Browser review only 1234');}
+  if(new URL(page.url()).pathname==='/change-password'){await page.locator('[name=current]').fill(process.env.HOUSEHOLD_BROWSER_PASSWORD||'Browser review only 1234');await page.locator('[name=next]').fill('Browser review only 1234');await Promise.all([page.waitForURL('**/login'),page.locator('form[action="/change-password"] button').click()]);await login('Browser review only 1234');}
+  if(await page.locator('html').getAttribute('data-locale')!=='de'){await page.locator('.language-control button[value=de]').click();await page.waitForFunction(()=>document.documentElement.dataset.locale==='de');}
+  must(await page.locator('html').getAttribute('data-locale')==='de','German acceptance copy is explicitly selected after authentication');
   const fixture=await page.evaluate(async()=>{
    const bootstrap=await fetch('/api/v1/core/bootstrap').then(r=>r.json()),csrf=document.querySelector('meta[name="csrf-token"]').content;
+   if(bootstrap.states.pantry.state!=='enabled')throw Error('The isolated Pantry module must be enabled before this acceptance suite');
    const create=async(entity,data)=>{const response=await fetch('/api/v1/m/pantry/'+entity,{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf,'Idempotency-Key':crypto.randomUUID()},body:JSON.stringify({data,generation:bootstrap.states.pantry.generation})});if(!response.ok)throw Error(await response.text());return response.json();};
    const suffix=String(Date.now()),group='Vorratstest '+suffix;
    for(let n=0;n<51;n++)await create('products',{name:'Seitenprobe '+suffix+' '+n,unit_code:'g'});
@@ -54,7 +59,7 @@ const must=(value,name)=>{if(!value)throw Error(name);report.checks.push(name);}
   must(await product.getByRole('link',{name:/^Charge vom 03.01.2026 · Kühlschrank/}).count()===1,'A legacy empty lot label has a named accessible detail link');
   await page.unroute('**/api/v1/pantry/products/*/lots?**');
   async function capture(name){await page.evaluate(async()=>{scrollTo(0,0);await new Promise(requestAnimationFrame);});const file=path.join(output,name+'.png');await page.screenshot({path:file,fullPage:true,animations:'disabled'});report.screenshots.push(file);const result=await new AxeBuilder({page}).withTags(['wcag2a','wcag2aa','wcag21aa']).analyze();report.accessibility.push({name,violations:result.violations});must(!result.violations.length,'Accessibility '+name);}
-  await capture('pantry-desktop');await page.setViewportSize({width:390,height:844});await page.evaluate(()=>document.documentElement.dataset.theme='dark');await capture('pantry-mobile-dark');
+  await page.evaluate(()=>window.HouseholdTheme.apply('light',{persist:false}));await capture('pantry-desktop');await page.setViewportSize({width:390,height:844});await page.evaluate(()=>window.HouseholdTheme.apply('dark',{persist:false}));await capture('pantry-mobile-dark');
   must(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),'Long product name and exact quantities fit the mobile layout');
   await page.getByLabel('Bestand am Tagesende').fill(fixture.today);await page.getByRole('button',{name:'Anzeigen',exact:true}).click();await page.locator('#pantry-history-note:not([hidden])').waitFor();
   must(await page.locator('#pantry-summary').innerText().then(text=>text.includes('Europe/Vienna')&&text.includes('9007199254,741 g')),'Historical date explicitly shows household timezone and exact stock');

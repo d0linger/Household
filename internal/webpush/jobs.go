@@ -8,6 +8,7 @@ import (
 
 	"household/internal/audit"
 	"household/internal/auth"
+	"household/internal/secretbox"
 	"household/internal/store"
 	"household/internal/value"
 
@@ -72,6 +73,14 @@ func (s *Service) SendJob(ctx context.Context, jobID, lease string) error {
 	if s.state != "ready" {
 		return finishJob(ctx, tx, claim, "done", "push_not_configured", time.Time{})
 	}
+	var managed bool
+	if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM core.notification_preferences
+ WHERE household_id=$1 AND user_id=$2 AND category='shopping')`, household, claim.ref.RecipientID).Scan(&managed); err != nil {
+		return err
+	}
+	if managed {
+		return finishJob(ctx, tx, claim, "done", "channel_superseded", time.Time{})
+	}
 	audience, err := s.store.ShoppingNotificationAudience(ctx, tx, claim.ref)
 	if err != nil {
 		return err
@@ -79,9 +88,9 @@ func (s *Service) SendJob(ctx context.Context, jobID, lease string) error {
 	if !audience.Eligible || !audience.PushEligible {
 		return finishJob(ctx, tx, claim, "done", "superseded_authority", time.Time{})
 	}
-	err = tx.QueryRow(ctx, `SELECT id::text,household_id::text,user_id::text,endpoint_hash,encrypted_subscription,encryption_key_id,disabled_at,created_at
+	err = tx.QueryRow(ctx, `SELECT id::text,household_id::text,user_id::text,endpoint_hash,encrypted_subscription,encryption_key_id,encryption_format,disabled_at,created_at
  FROM core.push_subscriptions WHERE id=$1 AND household_id=$2 AND user_id=$3 AND octet_length(encrypted_subscription)<=$4
- FOR SHARE`, claim.ref.SubscriptionID, household, claim.ref.RecipientID, maxCipher).Scan(&claim.row.id, &claim.row.household, &claim.row.user, &claim.row.hash, &claim.row.cipher, &claim.row.keyID, &claim.row.disabled, &claim.row.created)
+ FOR SHARE`, claim.ref.SubscriptionID, household, claim.ref.RecipientID, maxCipher).Scan(&claim.row.id, &claim.row.household, &claim.row.user, &claim.row.hash, &claim.row.cipher, &claim.row.keyID, &claim.row.format, &claim.row.disabled, &claim.row.created)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return finishJob(ctx, tx, claim, "done", "connection_missing", time.Time{})
 	}
@@ -89,6 +98,9 @@ func (s *Service) SendJob(ctx context.Context, jobID, lease string) error {
 		return err
 	}
 	claim.data, err = s.open(claim.row)
+	if errors.Is(err, secretbox.ErrKeyUnavailable) {
+		return err
+	}
 	if err != nil || claim.row.disabled != nil || claim.data.VAPIDKeyID != s.vapidID || !claim.data.ExpiresAt.After(now) || claim.data.ConsentAt.After(claim.ref.EventAt) {
 		return finishJob(ctx, tx, claim, "done", "connection_superseded", time.Time{})
 	}
@@ -126,7 +138,17 @@ func (s *Service) SendJob(ctx context.Context, jobID, lease string) error {
 	if err != nil {
 		return errors.New("encode fixed push payload failed")
 	}
-	result := s.transport.send(ctx, claim.data.Subscription, payload, digest(claim.ref.NotificationID + "/" + claim.ref.SubscriptionID)[:32])
+	var guardErr error
+	result := s.transport.sendAuthorized(ctx, claim.data.Subscription, payload, digest(claim.ref.NotificationID + "/" + claim.ref.SubscriptionID)[:32], func(ctx context.Context) error {
+		err := s.authorizeLegacyShoppingSend(ctx, claim)
+		if err != nil && !errors.Is(err, store.ErrForbidden) && !errors.Is(err, store.ErrConflict) && !errors.Is(err, auth.ErrSession) {
+			guardErr = err
+		}
+		return err
+	})
+	if guardErr != nil {
+		return guardErr
+	}
 	var cooldownErr error
 	if result.status == 429 {
 		cooldownErr = s.cooldown(ctx, endpoint.Hostname(), result.retryAt)
@@ -184,6 +206,9 @@ func (s *Service) finishAttempt(ctx context.Context, claim sendClaim, result out
 	if err != nil {
 		return err
 	}
+	if result.code == "authority_superseded" {
+		return finishJob(ctx, tx, claim, "done", "superseded_before_attempt", time.Time{})
+	}
 	audience, err := s.store.ShoppingNotificationAudience(ctx, tx, claim.ref)
 	if err != nil {
 		return err
@@ -201,7 +226,7 @@ func (s *Service) finishAttempt(ctx context.Context, claim sendClaim, result out
 	}
 	var unchanged bool
 	if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM core.push_subscriptions WHERE id=$1 AND household_id=$2
- AND user_id=$3 AND endpoint_hash=$4 AND encrypted_subscription=$5 AND disabled_at IS NULL)`, claim.row.id, claim.row.household, claim.row.user, claim.row.hash, claim.row.cipher).Scan(&unchanged); err != nil {
+ AND user_id=$3 AND endpoint_hash=$4 AND encrypted_subscription=$5 AND encryption_format=$6 AND encryption_key_id=$7 AND disabled_at IS NULL)`, claim.row.id, claim.row.household, claim.row.user, claim.row.hash, claim.row.cipher, claim.row.format, claim.row.keyID).Scan(&unchanged); err != nil {
 		return err
 	}
 	if !unchanged {
@@ -210,7 +235,7 @@ func (s *Service) finishAttempt(ctx context.Context, claim sendClaim, result out
 	if result.code == "connection_expired" {
 		// An old HTTP result must never disable a newly registered replacement.
 		if _, err = tx.Exec(ctx, `UPDATE core.push_subscriptions SET disabled_at=coalesce(disabled_at,clock_timestamp())
- WHERE id=$1 AND household_id=$2 AND user_id=$3 AND endpoint_hash=$4 AND encrypted_subscription=$5`, claim.row.id, claim.row.household, claim.row.user, claim.row.hash, claim.row.cipher); err != nil {
+ WHERE id=$1 AND household_id=$2 AND user_id=$3 AND endpoint_hash=$4 AND encrypted_subscription=$5 AND encryption_format=$6 AND encryption_key_id=$7`, claim.row.id, claim.row.household, claim.row.user, claim.row.hash, claim.row.cipher, claim.row.format, claim.row.keyID); err != nil {
 			return err
 		}
 		return finishJob(ctx, tx, claim, "done", "connection_expired", time.Time{})

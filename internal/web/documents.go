@@ -46,6 +46,30 @@ func documentQuery(r *http.Request) (url.Values, error) {
 	return q, nil
 }
 
+// documentPageQuery keeps navigation-only context out of the business API filters.
+func documentPageQuery(r *http.Request) (url.Values, string, error) {
+	invalid := store.Invalid{Message: "Dokumentfilter prüfen"}
+	if len(r.URL.RawQuery) > 6000 {
+		return nil, "", invalid
+	}
+	q, err := url.ParseQuery(r.URL.RawQuery)
+	if err != nil {
+		return nil, "", invalid
+	}
+	returnPane := "library"
+	if origins, present := q["from"]; present {
+		if r.PathValue("pane") != "review" || len(origins) != 1 || !slices.Contains([]string{"inbox", "library", "deadlines", "processing", "duplicates"}, origins[0]) {
+			return nil, "", invalid
+		}
+		returnPane = origins[0]
+		q.Del("from")
+	}
+	filtered := r.Clone(r.Context())
+	filtered.URL.RawQuery = q.Encode()
+	q, err = documentQuery(filtered)
+	return q, returnPane, err
+}
+
 func (s *Server) documentPage(w http.ResponseWriter, r *http.Request) {
 	s.Store.Gate.RLock()
 	defer s.Store.Gate.RUnlock()
@@ -54,7 +78,7 @@ func (s *Server) documentPage(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, store.ErrNotFound)
 		return
 	}
-	q, err := documentQuery(r)
+	q, returnPane, err := documentPageQuery(r)
 	if err != nil {
 		s.fail(w, r, err)
 		return
@@ -71,7 +95,7 @@ func (s *Server) documentPage(w http.ResponseWriter, r *http.Request) {
 	p := s.page(r, "Dokumente & Fristen")
 	p.Module, _ = s.Store.Module("documents")
 	p.View = "documents-workspace"
-	p.Extra = store.Record{"pane": r.PathValue("pane"), "document_id": q.Get("id"), "generation": initial["generation"]}
+	p.Extra = store.Record{"pane": r.PathValue("pane"), "document_id": q.Get("id"), "generation": initial["generation"], "return_pane": returnPane}
 	s.render(w, r, p)
 }
 
@@ -180,6 +204,8 @@ func (s *Server) documentAPI(w http.ResponseWriter, r *http.Request) {
 				out, err = s.Store.DocumentLibrary(r.Context(), identity(r), document.Filters{Search: q.Get("search"), Type: q.Get("document_type"), State: q.Get("state"), Issuer: q.Get("issuer"), Category: q.Get("category"), DueBefore: q.Get("due_before"), Cursor: q.Get("cursor")})
 			case "detail":
 				out, err = s.Store.DocumentDetail(r.Context(), identity(r), q.Get("id"))
+			case "notification-settings":
+				out, err = s.Store.DocumentNotificationSettings(r.Context(), identity(r), q.Get("id"))
 			case "targets":
 				out, err = s.Store.DocumentTargets(r.Context(), identity(r), q.Get("module"), q.Get("entity"), q.Get("search"))
 			default:

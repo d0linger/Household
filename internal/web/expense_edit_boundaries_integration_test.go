@@ -238,7 +238,7 @@ func TestExpenseEditPopulatedCore23UpgradePreservesSharedFinancialFacts(t *testi
 	}
 	assertLegacyFinanceMoneyMode(t, f)
 	var proofs, policies int
-	if err := f.owner.QueryRow(f.ctx, "SELECT (SELECT count(*) FROM core.expense_edit_operations),(SELECT count(*) FROM core.audit_policies)").Scan(&proofs, &policies); err != nil || proofs != 0 || policies != 163 {
+	if err := f.owner.QueryRow(f.ctx, "SELECT (SELECT count(*) FROM core.expense_edit_operations),(SELECT count(*) FROM core.audit_policies)").Scan(&proofs, &policies); err != nil || proofs != 0 || policies != 165 {
 		t.Fatal("upgrade fabricated editor proofs or lost audit policy", proofs, policies, err)
 	}
 	if err := database.Ready(f.ctx, f.pool); err != nil {

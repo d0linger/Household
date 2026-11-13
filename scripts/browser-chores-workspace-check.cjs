@@ -3,7 +3,8 @@ const fs=require('node:fs/promises'),path=require('node:path'),crypto=require('n
 const {chromium}=require('playwright'),AxeBuilder=require('@axe-core/playwright').default;
 const origin=new URL(process.env.HOUSEHOLD_BROWSER_URL||'http://127.0.0.1:8101');
 if(!['localhost','127.0.0.1'].includes(origin.hostname)||origin.port!=='8101'||origin.pathname!=='/'||origin.search||origin.hash)throw Error('Chores review requires isolated local Household8101');
-const output=path.resolve('outputs/chores-workspace-review'),report={checks:[],screenshots:[],accessibility:[],errors:[],externalRequests:[],scope:'Actual synthetic local Chores workflows; no production data or hosted CI claim'};
+const output=path.resolve(process.env.HOUSEHOLD_CHORES_BROWSER_OUTPUT||'outputs/chores-workspace-review'),report={checks:[],screenshots:[],accessibility:[],errors:[],externalRequests:[],scope:'Actual synthetic local Chores workflows; no production data or hosted CI claim'};
+if(!output.startsWith(path.resolve('outputs')+path.sep))throw Error('Chores review evidence must stay inside project outputs');
 const must=(condition,name)=>{if(!condition)throw Error(name);report.checks.push(name);};
 const digest=raw=>crypto.createHash('sha256').update(raw).digest('hex');
 (async()=>{

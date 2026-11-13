@@ -1,0 +1,14 @@
+{{define "module-order"}}
+<section class="panel module-order-panel" aria-labelledby="settings-module-order">
+<h2 id="settings-module-order" tabindex="-1">{{t "Deine Modulreihenfolge"}}</h2>
+<p>{{t "Häufig verwendete Module nach oben ziehen oder mit den Pfeilen verschieben. Die Reihenfolge gilt nur für dein Konto, links am Desktop und unten am Mobilgerät."}}</p>
+<p class="fine">{{t "Auf dem Mobilgerät erreichst du weitere Module durch seitliches Scrollen. Pausierte Module behalten ihren Platz und erscheinen wieder, sobald sie aktiviert werden."}}</p>
+<form id="module-order-form">
+<ol id="module-order-list">{{range .Modules}}{{$state:=index $.States .ID}}
+<li data-module-id="{{.ID}}" data-module-label="{{.Short}}"><button type="button" class="order-drag" data-order-drag draggable="true" aria-label="{{t "%s verschieben" .Short}}" title="{{t "Ziehen oder die Pfeiltasten verwenden"}}"><svg aria-hidden="true"><use href="{{icon $.Asset "grip-vertical"}}"/></svg></button><span class="order-module"><svg aria-hidden="true"><use href="{{icon $.Asset .Icon}}"/></svg><span>{{.Short}}{{if ne $state.State "enabled"}}<small>{{t "Pausiert"}}</small>{{end}}</span></span><div class="order-actions"><button type="button" data-order-up aria-label="{{t "%s nach oben" .Short}}"><svg aria-hidden="true"><use href="{{icon $.Asset "arrow-up"}}"/></svg></button><button type="button" data-order-down aria-label="{{t "%s nach unten" .Short}}"><svg aria-hidden="true"><use href="{{icon $.Asset "arrow-down"}}"/></svg></button></div></li>
+{{end}}</ol>
+<p id="module-order-status" role="status" aria-live="polite" tabindex="-1" hidden></p><p id="module-order-error" class="form-error" role="alert" hidden></p>
+<div class="actions"><button class="primary">{{t "Reihenfolge speichern"}}</button><button type="button" data-order-reset>{{t "Standardreihenfolge wiederherstellen"}}</button></div>
+</form></section>
+<script nonce="{{.Nonce}}" src="{{index .Asset "module-order.js"}}" defer></script>
+{{end}}

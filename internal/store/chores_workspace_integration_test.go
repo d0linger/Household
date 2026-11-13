@@ -317,6 +317,11 @@ func choreMigrateFinancePredecessor(t *testing.T, ctx context.Context, ownerURL 
 
 func TestChoreNativePopulatedCore31UpgradeRetainsUTCAndUnknownHistory(t *testing.T) {
 	f := newRecipeExpansionFixtureForMigration(t, choreMigrateFinancePredecessor)
+	var coreVersion, choresVersion int
+	var dirty bool
+	if err := f.owner.QueryRow(f.ctx, `SELECT version,dirty,(SELECT version FROM chores.schema_migrations) FROM core.schema_migrations`).Scan(&coreVersion, &dirty, &choresVersion); err != nil || coreVersion != 31 || choresVersion != 1 || dirty {
+		t.Fatal("legacy data requires genuine clean Core31/Chores1", coreVersion, choresVersion, dirty, err)
+	}
 	tid, oid := value.UUID(), value.UUID()
 	due := time.Date(2026, 10, 25, 1, 30, 0, 0, time.UTC)
 	if _, err := f.owner.Exec(f.ctx, `INSERT INTO chores.task_templates(id,household_id,title,description,repeat_days,timezone,created_by)

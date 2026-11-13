@@ -154,6 +154,9 @@ func (s *Store) documentApply(ctx context.Context, tx pgx.Tx, id auth.Identity, 
 	if err := documentLock(ctx, tx, id, in.ID, in.Version); err != nil {
 		return nil, err
 	}
+	if in.Action == "notification" {
+		return saveDocumentNotificationSettings(ctx, tx, id, in)
+	}
 	out := Record{"id": in.ID}
 	var err error
 	switch in.Action {

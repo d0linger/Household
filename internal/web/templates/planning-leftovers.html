@@ -1,17 +1,17 @@
 {{define "planning-leftovers"}}
 <details id="planning-leftovers" class="planning-extension">
- <summary>Geplante Reste und Portionen</summary>
- <h2 tabindex="-1">Reste zwischen Mahlzeiten planen</h2>
- <p class="fine">Eine Prognose: keine Vorratsbuchung, Reservierung oder Einkaufsdeckung. Die Produktionsmenge ist bereits in den Komponentenportionen enthalten.</p>
- <p data-extension-status role="status">Gespeicherte Quellen werden geladen …</p><div data-extension-error class="notice error" role="alert" tabindex="-1" hidden></div>
+ <summary>{{t "Geplante Reste und Portionen"}}</summary>
+ <h2 tabindex="-1">{{t "Reste zwischen Mahlzeiten planen"}}</h2>
+ <p class="fine">{{t "Eine Prognose: keine Vorratsbuchung, Reservierung oder Einkaufsdeckung. Die Produktionsmenge ist bereits in den Komponentenportionen enthalten."}}</p>
+ <p data-extension-status role="status">{{t "Gespeicherte Quellen werden geladen …"}}</p><div data-extension-error class="notice error" role="alert" tabindex="-1" hidden></div>
  <div id="leftover-sources"></div><div id="leftover-allocations"></div>
- {{if .User.CanWrite}}<form id="leftover-source-form"><fieldset data-extension-write><legend>Produktion und erwarteten Überschuss prüfen</legend><div class="form-grid">
-  <label>Gespeicherte Rezeptmahlzeit<select name="meal" required></select></label><label>Produzierende Komponente<select name="component" required></select></label>
-  <label>Davon erwartete Restportionen<input name="expected_servings" inputmode="decimal" required></label>
- </div><p id="leftover-production" class="notice">Eine manuell portionierte Rezeptmahlzeit und Komponente auswählen.</p><button class="primary">Restquelle ausdrücklich bestätigen</button></fieldset></form>
- <form id="leftover-allocation-form"><fieldset data-extension-write><legend>Restportionen einer späteren Mahlzeit zuordnen</legend><div class="form-grid">
-  <label>Weitere Quellwoche ab<input name="source_week" type="date"></label><div class="actions"><button type="button" id="leftover-source-load">Deklarierte Quellen dieser Woche laden</button></div><label>Geplante Restquelle<select name="source" required></select></label><label>Weitere Zielwoche ab<input name="target_week" type="date"></label><div class="actions"><button type="button" id="leftover-target-load">Gespeicherte Ziele dieser Woche laden</button></div><label>Spätere Mahlzeit mit Planungsart „Reste“<select name="target" required></select></label><label>Zugeordnete Portionen<input name="servings" inputmode="decimal" required></label>
- </div><p id="leftover-capacity" class="fine">Teilabdeckung vergrößert die Zielmahlzeit nicht. Ungeprüfte Verknüpfungen belegen weiterhin die deklarierte Kapazität.</p><button class="primary">Zuordnung prüfen und speichern</button></fieldset></form>
- <div class="actions"><button type="button" id="leftover-rebase">Reste-Entwurf gegen aktuellen Stand prüfen</button><button type="button" data-extension-discard>Reste-Entwurf verwerfen und neu laden</button></div>{{end}}
+ {{if .User.CanWrite}}<form id="leftover-source-form"><fieldset data-extension-write><legend>{{t "Produktion und erwarteten Überschuss prüfen"}}</legend><div class="form-grid">
+  <label>{{t "Gespeicherte Rezeptmahlzeit"}}<select name="meal" required></select></label><label>{{t "Produzierende Komponente"}}<select name="component" required></select></label>
+  <label>{{t "Davon erwartete Restportionen"}}<input name="expected_servings" inputmode="decimal" required></label>
+ </div><p id="leftover-production" class="notice">{{t "Eine manuell portionierte Rezeptmahlzeit und Komponente auswählen."}}</p><button class="primary">{{t "Restquelle ausdrücklich bestätigen"}}</button></fieldset></form>
+ <form id="leftover-allocation-form"><fieldset data-extension-write><legend>{{t "Restportionen einer späteren Mahlzeit zuordnen"}}</legend><div class="form-grid">
+  <label>{{t "Weitere Quellwoche ab"}}<input name="source_week" type="date"></label><div class="actions"><button type="button" id="leftover-source-load">{{t "Deklarierte Quellen dieser Woche laden"}}</button></div><label>{{t "Geplante Restquelle"}}<select name="source" required></select></label><label>{{t "Weitere Zielwoche ab"}}<input name="target_week" type="date"></label><div class="actions"><button type="button" id="leftover-target-load">{{t "Gespeicherte Ziele dieser Woche laden"}}</button></div><label>{{t "Spätere Mahlzeit mit Planungsart „Reste“"}}<select name="target" required></select></label><label>{{t "Zugeordnete Portionen"}}<input name="servings" inputmode="decimal" required></label>
+ </div><p id="leftover-capacity" class="fine">{{t "Teilabdeckung vergrößert die Zielmahlzeit nicht. Ungeprüfte Verknüpfungen belegen weiterhin die deklarierte Kapazität."}}</p><button class="primary">{{t "Zuordnung prüfen und speichern"}}</button></fieldset></form>
+ <div class="actions"><button type="button" id="leftover-rebase">{{t "Reste-Entwurf gegen aktuellen Stand prüfen"}}</button><button type="button" data-extension-discard>{{t "Reste-Entwurf verwerfen und neu laden"}}</button></div>{{end}}
 </details>
 {{end}}

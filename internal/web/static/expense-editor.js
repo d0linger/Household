@@ -1,4 +1,6 @@
 'use strict';
+const _householdText_expense_editor_js = (source, ...args) => { const i18n = globalThis.HouseholdI18n; if (i18n) return i18n.t(source, ...args); let index = 0; return args.length ? source.replace(/%%|%[sdv]/g, token => token === '%%' ? '%' : String(args[index++] ?? '')) : source; };
+
 (() => {
   const root = document.getElementById('expense-editor');
   if (!root) return;
@@ -8,7 +10,7 @@
   const state = {bundle:null, lines:[], removed:[], editable:false, busy:false, dirty:false, pending:null, review:null, fresh:null, categoryKey:null, returnFocus:null};
   const uuid = value => typeof value === 'string' && /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(value);
   const node = (tag, text, className) => {const result=document.createElement(tag); if(text!==undefined)result.textContent=text; if(className)result.className=className; return result;};
-  const money = minor => minor === null || minor === undefined ? 'Noch offen' : (values.minorText(String(minor)) ?? 'Nicht darstellbar') + ' €';
+  const money = minor => minor === null || minor === undefined ? _householdText_expense_editor_js("Noch offen") : (values.minorText(String(minor)) ?? _householdText_expense_editor_js("Nicht darstellbar")) + ' €';
   const canEdit = () => state.editable && !state.busy && !state.pending && !state.review;
   function button(label, action) {const result=node('button',label);result.type='button';result.addEventListener('click',action);return result;}
   function status(text) {$('expense-status').textContent=text;$('expense-status').hidden=false;}
@@ -31,26 +33,26 @@
   async function request(url, options={}) {
     let response;
     try {response=await fetch(url,{cache:'no-store',credentials:'same-origin',...options,headers:{Accept:'application/json',...options.headers}});}
-    catch {const error=new Error('Keine sichere Verbindung zum Haushalt. Bitte Verbindung prüfen.');error.status=0;throw error;}
+    catch {const error=new Error(_householdText_expense_editor_js("Keine sichere Verbindung zum Haushalt. Bitte Verbindung prüfen."));error.status=0;throw error;}
     let result;
-    try {result=await response.json();} catch {const error=new Error('Serverantwort konnte nicht sicher gelesen werden.');error.status=response.ok?0:response.status;throw error;}
-    if(!response.ok){const error=new Error(result.error||'Vorgang fehlgeschlagen.');error.status=response.status;error.fields=result.fields||{};throw error;}
+    try {result=await response.json();} catch {const error=new Error(_householdText_expense_editor_js("Serverantwort konnte nicht sicher gelesen werden."));error.status=response.ok?0:response.status;throw error;}
+    if(!response.ok){const error=new Error(result.error||_householdText_expense_editor_js("Vorgang fehlgeschlagen."));error.status=response.status;error.fields=result.fields||{};throw error;}
     return result;
   }
   async function actor(writing=false) {
     const current=await request('/api/v1/core/bootstrap');
     if(current.user?.id!==document.body.dataset.user || current.user?.household_id!==document.body.dataset.household) {
-      const error=new Error('Das angemeldete Konto hat gewechselt. Seite nach Prüfung deiner offenen Eingaben neu öffnen.');error.status=403;throw error;
+      const error=new Error(_householdText_expense_editor_js("Das angemeldete Konto hat gewechselt. Seite nach Prüfung deiner offenen Eingaben neu öffnen."));error.status=403;throw error;
     }
-    if(writing&&!['admin','editor'].includes(current.user.role)){const error=new Error('Du hast derzeit nur Lesezugriff. Deine Eingaben bleiben erhalten.');error.status=403;throw error;}
-    if(typeof current.csrf!=='string')throw new Error('Anmeldung konnte nicht vollständig geprüft werden.');
+    if(writing&&!['admin','editor'].includes(current.user.role)){const error=new Error(_householdText_expense_editor_js("Du hast derzeit nur Lesezugriff. Deine Eingaben bleiben erhalten."));error.status=403;throw error;}
+    if(typeof current.csrf!=='string')throw new Error(_householdText_expense_editor_js("Anmeldung konnte nicht vollständig geprüft werden."));
     return current.csrf;
   }
   async function readBundle(entry) {
     await actor();
     const bundle=await request('/api/v1/expenses/editor'+(entry?'?entry='+encodeURIComponent(entry):''));
-    if(!bundle?.header || !Array.isArray(bundle.lines) || !Array.isArray(bundle.baseline) || bundle.lines.length>100 || entry&&bundle.header.id!==entry)throw new Error('Vollständige Buchung konnte nicht gelesen werden.');
-    if(!values.safeVersions(bundle)){bundle.editable=false;bundle.lock_reason='Gespeicherte Versionswerte liegen außerhalb der sicheren Browsergrenzen. Einzelverwaltung oder Export verwenden.';}
+    if(!bundle?.header || !Array.isArray(bundle.lines) || !Array.isArray(bundle.baseline) || bundle.lines.length>100 || entry&&bundle.header.id!==entry)throw new Error(_householdText_expense_editor_js("Vollständige Buchung konnte nicht gelesen werden."));
+    if(!values.safeVersions(bundle)){bundle.editable=false;bundle.lock_reason=_householdText_expense_editor_js("Gespeicherte Versionswerte liegen außerhalb der sicheren Browsergrenzen. Einzelverwaltung oder Export verwenden.");}
     return bundle;
   }
   function inactiveSelections() {
@@ -69,14 +71,14 @@
   function updateTotals() {
     const current=totals();
     $('expense-total-value').textContent=money(current.total);$('expense-sum-value').textContent=money(current.sum);$('expense-rest-value').textContent=money(current.rest);
-    $('expense-rest-status').textContent=!current.validHeader?'Positiven Ausgabenbetrag oder negativen Erstattungsbetrag eintragen.':!current.validLines?'Alle Teilbeträge als exakte, von null verschiedene Beträge prüfen.':inactiveSelections()?'Inaktive Zahlende oder archivierte Kategorien vor dem Buchen ausdrücklich ersetzen.':current.canPost?'Vollständig aufgeteilt. Du kannst die Buchung jetzt prüfen.':'Der Entwurf darf diese Restdifferenz behalten. Verbindliches Buchen benötigt mindestens eine Zeile und exakt 0,00 € Rest.';
+    $('expense-rest-status').textContent=!current.validHeader?_householdText_expense_editor_js("Positiven Ausgabenbetrag oder negativen Erstattungsbetrag eintragen."):!current.validLines?_householdText_expense_editor_js("Alle Teilbeträge als exakte, von null verschiedene Beträge prüfen."):inactiveSelections()?_householdText_expense_editor_js("Inaktive Zahlende oder archivierte Kategorien vor dem Buchen ausdrücklich ersetzen."):current.canPost?_householdText_expense_editor_js("Vollständig aufgeteilt. Du kannst die Buchung jetzt prüfen."):_householdText_expense_editor_js("Der Entwurf darf diese Restdifferenz behalten. Verbindliches Buchen benötigt mindestens eine Zeile und exakt 0,00 € Rest.");
     availability();
   }
   function title() {
-    const text=!state.editable?'Buchung und Aufteilung':controls.kind.value==='refund'?'Erstattung aufteilen':state.bundle?.header.id?'Ausgabe aufteilen':'Neue Ausgabe aufteilen';
-    root.querySelector('h1').textContent=text;document.title=text+' · Household';
+    const text=!state.editable?_householdText_expense_editor_js("Buchung und Aufteilung"):controls.kind.value==='refund'?_householdText_expense_editor_js("Erstattung aufteilen"):state.bundle?.header.id?_householdText_expense_editor_js("Ausgabe aufteilen"):_householdText_expense_editor_js("Neue Ausgabe aufteilen");
+    root.querySelector('h1').textContent=text;document.title=text+_householdText_expense_editor_js(" · Household");
   }
-  function dirty() {state.dirty=true;$('expense-saved-state').textContent='Ungespeicherte Eingaben';title();updateTotals();}
+  function dirty() {state.dirty=true;$('expense-saved-state').textContent=_householdText_expense_editor_js("Ungespeicherte Eingaben");title();updateTotals();}
   function lineInput(line, name, label) {
     const wrapper=node('label',label), input=node('input');input.type='text';input.id=`expense-line-${line.key}-${name==='amount_eur'?'amount':name}`;
     input.value=line[name]||'';input.maxLength=name==='note'?300:32;input.autocomplete='off';
@@ -90,27 +92,27 @@
     const list=$('expense-lines');list.replaceChildren();
     state.lines.forEach((line,index)=>{
       const row=node('fieldset',undefined,'expense-line');row.dataset.lineKey=line.key;
-      const legend=node('legend',`Kategoriezeile ${index+1}`,'sr-only');row.append(legend);
-      const heading=node('div',undefined,'expense-line-heading'), title=node('h3',`${index+1}. ${line.label}${line.archived?' · archiviert':''}${line.missing?' · nicht verfügbar':''}`);
+      const legend=node('legend',_householdText_expense_editor_js("Kategoriezeile %s", index+1),'sr-only');row.append(legend);
+      const heading=node('div',undefined,'expense-line-heading'), title=node('h3',`${index+1}. ${line.label}${line.archived?_householdText_expense_editor_js(" · archiviert"):''}${line.missing?_householdText_expense_editor_js(" · nicht verfügbar"):''}`);
       title.id=`expense-line-${line.key}-title`;heading.append(title);
-      const category=button('Kategorie ändern',()=>chooseCategory(line.key,category));category.id=`expense-line-${line.key}-category`;category.setAttribute('aria-label',`Kategorie von Zeile ${index+1} ändern`);heading.append(category);row.append(heading);
-      const grid=node('div',undefined,'form-grid');grid.append(lineInput(line,'amount_eur','Teilbetrag in EUR'),lineInput(line,'note','Bezeichnung / Notiz'));row.append(grid);
+      const category=button(_householdText_expense_editor_js("Kategorie ändern"),()=>chooseCategory(line.key,category));category.id=`expense-line-${line.key}-category`;category.setAttribute('aria-label',_householdText_expense_editor_js("Kategorie von Zeile %s ändern", index+1));heading.append(category);row.append(heading);
+      const grid=node('div',undefined,'form-grid');grid.append(lineInput(line,'amount_eur',_householdText_expense_editor_js("Teilbetrag in EUR")),lineInput(line,'note',_householdText_expense_editor_js("Bezeichnung / Notiz")));row.append(grid);
       const actions=node('div',undefined,'actions');
-      const rest=button('Rest hier zuordnen',()=>{
+      const rest=button(_householdText_expense_editor_js("Rest hier zuordnen"),()=>{
         if(!canEdit())return;
         const other=values.totals(controls.amount_eur.value,state.lines.filter(item=>item!==line).map(item=>item.amount_eur),controls.kind.value);
-        if(!other.validHeader||!other.validLines||other.rest===0n||values.euroMinor(values.minorText(String(other.rest)))===null){showError('Den Gesamtbetrag und die übrigen Teilbeträge prüfen. Der verbleibende Teil muss von null verschieden sein und in eine Zeile passen.');return;}
+        if(!other.validHeader||!other.validLines||other.rest===0n||values.euroMinor(values.minorText(String(other.rest)))===null){showError(_householdText_expense_editor_js("Den Gesamtbetrag und die übrigen Teilbeträge prüfen. Der verbleibende Teil muss von null verschieden sein und in eine Zeile passen."));return;}
         line.amount_eur=values.minorText(String(other.rest));$(`expense-line-${line.key}-amount`).value=line.amount_eur;dirty();$(`expense-line-${line.key}-amount`).focus();
       });
       const move=direction=>{if(!canEdit())return;const next=index+direction;if(next<0||next>=state.lines.length)return;[state.lines[index],state.lines[next]]=[state.lines[next],state.lines[index]];dirty();renderLines(`expense-line-${line.key}-amount`);};
-      const up=button('Nach oben',()=>move(-1)), down=button('Nach unten',()=>move(1));up.disabled=index===0;down.disabled=index===state.lines.length-1;
-      const remove=button('Entfernen',()=>{if(!canEdit())return;state.lines.splice(index,1);state.removed.push({...line,index});dirty();renderLines(state.lines[index]?`expense-line-${state.lines[index].key}-amount`:'expense-add-line');});
-      for(const action of [rest,up,down,remove])action.setAttribute('aria-label',`${action.textContent} · Zeile ${index+1}`);
+      const up=button(_householdText_expense_editor_js("Nach oben"),()=>move(-1)), down=button(_householdText_expense_editor_js("Nach unten"),()=>move(1));up.disabled=index===0;down.disabled=index===state.lines.length-1;
+      const remove=button(_householdText_expense_editor_js("Entfernen"),()=>{if(!canEdit())return;state.lines.splice(index,1);state.removed.push({...line,index});dirty();renderLines(state.lines[index]?`expense-line-${state.lines[index].key}-amount`:'expense-add-line');});
+      for(const action of [rest,up,down,remove])action.setAttribute('aria-label',_householdText_expense_editor_js("%s · Zeile %s", action.textContent, index+1));
       actions.append(rest,up,down,remove);row.append(actions);list.append(row);
     });
     $('expense-lines-empty').hidden=state.lines.length!==0;$('expense-removed').hidden=state.removed.length===0;$('expense-removed-lines').replaceChildren();
     state.removed.forEach((line,index)=>{
-      const item=node('li',`${line.label} · ${line.amount_eur||'Teilbetrag offen'}`), undo=button('Entfernung zurücknehmen',()=>{
+      const item=node('li',`${line.label} · ${line.amount_eur||_householdText_expense_editor_js("Teilbetrag offen")}`), undo=button(_householdText_expense_editor_js("Entfernung zurücknehmen"),()=>{
         if(!canEdit()||state.lines.length>=100)return;state.removed.splice(index,1);state.lines.splice(Math.min(line.index,state.lines.length),0,line);dirty();renderLines(`expense-line-${line.key}-amount`);
       });undo.disabled=state.lines.length>=100;item.append(undo);$('expense-removed-lines').append(item);
     });
@@ -118,11 +120,11 @@
   }
   function facts(bundle, container) {
     container.replaceChildren();const h=bundle.header, details=node('dl',undefined,'expense-facts');
-    const rows=[['Beschreibung',h.description||'Noch offen'],['Datum',h.occurred_on],['Art',h.kind==='refund'?'Erstattung':h.kind==='reversal'?'Storno':'Ausgabe'],['Gesamtbetrag',h.amount_minor?money(h.amount_minor):'Noch offen'],['Empfänger / Geschäft',h.payee||'Nicht angegeben'],['Bezahlt von',h.payer_label?(h.payer_label+(h.payer_active?'':' · inaktiv')):'Nicht bekannt / offen']];
+    const rows=[[_householdText_expense_editor_js("Beschreibung"),h.description||_householdText_expense_editor_js("Noch offen")],[_householdText_expense_editor_js("Datum"),h.occurred_on],[_householdText_expense_editor_js("Art"),h.kind==='refund'?_householdText_expense_editor_js("Erstattung"):h.kind==='reversal'?_householdText_expense_editor_js("Storno"):_householdText_expense_editor_js("Ausgabe")],[_householdText_expense_editor_js("Gesamtbetrag"),h.amount_minor?money(h.amount_minor):_householdText_expense_editor_js("Noch offen")],[_householdText_expense_editor_js("Empfänger / Geschäft"),h.payee||_householdText_expense_editor_js("Nicht angegeben")],[_householdText_expense_editor_js("Bezahlt von"),h.payer_label?(h.payer_label+(h.payer_active?'':_householdText_expense_editor_js(" · inaktiv"))):_householdText_expense_editor_js("Nicht bekannt / offen")]];
     for(const [label,text] of rows)details.append(node('dt',label),node('dd',text));container.append(details);
     const lines=node('ul',undefined,'expense-review-lines');
-    for(const line of bundle.lines)lines.append(node('li',`${line.category_label}${line.category_archived?' · archiviert':''} · ${money(line.amount_minor)}${line.note?'\n'+line.note:''}`));
-    container.append(node('h3','Aufteilung'),lines);if(!bundle.lines.length)container.append(node('p','Noch keine Kategoriezeilen.'));
+    for(const line of bundle.lines)lines.append(node('li',`${line.category_label}${line.category_archived?_householdText_expense_editor_js(" · archiviert"):''} · ${money(line.amount_minor)}${line.note?'\n'+line.note:''}`));
+    container.append(node('h3',_householdText_expense_editor_js("Aufteilung")),lines);if(!bundle.lines.length)container.append(node('p',_householdText_expense_editor_js("Noch keine Kategoriezeilen.")));
   }
   function applyBundle(bundle) {
     state.bundle=bundle;state.editable=Boolean(bundle.editable);state.removed=[];state.fresh=null;state.review=null;state.dirty=false;
@@ -132,21 +134,21 @@
     controls.amount_eur.value=h.amount_minor?values.minorText(h.amount_minor)||'':'';
     const payer=controls.paid_by_membership_id;
     if(h.paid_by_membership_id&&!Array.from(payer.options).some(option=>option.value===h.paid_by_membership_id)){
-      const option=node('option',h.payer_label||'Gespeicherte Mitgliedschaft');option.value=h.paid_by_membership_id;payer.append(option);
+      const option=node('option',h.payer_label||_householdText_expense_editor_js("Gespeicherte Mitgliedschaft"));option.value=h.paid_by_membership_id;payer.append(option);
     }
     payer.value=h.paid_by_membership_id||'';
-    const selected=payer.selectedOptions[0];if(h.paid_by_membership_id&&selected)selected.textContent=(h.payer_label||'Gespeicherte Mitgliedschaft')+(h.payer_active?'':' · inaktiv');
+    const selected=payer.selectedOptions[0];if(h.paid_by_membership_id&&selected)selected.textContent=(h.payer_label||_householdText_expense_editor_js("Gespeicherte Mitgliedschaft"))+(h.payer_active?'':_householdText_expense_editor_js(" · inaktiv"));
     $('expense-form').hidden=!state.editable;$('expense-readonly').hidden=state.editable;
-    if(!state.editable){$('expense-readonly-reason').textContent=bundle.lock_reason||'Diese Buchung ist schreibgeschützt.';facts(bundle,$('expense-readonly-content'));}
-    $('expense-saved-state').textContent=!h.id?'Neuer, noch ungespeicherter Entwurf':h.state==='posted'?'Gebucht · unveränderlich':'Gespeicherter Entwurf';
+    if(!state.editable){$('expense-readonly-reason').textContent=bundle.lock_reason||_householdText_expense_editor_js("Diese Buchung ist schreibgeschützt.");facts(bundle,$('expense-readonly-content'));}
+    $('expense-saved-state').textContent=!h.id?_householdText_expense_editor_js("Neuer, noch ungespeicherter Entwurf"):h.state==='posted'?_householdText_expense_editor_js("Gebucht · unveränderlich"):_householdText_expense_editor_js("Gespeicherter Entwurf");
     $('expense-detail-link').hidden=!h.id;if(h.id)$('expense-detail-link').href='/m/expenses/entries/'+h.id;
     root.dataset.entry=h.id||'';$('expense-conflict').hidden=true;$('expense-post-review').hidden=true;
     if(h.id){const url=new URL(location.href);url.searchParams.set('entry',h.id);history.replaceState(null,'',url);}
     title();renderLines();
   }
   function input(action) {
-    if(!state.bundle)throw new Error('Aktuellen Buchungsstand zuerst laden.');
-    if(controls.paid_by_membership_id.value&&controls.paid_by_membership_id.dataset.referenceState!=='ready')throw new Error('Die Auswahl der Zahlenden zuerst vollständig laden oder erneut versuchen.');
+    if(!state.bundle)throw new Error(_householdText_expense_editor_js("Aktuellen Buchungsstand zuerst laden."));
+    if(controls.paid_by_membership_id.value&&controls.paid_by_membership_id.dataset.referenceState!=='ready')throw new Error(_householdText_expense_editor_js("Die Auswahl der Zahlenden zuerst vollständig laden oder erneut versuchen."));
     const h=state.bundle.header;
     return {entry_id:h.id,generation:state.bundle.generation,version:h.version,action,
       header:Object.fromEntries(Object.entries(controls).map(([name,control])=>[name,control.value])),
@@ -159,7 +161,7 @@
       state.fresh=await readBundle(state.bundle.header.id);
       const box=$('expense-conflict-content');facts(state.fresh,box);
       $('expense-conflict').hidden=false;$('expense-conflict').focus();
-    }catch(error){showError('Deine Eingaben bleiben erhalten. Der aktuelle Stand konnte nicht zum Vergleich geladen werden: '+error.message);}
+    }catch(error){showError(_householdText_expense_editor_js("Deine Eingaben bleiben erhalten. Der aktuelle Stand konnte nicht zum Vergleich geladen werden: ")+error.message);}
   }
   function pendingNotice(text) {$('expense-pending-text').textContent=text;$('expense-pending').hidden=false;$('expense-pending').focus();availability();}
   async function resolveAccepted() {
@@ -167,9 +169,9 @@
     try {
       const bundle=await readBundle(accepted.entry_id);
       state.pending=null;applyBundle(bundle);$('expense-pending').hidden=true;clearError();
-      status((accepted.action==='post'?'Buchung bestätigt.':'Entwurf gespeichert.')+' Der aktuelle vollständige Stand ist geladen.');
+      status((accepted.action==='post'?_householdText_expense_editor_js("Buchung bestätigt."):_householdText_expense_editor_js("Entwurf gespeichert."))+_householdText_expense_editor_js(" Der aktuelle vollständige Stand ist geladen."));
       $('expense-status').tabIndex=-1;$('expense-status').focus();
-    }catch(error){pendingNotice('Speichern ist bestätigt. Die aktuelle Buchung konnte noch nicht geladen werden. Deine Eingaben bleiben gesperrt, bis der aktuelle Stand geprüft ist. '+error.message);}
+    }catch(error){pendingNotice(_householdText_expense_editor_js("Speichern ist bestätigt. Die aktuelle Buchung konnte noch nicht geladen werden. Deine Eingaben bleiben gesperrt, bis der aktuelle Stand geprüft ist. ")+error.message);}
   }
   async function sendPending() {
     if(!state.pending||state.busy)return;
@@ -178,12 +180,12 @@
       if(state.pending.receipt){await resolveAccepted();return;}
       const csrf=await actor(true);
       const receipt=await request('/api/v1/expenses/editor',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf,'Idempotency-Key':state.pending.key},body:state.pending.body});
-      if(!uuid(receipt?.entry_id)||!uuid(receipt?.id)||!['save','post'].includes(receipt.action))throw new Error('Vorgangsbestätigung konnte nicht sicher gelesen werden.');
+      if(!uuid(receipt?.entry_id)||!uuid(receipt?.id)||!['save','post'].includes(receipt.action))throw new Error(_householdText_expense_editor_js("Vorgangsbestätigung konnte nicht sicher gelesen werden."));
       state.pending.receipt=receipt;await resolveAccepted();
     }catch(error){
       if(!error.status||error.status>=500||state.pending?.uncertain){
         if(state.pending)state.pending.uncertain=true;
-        pendingNotice('Der Vorgang könnte bereits gespeichert sein. Eingaben bleiben unverändert gesperrt. Prüfe denselben Vorgang erneut, sobald Verbindung und Anmeldung funktionieren; schließe diesen Tab bis dahin nicht. '+error.message);
+        pendingNotice(_householdText_expense_editor_js("Der Vorgang könnte bereits gespeichert sein. Eingaben bleiben unverändert gesperrt. Prüfe denselben Vorgang erneut, sobald Verbindung und Anmeldung funktionieren; schließe diesen Tab bis dahin nicht. ")+error.message);
       }else{
         state.pending=null;state.review=null;$('expense-post-review').hidden=true;$('expense-pending').hidden=true;
         showError(error.message,error.fields);if(error.status===409)await showConflict();
@@ -220,13 +222,13 @@
   $('expense-post-confirm').addEventListener('click',()=>{if(state.review&&!state.pending&&!state.busy)begin(state.review);});
   $('expense-retry').addEventListener('click',()=>void sendPending());
   $('expense-reload-current').addEventListener('click',()=>{
-    if(!state.fresh||state.pending||state.busy)return;const fresh=state.fresh;applyBundle(fresh);clearError();status('Aktuellen Stand übernommen. Eigene ungespeicherte Eingaben wurden ausdrücklich verworfen.');
+    if(!state.fresh||state.pending||state.busy)return;const fresh=state.fresh;applyBundle(fresh);clearError();status(_householdText_expense_editor_js("Aktuellen Stand übernommen. Eigene ungespeicherte Eingaben wurden ausdrücklich verworfen."));
   });
   addEventListener('beforeunload',event=>{if(state.dirty||state.pending){event.preventDefault();event.returnValue='';}});
   async function load() {
     state.busy=true;availability();
-    try {const bundle=await readBundle(root.dataset.entry);applyBundle(bundle);status(bundle.editable?'Buchung geladen. Entwurf und Aufteilung werden gemeinsam gespeichert.':'Gespeicherte Buchung geladen.');}
-    catch(error){showError(error.message);status('Buchung konnte nicht vollständig geladen werden. Eingaben bleiben gesperrt.');}
+    try {const bundle=await readBundle(root.dataset.entry);applyBundle(bundle);status(bundle.editable?_householdText_expense_editor_js("Buchung geladen. Entwurf und Aufteilung werden gemeinsam gespeichert."):_householdText_expense_editor_js("Gespeicherte Buchung geladen."));}
+    catch(error){showError(error.message);status(_householdText_expense_editor_js("Buchung konnte nicht vollständig geladen werden. Eingaben bleiben gesperrt."));}
     finally{state.busy=false;availability();}
   }
   void load();

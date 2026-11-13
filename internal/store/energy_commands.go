@@ -17,9 +17,10 @@ import (
 )
 
 var energyCommandFields = map[string][]string{
-	"meter.save":    {"name", "unit_code", "location_note", "archived"},
-	"register.save": {"meter_id", "name", "measurement_kind", "unit_code", "direction", "timezone", "input_mode", "max_gap_seconds", "daily_warning", "base_load_warning", "min_history", "retention_days", "archived"},
-	"device.save":   {"meter_id", "register_id", "serial_number", "installed_at", "initial_value", "rollover_value"},
+	"notification.save": {"register_id", "responsible_member_id", "reading_enabled", "anomaly_enabled", "stale_enabled", "stale_after_seconds"},
+	"meter.save":        {"name", "unit_code", "location_note", "archived"},
+	"register.save":     {"meter_id", "name", "measurement_kind", "unit_code", "direction", "timezone", "input_mode", "max_gap_seconds", "daily_warning", "base_load_warning", "min_history", "retention_days", "archived"},
+	"device.save":       {"meter_id", "register_id", "serial_number", "installed_at", "initial_value", "rollover_value"},
 	"device.replace": {"register_id", "old_mapping_id", "old_mapping_version", "changed_at", "old_final", "new_initial",
 		"serial_number", "rollover_value", "gap_acknowledged", "reason"},
 	"reading.save":   {"register_id", "device_id", "measured_at", "value", "kind", "interval_started_at", "rollover_confirmed", "note", "reason"},
@@ -43,7 +44,7 @@ func energyNormalize(in EnergyCommand) (Record, error) {
 		return nil, Invalid{"Unbekannter Zählervorgang"}
 	}
 	out := Record{}
-	flags := []string{"archived", "gap_acknowledged", "rollover_confirmed", "close_previous", "confirmed", "actual_only", "active", "enabled"}
+	flags := []string{"archived", "gap_acknowledged", "rollover_confirmed", "close_previous", "confirmed", "actual_only", "active", "enabled", "reading_enabled", "anomaly_enabled", "stale_enabled"}
 	for name, raw := range in.Data {
 		if !slices.Contains(fields, name) {
 			return nil, Invalid{"Nicht unterstütztes Feld im Zählervorgang"}
@@ -67,7 +68,7 @@ func energyNormalize(in EnergyCommand) (Record, error) {
 		if err != nil {
 			return nil, err
 		}
-		if strings.HasSuffix(name, "_id") && !value.ValidUUID(text) {
+		if strings.HasSuffix(name, "_id") && (name != "responsible_member_id" || text != "") && !value.ValidUUID(text) {
 			return nil, Invalid{"Zählerreferenz erneut auswählen"}
 		}
 		if strings.HasSuffix(name, "_on") || name == "ends_before" {
@@ -230,6 +231,8 @@ func (s *Store) energyApply(ctx context.Context, tx pgx.Tx, id auth.Identity, ke
 		rid = value.UUID()
 	}
 	switch in.Action {
+	case "notification.save":
+		return saveMeterNotificationSettings(ctx, tx, id, in, data)
 	case "meter.save", "register.save", "device.save", "plan.save", "source.save":
 		return s.energySaveManagement(ctx, tx, id, rid, in, data)
 	case "reading.save":

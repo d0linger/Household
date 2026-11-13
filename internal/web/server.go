@@ -28,6 +28,7 @@ import (
 	"household/internal/config"
 	"household/internal/database"
 	"household/internal/foodfacts"
+	"household/internal/i18n"
 	"household/internal/module"
 	"household/internal/recipeimport"
 	"household/internal/store"
@@ -56,32 +57,38 @@ type Server struct {
 	Push          *webpush.Service
 	Log           *slog.Logger
 	templates     *template.Template
+	templatesEN   *template.Template
 	assets        map[string]string
 	shutting      atomic.Bool
 	imageSlots    chan struct{}
 	recipeFetcher *recipeimport.Fetcher
 }
 type Page struct {
-	Title      string
-	User       auth.Identity
-	CSRF       string
-	Nonce      string
-	Asset      map[string]string
-	Modules    []module.Descriptor
-	States     map[string]store.State
-	Module     module.Descriptor
-	Entity     module.Entity
-	Records    []store.Record
-	Record     store.Record
-	References map[string][]store.Record
-	Error      string
-	Success    string
-	View       string
-	Key        string
-	Page       int
-	Query      string
-	Extra      any
-	Related    []Related
+	Workspace    WorkspaceNavigation
+	OfflineShell bool
+	Title        string
+	Locale       string
+	LanguageTag  string
+	ReturnTo     string
+	User         auth.Identity
+	CSRF         string
+	Nonce        string
+	Asset        map[string]string
+	Modules      []module.Descriptor
+	States       map[string]store.State
+	Module       module.Descriptor
+	Entity       module.Entity
+	Records      []store.Record
+	Record       store.Record
+	References   map[string][]store.Record
+	Error        string
+	Success      string
+	View         string
+	Key          string
+	Page         int
+	Query        string
+	Extra        any
+	Related      []Related
 }
 type Related struct {
 	Entity  module.Entity
@@ -138,7 +145,7 @@ func New(ctx context.Context, pool *pgxpool.Pool, cfg config.Config, mods []modu
 		sum := sha256.Sum256(b)
 		s.assets[entry.Name()] = "/assets/" + hex.EncodeToString(sum[:6]) + "/" + entry.Name()
 	}
-	s.templates, err = template.New("household").Funcs(template.FuncMap{"text": store.String, "qty": formatQuantity, "choice": formatChoice, "prev": func(v any) int64 { return store.Int(v) - 1 }, "next": func(v any) int64 { return store.Int(v) + 1 }, "integer": store.Int, "money": formatMoney, "formValue": formValue, "isTrue": func(v any) bool { b, _ := v.(bool); return b }, "selected": func(a, b any) bool { return store.String(a) == store.String(b) }, "enabled": func(states map[string]store.State, id string) bool { return states[id].State == "enabled" }, "moduleURL": func(m module.Descriptor) string {
+	s.templates, err = template.New("household").Funcs(template.FuncMap{"recordURL": workspaceRecordURL, "text": store.String, "qty": formatQuantity, "choice": formatChoice, "prev": func(v any) int64 { return store.Int(v) - 1 }, "next": func(v any) int64 { return store.Int(v) + 1 }, "integer": store.Int, "money": formatMoney, "formValue": formValue, "isTrue": func(v any) bool { b, _ := v.(bool); return b }, "selected": func(a, b any) bool { return store.String(a) == store.String(b) }, "enabled": func(states map[string]store.State, id string) bool { return states[id].State == "enabled" }, "moduleURL": func(m module.Descriptor) string {
 		if m.ID == "pantry" {
 			return "/m/pantry/stock"
 		}
@@ -155,17 +162,31 @@ func New(ctx context.Context, pool *pgxpool.Pool, cfg config.Config, mods []modu
 			return "/m/documents/workspace/inbox"
 		}
 		return "/m/" + m.ID + "/" + m.Entities[0].ID
-	}, "dict": dict, "icon": func(asset map[string]string, name string) string { return asset["icons.svg"] + "#" + name }}).ParseFS(files, "templates/*.html")
-	return s, err
+	}, "dict": dict, "icon": func(asset map[string]string, name string) string { return asset["icons.svg"] + "#" + name }}).Funcs(localizedTemplateFuncs("de")).ParseFS(files, "templates/*.html")
+	if err != nil {
+		return nil, err
+	}
+	s.templatesEN, err = s.templates.Clone()
+	if err != nil {
+		return nil, err
+	}
+	s.templatesEN.Funcs(localizedTemplateFuncs("en"))
+	return s, nil
 }
 
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	s.registerPlanningExtensionRoutes(mux)
+	mux.Handle("GET /api/v1/planning/{plan}/meals/{meal}/notifications", s.require(s.planningNotificationsAPI))
+	mux.Handle("POST /api/v1/planning/{plan}/meals/{meal}/notifications", s.require(s.planningNotificationsAPI))
 	s.registerFinanceRoutes(mux)
 	s.registerChoreRoutes(mux)
 	s.registerEnergyRoutes(mux)
 	s.registerDocumentRoutes(mux)
+	s.registerSecurityRoutes(mux)
+	mux.HandleFunc("POST /language", s.language)
+	mux.Handle("POST /settings/language", s.require(s.language))
+	mux.Handle("GET /api/v1/core/preferences", s.require(s.getPreferences))
 	mux.HandleFunc("GET /health/live", func(w http.ResponseWriter, r *http.Request) { writeJSON(w, 200, map[string]bool{"alive": true}) })
 	mux.HandleFunc("GET /health/ready", s.ready)
 	mux.HandleFunc("GET /metrics", s.metrics)
@@ -178,6 +199,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /login", s.loginPage)
 	mux.HandleFunc("POST /login", s.login)
 	mux.Handle("GET /{$}", s.require(s.home))
+	mux.Handle("GET /api/v1/core/today", s.require(s.todayAPI))
+	mux.Handle("GET /m/{module}/manage", s.require(s.workspaceManage))
 	mux.Handle("GET /change-password", s.require(s.passwordPage))
 	mux.Handle("POST /change-password", s.require(s.password))
 	mux.Handle("POST /logout", s.require(s.logout))
@@ -353,6 +376,7 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /api/v1/shopping/notification-preferences", s.require(s.shoppingNotificationOverviewAPI))
 	mux.Handle("POST /api/v1/shopping/offline-snapshots", s.require(s.shoppingOfflineSnapshotAPI))
 	mux.Handle("GET /api/v1/core/push/context", s.require(s.pushContextAPI))
+	s.registerNotificationRoutes(mux)
 	mux.Handle("GET /api/v1/core/push/subscriptions", s.require(s.pushSubscriptionsAPI))
 	mux.Handle("POST /api/v1/core/push/subscriptions", s.require(s.pushSubscriptionsAPI))
 	mux.Handle("DELETE /api/v1/core/push/subscriptions/{id}", s.require(s.pushDisableAPI))
@@ -432,7 +456,7 @@ func (s *Server) middleware(next http.Handler) http.Handler {
 				// The panic value may hold request data; log only its type and call path.
 				s.Log.Error("request panic", "request_id", requestID, "route", r.Pattern, "panic_type", fmt.Sprintf("%T", recovered), "call_path", callPath())
 				if !recorder.wrote {
-					http.Error(recorder, "Interner Fehler", 500)
+					http.Error(recorder, i18n.Text(requestLocale(r), "Interner Fehler"), 500)
 				}
 			}
 			s.Log.Info("http request", "request_id", requestID, "method", r.Method, "route", r.Pattern, "status", recorder.status, "duration_ms", time.Since(started).Milliseconds())
@@ -440,21 +464,21 @@ func (s *Server) middleware(next http.Handler) http.Handler {
 		if !strings.HasPrefix(r.URL.Path, "/health/") {
 			origin, _ := url.Parse(s.Cfg.Origin)
 			if r.Host != origin.Host {
-				http.Error(recorder, "Unbekannter Host", http.StatusBadRequest)
+				http.Error(recorder, i18n.Text(requestLocale(r), "Unbekannter Host"), http.StatusBadRequest)
 				return
 			}
 			if s.Cfg.Production && !s.isHTTPS(r) {
-				http.Error(recorder, "HTTPS erforderlich", http.StatusBadRequest)
+				http.Error(recorder, i18n.Text(requestLocale(r), "HTTPS erforderlich"), http.StatusBadRequest)
 				return
 			}
 		}
 		if r.Method != "GET" && r.Method != "HEAD" {
 			if origin := r.Header.Get("Origin"); origin != "" && origin != s.Cfg.Origin {
-				http.Error(recorder, "Ungültiger Ursprung", http.StatusForbidden)
+				http.Error(recorder, i18n.Text(requestLocale(r), "Ungültiger Ursprung"), http.StatusForbidden)
 				return
 			}
 			if site := r.Header.Get("Sec-Fetch-Site"); site == "cross-site" {
-				http.Error(recorder, "Ungültige Anfrage", http.StatusForbidden)
+				http.Error(recorder, i18n.Text(requestLocale(r), "Ungültige Anfrage"), http.StatusForbidden)
 				return
 			}
 		}
@@ -599,9 +623,14 @@ func (s *Server) require(next http.HandlerFunc) http.Handler {
 		ctx = audit.WithActor(ctx, id.UserID, id.HouseholdID)
 		ctx = context.WithValue(ctx, csrfKey, s.Auth.CSRF(cookie.Value, "session"))
 		r = r.WithContext(ctx)
-		if id.MustChange && r.URL.Path != "/change-password" && r.URL.Path != "/logout" {
+		r, err = s.accountLocale(r, id)
+		if err != nil {
+			s.fail(w, r, err)
+			return
+		}
+		if id.MustChange && r.URL.Path != "/change-password" && r.URL.Path != "/logout" && r.URL.Path != "/settings/language" {
 			if strings.HasPrefix(r.URL.Path, "/api/") {
-				writeJSON(w, 403, map[string]string{"error": "Passwortwechsel erforderlich"})
+				writeJSON(w, 403, map[string]string{"error": i18n.Text(requestLocale(r), "Passwortwechsel erforderlich")})
 			} else {
 				http.Redirect(w, r, "/change-password", http.StatusSeeOther)
 			}
@@ -629,7 +658,7 @@ func (s *Server) require(next http.HandlerFunc) http.Handler {
 
 func (s *Server) authRequired(w http.ResponseWriter, r *http.Request) {
 	if strings.HasPrefix(r.URL.Path, "/api/") {
-		writeJSON(w, 401, map[string]string{"error": "Anmeldung erforderlich"})
+		writeJSON(w, 401, map[string]string{"error": i18n.Text(requestLocale(r), "Anmeldung erforderlich")})
 		return
 	}
 	http.Redirect(w, r, "/login", http.StatusSeeOther)
@@ -637,11 +666,24 @@ func (s *Server) authRequired(w http.ResponseWriter, r *http.Request) {
 func (s *Server) page(r *http.Request, title string) Page {
 	nonce, _ := r.Context().Value(nonceKey).(string)
 	csrf, _ := r.Context().Value(csrfKey).(string)
-	return Page{Title: title, User: identity(r), CSRF: csrf, Nonce: nonce, Asset: s.assets, Modules: s.Store.Modules, States: s.Store.States(), Records: []store.Record{}, References: map[string][]store.Record{}, Key: value.UUID()}
+	return Page{Title: title, Locale: requestLocale(r), LanguageTag: i18n.LanguageTag(requestLocale(r)), ReturnTo: languageReturn(r.URL.RequestURI()), User: identity(r), CSRF: csrf, Nonce: nonce, Asset: s.assets, Modules: orderedModules(s.Store.Modules, requestModuleOrder(r)), States: s.Store.States(), Records: []store.Record{}, References: map[string][]store.Record{}, Key: value.UUID()}
 }
 func (s *Server) render(w http.ResponseWriter, r *http.Request, p Page) {
+	p.Workspace = workspaceNavigation(r, p)
+	p.Locale, p.LanguageTag = requestLocale(r), i18n.LanguageTag(requestLocale(r))
+	p.Title, p.Error, p.Success = i18n.Text(p.Locale, p.Title), s.localizedError(p.Locale, p.Error), i18n.Message(p.Locale, p.Success)
+	p.Modules, p.Module, p.Entity = localizedModules(p.Locale, p.Modules), localizedModule(p.Locale, p.Module), localizedEntity(p.Locale, p.Entity)
+	p.Related = append([]Related(nil), p.Related...)
+	for index := range p.Related {
+		p.Related[index].Entity = localizedEntity(p.Locale, p.Related[index].Entity)
+	}
+	selected := s.templates
+	if p.Locale == "en" && s.templatesEN != nil {
+		selected = s.templatesEN
+	}
+	w.Header().Set("Content-Language", p.LanguageTag)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := s.templates.ExecuteTemplate(w, "page", p); err != nil {
+	if err := selected.ExecuteTemplate(w, "page", p); err != nil {
 		s.Log.Error("render response", "request_id", trace(r), "error", err)
 	}
 }
@@ -651,6 +693,10 @@ func (s *Server) fail(w http.ResponseWriter, r *http.Request, err error) {
 	var rejection auth.Rejection
 	var pgerr *pgconn.PgError
 	switch {
+	case errors.Is(err, auth.ErrRecent):
+		status, message = http.StatusUnprocessableEntity, auth.ErrRecent.Error()
+	case errors.Is(err, auth.ErrSession):
+		status, message = http.StatusUnauthorized, "Anmeldung erforderlich"
 	case errors.As(err, &invalid):
 		status, message = 422, invalid.Message
 	case errors.As(err, &rejection):
@@ -678,7 +724,11 @@ func (s *Server) fail(w http.ResponseWriter, r *http.Request, err error) {
 		s.Log.Error("request failed", "request_id", trace(r), "error", err)
 	}
 	if strings.HasPrefix(r.URL.Path, "/api/") || strings.Contains(r.Header.Get("Accept"), "application/json") {
-		writeJSON(w, status, map[string]string{"error": message, "request_id": trace(r)})
+		body := map[string]string{"error": s.localizedError(requestLocale(r), message), "request_id": trace(r)}
+		if errors.Is(err, auth.ErrRecent) {
+			body["code"] = "reauth_required"
+		}
+		writeJSON(w, status, body)
 		return
 	}
 	p := s.page(r, "Vorgang prüfen")

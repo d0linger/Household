@@ -81,12 +81,10 @@ func fuelModuleUpgradePriorCatalog(t *testing.T, f *integrationFixture, fuelVers
 	if _, err := f.owner.Exec(f.ctx, "UPDATE core.users SET must_change_password=false WHERE username=$1", f.app.Cfg.AdminUsername); err != nil {
 		t.Fatal(err)
 	}
-	var err error
-	f.token, f.identity, err = f.app.Auth.Login(f.ctx, f.app.Cfg.AdminUsername, integrationPassword, "", "127.0.0.1", "Fuel predecessor upgrade fixture")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err = f.app.Store.LoadStates(f.ctx); err != nil {
+	// The genuine Fuel1/2 predecessor includes Core26/Pantry11. Reuse its
+	// guarded historical session fixture; current Login requires Core36.
+	pantryExtensionsPredecessorSession(t, f, 11)
+	if err := f.app.Store.LoadStates(f.ctx); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -95,7 +93,7 @@ func fuelModuleUpgradeDomain(t *testing.T, f *integrationFixture) string {
 	t.Helper()
 	var snapshot string
 	err := f.pool.QueryRow(f.ctx, `SELECT jsonb_build_object(
- 'vehicles',(SELECT jsonb_agg(to_jsonb(v)-ARRAY['tank_capacity','battery_capacity','current_series_id'] ORDER BY v.id) FROM fuel.vehicles v),
+ 'vehicles',(SELECT jsonb_agg(to_jsonb(v)-ARRAY['tank_capacity','battery_capacity','current_series_id','responsible_member_id','responsible_since'] ORDER BY v.id) FROM fuel.vehicles v),
  'series',(SELECT jsonb_agg(to_jsonb(s)-ARRAY['final_reading','previous_series_id','distance_offset'] ORDER BY s.id) FROM fuel.odometer_series s),
  'fillups',(SELECT jsonb_agg(to_jsonb(f)-ARRAY['quantity_unit','currency_code','source_kind','source_job_id','source_row','source_fingerprint'] ORDER BY f.id) FROM fuel.fillups f))::text`).Scan(&snapshot)
 	if err != nil {
@@ -169,13 +167,18 @@ func TestFuelModuleNativePopulatedFuel2UpgradeRetainsFactsAndOldIntentFences(t *
 	}
 	for range 2 {
 		if err = database.Migrate(f.ctx, os.Getenv("HOUSEHOLD_TEST_OWNER_URL")); err != nil {
-			t.Fatal("Fuel2 to Fuel7 migration/repetition", err)
+			t.Fatal("Fuel2 to current migration/repetition", err)
 		}
 		if err = database.Ready(f.ctx, f.pool); err != nil {
 			t.Fatal("upgraded application not ready", err)
 		}
 		if after := fuelModuleUpgradeDomain(t, f); after != beforeDomain {
 			t.Fatal("upgrade changed prior exact facts, flags, versions, timestamps or author")
+		}
+		var noRecipients bool
+		if err = f.pool.QueryRow(f.ctx, `SELECT NOT EXISTS(SELECT 1 FROM fuel.vehicles
+ WHERE responsible_member_id IS NOT NULL OR responsible_since IS NOT NULL)`).Scan(&noRecipients); err != nil || !noRecipients {
+			t.Fatal("upgrade inferred vehicle responsibility", noRecipients, err)
 		}
 	}
 	var fences, operations, effects, fuelVersion, goodDimensions int

@@ -486,6 +486,11 @@ func (s *Store) Write(ctx context.Context, id auth.Identity, m module.Descriptor
 	if err = s.afterWrite(shoppingProducerBefore(ctx, m, e, current), tx, id, m, e, result, in.Generation); err != nil {
 		return nil, err
 	}
+	if m.ID == "chores" {
+		if err = reconcileChoreNotificationIntents(ctx, tx, id.HouseholdID); err != nil {
+			return nil, err
+		}
+	}
 	if err = Audit(ctx, tx, id, m.ID, e.ID, rid, "record_write", requestID); err != nil {
 		return nil, err
 	}

@@ -3,7 +3,7 @@
 .energy-workspace p{max-width:72ch;overflow-wrap:anywhere}
 .energy-workspace h2{font-size:1.35rem;margin:30px 0 12px}.energy-workspace h3{font-size:1.08rem;margin:0 0 8px}
 .energy-workspace :focus-visible{outline:3px solid var(--accent);outline-offset:3px}
-.energy-workspace ::selection{background:var(--accent);color:var(--surface)}
+.energy-workspace ::selection{background:var(--accent);color:var(--on-accent)}
 .energy-workspace input,.energy-workspace textarea{caret-color:var(--accent)}
 .energy-workspace button,.energy-workspace .button,.energy-workspace select,.energy-workspace summary{min-height:44px}
 .energy-workspace button:disabled{opacity:.65;cursor:wait}
@@ -23,6 +23,7 @@
 .energy-table-wrap{max-width:100%;overflow:auto;scrollbar-color:var(--accent) var(--ground);margin:18px 0}
 .energy-table{width:100%;border-collapse:collapse;line-height:1.5}.energy-table th,.energy-table td{padding:12px 10px;text-align:left;border-bottom:1px solid var(--line);vertical-align:top}
 .energy-table caption{text-align:left;font-weight:650;margin-bottom:10px}.energy-table tbody tr:focus{background:var(--soft)}
+#energy-editor>form>button{margin-block-start:12px;margin-inline-end:12px}
 .energy-chart-wrap{margin:22px 0}.energy-chart{display:block;width:100%;height:auto;stroke:none;max-height:280px;overflow:visible}.energy-chart .energy-bar{fill:var(--accent)}.energy-chart .energy-estimated{fill:var(--soft);stroke:var(--muted);stroke-width:2;stroke-dasharray:4 3}.energy-chart .energy-axis{stroke:var(--line);stroke-width:1}.energy-chart .energy-gap{fill:none;stroke:var(--muted);stroke-width:2}.energy-chart .energy-zero{stroke:var(--accent);stroke-width:3}.energy-chart text{fill:var(--ink);font:14px system-ui,sans-serif}
 .energy-chart .energy-bar:focus{stroke:var(--ink);stroke-width:3;outline:none}
 .energy-chart-note{font-size:.9rem;color:var(--muted)}

@@ -2,6 +2,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const {summarize} = require('./check-coverage.cjs');
+const {controlledSourceInventory} = require('./controlled-test-inventory.cjs');
 const {SHARDS, sha, canonical, identity, jsonLines, discoverEvents, sourceSnapshot, validateInventory, ExecutionLedger} = require('./run-go-test-shard.cjs');
 
 function parseCoverage(text, inventory) {
@@ -26,7 +27,7 @@ function parseCoverage(text, inventory) {
   return blocks;
 }
 
-function validateAndMerge(shards, expectedSource) {
+function validateAndMerge(shards, expectedSource, expectedControlled) {
   if (!Array.isArray(shards) || shards.length !== SHARDS) throw Error('Exactly six complete shard artifacts are required');
   const seenShards = new Set(), executed = new Set(), inputs = [];
   let reference, definitions, merged;
@@ -35,6 +36,7 @@ function validateAndMerge(shards, expectedSource) {
     validateInventory(inventory);
     if (!reference) reference = inventory;
     if (inventory.digest !== reference.digest || canonical(inventory) !== canonical(reference)) throw Error('Shard inventories/source/commit/Go target differ');
+    if (expectedControlled && canonical(inventory.controlled) !== canonical(expectedControlled)) throw Error('Controlled source census differs from checkout');
     if (expectedSource && canonical(inventory.source) !== canonical(expectedSource)) throw Error('Artifact source/commit differs from current checkout');
     if (result.schema !== 1 || result.shards !== SHARDS || !Number.isInteger(result.shard) || result.shard < 0 || result.shard >= SHARDS || seenShards.has(result.shard) || result.exitCode !== 0) throw Error('Missing/duplicate/failed shard result');
     seenShards.add(result.shard);
@@ -90,7 +92,7 @@ function main(args) {
     return artifact;
   });
   const source = sourceSnapshot(root, commit);
-  const merged = validateAndMerge(artifacts, source);
+  const merged = validateAndMerge(artifacts, source, controlledSourceInventory(root, source));
   if (canonical(sourceSnapshot(root, commit)) !== canonical(source)) throw Error('Source changed during coverage validation');
   fs.mkdirSync(output, {recursive: true});
   fs.writeFileSync(path.join(output, 'coverage.out'), merged.profile, {flag: 'wx'});

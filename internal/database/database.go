@@ -176,7 +176,9 @@ func Migrate(ctx context.Context, dsn string) error {
 		{"fuel", 8}, {"pantry", 14}, {"mealplan", 9},
 		{"chores", 2}, {"core", 32}, {"fuel", 9}, {"pantry", 15}, {"mealplan", 10},
 		{"meters", 2}, {"core", 33}, {"fuel", 10}, {"pantry", 16}, {"mealplan", 11},
-		{"documents", 2}, {"core", 34}, {"fuel", 11}, {"pantry", 17}, {"mealplan", 12}} {
+		{"documents", 2}, {"core", 34}, {"fuel", 11}, {"pantry", 17}, {"mealplan", 12},
+		{"core", 35}, {"core", 36}, {"core", 37}, {"core", 38}, {"pantry", 18}, {"fuel", 12},
+		{"core", 39}, {"expenses", 6}, {"meters", 3}, {"documents", 3}, {"mealplan", 13}, {"core", 40}} {
 		if err = migrateSchema(stage.schema, &stage.version); err != nil {
 			return err
 		}
@@ -225,6 +227,8 @@ func Ready(ctx context.Context, pool *pgxpool.Pool) error {
 		{"SELECT shopping.repurchase_ready()", "inspect shopping history contract: %w", "incomplete shopping history contract", 1},
 		{"SELECT shopping.barcode_ready()", "inspect shopping barcode contract: %w", "incomplete shopping barcode contract", 1},
 		{"SELECT core.audit_ready()", "inspect audit contract: %w", "incomplete audit trigger contract", 1},
+		{"SELECT core.notification_foundation_ready()", "inspect notification foundation: %w", "incomplete notification foundation contract", 1},
+		{"SELECT core.crypto_envelopes_ready(),core.security_events_ready()", "inspect protected records and security events: %w", "incomplete encryption or security event contract", 2},
 		{"SELECT pantry.projection_ready()", "inspect stock projection contract: %w", "incomplete stock projection contract", 1},
 		{"SELECT recipes.catalog_ready()", "inspect ingredient catalogue contract: %w", "incomplete ingredient catalogue contract", 1},
 		{"SELECT core.recipe_expansion_ready()", "inspect recipe core expansion: %w", "incomplete recipe core expansion", 1},
@@ -234,6 +238,10 @@ func Ready(ctx context.Context, pool *pgxpool.Pool) error {
 		{"SELECT pantry.replenishment_ready()", "inspect replenishment contract: %w", "incomplete replenishment contract", 1},
 		{"SELECT pantry.waste_ready()", "inspect waste analysis contract: %w", "incomplete waste analysis contract", 1},
 		{"SELECT pantry.prepared_capture_ready()", "inspect prepared food and scan contract: %w", "incomplete prepared food and scan contract", 1},
+		{"SELECT pantry.notification_observations_ready()", "inspect pantry notification observations: %w", "incomplete pantry notification observation contract", 1},
+		{"SELECT fuel.notification_ready()", "inspect fuel notification sources: %w", "incomplete fuel notification source contract", 1},
+		{"SELECT core.notification_financial_ready()", "inspect financial notification authority: %w", "incomplete financial notification authority contract", 1},
+		{"SELECT expenses.notification_ready()", "inspect expense notification sources: %w", "incomplete expense notification source contract", 1},
 		{"SELECT core.meal_reservations_ready()", "inspect meal reservation contract: %w", "incomplete meal reservation contract", 1},
 		{"SELECT core.planning_bindings_ready()", "inspect planning ingredient bindings: %w", "incomplete planning ingredient binding contract", 1},
 		{"SELECT core.planning_purchases_ready()", "inspect planning purchase contract: %w", "incomplete planning purchase contract", 1},
@@ -246,7 +254,10 @@ func Ready(ctx context.Context, pool *pgxpool.Pool) error {
 		{"SELECT expenses.finance_ready(),core.finance_ready()", "inspect complete finance contract: %w", "incomplete finance authority or domain contract", 2},
 		{"SELECT chores.expansion_ready()", "inspect chore workspace contract: %w", "incomplete chore workspace contract", 1},
 		{"SELECT meters.expansion_ready()", "inspect energy workspace contract: %w", "incomplete energy workspace contract", 1},
+		{"SELECT meters.notification_ready()", "inspect meter notification sources: %w", "incomplete meter notification source contract", 1},
 		{"SELECT documents.expansion_ready()", "inspect document workspace contract: %w", "incomplete document workspace contract", 1},
+		{"SELECT documents.notification_ready()", "inspect document notification sources: %w", "incomplete document notification source contract", 1},
+		{"SELECT mealplan.notification_ready()", "inspect meal notification sources: %w", "incomplete meal notification source contract", 1},
 	})
 }
 
