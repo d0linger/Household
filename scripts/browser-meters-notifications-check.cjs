@@ -30,7 +30,7 @@ async function edit(){
 async function submit(expected=200){
  const response=page.waitForResponse(r=>new URL(r.url()).pathname===api+'commands'&&r.request().method()==='POST');
  await page.locator('#energy-editor').getByRole('button',{name:/^(Benachrichtigungen speichern|Save notifications)$/,exact:true}).click();
- const result=await response;must(result.status()===expected,'Real notification command returns '+expected);await ready({error:expected!==200});return result.json();
+ const result=await response;must(result.status()===expected,'Real notification command returns '+expected);await ready({error:expected!==200});
 }
 async function discard(){
  await page.locator('#energy-editor').getByRole('button',{name:/^(Eingaben verwerfen|Discard entries)$/,exact:true}).click();await ready();

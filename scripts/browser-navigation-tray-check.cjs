@@ -94,8 +94,8 @@ async function checkModuleOrder(target, context) {
     must((await rails()).every(order => same(order, dragged)), 'Re-enabled module returns to its personal position');
     for (const width of [320,390]) {
       await target.setViewportSize({width,height:844});
-      const geometry = await target.locator('.mobile-nav').evaluate(nav => ({width:nav.clientWidth,scrollWidth:nav.scrollWidth,count:nav.querySelectorAll('a').length,hidden:[...nav.querySelectorAll('a')].filter(link => link.hidden).length,pageOverflow:document.documentElement.scrollWidth>innerWidth+1}));
-      must(geometry.count === 9 && geometry.hidden === 0 && geometry.scrollWidth > geometry.width && !geometry.pageOverflow, 'All enabled destinations are horizontally scrollable without page overflow: ' + width);
+      const geometry = await target.locator('.mobile-nav').evaluate(nav => ({width:nav.clientWidth,scrollWidth:nav.scrollWidth,count:nav.querySelectorAll('a').length,modules:nav.querySelectorAll('a[data-module-id]').length,home:nav.querySelectorAll('a[data-home-link][href="/"]').length,hidden:[...nav.querySelectorAll('a')].filter(link => link.hidden).length,pageOverflow:document.documentElement.scrollWidth>innerWidth+1}));
+      must(geometry.count === 10 && geometry.modules === 9 && geometry.home === 1 && geometry.hidden === 0 && geometry.scrollWidth > geometry.width && !geometry.pageOverflow, 'All enabled destinations are horizontally scrollable without page overflow: ' + width);
       const last = target.locator('.mobile-nav a[data-module-id]').last();
       await last.focus();
       const visible = await last.evaluate(link => {const r=link.getBoundingClientRect(), nav=link.closest('nav').getBoundingClientRect();return r.left>=nav.left-1&&r.right<=nav.right+1&&r.width>=44&&r.height>=44;});

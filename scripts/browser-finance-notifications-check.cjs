@@ -27,7 +27,7 @@ async function openReminder(){await page.locator('#finance-entry-current-actions
 async function saveReminder(action){const response=page.waitForResponse(r=>/\/payment-reminder$/.test(new URL(r.url()).pathname)&&r.request().method()==='POST');await page.locator('[data-reminder-action='+action+']').click();const result=await response;must(result.status()===200,'Actual reminder '+action+' succeeds');await page.waitForFunction(()=>document.querySelector('#finance-reminder-dialog')?.getAttribute('aria-busy')==='false');return result.json();}
 async function closeReminder(){await page.locator('#finance-reminder-dialog').getByRole('button',{name:/^(Schließen|Close)$/,exact:true}).click();await page.locator('#finance-reminder-dialog').waitFor({state:'hidden'});}
 async function capture(name){
- await page.evaluate(async()=>{await document.fonts.ready;});
+ await page.evaluate(async()=>{await document.fonts.ready;await Promise.all(document.getAnimations().filter(animation=>Number.isFinite(animation.effect?.getComputedTiming().endTime)).map(animation=>animation.finished.catch(()=>{})));});
  const scan=await new AxeBuilder({page}).withTags(['wcag2a','wcag2aa','wcag21aa']).analyze();report.accessibility.push({name,violations:scan.violations});must(scan.violations.length===0,'Axe '+name);
  must(await page.evaluate(()=>{const d=document.querySelector('#finance-reminder-dialog'),r=d.getBoundingClientRect();return document.documentElement.scrollWidth<=innerWidth+1&&r.left>=0&&r.right<=innerWidth+1&&d.scrollWidth<=d.clientWidth+1;}),'No page or reminder dialog horizontal overflow '+name);
  await page.screenshot({path:path.join(output,name+'.png'),fullPage:true,animations:'disabled'});report.screenshots.push(name+'.png');
