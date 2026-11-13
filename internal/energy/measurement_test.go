@@ -15,6 +15,37 @@ func energyInstant(t *testing.T, text string) time.Time {
 	return at
 }
 
+func TestHourBucketsAcrossLocalYearBoundary(t *testing.T) {
+	for _, tc := range []struct {
+		zone, at, start string
+	}{
+		{"Europe/Vienna", "2024-12-31T23:00:00Z", "2024-12-31T23:00:00Z"},
+		{"Europe/Vienna", "2024-12-31T23:59:59Z", "2024-12-31T23:00:00Z"},
+		{"Europe/Vienna", "2025-12-31T23:30:00Z", "2025-12-31T23:00:00Z"},
+		{"Pacific/Auckland", "2024-12-31T11:30:00Z", "2024-12-31T11:00:00Z"},
+		{"Asia/Kathmandu", "2024-12-31T18:30:00Z", "2024-12-31T18:15:00Z"},
+	} {
+		t.Run(tc.zone+"/"+tc.at, func(t *testing.T) {
+			at, want := energyInstant(t, tc.at), energyInstant(t, tc.start)
+			start, end, err := BucketSpan(at, tc.zone, "hour")
+			if err != nil || !start.Equal(want) || !end.Equal(want.Add(time.Hour)) {
+				t.Fatalf("year boundary: %v..%v, error %v", start, end, err)
+			}
+			from, through := want.Add(-time.Hour), want.Add(time.Hour)
+			interval := Interval{From: from, Through: through, Quantity: big.NewRat(2, 1), Quality: "actual"}
+			buckets, err := Buckets([]Interval{interval}, tc.zone, "hour", from, through)
+			if err != nil || len(buckets) != 2 {
+				t.Fatalf("year boundary buckets: %d, error %v", len(buckets), err)
+			}
+			for _, bucket := range buckets {
+				if bucket.Quantity.Cmp(big.NewRat(1, 1)) != 0 || bucket.CoveredSeconds != 3600 {
+					t.Fatalf("year boundary changed measured quantity or coverage: %+v", bucket)
+				}
+			}
+		})
+	}
+}
+
 func TestDecimalRejectsLossyOrUnboundedMeasurements(t *testing.T) {
 	for _, tc := range []struct{ name, text, want string }{
 		{"zero", "0", "0"}, {"fraction", "0.000001", "1/1000000"},

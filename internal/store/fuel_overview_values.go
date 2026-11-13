@@ -83,6 +83,7 @@ type FuelOverviewVehicle struct {
 	NextService           *string               `json:"next_service_on"`
 	NextInspection        *string               `json:"next_inspection_on"`
 	InsuranceRenewal      *string               `json:"insurance_renewal_on"`
+	ResponsibleMemberID   *string               `json:"responsible_member_id"`
 	Dates                 []FuelOverviewDue     `json:"dates"`
 	FutureFills           bool                  `json:"future_fills"`
 	Last                  *FuelOverviewFill     `json:"last"`

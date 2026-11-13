@@ -159,11 +159,18 @@ func boundary(at time.Time, location *time.Location, kind string) (time.Time, ti
 		start = wall.Add(-time.Duration(offset) * time.Second)
 		end = start.Add(time.Hour)
 		zoneStart, zoneEnd := local.ZoneBounds()
-		if !zoneStart.IsZero() && start.Before(zoneStart) {
+		// A POSIX extension can report a stale year-end bound. Only clip
+		// against bounds containing this instant, then verify both offsets.
+		if !zoneStart.IsZero() && !zoneStart.After(at) && start.Before(zoneStart) {
 			start = zoneStart
 		}
-		if !zoneEnd.IsZero() && end.After(zoneEnd) {
+		if !zoneEnd.IsZero() && at.Before(zoneEnd) && end.After(zoneEnd) {
 			end = zoneEnd
+		}
+		_, startOffset := start.In(location).Zone()
+		_, endOffset := end.Add(-time.Nanosecond).In(location).Zone()
+		if startOffset != offset || endOffset != offset {
+			return start, end, ErrInvalid
 		}
 	case "day":
 		date := time.Date(local.Year(), local.Month(), local.Day(), 0, 0, 0, 0, time.UTC)

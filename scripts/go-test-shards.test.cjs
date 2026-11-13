@@ -3,11 +3,13 @@ const {test} = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const {parse} = require('yaml');
+const {REQUIRED_FILES, REQUIRED_SECURITY, controlledSourceInventory, validateControlledInventory} = require('./controlled-test-inventory.cjs');
 const {SHARDS, SETTINGS, sha, canonical, identity, shardFor, jsonLines, discoverEvents, makeInventory, validateInventory, exactPattern, discoveryEnvironment, discoveryArguments, validateBuildParity, executionArguments, ExecutionLedger} = require('./run-go-test-shard.cjs');
 const {parseCoverage, validateAndMerge} = require('./merge-go-test-shards.cjs');
 
 function fixture() {
-  const packages = ['household/internal/a', 'household/internal/b'];
+  const packages = ['household/internal/a', 'household/internal/b', 'household/internal/web'];
+  const controlled = REQUIRED_FILES.map((file,index)=>({path:file,sha256:'d'.repeat(64),package:'household/internal/web',tests:file.endsWith('/notification_security_delivery_integration_test.go')?[...REQUIRED_SECURITY]:['TestControlledFixture'+index]}));
   const bucketNames = new Map();
   for (let index = 0; bucketNames.size < SHARDS && index < 10000; index++) {
     const name = 'TestCase' + index;
@@ -18,13 +20,13 @@ function fixture() {
   const events = [];
   for (const pkg of packages) {
     events.push({Action: 'start', Package: pkg});
-    for (const name of pkg === packages[0] ? names : [names[0]]) events.push({Action: 'output', Package: pkg, Output: name + '\n'});
+    for (const name of pkg === packages[0] ? names : pkg === packages[2] ? controlled.flatMap(file=>file.tests) : [names[0]]) events.push({Action: 'output', Package: pkg, Output: name + '\n'});
     events.push({Action: 'pass', Package: pkg});
   }
   const discovery = discoverEvents(events);
-  const manifest = [{path: 'internal/a/a.go', sha256: 'a'.repeat(64)}, {path: 'internal/b/b.go', sha256: 'b'.repeat(64)}];
+  const manifest = [{path: 'internal/a/a.go', sha256: 'a'.repeat(64)}, {path: 'internal/b/b.go', sha256: 'b'.repeat(64)}, ...controlled.map(({path,sha256})=>({path,sha256}))];
   const source = {commit: 'c'.repeat(40), dirty: false, module: 'household', manifest, digest: sha(canonical(manifest))};
-  const inventory = makeInventory(discovery, source, {version: 'go1.27.3', os: 'linux', arch: 'amd64', cgo: '1'});
+  const inventory = makeInventory(discovery, source, {version: 'go1.27.3', os: 'linux', arch: 'amd64', cgo: '1'}, controlled);
   const lines = events => events.map(canonical).join('\n') + '\n';
   const artifacts = Array.from({length: SHARDS}, (_, shard) => {
     const tests = [];
@@ -97,7 +99,7 @@ test('execution preserves race, sequential packages, full internal coverage, shu
   const {inventory} = fixture();
   const args = executionArguments(inventory, 0, 'outputs/qa/shard-0/coverage.out');
   assert.equal(args[0], 'test');
-  for (const argument of ['-race', '-tags=integration', '-shuffle=on', '-coverpkg=./internal/...', '-covermode=atomic', '-count=1', '-timeout=60m', '-json', './...']) assert.ok(args.includes(argument), argument);
+  for (const argument of ['-race', '-tags=integration,testtools', '-shuffle=on', '-coverpkg=./internal/...', '-covermode=atomic', '-count=1', '-timeout=60m', '-json', './...']) assert.ok(args.includes(argument), argument);
   assert.equal(args[args.indexOf('-p') + 1], '1');
   assert.equal(args[args.indexOf('-run') + 1], exactPattern(inventory, 0));
   assert.equal(SETTINGS.timeout, '60m');
@@ -109,13 +111,41 @@ test('registration discovery uses the execution race build selection and fails c
   assert.equal(listing[listing.indexOf('-list') + 1], '.');
   assert.doesNotThrow(() => validateBuildParity(listing, execution));
   // A //go:build race file participates only when -race is present. Otherwise
-  // a self-consistent six-shard inventory could silently omit every such test.
+  // a self-consistent sixteen-shard inventory could silently omit every such test.
   assert.throws(() => validateBuildParity(listing.filter(value => value !== '-race'), execution), /race build selection/);
-  assert.throws(() => validateBuildParity(listing.map(value => value === '-tags=integration' ? '-tags=testtools' : value), execution), /build selection/);
+  assert.throws(() => validateBuildParity(listing.map(value => value === '-tags=integration,testtools' ? '-tags=testtools' : value), execution), /build selection/);
   assert.throws(() => validateBuildParity(listing, execution.filter(value => value !== '-race')), /build selection/);
+  assert.throws(() => validateBuildParity(listing.map(value => value === '-tags=integration,testtools' ? '-tags=integration' : value), execution), /build selection/);
 });
 
-test('six actual execution ledgers merge exactly once into presence-only coverage without losing large atomic counter precision', () => {
+test('controlled census requires all reviewed files and security mains in actual Go registration', () => {
+  const {inventory, source} = fixture();
+  const controlled = inventory.controlled;
+  assert.equal(validateControlledInventory(controlled, source, inventory.tests), controlled.flatMap(file=>file.tests).length);
+  assert.throws(()=>validateControlledInventory(controlled.slice(1), source, inventory.tests), /inventory missing/);
+  const security = controlled.find(file=>file.path.endsWith('/notification_security_delivery_integration_test.go'));
+  assert.deepEqual(security.tests, REQUIRED_SECURITY);
+  assert.throws(()=>validateControlledInventory(controlled, source, inventory.tests.filter(test=>test.name!==REQUIRED_SECURITY[0])), /actual registration/);
+  const omitted=controlled.map(file=>file===security?{...file,tests:['TestOtherSecurity']}:file);
+  assert.throws(()=>validateControlledInventory(omitted,source,[...inventory.tests,{package:security.package,name:'TestOtherSecurity'}]),/coverage was omitted/);
+  assert.throws(()=>validateControlledInventory(controlled.map((file,index)=>index?file:{...file,sha256:'f'.repeat(64)}),source,inventory.tests),/source identity/);
+});
+
+test('controlled source census discovers future tagged files and refuses source drift or weakened tags', () => {
+  const path=require('node:path'),root=path.resolve('synthetic-controlled-inventory');
+  const file='internal/web/future_controlled_test.go',body=Buffer.from('//go:build integration && testtools\npackage web\nfunc TestFutureControlled(t *testing.T) {}\n');
+  const source={module:'household',manifest:[{path:file,sha256:sha(body)}]};
+  const read=filename=>{assert.equal(filename,path.join(root,file));return body;};
+  assert.deepEqual(controlledSourceInventory(root,source,read),[{path:file,sha256:sha(body),package:'household/internal/web',tests:['TestFutureControlled']}]);
+  assert.throws(()=>controlledSourceInventory(root,{...source,manifest:[{path:file,sha256:'0'.repeat(64)}]},read),/changed/);
+  const weak=Buffer.from(body.toString().replace('integration && testtools','testtools'));
+  assert.throws(()=>controlledSourceInventory(root,{...source,manifest:[{path:file,sha256:sha(weak)}]},()=>weak),/both explicit build tags/);
+  const {inventory,source:fullSource,artifacts}=fixture();
+  const changed=inventory.controlled.concat([{path:file,sha256:sha(body),package:'household/internal/web',tests:['TestFutureControlled']}]);
+  assert.throws(()=>validateAndMerge(artifacts,fullSource,changed),/census differs/);
+});
+
+test('sixteen actual execution ledgers merge exactly once into presence-only coverage without losing large atomic counter precision', () => {
   const {source, inventory, artifacts} = fixture();
   const merged = validateAndMerge(artifacts, source);
   assert.equal(merged.summary.mainCount, inventory.tests.length);
@@ -127,7 +157,7 @@ test('six actual execution ledgers merge exactly once into presence-only coverag
 
 test('merger refuses missing, duplicate or failed shard artifacts', () => {
   const {artifacts, source} = fixture();
-  assert.throws(() => validateAndMerge(artifacts.slice(1), source), /six/);
+  assert.throws(() => validateAndMerge(artifacts.slice(1), source), /sixteen/);
   const duplicated = artifacts.slice();
   duplicated[5] = duplicated[0];
   assert.throws(() => validateAndMerge(duplicated, source), /duplicate/);
@@ -186,7 +216,7 @@ test('execution refuses missing, duplicate, unexpected and unassigned registrati
 
 test('no-test parent packages can skip while their distinct child packages contain assigned mains', () => {
   const {inventory, artifacts} = fixture();
-  const expanded = makeInventory({packages: ['household/internal', ...inventory.packages], tests: inventory.tests}, inventory.source, inventory.go);
+  const expanded = makeInventory({packages: ['household/internal', ...inventory.packages], tests: inventory.tests}, inventory.source, inventory.go, inventory.controlled);
   const ledger = new ExecutionLedger(expanded, 0);
   ledger.accept({Action: 'skip', Package: 'household/internal'});
   for (const event of jsonLines(artifacts[0].tests)) ledger.accept(event);
@@ -196,7 +226,7 @@ test('no-test parent packages can skip while their distinct child packages conta
 test('claimed inventory cannot omit a main present in the actual discovered registration list', () => {
   const {artifacts, source} = fixture();
   const removed = JSON.parse(artifacts[0].inventory);
-  removed.tests.pop();
+  removed.tests = removed.tests.filter(test=>test.name!=='FuzzExactAmount');
   const {digest, ...body} = removed;
   removed.digest = sha(canonical(body));
   for (const artifact of artifacts) {
@@ -209,7 +239,7 @@ test('claimed inventory cannot omit a main present in the actual discovered regi
   assert.throws(() => validateAndMerge(artifacts, source), /discovery differs/);
 });
 
-test('coverage definitions and source bindings must match across all six observations', () => {
+test('coverage definitions and source bindings must match across all sixteen observations', () => {
   const {artifacts, source, inventory} = fixture();
   artifacts[5].coverage = artifacts[5].coverage.replace('1.1,2.2 2', '1.1,3.2 2');
   rebind(artifacts[5]);
@@ -236,17 +266,23 @@ test('inventory digest binds source files, compiler target and command settings'
   }
 });
 
-test('quality workflow uses isolated six-job matrix and validates complete artifacts before fifty-five-percent coverage and HTML', () => {
+test('quality workflow uses isolated sixteen-job matrix and validates complete artifacts before fifty-five-percent coverage and HTML', () => {
   const workflow = parse(fs.readFileSync('.github/workflows/quality.yml', 'utf8'));
   const tests = workflow.jobs.Tests, coverage = workflow.jobs.Coverage;
-  assert.deepEqual(tests.strategy.matrix.shard, [0, 1, 2, 3, 4, 5]);
+  assert.deepEqual(tests.strategy.matrix.shard, Array.from({length: 16}, (_, index) => index));
+  assert.equal(tests.strategy['max-parallel'], 6);
+  assert.match(tests.steps.find(step=>step.name==='Discover and run one deterministic shard with race detection').run, /matrix\.shard }}" 16 /);
   assert.equal(tests.strategy['fail-fast'], false);
   assert.equal(tests['timeout-minutes'], 75);
+  assert.ok(!tests.steps.some(step=>(step.run||'').includes('run-shopping-push-testtools.cjs')));
+  assert.ok(!tests.steps.some(step=>step.with?.name==='shopping-controlled-push'));
+  assert.ok(tests.steps.some(step=>(step.run||'').includes('go vet -tags=integration,testtools')));
+  assert.match(workflow.jobs.UnitTests.steps.map(step=>step.run||'').join('\n'), /check-coverage\.cjs outputs\/qa\/unit\/coverage\.out 14 /);
   assert.equal(tests.services.postgres.env.POSTGRES_DB, 'household_test');
   assert.equal(tests.env.HOUSEHOLD_REQUIRE_INTEGRATION, '1');
   assert.ok(tests.env.HOUSEHOLD_TEST_OWNER_URL.includes('household_owner:'));
   assert.ok(tests.env.HOUSEHOLD_TEST_APP_URL.includes('household_app:'));
-  assert.equal(coverage.needs, 'Tests');
+  assert.deepEqual(coverage.needs, ['Tests', 'UnitTests']);
   const commands = coverage.steps.map(step => step.run || '').join('\n');
   assert.ok(commands.indexOf('merge-go-test-shards.cjs') < commands.indexOf('check-coverage.cjs'));
   assert.match(commands, /check-coverage\.cjs outputs\/qa\/coverage\.out 55 /);
@@ -255,4 +291,45 @@ test('quality workflow uses isolated six-job matrix and validates complete artif
   assert.match(download.uses, /@[a-f0-9]{40}$/);
   assert.equal(download.with['merge-multiple'], false);
   assert.equal(download.with['digest-mismatch'], 'error');
+});
+const path = require('node:path');
+const os = require('node:os');
+const {spawnSync} = require('node:child_process');
+
+test('runner CLI accepts only canonical indices zero through fifteen and the exact shard count', () => {
+ const script=path.resolve('scripts/run-go-test-shard.cjs');
+ const env={...process.env};delete env.HOUSEHOLD_REQUIRE_INTEGRATION;delete env.HOUSEHOLD_TEST_OWNER_URL;delete env.HOUSEHOLD_TEST_APP_URL;
+ const run=(index,count='16')=>spawnSync(process.execPath,[script,index,count,path.resolve('outputs/never-created-shard-cli')],{encoding:'utf8',env});
+ for(const index of Array.from({length:16},(_,n)=>String(n))){const result=run(index);assert.equal(result.status,1);assert.match(result.stderr,/Required isolated integration authority is missing/);}
+ for(const index of ['-1','16','99','00','01','1.0','1e1',' 1','1 ','+1'])assert.match(run(index).stderr,/Usage:/);
+ for(const count of ['6','12','016','16.0'])assert.match(run('10',count).stderr,/Usage:/);
+});
+
+test('merge CLI validates all sixteen real artifact directories including multi-digit indices', t => {
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'household-shards16-'));
+ t.after(()=>{assert.equal(path.dirname(path.resolve(root)),path.resolve(os.tmpdir()));assert.match(path.basename(root),/^household-shards16-/);fs.rmSync(root,{recursive:true,force:true});});
+ const input=path.join(root,'outputs','shards'),output=path.join(root,'outputs','merged');
+ const {source,artifacts}=fixture();
+ for(let index=0;index<SHARDS;index++){
+  const dir=path.join(input,'go-test-shard-'+index);fs.mkdirSync(dir,{recursive:true});
+  for(const [key,name]of Object.entries({inventory:'inventory.json',result:'result.json',discovery:'discovery.jsonl',tests:'tests.jsonl',coverage:'coverage.out'}))fs.writeFileSync(path.join(dir,name),artifacts[index][key]);
+ }
+ const script=path.resolve('scripts/merge-go-test-shards.cjs');
+ const run=()=>spawnSync(process.execPath,[script,input,output,source.commit],{cwd:root,encoding:'utf8'});
+ // A valid synthetic artifact set advances to the real checkout check. This
+ // fixture deliberately contains no source checkout and cannot qualify as CI.
+ let result=run();assert.equal(result.status,1);assert.match(result.stderr,/ENOENT.*cmd/);assert.doesNotMatch(result.stderr,/shard artifact directories/);
+ const tenth=path.join(input,'go-test-shard-10'),renamed=path.join(input,'go-test-shard-010');
+ fs.renameSync(tenth,renamed);assert.match(run().stderr,/Missing or unexpected shard artifact directories/);fs.renameSync(renamed,tenth);
+ const identityFile=path.join(tenth,'result.json'),identityResult=JSON.parse(fs.readFileSync(identityFile));
+ fs.writeFileSync(identityFile,JSON.stringify({...identityResult,shard:1}));assert.match(run().stderr,/directory\/shard identity differs/);fs.writeFileSync(identityFile,JSON.stringify(identityResult));
+ fs.mkdirSync(path.join(input,'go-test-shard-16'));assert.match(run().stderr,/Missing or unexpected shard artifact directories/);
+});
+
+test('legacy six-shard evidence cannot qualify under the sixteen-shard inventory', () => {
+ const {inventory}=fixture();
+ for(const patch of [{shards:6},{algorithm:'sha256-name-first32-mod6-v1'}]){
+  const changed={...inventory,...patch};const {digest,...body}=changed;changed.digest=sha(canonical(body));
+  assert.throws(()=>validateInventory(changed),/Unsupported shard inventory/);
+ }
 });

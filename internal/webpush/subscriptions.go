@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"household/internal/auth"
+	"household/internal/secretbox"
+	"household/internal/securityevent"
 	"household/internal/store"
 	"household/internal/value"
 
@@ -17,6 +19,7 @@ import (
 
 type storedSubscription struct {
 	id, household, user, keyID string
+	format                     int16
 	hash, cipher               []byte
 	disabled                   *time.Time
 	created                    time.Time
@@ -24,10 +27,13 @@ type storedSubscription struct {
 
 func (s *Service) open(row storedSubscription) (envelope, error) {
 	var data envelope
-	if row.keyID != s.encryptionID || len(row.cipher) < 32 || len(row.cipher) > maxCipher {
+	if len(row.cipher) < 32 || len(row.cipher) > maxCipher {
 		return data, store.ErrConflict
 	}
-	raw, err := s.auth.Open(row.cipher)
+	raw, err := s.keys.Open(secretbox.Binding{Purpose: "push-subscription", HouseholdID: row.household, UserID: row.user, RecordID: row.id}, secretbox.Stored{Format: row.format, KeyID: row.keyID, Ciphertext: row.cipher})
+	if errors.Is(err, secretbox.ErrKeyUnavailable) {
+		return data, err
+	}
 	if err != nil || len(raw) > maxCipher || strictJSON(raw, &data) != nil {
 		return data, store.ErrConflict
 	}
@@ -77,7 +83,7 @@ func currentEnvelope(ctx context.Context, tx pgx.Tx, data envelope) (bool, error
 
 func (s *Service) ownerRows(ctx context.Context, tx pgx.Tx, id auth.Identity) ([]storedSubscription, error) {
 	rows, err := tx.Query(ctx, `SELECT id::text,household_id::text,user_id::text,endpoint_hash,encrypted_subscription,
- encryption_key_id,disabled_at,created_at FROM core.push_subscriptions WHERE household_id=$1 AND user_id=$2
+ encryption_key_id,encryption_format,disabled_at,created_at FROM core.push_subscriptions WHERE household_id=$1 AND user_id=$2
  AND octet_length(encrypted_subscription)<=$3 ORDER BY created_at DESC,id LIMIT 129 FOR UPDATE`, id.HouseholdID, id.UserID, maxCipher)
 	if err != nil {
 		return nil, err
@@ -86,7 +92,7 @@ func (s *Service) ownerRows(ctx context.Context, tx pgx.Tx, id auth.Identity) ([
 	result := []storedSubscription{}
 	for rows.Next() {
 		var row storedSubscription
-		if err = rows.Scan(&row.id, &row.household, &row.user, &row.hash, &row.cipher, &row.keyID, &row.disabled, &row.created); err != nil {
+		if err = rows.Scan(&row.id, &row.household, &row.user, &row.hash, &row.cipher, &row.keyID, &row.format, &row.disabled, &row.created); err != nil {
 			return nil, err
 		}
 		result = append(result, row)
@@ -214,6 +220,7 @@ func (s *Service) Register(ctx context.Context, id auth.Identity, in RegisterInp
 		return SubscriptionView{}, err
 	}
 	var chosen *storedSubscription
+	var chosenData envelope
 	active := 0
 	for i := range rows {
 		row := &rows[i]
@@ -226,6 +233,7 @@ func (s *Service) Register(ctx context.Context, id auth.Identity, in RegisterInp
 				return SubscriptionView{}, store.ErrConflict
 			}
 			chosen = row
+			chosenData = data
 		}
 		current, err := currentEnvelope(ctx, tx, data)
 		if err != nil {
@@ -269,17 +277,25 @@ func (s *Service) Register(ctx context.Context, id auth.Identity, in RegisterInp
 	if err != nil {
 		return SubscriptionView{}, errors.New("encode push connection failed")
 	}
-	cipher := s.auth.Seal(raw)
-	if len(cipher) > maxCipher {
+	sealed, err := s.keys.Seal(secretbox.Binding{Purpose: "push-subscription", HouseholdID: id.HouseholdID, UserID: id.UserID, RecordID: rid}, raw)
+	if err != nil {
+		return SubscriptionView{}, err
+	}
+	if len(sealed.Ciphertext) > maxCipher {
 		return SubscriptionView{}, store.Invalid{Message: "Push-Verbindung ist zu groß"}
 	}
 	if chosen == nil {
-		_, err = tx.Exec(ctx, `INSERT INTO core.push_subscriptions(id,household_id,user_id,endpoint_hash,encrypted_subscription,encryption_key_id,created_at) VALUES($1,$2,$3,$4,$5,$6,$7)`, rid, id.HouseholdID, id.UserID, hash[:], cipher, s.encryptionID, now)
+		_, err = tx.Exec(ctx, `INSERT INTO core.push_subscriptions(id,household_id,user_id,endpoint_hash,encrypted_subscription,encryption_key_id,created_at,encryption_format) VALUES($1,$2,$3,$4,$5,$6,$7,$8)`, rid, id.HouseholdID, id.UserID, hash[:], sealed.Ciphertext, sealed.KeyID, now, sealed.Format)
 	} else {
-		_, err = tx.Exec(ctx, `UPDATE core.push_subscriptions SET endpoint_hash=$4,encrypted_subscription=$5,encryption_key_id=$6,disabled_at=NULL,created_at=$7 WHERE id=$1 AND household_id=$2 AND user_id=$3`, rid, id.HouseholdID, id.UserID, hash[:], cipher, s.encryptionID, now)
+		_, err = tx.Exec(ctx, `UPDATE core.push_subscriptions SET endpoint_hash=$4,encrypted_subscription=$5,encryption_key_id=$6,disabled_at=NULL,created_at=$7,encryption_format=$8 WHERE id=$1 AND household_id=$2 AND user_id=$3`, rid, id.HouseholdID, id.UserID, hash[:], sealed.Ciphertext, sealed.KeyID, now, sealed.Format)
 	}
 	if err != nil {
 		return SubscriptionView{}, err
+	}
+	if chosen == nil || chosen.disabled != nil || chosenData.SessionID != id.SessionID || chosenData.AuthVersion != id.AuthVersion {
+		if err = securityevent.Record(ctx, tx, id.HouseholdID, id.UserID, "device_authorized"); err != nil {
+			return SubscriptionView{}, err
+		}
 	}
 	if err = tx.Commit(ctx); err != nil {
 		return SubscriptionView{}, err

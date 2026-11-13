@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"household/internal/audit"
+	"household/internal/auth"
 	"household/internal/database"
 	"household/internal/maintenance"
 	"household/internal/store"
@@ -76,13 +77,40 @@ func pantryExtensionsPriorCatalog(t *testing.T, f *integrationFixture, pantryVer
 	if _, err := f.owner.Exec(f.ctx, "UPDATE core.users SET must_change_password=false WHERE username=$1", f.app.Cfg.AdminUsername); err != nil {
 		t.Fatal(err)
 	}
-	var err error
-	f.token, f.identity, err = f.app.Auth.Login(f.ctx, f.app.Cfg.AdminUsername, integrationPassword, "", "127.0.0.1", "Pantry predecessor fixture")
-	if err != nil {
+	pantryExtensionsPredecessorSession(t, f, pantryVersion)
+	if err := f.app.Store.LoadStates(f.ctx); err != nil {
 		t.Fatal(err)
 	}
-	if err = f.app.Store.LoadStates(f.ctx); err != nil {
-		t.Fatal(err)
+}
+
+// Current authentication reads Core36's reauthenticated_at. This historical
+// fixture stays on real Core26 while populating Pantry10/11, so create an actual
+// hashed predecessor session instead of adding a future column or upgrading
+// before the legacy facts exist. Authentication itself is tested elsewhere.
+func pantryExtensionsPredecessorSession(t *testing.T, f *integrationFixture, pantryVersion uint) {
+	t.Helper()
+	var approved bool
+	err := f.owner.QueryRow(f.ctx, `SELECT current_database()='household_test' AND current_user='household_owner'
+ AND(SELECT count(*)=1 AND bool_and(version=26 AND NOT dirty) FROM core.schema_migrations)
+ AND(SELECT count(*)=1 AND bool_and(version=$1 AND NOT dirty) FROM pantry.schema_migrations)`, pantryVersion).Scan(&approved)
+	if err != nil || !approved || pantryVersion != 10 && pantryVersion != 11 {
+		t.Fatal("predecessor session requires isolated clean Core26/Pantry10 or Pantry11", approved, err)
+	}
+	f.token = auth.RandomToken()
+	f.identity = auth.Identity{}
+	err = f.owner.QueryRow(f.ctx, `WITH session AS(
+ INSERT INTO core.sessions(user_id,token_hash,auth_version,idle_expires_at,absolute_expires_at,user_agent)
+ SELECT id,$2,auth_version,clock_timestamp()+interval '24 hours',clock_timestamp()+interval '30 days','Historical Pantry upgrade fixture'
+ FROM core.users WHERE username=$1 AND disabled_at IS NULL AND NOT must_change_password
+ RETURNING id,user_id,auth_version,created_at,idle_expires_at)
+ SELECT u.id,m.household_id,m.id,u.username,u.display_name,m.role,u.must_change_password,u.auth_version,
+ s.id,s.created_at,s.idle_expires_at FROM session s JOIN core.users u ON u.id=s.user_id
+ JOIN core.memberships m ON m.user_id=u.id WHERE m.inactive_at IS NULL AND s.auth_version=u.auth_version`,
+		f.app.Cfg.AdminUsername, auth.HashToken(f.token)).Scan(
+		&f.identity.UserID, &f.identity.HouseholdID, &f.identity.MembershipID, &f.identity.Username, &f.identity.DisplayName,
+		&f.identity.Role, &f.identity.MustChange, &f.identity.AuthVersion, &f.identity.SessionID, &f.identity.CreatedAt, &f.identity.ExpiresAt)
+	if err != nil {
+		t.Fatal("create isolated Pantry predecessor session", err)
 	}
 }
 

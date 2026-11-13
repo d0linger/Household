@@ -1,37 +1,37 @@
 {{define "expense-editor"}}
 <link rel="stylesheet" href="{{index .Asset "expense-editor.css"}}">
 <section id="expense-editor" class="expense-editor" data-entry="{{.Extra.Header.ID}}" aria-busy="true">
- <a class="back-link" href="/m/expenses/entries">Zur Ausgabenübersicht</a>
- <div class="page-heading"><div><h1>{{.Title}}</h1><p id="expense-saved-state" class="muted">Gespeicherten Stand laden …</p></div><a id="expense-detail-link" class="button" href="/m/expenses/entries/{{.Extra.Header.ID}}" {{if not .Extra.Header.ID}}hidden{{end}}>Einzelverwaltung und Belege</a></div>
- <p>Diese Buchung ist für den Haushalt sichtbar. Beträge werden in EUR erfasst.</p>
- <p id="expense-status" class="notice" role="status">Buchung und vollständige Aufteilung werden geladen.</p>
- <section id="expense-error" class="notice error" role="alert" tabindex="-1" hidden><h2>Bitte prüfen</h2><p id="expense-error-text"></p><ul id="expense-error-fields"></ul></section>
- <section id="expense-pending" class="notice" role="alert" tabindex="-1" hidden><h2>Speicherergebnis prüfen</h2><p id="expense-pending-text"></p><button type="button" id="expense-retry">Denselben Vorgang erneut prüfen</button></section>
- <section id="expense-conflict" class="notice" tabindex="-1" hidden><h2>Aktueller Stand und deine Eingaben</h2><p>Deine Eingaben bleiben im Formular. Vergleiche die aktuellen Werte, bevor du sie ausdrücklich neu lädst.</p><div id="expense-conflict-content"></div><button type="button" id="expense-reload-current">Aktuellen Stand übernehmen und eigene Eingaben verwerfen</button></section>
- <section id="expense-readonly" class="panel" hidden aria-labelledby="expense-readonly-title"><h2 id="expense-readonly-title">Buchung ansehen</h2><p id="expense-readonly-reason" class="notice"></p><div id="expense-readonly-content"></div></section>
+ <a class="back-link" href="/m/expenses/entries">{{t "Zur Ausgabenübersicht"}}</a>
+ <div class="page-heading"><div><h1>{{.Title}}</h1><p id="expense-saved-state" class="muted">{{t "Gespeicherten Stand laden …"}}</p></div><a id="expense-detail-link" class="button" href="/m/expenses/entries/{{.Extra.Header.ID}}" {{if not .Extra.Header.ID}}hidden{{end}}>{{t "Einzelverwaltung und Belege"}}</a></div>
+ <p>{{t "Diese Buchung ist für den Haushalt sichtbar. Beträge werden in EUR erfasst."}}</p>
+ <p id="expense-status" class="notice" role="status">{{t "Buchung und vollständige Aufteilung werden geladen."}}</p>
+ <section id="expense-error" class="notice error" role="alert" tabindex="-1" hidden><h2>{{t "Bitte prüfen"}}</h2><p id="expense-error-text"></p><ul id="expense-error-fields"></ul></section>
+ <section id="expense-pending" class="notice" role="alert" tabindex="-1" hidden><h2>{{t "Speicherergebnis prüfen"}}</h2><p id="expense-pending-text"></p><button type="button" id="expense-retry">{{t "Denselben Vorgang erneut prüfen"}}</button></section>
+ <section id="expense-conflict" class="notice" tabindex="-1" hidden><h2>{{t "Aktueller Stand und deine Eingaben"}}</h2><p>{{t "Deine Eingaben bleiben im Formular. Vergleiche die aktuellen Werte, bevor du sie ausdrücklich neu lädst."}}</p><div id="expense-conflict-content"></div><button type="button" id="expense-reload-current">{{t "Aktuellen Stand übernehmen und eigene Eingaben verwerfen"}}</button></section>
+ <section id="expense-readonly" class="panel" hidden aria-labelledby="expense-readonly-title"><h2 id="expense-readonly-title">{{t "Buchung ansehen"}}</h2><p id="expense-readonly-reason" class="notice"></p><div id="expense-readonly-content"></div></section>
  <form id="expense-form" class="panel" novalidate>
   <fieldset id="expense-fields" disabled>
-   <legend class="sr-only">Buchung und Kategoriezeilen</legend>
+   <legend class="sr-only">{{t "Buchung und Kategoriezeilen"}}</legend>
    <div class="form-grid">
-    <label class="full">Beschreibung<input id="expense-description" name="description" maxlength="300" required autocomplete="off"></label>
-    <label>Datum<input id="expense-date" name="occurred_on" type="date" min="1900-01-01" max="2200-12-31" required></label>
-    <label>Art<select id="expense-kind" name="kind"><option value="expense">Ausgabe · positiver Betrag</option><option value="refund">Erstattung · negativer Betrag</option></select></label>
-    <label>Gesamtbetrag in EUR<input id="expense-amount" name="amount_eur" type="text" inputmode="decimal" maxlength="32" required aria-describedby="expense-amount-help"></label>
-    <label>Empfänger / Geschäft<input id="expense-payee" name="payee" maxlength="200" autocomplete="off"></label>
-    <p id="expense-amount-help" class="fine full">Euro und Cent mit Komma oder Punkt. Ausgaben positiv, Erstattungen negativ; Beträge werden nicht gerundet.</p>
-    <label class="full">Bezahlt von<select id="expense-payer" name="paid_by_membership_id" data-reference="core/memberships"><option value="">Nicht bekannt / offen lassen</option>{{with .Extra.Header.PaidByMembershipID}}<option value="{{.}}" selected>{{$.Extra.Header.PayerLabel}}{{if not $.Extra.Header.PayerActive}} · inaktiv{{end}}</option>{{end}}</select></label>
+    <label class="full">{{t "Beschreibung"}}<input id="expense-description" name="description" maxlength="300" required autocomplete="off"></label>
+    <label>{{t "Datum"}}<input id="expense-date" name="occurred_on" type="date" min="1900-01-01" max="2200-12-31" required></label>
+    <label>{{t "Art"}}<select id="expense-kind" name="kind"><option value="expense">{{t "Ausgabe · positiver Betrag"}}</option><option value="refund">{{t "Erstattung · negativer Betrag"}}</option></select></label>
+    <label>{{t "Gesamtbetrag in EUR"}}<input id="expense-amount" name="amount_eur" type="text" inputmode="decimal" maxlength="32" required aria-describedby="expense-amount-help"></label>
+    <label>{{t "Empfänger / Geschäft"}}<input id="expense-payee" name="payee" maxlength="200" autocomplete="off"></label>
+    <p id="expense-amount-help" class="fine full">{{t "Euro und Cent mit Komma oder Punkt. Ausgaben positiv, Erstattungen negativ; Beträge werden nicht gerundet."}}</p>
+    <label class="full">{{t "Bezahlt von"}}<select id="expense-payer" name="paid_by_membership_id" data-reference="core/memberships"><option value="">{{t "Nicht bekannt / offen lassen"}}</option>{{with .Extra.Header.PaidByMembershipID}}<option value="{{.}}" selected>{{$.Extra.Header.PayerLabel}}{{if not $.Extra.Header.PayerActive}} {{t "· inaktiv"}}{{end}}</option>{{end}}</select></label>
    </div>
-   <div class="expense-section-heading"><div><h2>Aufteilung</h2><p class="fine">Bis zu 100 Kategoriezeilen. Negative Teilbeträge sind beispielsweise für Rabatte möglich.</p></div><button type="button" id="expense-add-line">Kategoriezeile ergänzen</button></div>
-   <p id="expense-lines-empty" class="notice">Noch keine Kategoriezeilen. Du kannst den Entwurf unvollständig speichern und die Aufteilung später ergänzen.</p>
+   <div class="expense-section-heading"><div><h2>{{t "Aufteilung"}}</h2><p class="fine">{{t "Bis zu 100 Kategoriezeilen. Negative Teilbeträge sind beispielsweise für Rabatte möglich."}}</p></div><button type="button" id="expense-add-line">{{t "Kategoriezeile ergänzen"}}</button></div>
+   <p id="expense-lines-empty" class="notice">{{t "Noch keine Kategoriezeilen. Du kannst den Entwurf unvollständig speichern und die Aufteilung später ergänzen."}}</p>
    <div id="expense-lines"></div>
-   <section id="expense-removed" hidden aria-labelledby="expense-removed-title"><h3 id="expense-removed-title">Beim Speichern entfernen</h3><ul id="expense-removed-lines"></ul></section>
-   <section id="expense-totals" class="expense-totals" aria-label="Exakte Aufteilung"><dl><div><dt>Gesamtbetrag</dt><dd id="expense-total-value">Noch offen</dd></div><div><dt>Aufgeteilt</dt><dd id="expense-sum-value">0,00 €</dd></div><div><dt>Restdifferenz</dt><dd id="expense-rest-value">Noch offen</dd></div></dl><p id="expense-rest-status" role="status" aria-live="polite"></p></section>
-   <div class="actions expense-actions"><button type="submit" class="primary" id="expense-save">Entwurf speichern</button><button type="button" id="expense-review">Verbindliches Buchen prüfen</button></div>
-   <p class="fine">Speichern und Buchen benötigen eine Verbindung. Das Formular wird auf diesem Gerät nicht als Offline-Änderung gespeichert.</p>
+   <section id="expense-removed" hidden aria-labelledby="expense-removed-title"><h3 id="expense-removed-title">{{t "Beim Speichern entfernen"}}</h3><ul id="expense-removed-lines"></ul></section>
+   <section id="expense-totals" class="expense-totals" aria-label="{{t "Exakte Aufteilung"}}"><dl><div><dt>{{t "Gesamtbetrag"}}</dt><dd id="expense-total-value">{{t "Noch offen"}}</dd></div><div><dt>{{t "Aufgeteilt"}}</dt><dd id="expense-sum-value">0,00 €</dd></div><div><dt>{{t "Restdifferenz"}}</dt><dd id="expense-rest-value">{{t "Noch offen"}}</dd></div></dl><p id="expense-rest-status" role="status" aria-live="polite"></p></section>
+   <div class="actions expense-actions"><button type="submit" class="primary" id="expense-save">{{t "Entwurf speichern"}}</button><button type="button" id="expense-review">{{t "Verbindliches Buchen prüfen"}}</button></div>
+   <p class="fine">{{t "Speichern und Buchen benötigen eine Verbindung. Das Formular wird auf diesem Gerät nicht als Offline-Änderung gespeichert."}}</p>
   </fieldset>
  </form>
- <section id="expense-post-review" class="notice" tabindex="-1" hidden aria-labelledby="expense-post-title"><h2 id="expense-post-title">Aufteilung verbindlich buchen</h2><p>Prüfe Betrag, Datum und Kategorien. Die gebuchte Ausgabe bleibt unveränderlich; ein Ausgleich ist anschließend ein eigener Vorgang.</p><div id="expense-post-content"></div><div class="actions"><button type="button" id="expense-post-cancel">Weiter bearbeiten</button><button type="button" class="primary" id="expense-post-confirm">Diese Aufteilung verbindlich buchen</button></div></section>
- <dialog id="expense-category-dialog" aria-labelledby="expense-category-title"><h2 id="expense-category-title">Kategorie auswählen</h2><form id="expense-category-form"><label>Kategorie<select id="expense-category-choice" data-reference="expenses/categories" required><option value="">Bitte auswählen</option></select></label><p class="fine"><a href="/m/expenses/categories" target="_blank" rel="noopener">Kategorien in einem neuen Tab verwalten</a></p><div class="actions"><button type="button" id="expense-category-cancel">Abbrechen</button><button type="submit" class="primary">Kategorie übernehmen</button></div></form></dialog>
- <noscript><p class="notice">Der gemeinsame Editor benötigt JavaScript. Buchungen und Aufteilungen kannst du über die <a href="/m/expenses/entries">Einzelverwaltung</a> prüfen.</p></noscript>
+ <section id="expense-post-review" class="notice" tabindex="-1" hidden aria-labelledby="expense-post-title"><h2 id="expense-post-title">{{t "Aufteilung verbindlich buchen"}}</h2><p>{{t "Prüfe Betrag, Datum und Kategorien. Die gebuchte Ausgabe bleibt unveränderlich; ein Ausgleich ist anschließend ein eigener Vorgang."}}</p><div id="expense-post-content"></div><div class="actions"><button type="button" id="expense-post-cancel">{{t "Weiter bearbeiten"}}</button><button type="button" class="primary" id="expense-post-confirm">{{t "Diese Aufteilung verbindlich buchen"}}</button></div></section>
+ <dialog id="expense-category-dialog" aria-labelledby="expense-category-title"><h2 id="expense-category-title">{{t "Kategorie auswählen"}}</h2><form id="expense-category-form"><label>{{t "Kategorie"}}<select id="expense-category-choice" data-reference="expenses/categories" required><option value="">{{t "Bitte auswählen"}}</option></select></label><p class="fine"><a href="/m/expenses/categories" target="_blank" rel="noopener">{{t "Kategorien in einem neuen Tab verwalten"}}</a></p><div class="actions"><button type="button" id="expense-category-cancel">{{t "Abbrechen"}}</button><button type="submit" class="primary">{{t "Kategorie übernehmen"}}</button></div></form></dialog>
+ <noscript><p class="notice">{{t "Der gemeinsame Editor benötigt JavaScript. Buchungen und Aufteilungen kannst du über die"}} <a href="/m/expenses/entries">{{t "Einzelverwaltung"}}</a> {{t "prüfen."}}</p></noscript>
 </section><script nonce="{{.Nonce}}" src="{{index .Asset "expense-values.js"}}" defer></script><script nonce="{{.Nonce}}" src="{{index .Asset "expense-editor.js"}}" defer></script>
 {{end}}

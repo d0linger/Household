@@ -138,6 +138,8 @@ func (s *Server) energyAPI(w http.ResponseWriter, r *http.Request) {
 		query := store.EnergyQuery{RegisterID: q.Get("register"), From: q.Get("from"), Through: q.Get("through"),
 			Cursor: q.Get("cursor"), Grain: q.Get("grain"), Search: q.Get("search")}
 		switch view := r.PathValue("view"); view {
+		case "notification-settings":
+			result, err = s.Store.MeterNotificationSettings(r.Context(), identity(r), query.RegisterID)
 		case "overview":
 			result, err = s.Store.EnergyOverview(r.Context(), identity(r), query.Search)
 		case "context":

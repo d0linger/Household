@@ -1,0 +1,24 @@
+name: Production promotion policy
+on:
+  pull_request:
+    branches: [main]
+permissions:
+  contents: read
+concurrency:
+  group: promotion-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+jobs:
+  PromotionSource:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Production changes must come from this repository's dev branch
+        env:
+          SOURCE_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
+          SOURCE_BRANCH: ${{ github.event.pull_request.head.ref }}
+          TARGET_BRANCH: ${{ github.event.pull_request.base.ref }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          test "$SOURCE_REPOSITORY" = "$REPOSITORY"
+          test "$SOURCE_BRANCH" = dev
+          test "$TARGET_BRANCH" = main

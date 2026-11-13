@@ -2,6 +2,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const {summarize} = require('./check-coverage.cjs');
+const {controlledSourceInventory} = require('./controlled-test-inventory.cjs');
 const {SHARDS, sha, canonical, identity, jsonLines, discoverEvents, sourceSnapshot, validateInventory, ExecutionLedger} = require('./run-go-test-shard.cjs');
 
 function parseCoverage(text, inventory) {
@@ -26,8 +27,8 @@ function parseCoverage(text, inventory) {
   return blocks;
 }
 
-function validateAndMerge(shards, expectedSource) {
-  if (!Array.isArray(shards) || shards.length !== SHARDS) throw Error('Exactly six complete shard artifacts are required');
+function validateAndMerge(shards, expectedSource, expectedControlled) {
+  if (!Array.isArray(shards) || shards.length !== SHARDS) throw Error('Exactly sixteen complete shard artifacts are required');
   const seenShards = new Set(), executed = new Set(), inputs = [];
   let reference, definitions, merged;
   for (const artifact of shards) {
@@ -35,6 +36,7 @@ function validateAndMerge(shards, expectedSource) {
     validateInventory(inventory);
     if (!reference) reference = inventory;
     if (inventory.digest !== reference.digest || canonical(inventory) !== canonical(reference)) throw Error('Shard inventories/source/commit/Go target differ');
+    if (expectedControlled && canonical(inventory.controlled) !== canonical(expectedControlled)) throw Error('Controlled source census differs from checkout');
     if (expectedSource && canonical(inventory.source) !== canonical(expectedSource)) throw Error('Artifact source/commit differs from current checkout');
     if (result.schema !== 1 || result.shards !== SHARDS || !Number.isInteger(result.shard) || result.shard < 0 || result.shard >= SHARDS || seenShards.has(result.shard) || result.exitCode !== 0) throw Error('Missing/duplicate/failed shard result');
     seenShards.add(result.shard);
@@ -80,7 +82,7 @@ function main(args) {
   const root = process.cwd(), input = path.resolve(rawInput), output = path.resolve(rawOutput), allowed = path.join(root, 'outputs') + path.sep;
   if (!input.startsWith(allowed) || !output.startsWith(allowed)) throw Error('Evidence paths must be inside workspace outputs');
   const names = fs.readdirSync(input).sort();
-  const expectedNames = Array.from({length: SHARDS}, (_, index) => 'go-test-shard-' + index);
+  const expectedNames = Array.from({length: SHARDS}, (_, index) => 'go-test-shard-' + index).sort();
   if (canonical(names) !== canonical(expectedNames)) throw Error('Missing or unexpected shard artifact directories');
   const artifacts = names.map(name => {
     const directory = path.join(input, name), stat = fs.lstatSync(directory);
@@ -90,12 +92,12 @@ function main(args) {
     return artifact;
   });
   const source = sourceSnapshot(root, commit);
-  const merged = validateAndMerge(artifacts, source);
+  const merged = validateAndMerge(artifacts, source, controlledSourceInventory(root, source));
   if (canonical(sourceSnapshot(root, commit)) !== canonical(source)) throw Error('Source changed during coverage validation');
   fs.mkdirSync(output, {recursive: true});
   fs.writeFileSync(path.join(output, 'coverage.out'), merged.profile, {flag: 'wx'});
   fs.writeFileSync(path.join(output, 'shards.json'), canonical(merged.summary) + '\n', {flag: 'wx'});
-  console.log(`Verified six shards and ${merged.summary.mainCount} exactly-once terminal passes; merged mode:set observation profile`);
+  console.log(`Verified sixteen shards and ${merged.summary.mainCount} exactly-once terminal passes; merged mode:set observation profile`);
 }
 
 module.exports = {parseCoverage, validateAndMerge};

@@ -416,9 +416,17 @@ func (s *Store) PreviewChoreSeries(ctx context.Context, id auth.Identity, input 
 	if through.Year() > 2200 {
 		through = time.Date(2200, 12, 31, 0, 0, 0, 0, time.UTC)
 	}
-	projection, err := chore.Project(in.Schedule, from, through.Format(time.DateOnly), 12)
+	projection, err := chore.Project(in.Schedule, from, through.Format(time.DateOnly), 13)
 	if err != nil {
 		return nil, Invalid{err.Error()}
+	}
+	if in.Schedule.Anchor == "scheduled" {
+		projection.Slots = slices.DeleteFunc(projection.Slots, func(slot chore.Slot) bool {
+			return slot.DueAt.Before(timing.effectiveAt) || slot.DueAt.Before(timing.materializeFrom)
+		})
+		if len(projection.Slots) > 12 {
+			projection.Slots, projection.More = projection.Slots[:12], true
+		}
 	}
 	var retained Record
 	if in.Schedule.Anchor == "completion" {

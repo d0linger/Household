@@ -9,7 +9,8 @@ const {chromium}=require('playwright');
 const AxeBuilder=require('@axe-core/playwright').default;
 const origin=new URL(process.env.HOUSEHOLD_BROWSER_URL||'http://127.0.0.1:8101');
 if(origin.protocol!=='http:'||!['localhost','127.0.0.1'].includes(origin.hostname)||origin.port!=='8101'||origin.pathname!=='/'||origin.username||origin.password||origin.search||origin.hash)throw Error('Requires the isolated Household review server on loopback port8101');
-const base=origin.origin,api='/api/v1/fuel/module',output=path.resolve('outputs/fuel-module-review');
+const base=origin.origin,api='/api/v1/fuel/module',workspaceRoot=path.resolve(__dirname,'..'),output=path.resolve(workspaceRoot,process.env.HOUSEHOLD_FUEL_MODULE_BROWSER_OUTPUT||'outputs/fuel-module-review');
+if(!output.startsWith(path.join(workspaceRoot,'outputs')+path.sep))throw Error('Fuel module evidence must remain inside workspace outputs');
 const password=process.env.HOUSEHOLD_BROWSER_PASSWORD||'Browser review only 1234';
 const changedPassword='Fuel module browser changed1234',secondaryPassword='Fuel module reader start1234',secondaryChanged='Fuel module reader changed1234';
 const handoff=process.env.HOUSEHOLD_BROWSER_HANDOFF;
@@ -32,21 +33,51 @@ const responseIs=(response,url,method='POST')=>new URL(response.url()).pathname=
 (async()=>{
  await fs.mkdir(output,{recursive:true});
  const browser=await chromium.launch({headless:true,executablePath:process.env.CHROME_PATH||(process.platform==='win32'?'C:/Program Files/Google/Chrome/Application/chrome.exe':undefined)});
- let context,page,secondaryContext;
+ let context,page,secondaryContext,activePassword=password;
  try{
   context=await browser.newContext({viewport:{width:1440,height:1000},colorScheme:'light',serviceWorkers:'block',...(handoff?{storageState:handoff}:{})});
   await context.route('**/*',route=>{const u=new URL(route.request().url());if(u.origin!==origin.origin){report.externalRequests.push(u.origin+u.pathname);return route.abort();}return route.continue();});
   page=await context.newPage();page.setDefaultTimeout(25000);page.on('pageerror',error=>report.errors.push(redact(error)));
-  async function login(target,username,secret){await target.goto(base+'/login');await target.locator('[name=username]').fill(username);await target.locator('[name=password]').fill(secret);await Promise.all([target.waitForURL(u=>u.pathname!=='/login'),target.getByRole('button',{name:'Anmelden',exact:true}).click()]);}
+  async function login(target,username,secret){await target.goto(base+'/login');await target.locator('[name=username]').fill(username);await target.locator('[name=password]').fill(secret);await Promise.all([target.waitForURL(u=>u.pathname!=='/login'),target.locator('form[action="/login"] button.primary').click()]);}
   if(handoff){await page.goto(base+'/');must(!['/login','/change-password'].includes(new URL(page.url()).pathname),'Shared private session is current; no fallback login');}
-  else{await login(page,process.env.HOUSEHOLD_BROWSER_USER||'bootstrap',password);if(new URL(page.url()).pathname==='/change-password'){await page.locator('[name=current]').fill(password);await page.locator('[name=next]').fill(changedPassword);await Promise.all([page.waitForURL('**/login'),page.getByRole('button',{name:'Passwort speichern',exact:true}).click()]);await login(page,process.env.HOUSEHOLD_BROWSER_USER||'bootstrap',changedPassword);}}
+  else{await login(page,process.env.HOUSEHOLD_BROWSER_USER||'bootstrap',password);if(new URL(page.url()).pathname==='/change-password'){await page.locator('[name=current]').fill(password);await page.locator('[name=next]').fill(changedPassword);await Promise.all([page.waitForURL('**/login'),page.locator('form[action="/change-password"] button').click()]);await login(page,process.env.HOUSEHOLD_BROWSER_USER||'bootstrap',changedPassword);activePassword=changedPassword;}}
   async function saveControlState(){if(!controlState)return;const privateRoot=await fs.realpath(path.resolve(__dirname,'../.local')),directory=await fs.realpath(path.dirname(path.resolve(controlState)));if(!directory.startsWith(privateRoot+path.sep)||!/^fuel-browser-auth-[a-f0-9]{32}$/.test(path.basename(directory)))throw Error('Control state requires the parent-owned private Fuel auth directory');await context.storageState({path:path.join(directory,path.basename(controlState))});}
   await saveControlState();
+  if(await page.locator('html').getAttribute('data-locale')!=='de'){await page.locator('.language-control button[value=de]').click();await page.waitForFunction(()=>document.documentElement.dataset.locale==='de');}
 
   async function request(url,{method='GET',body,key,form}={}){
    return page.evaluate(async({url,method,body,key,form})=>{const headers={};if(method!=='GET')headers['X-CSRF-Token']=document.querySelector('meta[name="csrf-token"]')?.content||'';if(key)headers['Idempotency-Key']=key;let payload;if(form){headers['Content-Type']='application/x-www-form-urlencoded';payload=new URLSearchParams(form).toString();}else if(body!==undefined){headers['Content-Type']='application/json';payload=JSON.stringify(body);}const r=await fetch(url,{method,headers,body:payload,credentials:'same-origin'});const text=await r.text();let data;try{data=JSON.parse(text);}catch{data=null;}return{status:r.status,url:r.url,data,text:text.slice(0,2000)};},{url,method,body,key,form});
   }
   async function json(url,options){const r=await request(url,options);if(r.status<200||r.status>=300||r.data===null)throw Error('Review API '+url+' returned '+r.status+': '+r.text);return r.data;}
+  async function confirmMaintenanceAuthority(stage){
+   const confirmation=await context.newPage();
+   let capture;
+   const captured=new Promise(resolve=>{capture=resolve;});
+   const captureTimer=setTimeout(()=>capture({error:Error('Protected confirmation response exceeded25seconds')}),25000);
+   try{
+    // Capture the actual upstream response before delivering it unchanged.
+    // The normal UI immediately navigates, which can discard its network body.
+    await confirmation.route(url=>url.origin===base&&url.pathname==='/settings/security/reauth',async route=>{
+     if(route.request().method()!=='POST')return route.continue();
+     try{
+      const response=await route.fetch({maxRedirects:0,timeout:15000}),body=await response.body();
+      let data;try{data=JSON.parse(body.toString('utf8'));}catch{data=null;}
+      await route.fulfill({response,body});
+      capture({status:response.status(),data});
+     }catch{capture({error:Error('Protected confirmation upstream request failed')});await route.abort('failed').catch(()=>{});}
+    });
+    await confirmation.goto(base+'/settings/security/reauth');
+    const form=confirmation.locator('form[data-reauth-page]');
+    await form.locator('[name=password]').fill(activePassword);
+    await form.locator('button.primary').click();
+    const actual=await captured;
+    if(actual.error)throw actual.error;
+    must(actual.status===200&&actual.data?.confirmed===true,'Protected password confirmation succeeds: '+stage);
+    await confirmation.waitForURL(u=>u.pathname==='/settings/security');
+    must((await json('/api/v1/security/freshness')).recent===true,'Current server confirms recent primary-session authority: '+stage);
+   }finally{clearTimeout(captureTimer);await confirmation.close();}
+  }
+  await confirmMaintenanceAuthority('initial setup smoke');
   async function workspace(pane,vehicle='',extra={}){const p=new URLSearchParams({pane,...extra});if(vehicle)p.set('vehicle',vehicle);return json(api+'?'+p);}
   async function ready(){await page.waitForFunction(()=>{const root=document.querySelector('#fuel-module');if(!root)return false;const error=root.querySelector('#fm-error');return !error.hidden||root.querySelector('#fm-summary')?.getAttribute('aria-busy')==='false'&&root.querySelector('#fm-status')?.textContent.includes('Einträge auf dieser Seite');});const error=page.locator('#fm-error');if(await error.isVisible())throw Error('Fuel UI: '+await error.innerText());}
   async function go(pane,vehicle='',extra={}){const p=new URLSearchParams(extra);if(vehicle)p.set('vehicle',vehicle);await page.goto(base+'/m/fuel/workspace/'+pane+(p.size?'?'+p:''));await ready();}
@@ -68,8 +99,8 @@ const responseIs=(response,url,method='POST')=>new URL(response.url()).pathname=
 
   const suppliedReader=process.env.HOUSEHOLD_FUEL_BROWSER_READER_USER,readerPassword=process.env.HOUSEHOLD_FUEL_BROWSER_READER_PASSWORD||secondaryPassword,readerUsername=suppliedReader||'fuel-reader-'+suffix;
   if(Boolean(suppliedReader)!==Boolean(process.env.HOUSEHOLD_FUEL_BROWSER_READER_PASSWORD))throw Error('Provide both parent-prepared reader username and password');secrets.push(readerPassword);
-  if(!suppliedReader){await page.goto(base+'/settings/users');const userForm=page.locator('form[action="/settings/users"]');await userForm.locator('[name=username]').fill(readerUsername);await userForm.locator('[name=display_name]').fill(label('Read only'));await userForm.locator('[name=password]').fill(readerPassword);await userForm.locator('[name=role]').selectOption('reader');const created=page.waitForResponse(r=>responseIs(r,'/settings/users'));await userForm.getByRole('button',{name:'Benutzer anlegen',exact:true}).click();const response=await created;must(response.status()===303,'Synthetic reader creation requires actual recent administrator authorization');await page.getByText(label('Read only'),{exact:false}).first().waitFor();}
-  secondaryContext=await browser.newContext({serviceWorkers:'block'});await secondaryContext.route('**/*',r=>new URL(r.request().url()).origin===origin.origin?r.continue():r.abort());const secondaryPage=await secondaryContext.newPage();secondaryPage.on('pageerror',error=>report.errors.push(redact(error)));await login(secondaryPage,readerUsername,readerPassword);if(new URL(secondaryPage.url()).pathname==='/change-password'){await secondaryPage.locator('[name=current]').fill(readerPassword);await secondaryPage.locator('[name=next]').fill(secondaryChanged);await Promise.all([secondaryPage.waitForURL('**/login'),secondaryPage.getByRole('button',{name:'Passwort speichern',exact:true}).click()]);await login(secondaryPage,readerUsername,secondaryChanged);}
+  if(!suppliedReader){await page.goto(base+'/settings/users');await page.locator('[data-open-user]').click();const userForm=page.locator('form[action="/settings/users"]');await userForm.locator('[name=username]').fill(readerUsername);await userForm.locator('[name=display_name]').fill(label('Read only'));await userForm.locator('[name=password]').fill(readerPassword);await userForm.locator('[name=role]').selectOption('reader');const created=page.waitForResponse(r=>responseIs(r,'/settings/users'));await userForm.getByRole('button',{name:'Benutzer anlegen',exact:true}).click();const response=await created;must(response.status()===303,'Synthetic reader creation requires actual recent administrator authorization');await page.getByText(label('Read only'),{exact:false}).first().waitFor();}
+  secondaryContext=await browser.newContext({serviceWorkers:'block'});await secondaryContext.route('**/*',r=>new URL(r.request().url()).origin===origin.origin?r.continue():r.abort());const secondaryPage=await secondaryContext.newPage();secondaryPage.on('pageerror',error=>report.errors.push(redact(error)));await login(secondaryPage,readerUsername,readerPassword);if(new URL(secondaryPage.url()).pathname==='/change-password'){await secondaryPage.locator('[name=current]').fill(readerPassword);await secondaryPage.locator('[name=next]').fill(secondaryChanged);await Promise.all([secondaryPage.waitForURL('**/login'),secondaryPage.locator('form[action="/change-password"] button').click()]);await login(secondaryPage,readerUsername,secondaryChanged);}
   await secondaryPage.goto(base+'/m/fuel/workspace/overview');const primaryHH=await page.locator('body').getAttribute('data-household');same(await secondaryPage.locator('body').getAttribute('data-household'),primaryHH,'Secondary reader belongs to the same authorized disposable household');
   await go('overview');const first=await workspace('overview'),today=first.context.today,start=isoAdd(today,-90),day1=isoAdd(today,-30),day2=isoAdd(today,-20),day3=isoAdd(today,-10),tomorrow=isoAdd(today,1);
   const fixture={today,start,day1,day2,day3,tomorrow};
@@ -208,7 +239,7 @@ const responseIs=(response,url,method='POST')=>new URL(response.url()).pathname=
   // and is restored before the exact shared handoff is saved.
   await go('history',fixture.vehicle);const primaryCookies=await context.cookies(base),readerCookies=await secondaryContext.cookies(base);let releaseOld,oldArrived;const oldGate=new Promise(resolve=>releaseOld=resolve),arrived=new Promise(resolve=>oldArrived=resolve),historyMatch=url=>url.pathname===api&&url.searchParams.get('pane')==='history';let held=false;const oldHistory=async route=>{if(held)return route.continue();held=true;const response=await route.fetch();oldArrived();await oldGate;await route.fulfill({response});};await page.route(historyMatch,oldHistory);await page.locator('#fm-refresh').click();await arrived;await context.clearCookies();await context.addCookies(readerCookies);await page.evaluate(()=>window.dispatchEvent(new Event('focus')));releaseOld();await page.locator('#fm-auth-change').waitFor();await page.unroute(historyMatch,oldHistory);must(await page.locator('#fm-summary').isHidden(),'Late old-actor response cannot repaint after current actor changes');await page.reload();await ready();must(await locked('fillup.save',['quantity','odometer']),'Current reader cannot use stale writer forms');await context.clearCookies();await context.addCookies(primaryCookies);await go('overview',fixture.vehicle);must((await workspace('overview',fixture.vehicle)).context.can_write,'Original writer session is restored without a new login');
 
-  await go('history',fixture.vehicle,{from:start,to:today});await page.setViewportSize({width:390,height:844});await page.emulateMedia({colorScheme:'dark',reducedMotion:'reduce'});await page.evaluate(()=>document.documentElement.dataset.theme='dark');must(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'Mobile root remains within390px; tables have their own scroll region');const controls=await page.locator('#fuel-module button:visible,#fuel-module input:not([type=checkbox]):visible,#fuel-module select:visible').evaluateAll(els=>els.map(e=>({text:e.textContent||e.name,height:e.getBoundingClientRect().height})));must(controls.every(e=>e.height>=43.5),'Visible mobile form/button targets are at least44px');await snapshot('fuel-module-dark-mobile-history');await go('imports',fixture.vehicle);await snapshot('fuel-module-dark-mobile-imports');
+  await go('history',fixture.vehicle,{from:start,to:today});await page.setViewportSize({width:390,height:844});await page.emulateMedia({colorScheme:'dark',reducedMotion:'reduce'});await page.evaluate(()=>window.HouseholdTheme.apply('dark',{persist:false}));must(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'Mobile root remains within390px; tables have their own scroll region');const controls=await page.locator('#fuel-module button:visible,#fuel-module input:not([type=checkbox]):visible,#fuel-module select:visible').evaluateAll(els=>els.map(e=>({text:e.textContent||e.name,height:e.getBoundingClientRect().height})));must(controls.every(e=>e.height>=43.5),'Visible mobile form/button targets are at least44px');await snapshot('fuel-module-dark-mobile-history');await go('imports',fixture.vehicle);await snapshot('fuel-module-dark-mobile-imports');
   await go('capture',fixture.cng);await open('fillup.save');must(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'Expanded mobile capture form stays within390px');await snapshot('fuel-module-dark-mobile-capture');
 
   const generationHandshake=process.env.HOUSEHOLD_FUEL_BROWSER_GENERATION_HANDSHAKE;
@@ -217,6 +248,10 @@ const responseIs=(response,url,method='POST')=>new URL(response.url()).pathname=
    // No shell-command environment variable is accepted or executed here.
    const handshake=path.resolve(generationHandshake);
    if(!handshake.startsWith(output+path.sep))throw Error('Generation handshake must be inside outputs/fuel-module-review');
+   // Long OCR/browser runs can outlive the actual step-up window. Confirm
+   // through the protected form in this same session before handing authority
+   // to maintenance; never alter session timestamps or infer freshness.
+   await confirmMaintenanceAuthority('maintenance handoff');
    await prepareLostWrite('old generation');
    await page.route('**/api/v1/fuel/module/execute',refusal,{times:1});
    await page.locator('#fm-review-confirm').click();await page.locator('#fm-uncertain').waitFor();

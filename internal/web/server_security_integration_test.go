@@ -266,6 +266,32 @@ func TestLoginAccountLimitIsScopedToNetwork(t *testing.T) {
 	}
 }
 
+func TestUserCorrectableAuthRefusals(t *testing.T) {
+	f := newIntegrationFixture(t)
+	for _, tc := range []struct {
+		name string
+		run  func() error
+	}{
+		{"short replacement password", func() error { return f.app.Auth.ChangePassword(f.ctx, f.identity, integrationPassword, "too short") }},
+		{"factor enabled before setup", func() error { _, err := f.app.Auth.EnableTOTP(f.ctx, f.identity, "123456"); return err }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var rejection auth.Rejection
+			if err := tc.run(); !errors.As(err, &rejection) {
+				t.Fatalf("got %v, want a user-correctable rejection", err)
+			}
+		})
+	}
+	form := url.Values{"current": {integrationPassword}, "next": {"too short"}}
+	response, body, err := f.request(http.MethodPost, "/change-password", f.token, f.app.Auth.CSRF(f.token, "session"), "application/x-www-form-urlencoded", strings.NewReader(form.Encode()), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if response.StatusCode != http.StatusUnprocessableEntity || !strings.Contains(string(body), "mindestens 14 Zeichen") {
+		t.Fatalf("password form refusal = %d %s", response.StatusCode, body)
+	}
+}
+
 func TestLastAdministratorContract(t *testing.T) {
 	for _, tc := range []struct {
 		name, role, disabled string

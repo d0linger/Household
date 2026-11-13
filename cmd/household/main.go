@@ -3,9 +3,11 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -29,6 +31,23 @@ func main() {
 		os.Exit(1)
 	}
 }
+
+// healthURL probes the configured listener; wildcard binds are reached on loopback.
+// The health check runs without secrets, so it cannot use config.Load.
+func healthURL(listen string) (string, error) {
+	if listen == "" {
+		listen = config.DefaultListen
+	}
+	host, port, err := net.SplitHostPort(listen)
+	if err != nil || port == "" {
+		return "", errors.New("invalid HOUSEHOLD_LISTEN for health check")
+	}
+	if ip := net.ParseIP(host); host == "" || ip != nil && ip.IsUnspecified() {
+		host = "127.0.0.1"
+	}
+	return "http://" + net.JoinHostPort(host, port) + "/health/ready", nil
+}
+
 func run(log *slog.Logger) error {
 	command := "serve"
 	if len(os.Args) > 1 {
@@ -41,9 +60,29 @@ func run(log *slog.Logger) error {
 	if command == "push-keygen" {
 		return runPushKeygen(os.Args[2:])
 	}
+	if command == "encryption-keygen" {
+		return runEncryptionKeygen(os.Args[2:])
+	}
+	var cryptoBatch int
+	var retirementID string
+	var argumentErr error
+	switch command {
+	case "encryption-reencrypt":
+		cryptoBatch, argumentErr = encryptionBatch(os.Args[2:])
+	case "encryption-retirement-check":
+		retirementID, argumentErr = encryptionRetirementID(os.Args[2:])
+	}
+	if argumentErr != nil {
+		return argumentErr
+	}
 	if command == "healthcheck" {
+		target, err := healthURL(os.Getenv("HOUSEHOLD_LISTEN"))
+		if err != nil {
+			return err
+		}
 		client := &http.Client{Timeout: 3 * time.Second}
-		response, err := client.Get("http://127.0.0.1:8080/health/ready")
+		// security: the operator-owned listen address selects only this process's own listener.
+		response, err := client.Get(target) // #nosec G704 -- operator configuration, never request input
 		if err != nil {
 			return errors.New("health endpoint unavailable")
 		}
@@ -70,6 +109,22 @@ func run(log *slog.Logger) error {
 	}
 	defer pool.Close()
 	switch command {
+	case "encryption-reencrypt":
+		rotationCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+		defer cancel()
+		report, err := maintenance.Reencrypt(rotationCtx, pool, cfg, cryptoBatch)
+		if err != nil {
+			return err
+		}
+		return json.NewEncoder(os.Stdout).Encode(report)
+	case "encryption-retirement-check":
+		checkCtx, cancel := context.WithTimeout(ctx, 5*time.Minute)
+		defer cancel()
+		report, err := maintenance.CheckKeyRetirement(checkCtx, pool, cfg, retirementID)
+		if err != nil {
+			return err
+		}
+		return json.NewEncoder(os.Stdout).Encode(report)
 	case "pantry-check", "pantry-rebuild":
 		checkCtx, cancel := context.WithTimeout(ctx, 5*time.Minute)
 		defer cancel()
@@ -151,7 +206,7 @@ func run(log *slog.Logger) error {
 		return a.RecoverPassword(ctx, os.Args[2], cfg.AdminPassword, len(os.Args) == 4)
 	}
 	if command != "serve" {
-		return errors.New("unknown command; use serve, migrate, healthcheck, recover, version, or push-keygen")
+		return errors.New("unknown command; use serve, migrate, healthcheck, recover, version, push-keygen, encryption-keygen, encryption-reencrypt or encryption-retirement-check")
 	}
 	if err = database.Ready(ctx, pool); err != nil {
 		return err

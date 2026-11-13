@@ -53,8 +53,8 @@ func TestDocumentsHTTPOriginalIdentityReplayArchiveAndPrivateHeaders(t *testing.
 	original.WriteString("household-original-provenance")
 	var upload bytes.Buffer
 	form := multipart.NewWriter(&upload)
-	originalName := "abc" + strings.Repeat("ö", 200) + ".png"
-	part, err := form.CreateFormFile("file", originalName)
+	uploadName := "abc" + strings.Repeat("ö", 200) + ".png"
+	part, err := form.CreateFormFile("file", uploadName)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -75,7 +75,7 @@ func TestDocumentsHTTPOriginalIdentityReplayArchiveAndPrivateHeaders(t *testing.
 		t.Fatal(string(body))
 	}
 	var storedName string
-	if err = f.owner.QueryRow(f.ctx, `SELECT original_name FROM core.attachments WHERE id=$1`, receipt["attachment_id"]).Scan(&storedName); err != nil || storedName != documentOriginalName(originalName) {
+	if err = f.owner.QueryRow(f.ctx, `SELECT original_name FROM core.attachments WHERE id=$1`, receipt["attachment_id"]).Scan(&storedName); err != nil || storedName != originalName(uploadName) {
 		t.Fatal("Unicode original name", storedName, err)
 	}
 	response, repeated, err := f.request(http.MethodPost, "/api/v1/documents/"+rid+"/original", f.token, csrf, form.FormDataContentType(), bytes.NewReader(upload.Bytes()), map[string]string{"Idempotency-Key": key})

@@ -79,8 +79,8 @@ func removeOwnedKeyFile(name string, created os.FileInfo) {
 	if created == nil {
 		return
 	}
-	current, err := os.Lstat(name)
+	current, err := os.Lstat(name) // #nosec G703 -- explicit operator-selected output path; inspect without following symlinks before comparing the exclusively created file's identity.
 	if err == nil && os.SameFile(created, current) && current.Mode().IsRegular() {
-		_ = os.Remove(name)
+		_ = os.Remove(name) // #nosec G703 -- failure cleanup only at the explicit CLI output path after regular-file and SameFile checks; no recursive removal or request-controlled path.
 	}
 }

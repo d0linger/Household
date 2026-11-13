@@ -1,6 +1,7 @@
 package web
 
 import (
+	"household/internal/i18n"
 	"household/internal/module"
 	"household/internal/store"
 	"household/internal/value"
@@ -90,7 +91,7 @@ func (s *Server) reportPage(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, store.ErrNotFound)
 		return
 	}
-	p := s.page(r, m.Title+" · Auswertung")
+	p := s.page(r, i18n.Text(requestLocale(r), "%s · Auswertung", i18n.Text(requestLocale(r), m.Title)))
 	p.View = "report"
 	p.Module = m
 	s.render(w, r, p)

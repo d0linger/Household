@@ -168,9 +168,14 @@ func newRecipeExpansionFixtureForMigration(t *testing.T, profile func(*testing.T
 	if _, err = owner.Exec(ctx, "UPDATE core.users SET must_change_password=false WHERE username=$1", cfg.AdminUsername); err != nil {
 		t.Fatal("set isolated bootstrap password state:", err)
 	}
-	_, identity, err := a.Login(ctx, cfg.AdminUsername, recipeExpansionPassword, "", "127.0.0.1", "Recipe test")
-	if err != nil {
-		t.Fatal("login isolated fixture:", err)
+	var identity auth.Identity
+	if profile != nil {
+		identity = recipeExpansionPredecessorIdentity(t, ctx, owner, cfg.AdminUsername)
+	} else {
+		_, identity, err = a.Login(ctx, cfg.AdminUsername, recipeExpansionPassword, "", "127.0.0.1", "Recipe test")
+		if err != nil {
+			t.Fatal("login isolated fixture:", err)
+		}
 	}
 	s := New(app, mods)
 	if err = s.LoadStates(ctx); err != nil {
@@ -178,6 +183,35 @@ func newRecipeExpansionFixtureForMigration(t *testing.T, profile func(*testing.T
 	}
 	return &recipeExpansionFixture{ctx: ctx, ownerURL: ownerURL, owner: owner, app: app,
 		store: s, identity: identity}
+}
+
+// Historical upgrade fixtures must remain on their actual released schema while
+// they acquire legacy data. Current Resolve requires Core36's reauthenticated_at;
+// seed a real predecessor session instead of altering that schema or advancing it
+// before the populated upgrade. This helper is not an authentication test.
+func recipeExpansionPredecessorIdentity(t *testing.T, ctx context.Context, owner *pgxpool.Pool, username string) auth.Identity {
+	t.Helper()
+	var version int
+	var dirty bool
+	if err := owner.QueryRow(ctx, "SELECT version,dirty FROM core.schema_migrations").Scan(&version, &dirty); err != nil || dirty || version < 1 || version >= 36 {
+		t.Fatalf("predecessor identity requires clean pre-Core36 schema: version=%d dirty=%t err=%v", version, dirty, err)
+	}
+	var identity auth.Identity
+	err := owner.QueryRow(ctx, `WITH session AS (
+ INSERT INTO core.sessions(user_id,token_hash,auth_version,idle_expires_at,absolute_expires_at,user_agent)
+ SELECT id,$2,auth_version,clock_timestamp()+interval '24 hours',clock_timestamp()+interval '30 days','Historical upgrade fixture'
+ FROM core.users WHERE username=$1 AND disabled_at IS NULL AND NOT must_change_password
+ RETURNING id,user_id,auth_version,created_at,idle_expires_at)
+ SELECT u.id,m.household_id,m.id,u.username,u.display_name,m.role,u.must_change_password,u.auth_version,
+ s.id,s.created_at,s.idle_expires_at
+ FROM session s JOIN core.users u ON u.id=s.user_id JOIN core.memberships m ON m.user_id=u.id
+ WHERE m.inactive_at IS NULL AND s.auth_version=u.auth_version`, username, auth.HashToken(auth.RandomToken())).Scan(
+		&identity.UserID, &identity.HouseholdID, &identity.MembershipID, &identity.Username, &identity.DisplayName,
+		&identity.Role, &identity.MustChange, &identity.AuthVersion, &identity.SessionID, &identity.CreatedAt, &identity.ExpiresAt)
+	if err != nil {
+		t.Fatal("seed isolated predecessor session:", err)
+	}
+	return identity
 }
 
 type recipeExpansionQueryDiagnostics struct{ t *testing.T }
@@ -239,7 +273,7 @@ func TestRecipeExpansionFreshReadinessAndImportPurpose(t *testing.T) {
 		t.Fatalf("fresh contracts core=%t recipes=%t audit=%t fuel=%t error=%v",
 			coreReady, recipesReady, audited, fuelReady, err)
 	}
-	if err := f.owner.QueryRow(f.ctx, `SELECT count(*) FROM core.audit_policies`).Scan(&policies); err != nil || policies != 163 {
+	if err := f.owner.QueryRow(f.ctx, `SELECT count(*) FROM core.audit_policies`).Scan(&policies); err != nil || policies != 165 {
 		t.Fatalf("fresh audit policy count %d: %v", policies, err)
 	}
 	var teaspoons, tablespoons bool

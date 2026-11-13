@@ -140,7 +140,7 @@ func TestDocumentsNativePopulatedCore33UpgradeAndExactReadiness(t *testing.T) {
 	}
 	var exact bool
 	var policies, tables int
-	if err := f.owner.QueryRow(f.ctx, `SELECT EXISTS(SELECT 1 FROM documents.profiles p JOIN documents.file_versions v ON v.id=p.current_version_id WHERE p.document_id=$1 AND v.original_sha256=$2 AND v.source='legacy'),(SELECT count(*) FROM core.audit_policies),(SELECT count(*) FROM pg_tables WHERE schemaname='documents' AND tablename<>'schema_migrations')`, rid, sum[:]).Scan(&exact, &policies, &tables); err != nil || !exact || policies != 163 || tables != 12 {
+	if err := f.owner.QueryRow(f.ctx, `SELECT EXISTS(SELECT 1 FROM documents.profiles p JOIN documents.file_versions v ON v.id=p.current_version_id WHERE p.document_id=$1 AND v.original_sha256=$2 AND v.source='legacy'),(SELECT count(*) FROM core.audit_policies),(SELECT count(*) FROM pg_tables WHERE schemaname='documents' AND tablename<>'schema_migrations')`, rid, sum[:]).Scan(&exact, &policies, &tables); err != nil || !exact || policies != 165 || tables != 15 {
 		t.Fatal(exact, policies, tables, err)
 	}
 	if _, err := f.owner.Exec(f.ctx, `ALTER TABLE documents.profiles ADD COLUMN unreviewed_drift text`); err != nil {

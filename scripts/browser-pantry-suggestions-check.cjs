@@ -30,7 +30,10 @@ const must=(value,name)=>{if(!value)throw Error(name);report.checks.push(name);}
   async function capture(name,selector,theme,target=page){await target.evaluate(({selector,theme})=>{document.documentElement.dataset.theme=theme;if(selector){document.querySelector(selector).scrollIntoView({block:'start'});scrollBy(0,-88);}else scrollTo(0,0);},{selector,theme});const file=path.join(output,name+'.png');await target.screenshot({path:file,fullPage:name.endsWith('desktop'),animations:'disabled'});report.screenshots.push(file);const scan=await new AxeBuilder({page:target}).withTags(['wcag2a','wcag2aa','wcag21aa']).analyze();report.accessibility.push({name,violations:scan.violations});must(!scan.violations.length,'Accessibility '+name);}
   const form=()=>page.locator('#suggestion-form');
   async function evaluate(q=fixture.prefix){await form().locator('[name=q]').fill(q);await form().getByRole('button',{name:'Auswahl neu bewerten'}).click();await page.locator('#suggestion-result:not([hidden])').waitFor();}
-  await moduleState('mealplan',false);await page.goto(base+'/m/pantry/stock');await page.getByRole('link',{name:'Rezeptvorschläge',exact:true}).click();
+  await moduleState('mealplan',false);await page.goto(base+'/m/pantry/stock');
+  await page.locator('.workspace-primary').getByRole('link',{name:'Zuerst verbrauchen',exact:true}).click();
+  must(new URL(page.url()).pathname==='/m/pantry/priority','Primary use-first navigation opens the pantry priority workspace');
+  await page.getByRole('link',{name:'Rezeptvorschläge',exact:true}).click();
   must(new URL(page.url()).pathname==='/m/pantry/recipe-suggestions'&&await page.locator('#planning-suggestions').evaluate(node=>node.open),'Pantry navigation opens its own expanded recipe comparison with Mealplan disabled');
   must(await form().locator('[name=on]').inputValue()===''&&!(await form().locator('[name=on]').getAttribute('required')),'Blank comparison date is explicitly household today');
   await form().locator('[name=servings]').fill('2.5');await evaluate();

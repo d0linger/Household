@@ -5,13 +5,14 @@
   "description": "Development-only browser tests; no Node runtime or frontend build required in production",
   "license": "MIT",
   "scripts": {
-    "test": "node --test scripts/quality-tools.test.cjs scripts/shopping-input.test.cjs scripts/shopping-checkout.test.cjs scripts/recipe-workspace.test.cjs scripts/recipe-expansion.test.cjs scripts/cooking.test.cjs scripts/planning.test.cjs scripts/mealplan-extensions.test.cjs scripts/planning-suggestions.test.cjs scripts/planning-purchases.test.cjs scripts/pantry-daily.test.cjs scripts/ingredient-pantry.test.cjs scripts/cooking-stock.test.cjs scripts/pantry-batches.test.cjs scripts/expense-editor.test.cjs scripts/finance-workspace.test.cjs scripts/report-values.test.cjs scripts/shopping-repurchase.test.cjs scripts/shopping-barcode.test.cjs scripts/pantry-waste.test.cjs scripts/fuel-overview.test.cjs scripts/fuel-module-values.test.cjs scripts/go-test-shards.test.cjs scripts/fuel-browser-contracts.test.cjs scripts/pantry-extensions.test.cjs scripts/shopping-extensions.test.cjs scripts/push-worker.test.cjs scripts/design-preview.test.cjs",
+    "test": "node --test scripts/documents-workspace-navigation.test.cjs scripts/finance-workspace-navigation.test.cjs scripts/workspace-navigation-operational.test.cjs scripts/today.test.cjs scripts/quality-tools.test.cjs scripts/release-guard.test.cjs scripts/release-policy.test.cjs scripts/local-artifacts.test.cjs scripts/theme.test.cjs scripts/security.test.cjs scripts/finance-reminders.test.cjs scripts/localization.test.cjs scripts/shopping-input.test.cjs scripts/shopping-checkout.test.cjs scripts/recipe-workspace.test.cjs scripts/recipe-expansion.test.cjs scripts/cooking.test.cjs scripts/planning.test.cjs scripts/mealplan-extensions.test.cjs scripts/planning-suggestions.test.cjs scripts/planning-purchases.test.cjs scripts/pantry-daily.test.cjs scripts/ingredient-pantry.test.cjs scripts/cooking-stock.test.cjs scripts/pantry-batches.test.cjs scripts/expense-editor.test.cjs scripts/finance-workspace.test.cjs scripts/report-values.test.cjs scripts/shopping-repurchase.test.cjs scripts/shopping-barcode.test.cjs scripts/pantry-waste.test.cjs scripts/fuel-overview.test.cjs scripts/fuel-module-values.test.cjs scripts/go-test-shards.test.cjs scripts/fuel-browser-contracts.test.cjs scripts/pantry-extensions.test.cjs scripts/shopping-extensions.test.cjs scripts/push-worker.test.cjs scripts/notification-settings.test.cjs scripts/design-preview.test.cjs",
     "test:workflow": "node scripts/check-workflows.cjs",
+    "test:ui-polish": "node scripts/browser-module-polish-check.cjs",
     "test:browser": "node scripts/browser-suite.cjs"
   },
   "devDependencies": {
     "@axe-core/playwright": "4.14.0",
-    "playwright": "1.62.1",
+    "playwright": "1.64.1",
     "yaml": "2.9.1"
   }
 }

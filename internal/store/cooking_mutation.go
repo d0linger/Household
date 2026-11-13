@@ -78,6 +78,9 @@ func (s *Store) MutateCooking(ctx context.Context, id auth.Identity, sid, key, r
 		sid, err = s.startCooking(ctx, tx, id, in)
 		response = cookingResponse(sid, "active", "")
 	} else {
+		if err = lockCookingNotificationConsent(ctx, tx, id); err != nil {
+			return nil, err
+		}
 		var locked string
 		err = tx.QueryRow(ctx, "SELECT id FROM recipes.cooking_sessions WHERE household_id=$1 AND user_id=$2 AND id=$3 FOR UPDATE", id.HouseholdID, id.UserID, sid).Scan(&locked)
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -256,6 +259,11 @@ func changeCooking(ctx context.Context, tx pgx.Tx, id auth.Identity, session Coo
 		if _, err = tx.Exec(ctx, "UPDATE recipes.cooking_timers SET state='done',deadline=NULL,remaining_millis=NULL WHERE household_id=$1 AND session_id=$2 AND state<>'done'", id.HouseholdID, session.ID); err != nil {
 			return nil, err
 		}
+		for _, timer := range session.Timers {
+			if err = cancelCookingNotification(ctx, tx, id.HouseholdID, timer.ID); err != nil {
+				return nil, err
+			}
+		}
 		_, err = tx.Exec(ctx, "UPDATE recipes.cooking_sessions SET state=$3 WHERE household_id=$1 AND id=$2", id.HouseholdID, session.ID, state)
 	case "timer_add", "pause", "resume", "restart", "acknowledge", "timer_remove":
 		if err = changeCookingTimer(ctx, tx, id, session, in); err != nil {
@@ -281,8 +289,14 @@ func changeCookingTimer(ctx context.Context, tx pgx.Tx, id auth.Identity, sessio
 		if err != nil {
 			return err
 		}
-		_, err = tx.Exec(ctx, "INSERT INTO recipes.cooking_timers(household_id,session_id,name,duration_seconds,state,deadline) VALUES($1,$2,$3,$4,'running',$5)", id.HouseholdID, session.ID, name, timer.DurationSeconds, timer.Deadline)
-		return err
+		err = tx.QueryRow(ctx, `INSERT INTO recipes.cooking_timers(household_id,session_id,name,duration_seconds,state,deadline)
+ VALUES($1,$2,$3,$4,'running',$5) RETURNING id::text,version,deadline`,
+			id.HouseholdID, session.ID, name, timer.DurationSeconds, timer.Deadline).
+			Scan(&timer.ID, &timer.Version, &timer.Deadline)
+		if err != nil {
+			return err
+		}
+		return enqueueCookingNotification(ctx, tx, id, in.Generation, timer, session.ServerTime)
 	}
 	for _, timer := range session.Timers {
 		if timer.ID != in.TimerID {
@@ -292,6 +306,9 @@ func changeCookingTimer(ctx context.Context, tx pgx.Tx, id auth.Identity, sessio
 			return ErrConflict
 		}
 		if in.Action == "timer_remove" {
+			if err := cancelCookingNotification(ctx, tx, id.HouseholdID, timer.ID); err != nil {
+				return err
+			}
 			_, err := tx.Exec(ctx, "DELETE FROM recipes.cooking_timers WHERE household_id=$1 AND session_id=$2 AND id=$3", id.HouseholdID, session.ID, timer.ID)
 			return err
 		}
@@ -299,8 +316,20 @@ func changeCookingTimer(ctx context.Context, tx pgx.Tx, id auth.Identity, sessio
 		if err != nil {
 			return err
 		}
-		_, err = tx.Exec(ctx, "UPDATE recipes.cooking_timers SET state=$4,duration_seconds=$5,deadline=$6,remaining_millis=$7 WHERE household_id=$1 AND session_id=$2 AND id=$3", id.HouseholdID, session.ID, timer.ID, updated.State, updated.DurationSeconds, updated.Deadline, updated.RemainingMillis)
-		return err
+		err = tx.QueryRow(ctx, `UPDATE recipes.cooking_timers SET state=$4,duration_seconds=$5,deadline=$6,remaining_millis=$7
+ WHERE household_id=$1 AND session_id=$2 AND id=$3 RETURNING id::text,version,deadline`,
+			id.HouseholdID, session.ID, timer.ID, updated.State, updated.DurationSeconds,
+			updated.Deadline, updated.RemainingMillis).Scan(&updated.ID, &updated.Version, &updated.Deadline)
+		if err != nil {
+			return err
+		}
+		if err = cancelCookingNotification(ctx, tx, id.HouseholdID, timer.ID); err != nil {
+			return err
+		}
+		if updated.State == "running" {
+			return enqueueCookingNotification(ctx, tx, id, in.Generation, updated, session.ServerTime)
+		}
+		return nil
 	}
 	return ErrNotFound
 }

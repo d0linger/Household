@@ -29,7 +29,7 @@ const must=(condition,message)=>{if(!condition)throw Error(message);report.check
   await page.goto(base+'/settings/audit?module=shopping&action=UPDATE&resource='+fixture.id);
   await page.getByRole('heading',{name:'Änderungsprotokoll',exact:true}).waitFor();
   must(await page.locator('.audit-entry').count()===1,'Resource/module/action filters isolate the actual update');
-  const summary=page.locator('.audit-diff summary').first();await summary.focus();await page.keyboard.press('Enter');
+  const summary=page.locator('.audit-entry > summary').first();const summaryText=await summary.innerText();must(summaryText.includes('bootstrap')&&!summaryText.includes(fixture.id),'Compact audit summary identifies the current username and keeps technical IDs in details');await summary.focus();await page.keyboard.press('Enter');
   must(await page.locator('.audit-diff').first().getAttribute('open')!==null,'Keyboard opens before/after field comparison');
   const text=await page.locator('.audit-entry').innerText();must(text.includes('Wocheneinkauf')&&text.includes('Wocheneinkauf & Gäste')&&text.includes('Geschützt'),'Before/after names and protected-field marker visible');
   must(!text.includes('private-audit-browser-sentinel'),'Private note absent from rendered history');
@@ -42,8 +42,8 @@ const must=(condition,message)=>{if(!condition)throw Error(message);report.check
   must(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),'Expanded mobile audit has no horizontal page overflow');
   await shot('after-audit-mobile-dark',true);await axe('dark mobile expanded diff');
   await page.goto(base+'/settings');await shot('after-settings-mobile-dark');
-  must(await page.getByRole('link',{name:'Protokoll',exact:true}).count()===1,'Settings exposes administrator history');
-  await page.getByRole('link',{name:'Protokoll',exact:true}).click();await page.locator('[name=module]').selectOption('shopping');await page.locator('[name=action]').selectOption('DELETE');
+  must(await page.locator('.settings-nav a[href="/settings/audit"]').count()===1,'Settings exposes administrator history');
+  await page.locator('.navigation-trigger').click();await page.locator('.settings-nav a[href="/settings/audit"]').click();await page.locator('[name=module]').selectOption('shopping');await page.locator('[name=action]').selectOption('DELETE');
   await Promise.all([page.waitForURL(/action=DELETE/),page.getByRole('button',{name:'Filtern',exact:true}).click()]);
   must(new URL(page.url()).searchParams.get('module')==='shopping','Native filter form preserves chosen module');
   await page.goto(base+'/settings/audit?request=00000000-0000-4000-8000-000000000000');must(await page.getByRole('heading',{name:'Keine passenden Einträge'}).count()===1,'Empty filter result offers recovery');

@@ -170,7 +170,7 @@ SELECT json_build_object('version',current_setting('server_version_num')::intege
  if($taskFresh.database -ne 'household_test' -or $taskFresh.households -ne 1 -or $taskFresh.vehicles -ne 0 -or $taskFresh.operations -ne 0){throw 'Guarded fresh browser household is not empty/single tenant'}
 
  foreach($taskVolume in $taskVolumes.Values){$taskCreateArgs=@('volume','create','--label',"household.fuel.browser.run=$taskRun");if($CIRun){$taskCreateArgs+=@('--label',"household.fuel.browser.ci=$CIRun")};$taskCreated=Invoke-FuelDocker -Arguments ($taskCreateArgs+@($taskVolume));if($taskCreated -ne $taskVolume){throw 'Unexpected volume creation result'};$taskCreatedVolumes+=$taskVolume}
- $taskPGImage='postgres:18-alpine@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873'
+ $taskPGImage='postgres:18-alpine@sha256:10a5c69a83035ab5239f5620d708520e8b28f5aa1f2b20143e6024532edadfb5'
  $taskRestoreArgs=@('run','--detach','--name',$taskNames.restore,'--label',"household.fuel.browser.run=$taskRun",'--network',$taskNetwork,'--memory','1g','--pids-limit','150','--security-opt','no-new-privileges:true','--tmpfs','/var/lib/postgresql:rw,size=1g','--env','POSTGRES_DB=household_restore','--env','POSTGRES_PASSWORD_FILE=/run/secrets/postgres_password','--env','POSTGRES_INITDB_ARGS=--auth-host=scram-sha-256 --data-checksums')
  if($CIRun){$taskRestoreArgs+=@('--label',"household.fuel.browser.ci=$CIRun")}
  foreach($taskPair in @(@('postgres','postgres_password'),@('owner','owner_password'),@('app','app_password'))){$taskRestoreArgs=Add-FuelMount $taskRestoreArgs (Join-Path $taskPrivate $taskPair[0]) ('/run/secrets/'+$taskPair[1])}

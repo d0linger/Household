@@ -1,0 +1,18 @@
+{{define "today"}}
+<link rel="stylesheet" href="{{index .Asset "today.css"}}">
+<section id="today" class="today" aria-labelledby="today-title">
+ <header class="today-header"><div><p class="eyebrow">{{t "DEIN HAUSHALT"}}</p><h1 id="today-title">{{t "Heute"}}</h1><p id="today-date" class="today-date">{{t "Der Haushaltstag wird geladen …"}}</p></div><button type="button" id="today-refresh" class="subtle">{{t "Aktualisieren"}}</button></header>
+ <p class="today-intro">{{t "Was ansteht und wo du weitermachen kannst."}}</p>
+ <p id="today-status" class="fine" role="status" aria-live="polite">{{t "Deine Übersicht wird geladen …"}}</p>
+ <div id="today-error" class="notice error" role="alert" hidden><p>{{t "Die Übersicht konnte nicht geladen werden. Prüfe die Verbindung und versuche es erneut."}}</p><a href="/login" id="today-login" hidden>{{t "Erneut anmelden"}}</a></div>
+ <div class="today-grid">
+  <section class="today-section today-tasks" aria-labelledby="today-tasks-title"><header><div><h2 id="today-tasks-title">{{t "Deine Aufgaben"}}</h2><p class="fine">{{t "Heute fällig oder überfällig, dir zugewiesen oder von dir übernommen."}}</p></div>{{if enabled .States "chores"}}<a href="/m/chores/workspace/today">{{t "Alle Aufgaben"}}</a>{{end}}</header><div id="today-tasks" aria-busy="true"><p>{{t "Aufgaben werden geladen …"}}</p></div></section>
+  <section class="today-section today-notifications" aria-labelledby="today-notifications-title"><header><div><h2 id="today-notifications-title">{{t "Für dich"}}</h2><p class="fine">{{t "Deine neuesten Mitteilungen. Öffnen markiert sie nicht als gelesen."}}</p></div><a href="/notifications">{{t "Alle Mitteilungen"}}</a></header><div id="today-notifications" aria-busy="true"><p>{{t "Mitteilungen werden geladen …"}}</p></div></section>
+  <section class="today-section" aria-labelledby="today-cooking-title"><header><div><h2 id="today-cooking-title">{{t "Weiterkochen"}}</h2><p class="fine">{{t "Deine offenen Kochsitzungen mit gespeichertem Fortschritt."}}</p></div>{{if enabled .States "recipes"}}<a href="/m/recipes/cooking">{{t "Zum Kochbereich"}}</a>{{end}}</header><div id="today-cooking" aria-busy="true"><p>{{t "Kochsitzungen werden geladen …"}}</p></div></section>
+  <section class="today-section" aria-labelledby="today-meals-title"><header><div><h2 id="today-meals-title">{{t "Heute auf dem Tisch"}}</h2><p class="fine">{{t "Gespeicherte Mahlzeiten für den heutigen Haushaltstag."}}</p></div>{{if enabled .States "mealplan"}}<a href="/m/mealplan/plans">{{t "Zur Essensplanung"}}</a>{{end}}</header><div id="today-meals" aria-busy="true"><p>{{t "Mahlzeiten werden geladen …"}}</p></div></section>
+ </div>
+ <nav class="today-shortcuts" aria-labelledby="today-shortcuts-title"><div><h2 id="today-shortcuts-title">{{t "Deine Bereiche"}}</h2><p class="fine">{{t "In deiner persönlichen Reihenfolge."}}</p></div><ul>{{range .Modules}}{{if enabled $.States .ID}}<li><a href="{{moduleURL .}}"><svg aria-hidden="true"><use href="{{icon $.Asset .Icon}}"/></svg><span>{{.Short}}</span><span aria-hidden="true">→</span></a></li>{{end}}{{end}}</ul><a class="fine" href="/settings">{{t "Reihenfolge anpassen"}}</a></nav>
+ <noscript><p class="notice">{{t "Für die aktuelle Übersicht ist JavaScript erforderlich. Deine Bereiche und Mitteilungen bleiben über die Links erreichbar."}}</p></noscript>
+</section>
+<script nonce="{{.Nonce}}" src="{{index .Asset "today.js"}}" defer></script>
+{{end}}

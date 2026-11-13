@@ -5,6 +5,14 @@ const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypt
 const {spawn}=require('node:child_process');
 const SHA=/^[a-f0-9]{64}$/,UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/,RUN=/^[a-f0-9]{32}$/;
 const MAX_LOG=128<<20,MAX_LINE=2<<20,MAX_FILES=5000;
+// Hosted 2026-11-13 evidence: 17/21 mains passed in 1179 seconds before the
+// old 20-minute package deadline. Allow the full suite bounded variance, while
+// keeping recorder cleanup headroom and the existing 75-minute job ceiling.
+const NATIVE_BUDGET=Object.freeze({testMinutes:30,recorderMinutes:32});
+// Local 2026-11-03 evidence: 12/21 mains took 1176.95 seconds. Linear projection
+// is 34m20s; 40m allows bounded variance, plus two minutes for recorder overhead.
+// This opt-in profile is never available to a CI-marked process.
+const NATIVE_LOCAL_BUDGET=Object.freeze({testMinutes:40,recorderMinutes:42});
 const isSHA=value=>typeof value==='string'&&SHA.test(value),isUUID=value=>typeof value==='string'&&UUID.test(value),isRun=value=>typeof value==='string'&&RUN.test(value);
 const hash=value=>crypto.createHash('sha256').update(value).digest('hex');
 function requireThat(ok,message){if(!ok)throw Error(message);}
@@ -57,6 +65,7 @@ function nativePreflight(root,summaryPath,manifestPath,manifestSHA){
  requireThat(isSHA(manifestSHA)&&hash(readBounded(manifestPath,4<<20))===manifestSHA,'Native manifest pin differs');
  const summary=jsonFile(summaryPath,1<<20),manifest=jsonFile(manifestPath,4<<20);
  requireThat(summary.exit_code===0&&summary.source_unchanged===true&&summary.database==='household_test'&&summary.port===55434&&summary.main_pass>=20&&summary.main_fail===0&&summary.main_skip===0&&summary.source_files===manifest.length,'Native summary is not full unchanged isolated acceptance');
+ validateNativeBudgetEvidence(summary);
  assertSources(root,manifest);const required=requiredFuelMains(root,manifest),moduleName=/^module (\S+)$/m.exec(readBounded(path.join(root,'go.mod'),1<<20).toString('utf8'))?.[1];requireThat(moduleName,'Go module identity missing');
  const events=parseEvents(readBounded(summaryPath.slice(0,-'-summary.json'.length)+'.jsonl',MAX_LOG).toString('utf8'));
  validateNativeEvents(events,required,summary,moduleName);
@@ -72,7 +81,26 @@ function validateOCR(evidence,rows){requireThat(Array.isArray(evidence)&&evidenc
 function validatePurge(proof,oldGeneration){requireThat(Number.isSafeInteger(oldGeneration)&&oldGeneration>0&&oldGeneration<Number.MAX_SAFE_INTEGER&&proof?.request_complete===true&&proof.generation===oldGeneration+1&&proof.state==='disabled'&&proof.cleared_payloads===true&&Number.isSafeInteger(proof.retained_fences)&&proof.retained_fences>0,'Actual purge/minimal-fence proof failed');return true;}
 function validateCurrentWorkspace(view,generation){requireThat(Number.isSafeInteger(generation)&&generation>0&&view?.context?.generation===generation&&view.context.can_write===true&&typeof view.context.auth_scope==='string'&&view.context.auth_scope.length>0,'Fresh authorized workspace does not prove current generation');return true;}
 function validateMaintenanceStages(stages,snapshot){requireThat(isSHA(snapshot)&&Array.isArray(stages),'Actual maintenance evidence missing');let previous=-1;for(const name of ['current-http-authority','owner-read-scope','owner-read-capture_sources','http-disable-fuel','real-encrypted-backup','real-restore-check','owner-read-backup','http-request-purge','owner-read-purge_request','actual-owner-purge','owner-read-purged','http-enable-fuel','current-unfiltered-workspace']){const matches=stages.map((stage,index)=>({stage,index})).filter(item=>item.stage.name===name);requireThat(matches.length===1&&matches[0].stage.state==='passed'&&matches[0].index>previous,'Missing/reordered/failed real maintenance stage: '+name);previous=matches[0].index;}return true;}
-function nativeArguments(){return ['test','-tags=integration','-p','1','-json','./internal/web','-run','^TestFuelModule','-count=1','-timeout=15m'];}
+function nativeProfile(name='default',env=process.env){
+ requireThat(name==='default'||name==='local','Unknown native recorder profile');
+ requireThat(env&&typeof env==='object'&&!Array.isArray(env),'Native recorder environment is invalid');
+ if(name==='local')requireThat(env.CI===undefined&&env.GITHUB_ACTIONS===undefined,'Local native recorder profile is forbidden when CI or GITHUB_ACTIONS is set');
+ return name==='local'?NATIVE_LOCAL_BUDGET:NATIVE_BUDGET;
+}
+function nativeArguments(profile='default',env=process.env){const budget=nativeProfile(profile,env);return ['test','-tags=integration','-p','1','-json','./internal/web','-run','^TestFuelModule','-count=1',`-timeout=${budget.testMinutes}m`];}
+function nativeBudgetEvidence(profile,startedAt,env=process.env){
+ const budget=nativeProfile(profile,env);requireThat(startedAt instanceof Date&&Number.isFinite(startedAt.valueOf()),'Native recording start time is invalid');
+ return {recorder_profile:profile,test_timeout_minutes:budget.testMinutes,recorder_timeout_minutes:budget.recorderMinutes,recording_started_at:startedAt.toISOString(),recorder_deadline_at:new Date(startedAt.valueOf()+budget.recorderMinutes*60000).toISOString()};
+}
+function validateNativeBudgetEvidence(summary,env=process.env){
+ const keys=['recorder_profile','test_timeout_minutes','recorder_timeout_minutes','recording_started_at','recorder_deadline_at'];
+ // Earlier evidence predates profile metadata; its full source/event checks
+ // still apply. Partial or noncanonical new metadata is never accepted.
+ if(!keys.some(key=>Object.hasOwn(summary,key)))return;
+ requireThat(keys.every(key=>Object.hasOwn(summary,key))&&typeof summary.recording_started_at==='string','Incomplete native recorder budget evidence');
+ const expected=nativeBudgetEvidence(summary.recorder_profile,new Date(summary.recording_started_at),env);
+ for(const key of keys)requireThat(summary[key]===expected[key],'Native recorder budget evidence differs: '+key);
+}
 function validateTestURLs(env){for(const[name,user]of [['HOUSEHOLD_TEST_OWNER_URL','household_owner'],['HOUSEHOLD_TEST_APP_URL','household_app']]){const url=new URL(env[name]||'');requireThat(['postgres:','postgresql:'].includes(url.protocol)&&['127.0.0.1','localhost'].includes(url.hostname)&&url.port==='55434'&&url.pathname==='/household_test'&&decodeURIComponent(url.username)===user&&url.password&&!url.hash&&[...url.searchParams.keys()].join(',')==='sslmode'&&url.searchParams.get('sslmode')==='disable','Native recording requires exact isolated test URLs');}requireThat(env.HOUSEHOLD_REQUIRE_INTEGRATION==='1','Native recording cannot silently skip integration');}
 function redactedLines(write,redact,maxBytes=65536){
  const decoder=new(require('node:string_decoder').StringDecoder)('utf8');
@@ -106,15 +134,18 @@ function operatorFailureReason(stdout,stderr,passwords=[]){
  const lines=redact(stderr).split(/\r?\n/).filter(line=>line.trim());
  return lines.length?bounded(lines[lines.length-1]):'no safe operator error available';
 }
-async function recordNative(root,prefix){
+async function recordNative(root,prefix,profile='default'){
+ // Reject unsupported/local-in-CI invocations before any filesystem changes or
+ // process launch; callers cannot supply arbitrary timeout values or Go flags.
+ const budget=nativeProfile(profile),args=nativeArguments(profile);
  root=path.resolve(root);prefix=guardPath(path.join(root,'outputs'),path.resolve(prefix));requireThat(/^[a-z0-9-]+$/.test(path.basename(prefix)),'Native output prefix is invalid');validateTestURLs(process.env);const manifest=sourceSnapshot(root),required=requiredFuelMains(root,manifest);const passwords=['HOUSEHOLD_TEST_OWNER_URL','HOUSEHOLD_TEST_APP_URL'].map(name=>decodeURIComponent(new URL(process.env[name]).password));const redact=nativeSanitizer(passwords);fs.mkdirSync(path.dirname(prefix),{recursive:true});const manifestFile=prefix+'-source-manifest.json';fs.writeFileSync(manifestFile,JSON.stringify(manifest,null,2)+'\n',{flag:'wx'});const log=fs.openSync(prefix+'.jsonl','wx'),err=fs.openSync(prefix+'-stderr.log','wx');
- let buffer='',total=0;const events=[];let streamError;
+ let buffer='',total=0;const events=[];let streamError;const budgetEvidence=nativeBudgetEvidence(profile,new Date());
  const result=await new Promise(resolve=>{
-  const child=spawn('go',nativeArguments(),{cwd:root,env:process.env,shell:false,windowsHide:true,stdio:['ignore','pipe','pipe']});
+  const child=spawn('go',args,{cwd:root,env:process.env,shell:false,windowsHide:true,stdio:['ignore','pipe','pipe']});
   const decoder=new(require('node:string_decoder').StringDecoder)('utf8');
   const stderr=redactedLines(text=>fs.writeSync(err,text),redact);
   const fail=error=>{streamError=error;child.kill();};
-  const timer=setTimeout(()=>fail(Error('Native recorder exceeded16minutes')),16*60*1000);
+  const timer=setTimeout(()=>fail(Error(`Native recorder exceeded ${budget.recorderMinutes} minutes`)),budget.recorderMinutes*60*1000);
   const line=text=>{
    if(!text.trim()||streamError)return;
    try{
@@ -145,9 +176,9 @@ async function recordNative(root,prefix){
   });
  });fs.closeSync(log);fs.closeSync(err);
  const mains=events.filter(event=>event.Test&&!event.Test.includes('/')&&['pass','fail','skip'].includes(event.Action));let stable=true;try{assertSources(root,manifest);}catch{stable=false;}
- const summary={exit_code:result.code,pattern:'^TestFuelModule',source_files:manifest.length,source_unchanged:stable,main_pass:mains.filter(e=>e.Action==='pass').length,main_fail:mains.filter(e=>e.Action==='fail').length,main_skip:mains.filter(e=>e.Action==='skip').length,database:'household_test',port:55434,source_path_changes:stable?0:1,output_redaction:'URL/password and token-like Output text only; terminal identities preserved'};
+ const summary={exit_code:result.code,pattern:'^TestFuelModule',...budgetEvidence,source_files:manifest.length,source_unchanged:stable,main_pass:mains.filter(e=>e.Action==='pass').length,main_fail:mains.filter(e=>e.Action==='fail').length,main_skip:mains.filter(e=>e.Action==='skip').length,database:'household_test',port:55434,source_path_changes:stable?0:1,output_redaction:'URL/password and token-like Output text only; terminal identities preserved'};
  if(streamError)summary.recorder_failure=String(streamError.message);fs.writeFileSync(prefix+'-summary.json',JSON.stringify(summary,null,2)+'\n',{flag:'wx'});requireThat(!streamError&&result.code===0,'Actual native recording failed');return nativePreflight(root,prefix+'-summary.json',manifestFile,hash(fs.readFileSync(manifestFile)));
 }
-module.exports={hash,inside,guardPath,readBounded,jsonFile,sourceSnapshot,browserSnapshot,validateManifest,assertSources,requiredFuelMains,parseEvents,validateNativeEvents,nativePreflight,validateImage,validateDatabase,ownedResource,validateRequest,validateAuthority,validateOwnerScope,validateOCR,validatePurge,validateCurrentWorkspace,validateMaintenanceStages,nativeArguments,validateTestURLs,redactedLines,nativeSanitizer,operatorFailureReason,recordNative};
+module.exports={hash,inside,guardPath,readBounded,jsonFile,sourceSnapshot,browserSnapshot,validateManifest,assertSources,requiredFuelMains,parseEvents,validateNativeEvents,nativePreflight,validateImage,validateDatabase,ownedResource,validateRequest,validateAuthority,validateOwnerScope,validateOCR,validatePurge,validateCurrentWorkspace,validateMaintenanceStages,NATIVE_BUDGET,NATIVE_LOCAL_BUDGET,nativeProfile,nativeArguments,nativeBudgetEvidence,validateNativeBudgetEvidence,validateTestURLs,redactedLines,nativeSanitizer,operatorFailureReason,recordNative};
 function stdinJSON(){const chunks=[];let size=0;while(true){const buffer=Buffer.alloc(4096),read=fs.readSync(0,buffer,0,buffer.length,null);if(!read)break;size+=read;requireThat(size<=16384,'Guard metadata exceeds bound');chunks.push(buffer.subarray(0,read));}return JSON.parse(Buffer.concat(chunks).toString('utf8'));}
-if(require.main===module){(async()=>{const[action,...args]=process.argv.slice(2);let result;if(action==='native-preflight'&&args.length===4)result=nativePreflight(...args);else if(action==='source'&&args.length===3){const[root,file,pin]=args;guardPath(path.join(path.resolve(root),'outputs'),path.resolve(file));requireThat(isSHA(pin)&&hash(readBounded(file,4<<20))===pin,'Source manifest pin differs');result={source_files:assertSources(root,jsonFile(file,4<<20))};}else if(action==='browser-source'&&args.length===1)result=browserSnapshot(args[0]);else if(action==='cleanup'&&args.length===4)result={owned:ownedResource(...args)};else if(action==='image'&&args.length===2)result={valid:validateImage(stdinJSON(),...args)};else if(action==='database'&&args.length===0)result={valid:validateDatabase(stdinJSON())};else if(action==='record-native'&&args.length===2)result=await recordNative(...args);else throw Error('Closed Fuel guard command/arguments required');console.log(JSON.stringify(result));})().catch(error=>{console.error(String(error.message).split(/\r?\n/)[0]);process.exitCode=1;});}
+if(require.main===module){(async()=>{const[action,...args]=process.argv.slice(2);let result;if(action==='native-preflight'&&args.length===4)result=nativePreflight(...args);else if(action==='source'&&args.length===3){const[root,file,pin]=args;guardPath(path.join(path.resolve(root),'outputs'),path.resolve(file));requireThat(isSHA(pin)&&hash(readBounded(file,4<<20))===pin,'Source manifest pin differs');result={source_files:assertSources(root,jsonFile(file,4<<20))};}else if(action==='browser-source'&&args.length===1)result=browserSnapshot(args[0]);else if(action==='cleanup'&&args.length===4)result={owned:ownedResource(...args)};else if(action==='image'&&args.length===2)result={valid:validateImage(stdinJSON(),...args)};else if(action==='database'&&args.length===0)result={valid:validateDatabase(stdinJSON())};else if(action==='record-native'&&args.length===2)result=await recordNative(...args);else if(action==='record-native-local'&&args.length===2)result=await recordNative(...args,'local');else throw Error('Closed Fuel guard command/arguments required');console.log(JSON.stringify(result));})().catch(error=>{console.error(String(error.message).split(/\r?\n/)[0]);process.exitCode=1;});}

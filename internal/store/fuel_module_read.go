@@ -238,7 +238,7 @@ func fuelReadRecords(ctx context.Context, tx pgx.Tx, query string, args ...any) 
 }
 
 func fuelModuleOptions(ctx context.Context, tx pgx.Tx, id auth.Identity, scope FuelModuleContext, query FuelModuleQuery) (Record, error) {
-	vehicles, err := fuelReadRecords(ctx, tx, `SELECT jsonb_build_object('id',id,'name',name,'archived',archived_at IS NOT NULL,'version',version::text,'current_series_id',current_series_id)
+	vehicles, err := fuelReadRecords(ctx, tx, `SELECT jsonb_build_object('id',id,'name',name,'archived',archived_at IS NOT NULL,'version',version::text,'current_series_id',current_series_id,'responsible_member_id',responsible_member_id)
  FROM fuel.vehicles WHERE household_id=$1 AND archived_at IS NULL ORDER BY lower(name),id LIMIT 101`, id.HouseholdID)
 	if err != nil {
 		return nil, err
@@ -534,7 +534,7 @@ func (s *Store) fuelModuleReadPane(ctx context.Context, tx pgx.Tx, id auth.Ident
 		var raw []byte
 		err = tx.QueryRow(ctx, `SELECT jsonb_build_object('id',id,'name',name,'registration',left(registration,80),
  'current_series_id',current_series_id,'archived',archived_at IS NOT NULL,'version',version::text,
- 'tank_capacity',tank_capacity::text,'battery_capacity',battery_capacity::text)
+ 'tank_capacity',tank_capacity::text,'battery_capacity',battery_capacity::text,'responsible_member_id',responsible_member_id)
  FROM fuel.vehicles WHERE household_id=$1 AND id=$2`, id.HouseholdID, query.VehicleID).Scan(&raw)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return view, ErrNotFound

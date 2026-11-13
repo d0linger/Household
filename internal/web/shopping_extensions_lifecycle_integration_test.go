@@ -24,8 +24,8 @@ func TestShoppingExtensionsPurgeClearsOnlyOwnConsentAndOldGeneration(t *testing.
 	// Synthetic encrypted-row fixture only, proving Core's independent lifetime;
 	// not a claim that this invalid envelope was registered or sent to a vendor.
 	device := value.UUID()
-	if _, err := f.owner.Exec(f.ctx, `INSERT INTO core.push_subscriptions(id,household_id,user_id,endpoint_hash,encrypted_subscription,encryption_key_id)
- VALUES($1::uuid,$2::uuid,$3::uuid,sha256(convert_to($1::uuid::text,'UTF8')),decode('01','hex'),'synthetic-do-not-send')`, device, f.identity.HouseholdID, f.identity.UserID); err != nil {
+	if _, err := f.owner.Exec(f.ctx, `INSERT INTO core.push_subscriptions(id,household_id,user_id,endpoint_hash,encrypted_subscription,encryption_key_id,encryption_format)
+ VALUES($1::uuid,$2::uuid,$3::uuid,sha256(convert_to($1::uuid::text,'UTF8')),decode('01','hex'),'synthetic-do-not-send',1)`, device, f.identity.HouseholdID, f.identity.UserID); err != nil {
 		t.Fatal(err)
 	}
 	if err := f.app.Store.SetModule(f.ctx, f.identity, "shopping", false, f.app.Store.States()["shopping"].Version, value.UUID()); err != nil {

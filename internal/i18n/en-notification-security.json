@@ -1,0 +1,18 @@
+{
+  "Persönliche Änderungen an deinem Konto": "Personal changes to your account",
+  "Hinweise betreffen nur dein eigenes Konto: Passwort, Anmeldefaktoren, Passkeys, Sitzungen und neu autorisierte Geräte. Andere Haushaltsmitglieder werden nicht benachrichtigt.": "Notifications concern your own account only: passwords, sign-in factors, passkeys, sessions and newly authorised devices. Other household members are not notified.",
+  "Ein Gerätehinweis ist höchstens eine Stunde aktuell. Konto und Gerät müssen bereits vor dem Ereignis zugestimmt haben; spätere Freigaben holen keine Ereignisse nach.": "A device notification stays current for at most one hour. Both account and device must have opted in before the event; later permission does not replay past events.",
+  "Die persönliche Meldung bleibt in deinem Posteingang, auch wenn eine Sicherheitsänderung alle Sitzungen beendet. Auf dem Sperrbildschirm erscheinen keine Namen, Kennwörter oder Gerätedetails.": "The personal message stays in your inbox even when a security change ends all sessions. Names, passwords and device details never appear on the lock screen.",
+  "Kontosicherheit prüfen": "Review account security",
+  "Sicherheitsereignis": "Security event",
+  "Dein Passwort wurde geändert.": "Your password was changed.",
+  "Die Zwei-Faktor-Anmeldung wurde aktiviert.": "Two-factor sign-in was enabled.",
+  "Die Zwei-Faktor-Anmeldung wurde deaktiviert.": "Two-factor sign-in was disabled.",
+  "Neue Wiederherstellungscodes wurden erstellt.": "New recovery codes were generated.",
+  "Ein Wiederherstellungscode wurde verwendet.": "A recovery code was used.",
+  "Ein Passkey wurde hinzugefügt.": "A passkey was added.",
+  "Ein Passkey wurde entfernt.": "A passkey was removed.",
+  "Angemeldete Sitzungen wurden beendet.": "Signed-in sessions were ended.",
+  "Die Berechtigungen oder der Status deines Kontos wurden geändert.": "Your account permissions or status were changed.",
+  "Ein Gerät wurde für Benachrichtigungen freigegeben.": "A device was authorised for notifications."
+}

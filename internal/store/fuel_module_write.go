@@ -594,6 +594,11 @@ func (s *Store) fuelModulePlanCommand(ctx context.Context, tx pgx.Tx, id auth.Id
 		preview.Effects = append(preview.Effects, Record{"kind": "personal_settings", "scope": "current_user"})
 		return preview, nil
 	}
+	if command.Action == "vehicle.save" {
+		if err := fuelModuleCoreAssignee(ctx, tx, id, String(data["responsible_member_id"])); err != nil {
+			return preview, err
+		}
+	}
 	if command.Action == "vehicle.save" && command.RecordID == "" {
 		if command.Version != 0 || command.VehicleID != "" {
 			return preview, Invalid{"Neues Fahrzeug ohne vorhandene Datensatzkennung anlegen"}
@@ -882,7 +887,7 @@ func (s *Store) fuelModulePlanPhysical(ctx context.Context, tx pgx.Tx, id auth.I
 
 func fuelModuleSaveFact(ctx context.Context, tx pgx.Tx, id auth.Identity, entity, recordID string, version int64, data Record) (Record, error) {
 	specifications := map[string]map[string]string{
-		"vehicles":              {"name": "text", "registration": "text", "fuel_type": "text", "notes": "text", "next_service_on": "date", "next_inspection_on": "date", "insurance_renewal_on": "date", "tank_capacity": "numeric", "battery_capacity": "numeric", "current_series_id": "uuid", "archived_at": "timestamptz"},
+		"vehicles":              {"name": "text", "registration": "text", "fuel_type": "text", "notes": "text", "responsible_member_id": "uuid", "next_service_on": "date", "next_inspection_on": "date", "insurance_renewal_on": "date", "tank_capacity": "numeric", "battery_capacity": "numeric", "current_series_id": "uuid", "archived_at": "timestamptz"},
 		"odometer_series":       {"vehicle_id": "uuid", "started_on": "date", "ended_on": "date", "initial_reading": "numeric", "final_reading": "numeric", "reason": "text", "previous_series_id": "uuid", "distance_offset": "numeric"},
 		"fillups":               {"vehicle_id": "uuid", "odometer_series_id": "uuid", "occurred_on": "date", "fuel_type": "text", "odometer": "numeric", "quantity": "numeric", "quantity_unit": "text", "total_minor": "bigint", "unit_price": "numeric", "currency_code": "text", "station": "text", "full_tank": "boolean", "previous_fill_missing": "boolean", "notes": "text", "source_kind": "text", "source_job_id": "uuid", "source_row": "integer", "source_fingerprint": "bytea"},
 		"charging_sessions":     {"vehicle_id": "uuid", "odometer_series_id": "uuid", "occurred_on": "date", "odometer": "numeric", "energy_kwh": "numeric", "measurement_basis": "text", "total_minor": "bigint", "currency_code": "text", "location": "text", "charge_kind": "text", "soc_start": "numeric", "soc_end": "numeric", "notes": "text"},

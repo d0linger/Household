@@ -17,6 +17,23 @@ The module opens at `/m/fuel/workspace/overview`. Its twelve workspaces are over
 
 ## Exact values and known limits
 
+### Device reminders (Fuel12 development increment)
+
+Vehicle editing provides an optional responsible household member for the existing service, inspection and insurance dates. Maintenance plans use their own assignee; an unassigned plan does not inherit the vehicle's responsible person. Creating a linked chore remains a separate reviewed action with separately configured chore notifications. Personal vehicle defaults and record creators never become notification recipients implicitly.
+
+Calendar reminders occur seven civil days before and on the due date, at09:00 in the household timezone. They expire24 hours after that stage. The assignment, source edit and module activation must precede the stage; an edit after an elapsed stage conservatively suppresses that stage instead of replaying it. Both personal Fuel notification permission and permission on each selected device must already exist. No registration, service title, mileage or other vehicle content is included in the encrypted generic push payload.
+
+Mileage reminders use the same exact, documented four-stream reading as the maintenance workspace, with an additional maximum age of30 civil days. A fresh initial series reading is eligible; future, inconsistent or ambiguous readings are not. The first already-exceeded target is a silent baseline. A later observed below-target→at-or-above-target transition creates one episode using the last below-target observation as its consent boundary. Configuration/assignment changes and vehicle edits reset the observation basis. A short transition entirely between scans can be missed; there is no forecast or guaranteed alarm. Completion, archive, reassignment, incompatible series, stale readings and withdrawn consent invalidate pending delivery. Already accepted provider messages cannot be recalled reliably.
+
+The existing worker advances at most50 sources per durable scan page and retains its cursor across restarts. Fuel12 stores observation state separately from business facts and preserves existing assignments without inventing historical consent. This increment is undergoing automated module acceptance; physical-device testing and the live Docker upgrade remain separate gates in [the notification checklist](notifications-device-plan.md).
+
+To configure this increment after deployment:
+
+1. In vehicle editing, explicitly select the person responsible for vehicle dates and confirm the reviewed change. For maintenance, select the plan's own assignee separately.
+2. That person enables Vehicles under Notifications and explicitly allows Vehicles on each intended connected device. A successful test message verifies only its own test category; it does not subscribe other categories.
+3. Configure reminders before their upcoming stage. For mileage, allow a valid below-target observation before a later threshold crossing; an already exceeded target is not replayed after opt-in.
+4. Check the application's current vehicle or maintenance workspace when opening a generic alert. Device delivery is best effort and old provider-accepted messages may still appear after source changes.
+
 Typed `total_minor` is a string containing integer cents. Quantity, unit price, distance, energy and displayed record versions use exact strings; calculations use decimal/rational arithmetic. Chart coordinates alone may be quantized. Unknown values remain null and are explained.
 
 Fuel type fixes the quantity dimension: diesel/petrol/LPG use liters, CNG/hydrogen use kilograms, electric charging uses the exact Core unit `kWh`. No density conversion or automatic foreign exchange occurs. Existing legacy fill-ups retain EUR because Core1 constrained household currency to EUR and the old Fuel form explicitly recorded euro amounts. New currency codes are explicit and totals remain separate. Expense creation supports the household currency only.

@@ -13,7 +13,9 @@ const copy=value=>structuredClone(value);
 function actualFunctions(filename,start,end,sandbox,names){
  const source=staticFile(filename),from=source.indexOf(start),to=source.indexOf(end,from);
  assert.ok(from>=0&&to>from,filename+' real function boundary');
- return vm.runInNewContext('(()=>{'+source.slice(from,to)+';return{'+names.join(',')+'}})()',sandbox,{filename});
+ const translation=source.split('\n').find(line=>line.startsWith('const _householdText_'));
+ assert.match(translation,/^const _householdText_/,'Production translation dependency is present');
+ return vm.runInNewContext(translation+'\n(()=>{'+source.slice(from,to)+';return{'+names.join(',')+'}})()',sandbox,{filename});
 }
 
 test('Discover submits only bounded title, all selected references, duration and history criteria',()=>{
@@ -128,7 +130,7 @@ async function runCommonDeviceObservation(f,pathname){
  const observe=(name,action=()=>Promise.resolve())=>({observe(...args){calls.push({name,args});const result=Promise.resolve().then(()=>action(...args));pending.push(result);return result;}});
  const recipe=observe('recipe',()=>f.device.observe());recipe.clear=()=>{calls.push({name:'recipe-clear',args:[]});const result=f.device.clear();pending.push(result);return result;};
  const sandbox={user:uuid(1),household:uuid(2),location:{pathname},localStorage:{getItem:key=>f.values.get(key)||null,removeItem:key=>f.values.delete(key)},window:{HouseholdPantryDevice:observe('pantry'),HouseholdShoppingDevice:observe('shopping'),HouseholdPushDevice:observe('push'),HouseholdRecipeDevice:recipe},clearPrivateDeviceData:()=>{throw Error('Matching owner must not be cleared by startup');},toast:message=>messages.push(message)};
- vm.runInNewContext(app.slice(start,end),sandbox,{filename:'app.js'});
+ vm.runInNewContext(app.slice(0,app.indexOf('\n'))+'\n'+app.slice(start,end),sandbox,{filename:'app.js'});
  await Promise.allSettled(pending);
  return{calls,messages};
 }

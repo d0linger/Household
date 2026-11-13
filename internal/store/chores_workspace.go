@@ -248,6 +248,9 @@ func (s *Store) choreWrite(ctx context.Context, id auth.Identity, key, requestID
 		return nil, choreStoreError(err)
 	}
 	defer rollback(tx)
+	if err = lockChoreNotificationConsent(ctx, tx, id.HouseholdID); err != nil {
+		return nil, choreStoreError(err)
+	}
 	if authorize != nil {
 		if err = authorize(ctx, tx); err != nil {
 			return nil, choreStoreError(err)
@@ -276,6 +279,9 @@ func (s *Store) choreWrite(ctx context.Context, id auth.Identity, key, requestID
 	}
 	result, err := apply(ctx, tx)
 	if err != nil {
+		return nil, choreStoreError(err)
+	}
+	if err = reconcileChoreNotificationIntents(ctx, tx, id.HouseholdID); err != nil {
 		return nil, choreStoreError(err)
 	}
 	raw, err := json.Marshal(result)

@@ -27,13 +27,17 @@ import (
 func TestAuditTrailContract(t *testing.T) {
 	f := newIntegrationFixture(t)
 	t.Run("all_domain_tables_and_policies_are_installed", func(t *testing.T) {
-		privateFuel := []string{"household_state", "segment_state", "consumption_segments", "segment_jobs", "module_operations", "module_effects", "capture_transitions", "legacy_operation_fences"}
+		privateFuel := []string{"household_state", "segment_state", "consumption_segments", "segment_jobs", "module_operations", "module_effects", "capture_transitions", "legacy_operation_fences", "notification_maintenance_observations"}
 		authoritativeFuel := []string{"vehicles", "odometer_series", "fillups", "odometer_observations", "charging_sessions", "trips", "vehicle_costs", "maintenance_plans", "maintenance_events", "user_settings", "import_jobs", "import_rows", "capture_jobs", "integration_bindings"}
 		var missing, domainTables int
 		err := f.owner.QueryRow(f.ctx, `SELECT count(*) FILTER (WHERE p.table_name IS NULL),count(*)
 			FROM pg_tables t LEFT JOIN core.audit_policies p ON p.schema_name=t.schemaname AND p.table_name=t.tablename
 			WHERE t.schemaname=ANY($1::text[]) AND t.tablename NOT IN('schema_migrations','fuel_types')
-			AND NOT(t.schemaname='pantry' AND t.tablename='lot_balances')
+			AND NOT(t.schemaname='pantry' AND t.tablename IN('lot_balances','notification_stock_observations'))
+			AND NOT(t.schemaname='expenses' AND t.tablename IN('notification_payment_reminders','notification_budget_observations'))
+			AND NOT(t.schemaname='meters' AND t.tablename IN('notification_settings','notification_observations'))
+			AND NOT(t.schemaname='documents' AND t.tablename IN('notification_settings','notification_processing_events','notification_import_events'))
+			AND NOT(t.schemaname='mealplan' AND t.tablename='notification_settings')
 			AND NOT(t.schemaname='fuel' AND t.tablename=ANY($2::text[]))`,
 			[]string{"shopping", "fuel", "recipes", "pantry", "expenses", "chores", "meters", "documents", "mealplan"}, privateFuel).Scan(&missing, &domainTables)
 		if err != nil || missing != 0 || domainTables != 134 {
@@ -47,7 +51,7 @@ func TestAuditTrailContract(t *testing.T) {
  (SELECT count(*) FROM core.audit_policies WHERE schema_name='fuel' AND table_name=ANY($1::text[])),
  (SELECT count(*) FROM pg_tables WHERE schemaname='fuel' AND tablename=ANY($2::text[])),
  (SELECT count(*) FROM core.audit_policies WHERE schema_name='fuel' AND table_name=ANY($2::text[]))`, authoritativeFuel, privateFuel).
-			Scan(&fuelTables, &fuelPolicies, &privateTables, &privatePolicies); err != nil || fuelTables != 14 || fuelPolicies != 14 || privateTables != 8 || privatePolicies != 0 {
+			Scan(&fuelTables, &fuelPolicies, &privateTables, &privatePolicies); err != nil || fuelTables != 14 || fuelPolicies != 14 || privateTables != 9 || privatePolicies != 0 {
 			t.Fatalf("Fuel classification: facts=%d policies=%d private=%d privatePolicies=%d error=%v", fuelTables, fuelPolicies, privateTables, privatePolicies, err)
 		}
 		pantryExtensions := []string{"leftover_operations", "prepared_lots", "prepared_transfers", "foodfacts_cache", "foodfacts_operations", "foodfacts_provenance"}

@@ -23,6 +23,8 @@ func (s *Server) registerFinanceRoutes(mux *http.ServeMux) {
 	for pattern, handler := range map[string]http.HandlerFunc{
 		"GET /m/expenses/workspace/{pane}":                                s.financeWorkspacePage,
 		"GET /api/v1/expenses/finance/view":                               s.financeViewAPI,
+		"GET /api/v1/expenses/finance/entries/{id}/payment-reminder":      s.financePaymentReminderAPI,
+		"POST /api/v1/expenses/finance/entries/{id}/payment-reminder":     s.financePaymentReminderSaveAPI,
 		"POST /api/v1/expenses/finance/preview":                           s.financePreviewAPI,
 		"POST /api/v1/expenses/finance/apply":                             s.financeApplyAPI,
 		"GET /api/v1/expenses/finance/operations/{key}":                   s.financeOperationAPI,

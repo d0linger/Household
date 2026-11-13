@@ -1,0 +1,21 @@
+{
+  "Erlaube Fahrzeuge hier und unten bei jedem gewünschten Gerät ausdrücklich vor der Frist. Die Zuständigkeit allein aktiviert keine Gerätehinweise.": "Explicitly allow Vehicles here and below on each chosen device before the deadline. Being responsible does not enable device notifications by itself.",
+  "Fahrzeugtermine gehen nur an das dafür gewählte Haushaltsmitglied. Wartungspläne verwenden ausschließlich ihre eigene Zuständigkeit; ohne Zuordnung wird niemand benachrichtigt.": "Vehicle deadlines go only to the selected household member. Maintenance plans use only their own assignee; nobody is notified when no one is assigned.",
+  "Regeln für Termine und Kilometerziele": "Rules for deadlines and mileage targets",
+  "Datumsfristen werden sieben Tage vorher und am Fälligkeitstag ab 09:00 Uhr in der Haushaltszeitzone berücksichtigt. Jeder Hinweis bleibt 24 Stunden gültig. Frühere Friststufen werden nicht nachgeholt.": "Calendar deadlines are considered seven days before and on the due date from 09:00 in the household time zone. Each alert remains valid for 24 hours. Earlier reminder stages are not replayed.",
+  "Kilometerhinweise benötigen einen eindeutigen Stand aus der passenden Zählerreihe, der höchstens 30 Kalendertage alt ist. Zuerst muss nach deiner Freigabe ein Stand unter dem Ziel erkannt werden, danach ein Stand am oder über dem Ziel. Ein bereits erreichtes Ziel beim ersten Prüfen bleibt ohne Hinweis.": "Mileage alerts require an unambiguous reading from the matching odometer series, no more than 30 calendar days old. After you opt in, a reading below the target must first be observed, followed by a reading at or above it. A target already reached at the first check does not trigger an alert.",
+  "Künftige, zu alte oder widersprüchliche Zählerstände lösen keine Kilometerhinweise aus. Änderungen an Ziel oder Zuständigkeit beginnen diese Prüfung neu. Archivierte Fahrzeuge und inaktive Pläne erhalten keine neuen Hinweise; erledigte oder geänderte Fristen entwerten alte Hinweise.": "Future, outdated or inconsistent readings do not trigger mileage alerts. Changing the target or assignee starts this check again. Archived vehicles and inactive plans receive no new alerts; completed or changed deadlines invalidate old alerts.",
+  "Eine verknüpfte Aufgabe hat eigene Benachrichtigungen. Wenn du beide Kategorien erlaubst, können beide Hinweise erscheinen.": "A linked task has its own notifications. If you allow both categories, both alerts may appear.",
+  "Fahrzeugtermine und Zuständigkeit prüfen": "Review vehicle deadlines and responsibility",
+  "Wartungspläne prüfen": "Review maintenance plans",
+  "Für Gerätehinweise muss das Fahrzeugmodul aktiv sein.": "The Vehicles module must be active to send device notifications.",
+  "Verantwortlich für Fahrzeugtermine": "Responsible for vehicle deadlines",
+  "Verantwortliches Haushaltsmitglied für Fahrzeugtermine · optional": "Household member responsible for vehicle deadlines · optional",
+  "Gerätehinweise verwenden nur die Zuständigkeit dieses Wartungsplans. Die Fahrzeugzuständigkeit wird nicht übernommen; eine Aufgabenverknüpfung hat eigene Hinweise.": "Device alerts use only this maintenance plan's assignee. Vehicle responsibility is not inherited; a linked task has its own alerts.",
+  "Für Service-, Prüfungs- und Versicherungstermine wählst du am Fahrzeug eine zuständige Person. Diese muss Gerätehinweise zusätzlich persönlich und je Gerät erlauben.": "Choose a responsible person on the vehicle for service, inspection and insurance deadlines. They must also allow notifications personally and on each chosen device.",
+  "Gerätehinweise für Fahrzeuge verwalten": "Manage vehicle device notifications",
+  "Zuständig seit": "Responsible since",
+  "Zuständigkeit aktuell prüfen": "Review the current assignment",
+  "Änderst du Termin oder Zuständigkeit nach Beginn einer Friststufe, wird diese Stufe nicht mehr versendet.": "If you change the deadline or assignee after a reminder stage has started, that stage is no longer sent.",
+  "Auch der dokumentierte Anfangsstand der passenden Zählerreihe kann gelten, wenn er ausreichend aktuell ist.": "The documented initial reading of the matching odometer series can also qualify if it is sufficiently recent."
+}

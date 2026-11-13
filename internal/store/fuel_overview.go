@@ -92,7 +92,7 @@ func (s *Store) fuelOverviewRead(ctx context.Context, tx pgx.Tx, id auth.Identit
 		registration = "CASE WHEN octet_length(v.registration)<=1048576 THEN v.registration ELSE '' END,octet_length(v.registration)>1048576"
 	}
 	rows, err := tx.Query(ctx, `SELECT v.id,v.name,`+registration+`,v.archived_at IS NOT NULL,v.version,v.created_at,
- v.next_service_on::text,v.next_inspection_on::text,v.insurance_renewal_on::text,v.current_series_id::text,
+ v.next_service_on::text,v.next_inspection_on::text,v.insurance_renewal_on::text,v.responsible_member_id::text,v.current_series_id::text,
  EXISTS(SELECT 1 FROM fuel.fillups f WHERE f.household_id=v.household_id AND f.vehicle_id=v.id AND f.occurred_on>$7::date)
  FROM fuel.vehicles v WHERE v.household_id=$1 AND ($2 OR v.archived_at IS NULL) AND($8::uuid IS NULL OR v.id=$8)
  AND ($3='' OR strpos(lower(v.name),lower($3))>0 OR strpos(lower(left(v.registration,300)),lower($3))>0)
@@ -104,7 +104,7 @@ func (s *Store) fuelOverviewRead(ctx context.Context, tx pgx.Tx, id auth.Identit
 	ids := []string{}
 	for rows.Next() {
 		var vehicle FuelOverviewVehicle
-		if err = rows.Scan(&vehicle.ID, &vehicle.Name, &vehicle.Registration, &vehicle.RegistrationTruncated, &vehicle.Archived, &vehicle.Version, &vehicle.Created, &vehicle.NextService, &vehicle.NextInspection, &vehicle.InsuranceRenewal, &vehicle.CurrentSeriesID, &vehicle.FutureFills); err != nil {
+		if err = rows.Scan(&vehicle.ID, &vehicle.Name, &vehicle.Registration, &vehicle.RegistrationTruncated, &vehicle.Archived, &vehicle.Version, &vehicle.Created, &vehicle.NextService, &vehicle.NextInspection, &vehicle.InsuranceRenewal, &vehicle.ResponsibleMemberID, &vehicle.CurrentSeriesID, &vehicle.FutureFills); err != nil {
 			rows.Close()
 			return out, err
 		}

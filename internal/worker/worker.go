@@ -6,7 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"runtime/debug"
+	"runtime"
+	"strings"
 	"sync"
 	"time"
 
@@ -37,6 +38,15 @@ func (w *Worker) Run(ctx context.Context) {
 	}()
 	feedContext, stopFeeds := context.WithCancel(ctx)
 	var feeds sync.WaitGroup
+	if w.Push != nil && w.Push.Configuration().State == "ready" {
+		for _, schedule := range []bool{true, false, false} {
+			feeds.Add(1)
+			go func() {
+				defer feeds.Done()
+				w.timerNotificationLoop(feedContext, schedule)
+			}()
+		}
+	}
 	if w.Cfg.MeterFeeds.HAURL != "" || w.Cfg.MeterFeeds.MQTTURL != "" {
 		for range 2 {
 			feeds.Add(1)
@@ -89,6 +99,39 @@ func (w *Worker) Tick(ctx context.Context) error {
 		{"low stock", w.lowStock},
 		{"outbox", w.outbox},
 		{"shopping notifications", w.shoppingNotifications},
+		{"pantry notifications", func(ctx context.Context) error {
+			_, err := records.StagePantryNotifications(ctx, 50)
+			return err
+		}},
+		{"vehicle notifications", func(ctx context.Context) error {
+			_, err := records.StageFuelNotifications(ctx, 50)
+			return err
+		}},
+		{"finance notifications", func(ctx context.Context) error {
+			if w.Push == nil {
+				return nil
+			}
+			_, err := w.Push.StageFinanceNotifications(ctx, 10)
+			return err
+		}},
+		{"meter notifications", func(ctx context.Context) error {
+			_, err := records.StageMeterNotifications(ctx, 10)
+			return err
+		}},
+		{"document notifications", func(ctx context.Context) error {
+			_, err := records.StageDocumentNotifications(ctx, 50)
+			return err
+		}},
+		{"meal preparation notifications", func(ctx context.Context) error {
+			_, err := records.StagePlanningNotifications(ctx, 10)
+			return err
+		}},
+		{"personal security notifications", func(ctx context.Context) error {
+			_, err := records.StageSecurityNotifications(ctx, 50)
+			return err
+		}},
+		{"device notification schedule", w.notificationSchedule},
+		{"device notification delivery", w.notificationJobs},
 		{"files", w.files},
 		{"document inputs", w.scheduleDocumentInputs},
 		{"fuel projections", func(ctx context.Context) error { return records.FuelModuleHousekeeping(ctx, 1) }},
@@ -125,20 +168,43 @@ func runSteps(ctx context.Context, steps []step) error {
 	return errors.Join(failures...)
 }
 
-// panicked is a recovered panic. Its type name alone is safe for redacted logs.
+// panicked describes a recovered panic by type and call path only: the value
+// and argument words can carry household data, so they never reach logs.
 type panicked struct {
-	value any
-	stack []byte
+	kind, path string
 }
 
-func (p panicked) Error() string { return fmt.Sprintf("panic: %v\n%s", p.value, p.stack) }
+func recovered(value any) panicked {
+	return panicked{kind: fmt.Sprintf("%T", value), path: callPath()}
+}
+
+func (p panicked) Error() string { return "panic (" + p.kind + ") at\n" + p.path }
+
+// callPath lists the panicking frames as function and file:line. Call it
+// directly from the recovering deferred function.
+func callPath() string {
+	pcs := make([]uintptr, 32)
+	frames := runtime.CallersFrames(pcs[:runtime.Callers(4, pcs)])
+	var path strings.Builder
+	origin := false
+	for {
+		frame, more := frames.Next()
+		// Skip the runtime's own panic frames above the panicking function.
+		if origin = origin || !strings.HasPrefix(frame.Function, "runtime."); origin {
+			fmt.Fprintf(&path, "%s %s:%d\n", frame.Function, frame.File, frame.Line)
+		}
+		if !more {
+			return path.String()
+		}
+	}
+}
 
 // guarded turns a panic into an error: background work shares its process with
 // the HTTP server, and an unrecovered goroutine panic would stop both.
 func guarded(ctx context.Context, run func(context.Context) error) (err error) {
 	defer func() {
-		if recovered := recover(); recovered != nil {
-			err = panicked{value: recovered, stack: debug.Stack()}
+		if value := recover(); value != nil {
+			err = recovered(value)
 		}
 	}()
 	return run(ctx)
@@ -220,7 +286,7 @@ func (w *Worker) job(ctx context.Context) (jobErr error) {
 	ctx = audit.WithSystem(ctx, "worker")
 	lease := value.UUID()
 	var id, kind string
-	err := w.Pool.QueryRow(ctx, `WITH candidate AS(SELECT j.id FROM core.jobs j WHERE kind<>'energy_adapter' AND ((state='pending' AND available_at<=now()) OR (state='running' AND lease_until<now())) AND attempts<max_attempts AND (module_id IS NULL OR EXISTS(SELECT 1 FROM core.module_states m WHERE m.household_id=j.household_id AND m.module_id=j.module_id AND m.state='enabled' AND m.data_generation=j.module_generation)) ORDER BY available_at LIMIT 1 FOR UPDATE SKIP LOCKED) UPDATE core.jobs j SET state='running',lease_token=$1,lease_until=now()+interval '60 seconds',attempts=attempts+1 FROM candidate c WHERE j.id=c.id RETURNING j.id,j.kind`, lease).Scan(&id, &kind)
+	err := w.Pool.QueryRow(ctx, `WITH candidate AS(SELECT j.id FROM core.jobs j WHERE kind NOT IN('energy_adapter','notification_push_v1','pantry_notification_scan_v1','pantry_low_stock_scan_v1','fuel_notification_scan_v1','finance_notification_scan_v1','meter_notification_scan_v1','document_notification_scan_v1','mealplan_notification_scan_v1','security_notification_source_v1') AND ((state='pending' AND available_at<=now()) OR (state='running' AND lease_until<now())) AND attempts<max_attempts AND (module_id IS NULL OR EXISTS(SELECT 1 FROM core.module_states m WHERE m.household_id=j.household_id AND m.module_id=j.module_id AND m.state='enabled' AND m.data_generation=j.module_generation)) ORDER BY available_at LIMIT 1 FOR UPDATE SKIP LOCKED) UPDATE core.jobs j SET state='running',lease_token=$1,lease_until=now()+interval '60 seconds',attempts=attempts+1 FROM candidate c WHERE j.id=c.id RETURNING j.id,j.kind`, lease).Scan(&id, &kind)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil
 	}
@@ -229,8 +295,8 @@ func (w *Worker) job(ctx context.Context) (jobErr error) {
 	}
 	defer func() {
 		// A panicking handler must still release its lease and enter backoff.
-		if recovered := recover(); recovered != nil {
-			jobErr = panicked{value: recovered, stack: debug.Stack()}
+		if value := recover(); value != nil {
+			jobErr = recovered(value)
 		}
 		if jobErr != nil {
 			retryCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 3*time.Second)
@@ -255,6 +321,9 @@ func (w *Worker) job(ctx context.Context) (jobErr error) {
 	}
 	if kind == store.ShoppingDigestJobKind {
 		return store.New(w.Pool, modules.Registry()).CompleteShoppingNotificationJob(ctx, id, lease)
+	}
+	if kind == store.PantryNotificationDigestJobKind {
+		return store.New(w.Pool, modules.Registry()).CompletePantryNotificationDigest(ctx, id, lease)
 	}
 	if kind == store.ShoppingPushJobKind {
 		return w.shoppingPush(ctx, id, lease)
@@ -436,6 +505,12 @@ func expireJobs(ctx context.Context, tx pgx.Tx) error {
 		return err
 	}
 	for _, id := range ids {
+		if _, err = tx.Exec(ctx, `UPDATE documents.processing p SET state='failed',status_code='processing_interrupted',updated_at=clock_timestamp()
+ FROM core.jobs j WHERE j.id=$1 AND j.kind='document_processing' AND j.state='failed'
+ AND p.job_id=j.id AND p.household_id=j.household_id AND p.module_generation=j.module_generation
+ AND p.state IN('pending','running')`, id); err != nil {
+			return err
+		}
 		if err = recordJobFailure(ctx, tx, id, "worker_lease_exhausted"); err != nil {
 			return err
 		}

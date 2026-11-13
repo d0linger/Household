@@ -1,0 +1,34 @@
+/* Shared information hierarchy; appearance is inherited from Ocean/Pink tokens. */
+.workspace-navigation { margin-block:0 1.5rem; min-width:0; }
+.workspace-navigation-row { display:flex; align-items:center; gap:.75rem; border-bottom:1px solid var(--line); }
+.workspace-primary { display:flex; flex-wrap:wrap; flex:1; gap:.25rem; min-width:0; }
+.workspace-primary a { padding:.7rem .85rem; color:var(--muted); text-decoration:none; border-bottom:3px solid transparent; font-weight:650; overflow-wrap:anywhere; }
+.workspace-primary a[aria-current] { color:var(--ink); border-color:var(--accent); }
+.workspace-manage-link { padding:.6rem .3rem; font-size:.875rem; color:var(--muted); text-underline-offset:.25em; }
+.workspace-manage-link[aria-current] { color:var(--accent); }
+.workspace-context,.workspace-actions { display:flex; flex-wrap:wrap; gap:.35rem 1rem; padding-block:.65rem 0; align-items:center; }
+.workspace-context a,.workspace-actions a { padding:.35rem .2rem; font-size:.875rem; text-underline-offset:.25em; }
+.workspace-context a[aria-current] { color:var(--ink); font-weight:700; text-decoration-thickness:2px; }
+.workspace-actions { justify-content:flex-end; }
+.workspace-actions a { color:var(--accent); }
+.workspace-management-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,19rem),1fr)); gap:1rem; }
+.workspace-management-links { list-style:none; margin:0; padding:0; display:grid; gap:.25rem; }
+.workspace-management-links a { display:block; padding:.7rem .2rem; text-underline-offset:.25em; overflow-wrap:anywhere; }
+.workspace-object-context { display:flex; flex-wrap:wrap; align-items:center; gap:.5rem 1rem; margin-block:.75rem; color:var(--muted); font-size:.9rem; }
+.workspace-object-context strong { color:var(--ink); overflow-wrap:anywhere; }
+@media(max-width:600px) {
+ .workspace-navigation-row { align-items:flex-start; gap:.2rem; }
+ .workspace-primary a { padding:.7rem .45rem; font-size:.9rem; }
+ .workspace-manage-link { font-size:.875rem; padding:.8rem .2rem; }
+ .workspace-context a,.workspace-actions a { min-height:44px; display:inline-flex; align-items:center; }
+ .workspace-actions { justify-content:flex-start; }
+}
+
+.recipe-contents { margin-block:0 1rem; border-bottom:1px solid var(--line); }
+.recipe-contents summary { cursor:pointer; padding:.65rem .2rem; color:var(--muted); min-height:44px; }
+.recipe-contents .recipe-section-nav { margin-block:.25rem .75rem; }
+
+.planning-tools { border-block:1px solid var(--line); padding:.25rem 0; margin-block:1rem; }
+.planning-tools summary { cursor:pointer; min-height:44px; padding:.65rem .2rem; font-weight:600; }
+.planning-tools .planning-extension-nav { margin-block:.5rem; }
+.planning-view-actions { display:flex; justify-content:flex-end; }

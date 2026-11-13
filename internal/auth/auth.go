@@ -3,8 +3,6 @@ package auth
 
 import (
 	"context"
-	"crypto/aes"
-	"crypto/cipher"
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
@@ -19,6 +17,8 @@ import (
 
 	"household/internal/audit"
 	"household/internal/config"
+	"household/internal/secretbox"
+	"household/internal/securityevent"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -33,30 +33,43 @@ var (
 	ErrLimited     = errors.New("zu viele Versuche; bitte später erneut versuchen")
 )
 
+// Rejection is a refusal the user can correct; its message is safe to display.
+type Rejection string
+
+func (r Rejection) Error() string { return string(r) }
+
 type Identity struct {
-	UserID       string    `json:"id"`
-	HouseholdID  string    `json:"household_id"`
-	MembershipID string    `json:"membership_id"`
-	Username     string    `json:"username"`
-	DisplayName  string    `json:"display_name"`
-	Role         string    `json:"role"`
-	MustChange   bool      `json:"must_change_password"`
-	AuthVersion  int64     `json:"-"`
-	SessionID    string    `json:"session_id"`
-	CreatedAt    time.Time `json:"-"`
-	ExpiresAt    time.Time `json:"-"`
-	Renewed      bool      `json:"-"`
+	UserID          string    `json:"id"`
+	HouseholdID     string    `json:"household_id"`
+	MembershipID    string    `json:"membership_id"`
+	Username        string    `json:"username"`
+	DisplayName     string    `json:"display_name"`
+	Role            string    `json:"role"`
+	MustChange      bool      `json:"must_change_password"`
+	AuthVersion     int64     `json:"-"`
+	SessionID       string    `json:"session_id"`
+	CreatedAt       time.Time `json:"-"`
+	AuthenticatedAt time.Time `json:"-"`
+	ExpiresAt       time.Time `json:"-"`
+	Renewed         bool      `json:"-"`
 }
 
 func (i Identity) CanWrite() bool { return i.Role == "admin" || i.Role == "editor" }
-func (i Identity) Recent() bool   { return time.Since(i.CreatedAt) < 10*time.Minute }
+func (i Identity) Recent() bool {
+	when := i.AuthenticatedAt
+	if when.IsZero() {
+		when = i.CreatedAt
+	}
+	age := time.Since(when)
+	return age >= 0 && age < 10*time.Minute
+}
 
 type Service struct {
 	pool        *pgxpool.Pool
 	cfg         config.Config
 	dummy       []byte
 	bcryptSlots chan struct{}
-	aead        cipher.AEAD
+	keys        *secretbox.Keyring
 }
 
 func New(pool *pgxpool.Pool, cfg config.Config) (*Service, error) {
@@ -64,16 +77,11 @@ func New(pool *pgxpool.Pool, cfg config.Config) (*Service, error) {
 	if err != nil {
 		return nil, fmt.Errorf("create timing equalizer: %w", err)
 	}
-	key := sha256.Sum256([]byte(cfg.EncryptionKey))
-	block, err := aes.NewCipher(key[:])
+	keys, err := cfg.Keyring()
 	if err != nil {
 		return nil, fmt.Errorf("initialize secret encryption: %w", err)
 	}
-	aead, err := cipher.NewGCM(block)
-	if err != nil {
-		return nil, fmt.Errorf("initialize secret encryption: %w", err)
-	}
-	return &Service{pool: pool, cfg: cfg, dummy: dummy, bcryptSlots: make(chan struct{}, 4), aead: aead}, nil
+	return &Service{pool: pool, cfg: cfg, dummy: dummy, bcryptSlots: make(chan struct{}, 4), keys: keys}, nil
 }
 
 func RandomToken() string {
@@ -275,10 +283,10 @@ func (s *Service) Resolve(ctx context.Context, raw string, renew bool) (Identity
 		return Identity{}, ErrSession
 	}
 	var i Identity
-	err := s.pool.QueryRow(ctx, `SELECT u.id,m.household_id,m.id,u.username,u.display_name,m.role,u.must_change_password,u.auth_version,s.id,s.created_at,s.idle_expires_at
+	err := s.pool.QueryRow(ctx, `SELECT u.id,m.household_id,m.id,u.username,u.display_name,m.role,u.must_change_password,u.auth_version,s.id,s.created_at,s.idle_expires_at,s.reauthenticated_at
 	 FROM core.sessions s JOIN core.users u ON u.id=s.user_id JOIN core.memberships m ON m.user_id=u.id
 	 WHERE s.token_hash=$1 AND s.revoked_at IS NULL AND s.idle_expires_at>now() AND s.absolute_expires_at>now()
-	 AND s.auth_version=u.auth_version AND u.disabled_at IS NULL AND m.inactive_at IS NULL`, HashToken(raw)).Scan(&i.UserID, &i.HouseholdID, &i.MembershipID, &i.Username, &i.DisplayName, &i.Role, &i.MustChange, &i.AuthVersion, &i.SessionID, &i.CreatedAt, &i.ExpiresAt)
+	 AND s.auth_version=u.auth_version AND u.disabled_at IS NULL AND m.inactive_at IS NULL`, HashToken(raw)).Scan(&i.UserID, &i.HouseholdID, &i.MembershipID, &i.Username, &i.DisplayName, &i.Role, &i.MustChange, &i.AuthVersion, &i.SessionID, &i.CreatedAt, &i.ExpiresAt, &i.AuthenticatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Identity{}, ErrSession
 	}
@@ -323,7 +331,7 @@ func (s *Service) ChangePassword(ctx context.Context, id Identity, current, next
 		return ctx.Err()
 	}
 	if !PasswordValid(next) || next == current {
-		return errors.New("neues Passwort: mindestens 14 Zeichen, höchstens 72 Bytes, vom bisherigen verschieden")
+		return Rejection("neues Passwort: mindestens 14 Zeichen, höchstens 72 Bytes, vom bisherigen verschieden")
 	}
 	var old string
 	if err := s.pool.QueryRow(ctx, "SELECT password_hash FROM core.users WHERE id=$1", id.UserID).Scan(&old); err != nil {
@@ -358,27 +366,26 @@ func (s *Service) ChangePassword(ctx context.Context, id Identity, current, next
 	if err = audit.Event(ctx, tx, "core", "users", id.UserID, "password_changed", nil); err != nil {
 		return err
 	}
+	if err = securityevent.Record(ctx, tx, id.HouseholdID, id.UserID, "password_changed"); err != nil {
+		return err
+	}
 	return tx.Commit(ctx)
 }
 
-func (s *Service) Seal(data []byte) []byte {
-	nonce := make([]byte, s.aead.NonceSize())
-	if _, err := rand.Read(nonce); err != nil {
-		panic("cryptographic random source unavailable")
-	}
-	return s.aead.Seal(nonce, nonce, data, []byte("household-v1"))
+func (s *Service) SealRecord(binding secretbox.Binding, data []byte) (secretbox.Stored, error) {
+	return s.keys.Seal(binding, data)
 }
-func (s *Service) Open(data []byte) ([]byte, error) {
-	if len(data) < s.aead.NonceSize() {
-		return nil, errors.New("invalid encrypted data")
-	}
-	return s.aead.Open(nil, data[:s.aead.NonceSize()], data[s.aead.NonceSize():], []byte("household-v1"))
+func (s *Service) OpenRecord(binding secretbox.Binding, data secretbox.Stored) ([]byte, error) {
+	return s.keys.Open(binding, data)
 }
 
 func (s *Service) SetupTOTP(ctx context.Context, id Identity) (string, string, error) {
 	ctx = audit.WithActor(ctx, id.UserID, id.HouseholdID)
+	if err := s.Limit(ctx, "totp-setup", id.UserID, 10, time.Hour); err != nil {
+		return "", "", err
+	}
 	if !id.Recent() {
-		return "", "", errors.New("für diese Aktion erneut anmelden")
+		return "", "", ErrRecent
 	}
 	key, err := totp.Generate(totp.GenerateOpts{Issuer: "Household", AccountName: id.Username})
 	if err != nil {
@@ -389,15 +396,22 @@ func (s *Service) SetupTOTP(ctx context.Context, id Identity) (string, string, e
 		return "", "", err
 	}
 	defer rollback(ctx, tx)
-	if err = LockSession(ctx, tx, id); err != nil {
+	if err = LockRecentSession(ctx, tx, id); err != nil {
 		return "", "", err
 	}
-	tag, err := tx.Exec(ctx, "INSERT INTO core.totp_credentials(user_id,encrypted_secret,encryption_key_id) VALUES($1,$2,'v1') ON CONFLICT(user_id) DO UPDATE SET encrypted_secret=excluded.encrypted_secret WHERE core.totp_credentials.enabled_at IS NULL", id.UserID, s.Seal([]byte(key.Secret())))
+	sealed, err := s.SealRecord(secretbox.Binding{Purpose: "totp", UserID: id.UserID, RecordID: id.UserID}, []byte(key.Secret()))
+	if err != nil {
+		return "", "", err
+	}
+	tag, err := tx.Exec(ctx, `INSERT INTO core.totp_credentials(user_id,encrypted_secret,encryption_key_id,encryption_format)
+ VALUES($1,$2,$3,$4) ON CONFLICT(user_id) DO UPDATE SET encrypted_secret=excluded.encrypted_secret,
+ encryption_key_id=excluded.encryption_key_id,encryption_format=excluded.encryption_format
+ WHERE core.totp_credentials.enabled_at IS NULL`, id.UserID, sealed.Ciphertext, sealed.KeyID, sealed.Format)
 	if err != nil {
 		return "", "", err
 	}
 	if tag.RowsAffected() != 1 {
-		return "", "", errors.New("zweiter Faktor ist bereits aktiv")
+		return "", "", Rejection("zweiter Faktor ist bereits aktiv")
 	}
 	if err = audit.Event(ctx, tx, "core", "users", id.UserID, "totp_setup", nil); err != nil {
 		return "", "", err
@@ -410,26 +424,33 @@ func (s *Service) SetupTOTP(ctx context.Context, id Identity) (string, string, e
 
 func (s *Service) EnableTOTP(ctx context.Context, id Identity, code string) ([]string, error) {
 	ctx = audit.WithActor(ctx, id.UserID, id.HouseholdID)
+	if err := s.Limit(ctx, "totp-enable", id.UserID, 10, 15*time.Minute); err != nil {
+		return nil, err
+	}
 	if !id.Recent() {
-		return nil, errors.New("für diese Aktion erneut anmelden")
+		return nil, ErrRecent
 	}
 	tx, err := audit.Begin(ctx, s.pool)
 	if err != nil {
 		return nil, err
 	}
 	defer rollback(ctx, tx)
-	if err = LockSession(ctx, tx, id); err != nil {
+	if err = LockRecentSession(ctx, tx, id); err != nil {
 		return nil, err
 	}
-	var encrypted []byte
+	var encrypted secretbox.Stored
 	var enabled *time.Time
-	if err = tx.QueryRow(ctx, "SELECT encrypted_secret,enabled_at FROM core.totp_credentials WHERE user_id=$1 FOR UPDATE", id.UserID).Scan(&encrypted, &enabled); err != nil {
+	err = tx.QueryRow(ctx, "SELECT CASE WHEN octet_length(encrypted_secret)<=4096 THEN encrypted_secret END,encryption_key_id,encryption_format,enabled_at FROM core.totp_credentials WHERE user_id=$1 FOR UPDATE", id.UserID).Scan(&encrypted.Ciphertext, &encrypted.KeyID, &encrypted.Format, &enabled)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, Rejection("zuerst einen zweiten Faktor einrichten")
+	}
+	if err != nil {
 		return nil, err
 	}
 	if enabled != nil {
-		return nil, errors.New("zweiter Faktor ist bereits aktiv")
+		return nil, Rejection("zweiter Faktor ist bereits aktiv")
 	}
-	secret, err := s.Open(encrypted)
+	secret, err := s.OpenRecord(secretbox.Binding{Purpose: "totp", UserID: id.UserID, RecordID: id.UserID}, encrypted)
 	if err != nil {
 		return nil, err
 	}
@@ -454,6 +475,9 @@ func (s *Service) EnableTOTP(ctx context.Context, id Identity, code string) ([]s
 	if err = audit.Event(ctx, tx, "core", "users", id.UserID, "totp_enabled", nil); err != nil {
 		return nil, err
 	}
+	if err = securityevent.Record(ctx, tx, id.HouseholdID, id.UserID, "totp_enabled"); err != nil {
+		return nil, err
+	}
 	if err = tx.Commit(ctx); err != nil {
 		return nil, err
 	}
@@ -476,16 +500,16 @@ func factorCounter(secret, code string, now time.Time) (int64, bool) {
 }
 
 func (s *Service) verifyFactor(ctx context.Context, tx pgx.Tx, user, code string) error {
-	var encrypted []byte
+	var encrypted secretbox.Stored
 	var last *int64
-	err := tx.QueryRow(ctx, "SELECT encrypted_secret,last_accepted_counter FROM core.totp_credentials WHERE user_id=$1 AND enabled_at IS NOT NULL FOR UPDATE", user).Scan(&encrypted, &last)
+	err := tx.QueryRow(ctx, "SELECT CASE WHEN octet_length(encrypted_secret)<=4096 THEN encrypted_secret END,encryption_key_id,encryption_format,last_accepted_counter FROM core.totp_credentials WHERE user_id=$1 AND enabled_at IS NOT NULL FOR UPDATE", user).Scan(&encrypted.Ciphertext, &encrypted.KeyID, &encrypted.Format, &last)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil
 	}
 	if err != nil {
 		return err
 	}
-	secret, err := s.Open(encrypted)
+	secret, err := s.OpenRecord(secretbox.Binding{Purpose: "totp", UserID: user, RecordID: user}, encrypted)
 	if err != nil {
 		return fmt.Errorf("decrypt second factor: %w", err)
 	}
@@ -500,6 +524,9 @@ func (s *Service) verifyFactor(ctx context.Context, tx pgx.Tx, user, code string
 		}
 		if err == nil {
 			err = audit.Event(ctx, tx, "core", "users", user, "recovery_code_used", nil)
+		}
+		if err == nil {
+			err = securityevent.RecordAccount(ctx, tx, user, "recovery_code_used")
 		}
 	}
 	if err != nil {
@@ -538,12 +565,8 @@ func (s *Service) HashPassword(ctx context.Context, user, password string) ([]by
 	return bcrypt.GenerateFromPassword([]byte(password), 12)
 }
 
-func rollback(ctx context.Context, tx pgx.Tx) {
-	err := tx.Rollback(ctx)
-	if err != nil && !errors.Is(err, pgx.ErrTxClosed) {
-		return
-	}
-}
+// rollback releases an unfinished transaction; after Commit it is a no-op.
+func rollback(ctx context.Context, tx pgx.Tx) { _ = tx.Rollback(ctx) }
 
 func (s *Service) RecoverPassword(ctx context.Context, username, password string, resetFactor ...bool) error {
 	ctx = audit.WithSystem(ctx, "operator")
@@ -579,6 +602,9 @@ func (s *Service) RecoverPassword(ctx context.Context, username, password string
 	}
 	reset := len(resetFactor) > 0 && resetFactor[0]
 	if reset {
+		if _, err = tx.Exec(ctx, "DELETE FROM core.passkey_credentials WHERE user_id=$1", uid); err != nil {
+			return err
+		}
 		if _, err = tx.Exec(ctx, "DELETE FROM core.totp_credentials WHERE user_id=$1", uid); err != nil {
 			return err
 		}
@@ -587,6 +613,9 @@ func (s *Service) RecoverPassword(ctx context.Context, username, password string
 		}
 	}
 	if err = audit.Event(ctx, tx, "core", "users", uid, "operator_password_recovery", map[string]any{"mfa_reset": reset}); err != nil {
+		return err
+	}
+	if err = securityevent.RecordAccount(ctx, tx, uid, "password_changed"); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)

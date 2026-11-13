@@ -1,0 +1,20 @@
+{
+  "Fristhinweise": "Deadline notifications",
+  "Fristhinweise einrichten": "Set up deadline notifications",
+  "Fristhinweise speichern": "Save deadline notifications",
+  "Friststand geändert. Dokument erneut öffnen.": "The deadline has changed. Reopen the document.",
+  "Die Zuständigkeit für Hinweise ist unabhängig davon, wer die Frist bestätigt hat.": "Responsibility for notifications is separate from who confirmed the deadline.",
+  "Der Hinweis wird zur bestätigten Erinnerung um 09:00 Uhr in der Haushaltszeitzone fällig. Er bleibt höchstens 24 Stunden aktuell. Beim Aktivieren werden vergangene Erinnerungen nicht nachgeholt.": "The notification is due at the confirmed reminder time, at 09:00 in the household timezone. It stays current for at most 24 hours. Enabling notifications does not replay past reminders.",
+  "Diese Frist an die zuständige Person melden": "Notify the responsible person about this deadline",
+  "Die Person muss Dokumenthinweise zusätzlich im Konto und auf jedem gewünschten Gerät erlauben. Dokumenttitel, Dateinamen und Inhalte bleiben vom Sperrbildschirm fern.": "The person must also allow document notifications for their account and each selected device. Document titles, filenames and contents stay off the lock screen.",
+  "Importprobleme werden nur der Person gemeldet, die den Eingang freigegeben hat und weiterhin Administrator ist. Dokumenthinweise müssen im eigenen Konto und auf dem Gerät erlaubt sein.": "Import problems are sent only to the person who approved the input and is still an administrator. Document notifications must be enabled for their account and device.",
+  "Fehlgeschlagene Verarbeitung kann nur der Person gemeldet werden, die den Auftrag gestartet hat. Dokumenthinweise müssen im eigenen Konto und auf dem Gerät erlaubt sein.": "Processing failures can be sent only to the person who started the job. Document notifications must be enabled for their account and device.",
+  "Dokumenthinweise auf Geräten verwalten": "Manage document notifications on devices",
+  "Frist, Zuständigkeit und Benachrichtigungsversion prüfen": "Check the deadline, responsible person and notification version",
+  "Zuständige Person für Fristhinweise auswählen": "Choose a responsible person for deadline notifications",
+  "Fristen und persönliche Importprobleme": "Deadlines and personal import problems",
+  "Fristhinweise gehen nur an die ausdrücklich zugewiesene Person. Bestätigte Erinnerung und Haushaltszeitzone bleiben maßgeblich; verstrichene Hinweise werden nicht nachgeholt.": "Deadline notifications go only to the explicitly assigned person. The confirmed reminder and household timezone apply; elapsed notifications are not replayed.",
+  "Verarbeitungsfehler gehen nur an die anfragende Person, Importfehler nur an den weiterhin berechtigten Administrator des Eingangs. Wiederholte Fehler desselben Vorgangs erzeugen keine neue Meldung.": "Processing failures go only to the requester, and import failures only to the input's still-authorized administrator. Repeated failures in the same episode do not create another notification.",
+  "Dokumenttitel, Dateinamen, Postfächer und Inhalte werden nicht übertragen. Konto und jedes Gerät brauchen eine eigene Freigabe.": "Document titles, filenames, mailboxes and contents are not transmitted. Your account and each device need separate permission.",
+  "Bestätigte Dokumentfristen prüfen": "Review confirmed document deadlines"
+}

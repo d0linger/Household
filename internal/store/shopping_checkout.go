@@ -278,7 +278,9 @@ func (s *Store) CheckoutShopping(ctx context.Context, id auth.Identity, listID, 
 		if lineErr != nil {
 			var invalid Invalid
 			if errors.As(lineErr, &invalid) {
-				return nil, Invalid{String(item["name"]) + ": " + invalid.Message}
+				// A quoted item parameter keeps its boundary unambiguous when
+				// the HTTP layer localizes this trusted, wrapped validation error.
+				return nil, Invalid{fmt.Errorf("artikel %q: %w", String(item["name"]), invalid).Error()}
 			}
 			return nil, fmt.Errorf("%s: %w", String(item["name"]), lineErr)
 		}

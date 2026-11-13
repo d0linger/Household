@@ -3,7 +3,8 @@ const fs=require('node:fs/promises'),path=require('node:path'),crypto=require('n
 const {chromium}=require('playwright'),AxeBuilder=require('@axe-core/playwright').default;
 const origin=new URL(process.env.HOUSEHOLD_BROWSER_URL||'http://127.0.0.1:8101');
 if(!['127.0.0.1','localhost'].includes(origin.hostname)||origin.port!=='8101'||origin.pathname!=='/'||origin.search||origin.hash)throw Error('Meters review requires isolated Household8101');
-const output=path.resolve('outputs/meters-workspace-review'),report={checks:[],screenshots:[],accessibility:[],errors:[],externalRequests:[],scope:'Actual isolated synthetic Meters workflows. No production device, external service or hosted CI claim.'};
+const output=path.resolve(process.env.HOUSEHOLD_METERS_BROWSER_OUTPUT||'outputs/meters-workspace-review'),report={checks:[],screenshots:[],accessibility:[],errors:[],externalRequests:[],scope:'Actual isolated synthetic Meters workflows. No production device, external service or hosted CI claim.'};
+if(!output.startsWith(path.resolve('outputs')+path.sep))throw Error('Meter evidence must remain inside workspace outputs');
 const must=(condition,message)=>{if(!condition)throw Error(message);report.checks.push(message);};
 const hash=data=>crypto.createHash('sha256').update(data).digest('hex');
 (async()=>{

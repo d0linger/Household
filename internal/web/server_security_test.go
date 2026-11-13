@@ -139,6 +139,36 @@ func TestPanicDoesNotDiscloseRequestData(t *testing.T) {
 	if !strings.Contains(logs.String(), w.Header().Get("X-Request-ID")) {
 		t.Fatal("panic is not correlated with request ID")
 	}
+	if !strings.Contains(logs.String(), `"panic_type":"string"`) || !strings.Contains(logs.String(), `"call_path":"household/internal/web.TestPanicDoesNotDiscloseRequestData.`) {
+		t.Fatalf("panic log lacks its type or originating frame: %s", logs.String())
+	}
+}
+
+func TestPanicAfterResponseStartAndAbort(t *testing.T) {
+	t.Parallel()
+	s := &Server{Cfg: config.Config{Origin: "http://localhost"}, Log: slog.New(slog.NewTextHandler(io.Discard, nil))}
+	t.Run("partial response is not overwritten", func(t *testing.T) {
+		t.Parallel()
+		h := s.middleware(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			_, _ = w.Write([]byte("partial"))
+			panic("late failure")
+		}))
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "http://localhost/", nil))
+		if w.Code != http.StatusOK || w.Body.String() != "partial" {
+			t.Fatalf("started response was altered: %d %q", w.Code, w.Body.String())
+		}
+	})
+	t.Run("abort handler propagates", func(t *testing.T) {
+		t.Parallel()
+		h := s.middleware(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { panic(http.ErrAbortHandler) }))
+		defer func() {
+			if recovered := recover(); recovered != http.ErrAbortHandler {
+				t.Fatalf("ErrAbortHandler was swallowed: %v", recovered)
+			}
+		}()
+		h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "http://localhost/", nil))
+	})
 }
 
 func TestUnauthenticatedPrivateRoutes(t *testing.T) {

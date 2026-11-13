@@ -6,7 +6,8 @@ const AxeBuilder = require('@axe-core/playwright').default;
 const base = process.env.HOUSEHOLD_BROWSER_URL || 'http://localhost:8101';
 const origin = new URL(base);
 if (!['localhost','127.0.0.1'].includes(origin.hostname) || origin.port !== '8101' || origin.pathname !== '/') throw Error('Requires isolated Household review server 8101');
-const output = path.resolve('outputs/catalog-review');
+const output = path.resolve(process.env.HOUSEHOLD_BROWSER_OUTPUT || 'outputs/catalog-review');
+if (!output.startsWith(path.resolve('outputs') + path.sep)) throw Error('Browser evidence must stay within workspace outputs');
 const report = {checks:[], screenshots:[], accessibility:[], errors:[], externalRequests:[]};
 const must = (value, name) => {if (!value) throw Error(name); report.checks.push(name);};
 (async () => {
@@ -192,6 +193,15 @@ const must = (value, name) => {if (!value) throw Error(name); report.checks.push
     must(await page.locator('#shopping-claim').evaluate(el=>el.getBoundingClientRect().bottom<document.querySelector('[data-shopping-item]').getBoundingClientRect().top),'Own shopping activity action is reachable before article checks');
     must(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),'Catalog mobile view has no horizontal overflow');
     must(await page.locator('[data-shopping-check]').first().evaluate(el=>el.getBoundingClientRect().bottom<=document.querySelector('.mobile-nav').getBoundingClientRect().top),'Catalog first check remains above fixed mobile navigation');
+    report.mobileCheckGeometry = [await page.locator('[data-shopping-check]').first().evaluate(el=>({width:innerWidth,check:el.getBoundingClientRect().toJSON(),navigation:document.querySelector('.mobile-nav').getBoundingClientRect().toJSON()}))];
+    await page.setViewportSize({width:320,height:844});
+    await capture('catalog-mobile-dark-320');
+    must(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),'Catalog320px view has no horizontal overflow');
+    await page.locator('[data-shopping-check]').first().focus();
+    const narrowCheck = await page.locator('[data-shopping-check]').first().evaluate(el=>({width:innerWidth,check:el.getBoundingClientRect().toJSON(),navigation:document.querySelector('.mobile-nav').getBoundingClientRect().toJSON(),header:document.querySelector('.topbar').getBoundingClientRect().toJSON(),focused:el===document.activeElement}));
+    report.mobileCheckGeometry.push(narrowCheck);
+    const focusedCapture=path.join(output,'catalog-mobile-dark-320-focused.png');await page.screenshot({path:focusedCapture,fullPage:false,animations:'disabled'});report.screenshots.push(focusedCapture);
+    must(narrowCheck.focused&&narrowCheck.check.top>=narrowCheck.header.bottom&&narrowCheck.check.bottom<=narrowCheck.navigation.top,'Catalog320px keyboard check is unobscured between fixed header and navigation');
     must(!report.errors.length,'No catalog JavaScript exceptions');
     must(!report.externalRequests.length,'No external catalog frontend requests');
     report.passed=true;

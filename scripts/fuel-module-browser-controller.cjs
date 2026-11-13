@@ -41,7 +41,11 @@ const SQL={
  'households',(SELECT count(*) FROM core.households),
  'actor_allowed',EXISTS(SELECT 1 FROM core.memberships m JOIN core.users u ON u.id=m.user_id
  WHERE m.household_id=:'household'::uuid AND m.user_id=:'actor'::uuid AND m.role='admin' AND m.inactive_at IS NULL AND u.disabled_at IS NULL AND NOT u.must_change_password),
- 'session_recent',EXISTS(SELECT 1 FROM core.sessions WHERE id=:'session'::uuid AND user_id=:'actor'::uuid AND revoked_at IS NULL AND created_at>clock_timestamp()-interval '8 minutes'),
+ 'session_recent',EXISTS(SELECT 1 FROM core.sessions s JOIN core.users u ON u.id=s.user_id
+ WHERE s.id=:'session'::uuid AND s.user_id=:'actor'::uuid AND s.revoked_at IS NULL
+ AND s.idle_expires_at>clock_timestamp() AND s.absolute_expires_at>clock_timestamp()
+ AND s.auth_version=u.auth_version AND u.disabled_at IS NULL AND NOT u.must_change_password
+ AND s.reauthenticated_at>clock_timestamp()-interval '10 minutes' AND s.reauthenticated_at<=clock_timestamp()),
  'generation',(SELECT data_generation FROM core.module_states WHERE household_id=:'household'::uuid AND module_id='fuel'),
  'state',(SELECT state FROM core.module_states WHERE household_id=:'household'::uuid AND module_id='fuel'));
 `,

@@ -13,6 +13,8 @@ import (
 	"strings"
 	"time"
 
+	"household/internal/notification"
+
 	webpushlib "github.com/SherClockHolmes/webpush-go"
 )
 
@@ -160,20 +162,18 @@ type outcome struct {
 }
 
 func (s *sender) send(ctx context.Context, receiver Receiver, payload []byte, topic string) outcome {
+	return s.sendAuthorized(ctx, receiver, payload, topic, nil)
+}
+
+// sendAuthorized revalidates mutable application authority after waiting for a
+// transport slot. The guard must finish its database transaction before return.
+func (s *sender) sendAuthorized(ctx context.Context, receiver Receiver, payload []byte, topic string, guard func(context.Context) error) outcome {
 	if len(payload) > 1024 || len(topic) != 32 {
 		return outcome{code: "invalid_payload"}
 	}
 	var notice pushPayload
-	if strictJSON(payload, &notice) != nil || notice.Schema != 1 || notice.Kind != "shopping_notice" || !canonicalUUID(notice.ID) || !hexDigest(notice.AudienceScope) {
+	if strictJSON(payload, &notice) != nil || !notification.ValidMessage(notice.Schema, notice.Kind, notice.ID, notice.AudienceScope, notice.ExpiresAt, time.Now().Unix()) {
 		return outcome{code: "invalid_payload"}
-	}
-	remaining := notice.ExpiresAt - time.Now().Unix()
-	if remaining < 1 || remaining > 86400 {
-		return outcome{code: "invalid_payload"}
-	}
-	ttl := 300
-	if remaining < int64(ttl) {
-		ttl = int(remaining)
 	}
 	if validateReceiver(receiver) != nil {
 		return outcome{code: "invalid_connection"}
@@ -186,9 +186,29 @@ func (s *sender) send(ctx context.Context, receiver Receiver, payload []byte, to
 	case <-ctx.Done():
 		return outcome{code: "network_timeout"}
 	}
+	if ctx.Err() != nil {
+		return outcome{code: "network_timeout"}
+	}
+	if guard != nil && guard(ctx) != nil {
+		return outcome{code: "authority_superseded"}
+	}
+	// A short-lived timer may expire while waiting for one of the two slots.
+	// Recompute TTL after the wait; never send an already stale wire reference.
+	if !notification.ValidMessage(notice.Schema, notice.Kind, notice.ID, notice.AudienceScope, notice.ExpiresAt, time.Now().Unix()) {
+		return outcome{code: "invalid_payload"}
+	}
+	remaining := notice.ExpiresAt - time.Now().Unix()
+	if remaining < 1 {
+		return outcome{code: "invalid_payload"}
+	}
+	ttl := min(300, int(remaining))
+	urgency := webpushlib.UrgencyLow
+	if notice.Schema == 2 && notice.Kind == "cooking_timer" {
+		urgency = webpushlib.UrgencyHigh
+	}
 	// The pinned library adds mailto: itself for a non-HTTPS subscriber.
 	subscriber := strings.TrimPrefix(s.contact, "mailto:")
-	response, err := webpushlib.SendNotificationWithContext(ctx, payload, &webpushlib.Subscription{Endpoint: receiver.Endpoint, Keys: webpushlib.Keys{P256dh: receiver.Keys.P256DH, Auth: receiver.Keys.Auth}}, &webpushlib.Options{HTTPClient: s.client, Subscriber: subscriber, VAPIDPublicKey: s.public, VAPIDPrivateKey: s.private, TTL: ttl, Topic: topic, Urgency: webpushlib.UrgencyLow, RecordSize: 2048})
+	response, err := webpushlib.SendNotificationWithContext(ctx, payload, &webpushlib.Subscription{Endpoint: receiver.Endpoint, Keys: webpushlib.Keys{P256dh: receiver.Keys.P256DH, Auth: receiver.Keys.Auth}}, &webpushlib.Options{HTTPClient: s.client, Subscriber: subscriber, VAPIDPublicKey: s.public, VAPIDPrivateKey: s.private, TTL: ttl, Topic: topic, Urgency: urgency, RecordSize: 2048})
 	if err != nil {
 		return outcome{code: "network_uncertain"}
 	}

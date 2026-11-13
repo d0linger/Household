@@ -21,6 +21,7 @@ import (
 	"household/internal/audit"
 	"household/internal/auth"
 	"household/internal/config"
+	"household/internal/secretbox"
 	"household/internal/store"
 	"household/internal/value"
 
@@ -29,18 +30,23 @@ import (
 )
 
 type Service struct {
-	pool                                                   *pgxpool.Pool
-	auth                                                   *auth.Service
-	store                                                  *store.Store
-	log                                                    *slog.Logger
-	state, private, public, contact, vapidID, encryptionID string
-	transport                                              *sender
+	pool                                     *pgxpool.Pool
+	auth                                     *auth.Service
+	store                                    *store.Store
+	log                                      *slog.Logger
+	state, private, public, contact, vapidID string
+	keys                                     *secretbox.Keyring
+	transport                                *sender
 }
 
 // New validates supplied keys even when the optional transport is disabled.
 func New(pool *pgxpool.Pool, authentication *auth.Service, records *store.Store, cfg config.Config, log *slog.Logger) (*Service, error) {
 	s := &Service{pool: pool, auth: authentication, store: records, log: log, state: "disabled"}
-	s.encryptionID = digest("household-encryption-v1\x00" + cfg.EncryptionKey)
+	keys, err := cfg.Keyring()
+	if err != nil {
+		return nil, err
+	}
+	s.keys = keys
 	if cfg.WebPushPrivateKey != "" {
 		private, err := decodeKey(cfg.WebPushPrivateKey, 32)
 		if err != nil {

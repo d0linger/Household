@@ -5,7 +5,7 @@
 .chores-nav a[aria-current=page]{background:var(--soft);color:var(--accent);font-weight:650;text-decoration:none}
 .chores-workspace h2{font-size:1.35rem;margin:28px 0 12px}.chores-workspace h3{font-size:1.05rem;margin:0 0 8px}
 .chores-workspace p{max-width:72ch;overflow-wrap:anywhere}.chores-workspace input,.chores-workspace textarea{caret-color:var(--accent)}
-.chores-workspace ::selection{background:var(--accent);color:var(--surface)}
+.chores-workspace ::selection{background:var(--accent);color:var(--on-accent)}
 .chores-workspace button,.chores-workspace .button,.chores-workspace select,.chores-workspace summary{min-height:44px}
 .chores-workspace :focus-visible{outline:3px solid var(--accent);outline-offset:3px}
 .chores-workspace button:disabled{cursor:wait;opacity:.6}

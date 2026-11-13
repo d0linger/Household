@@ -14,7 +14,7 @@ import (
 
 func TestPantryExtensionsPublicShellAndCurrentSessionContext(t *testing.T) {
 	f := newIntegrationFixture(t)
-	response, body, err := f.request(http.MethodGet, "/offline/scans", "", "", "", nil, nil)
+	response, body, err := f.request(http.MethodGet, "/offline/scans?lang=de", "", "", "", nil, nil)
 	if err != nil || response.StatusCode != http.StatusOK {
 		t.Fatalf("public data-free shell: response=%v error=%v", response, err)
 	}
@@ -27,6 +27,12 @@ func TestPantryExtensionsPublicShellAndCurrentSessionContext(t *testing.T) {
 		!strings.Contains(response.Header.Get("Content-Security-Policy"), "connect-src 'self'") ||
 		!strings.Contains(response.Header.Get("Content-Security-Policy"), "media-src 'self' blob:") {
 		t.Fatal("dedicated camera or same-origin policy differs")
+	}
+	response, body, err = f.request(http.MethodGet, "/offline/scans", f.token, "", "", nil, nil)
+	if err != nil || response.StatusCode != http.StatusOK || response.Header.Get("Cache-Control") != "private,no-store" ||
+		len(response.Cookies()) != 0 || strings.Contains(string(body), f.identity.UserID) ||
+		strings.Contains(string(body), f.identity.SessionID) || strings.Contains(string(body), f.app.Auth.CSRF(f.token, "session")) {
+		t.Fatal("unqualified locale-dependent shell became shared or contained private identity")
 	}
 	response, _, err = f.request(http.MethodGet, "/login", "", "", "", nil, nil)
 	if err != nil || response.StatusCode != http.StatusOK ||
@@ -103,54 +109,64 @@ func TestPantryExtensionsServiceWorkerCachesOnlyNeutralScanShell(t *testing.T) {
 	if err = json.Unmarshal(match[1], &paths); err != nil {
 		t.Fatal(err)
 	}
-	neutral, shoppingNeutral, recipesNeutral := false, false, false
+	shells := []struct{ path, marker string }{
+		{"/offline", ""}, {"/offline/scans", ""},
+		{"/offline/shopping", "data-shopping-offline"},
+		{"/offline/recipes", `<section id="recipe-offline"`},
+	}
+	expected := make(map[string]bool, 8)
+	for _, shell := range shells {
+		for _, locale := range []string{"de", "en"} {
+			expected[shell.path+"?lang="+locale] = false
+		}
+	}
+	assetPath := regexp.MustCompile(`^/assets/[a-f0-9]{12}/[a-z0-9][a-z0-9.-]*\.(js|css|svg|png)$`)
 	for _, path := range paths {
-		if path == "/offline/scans" {
-			neutral = true
-		}
-		if path == "/offline/shopping" {
-			shoppingNeutral = true
-		}
-		if path == "/offline/recipes" {
-			recipesNeutral = true
-		}
-		if path != "/offline" && path != "/offline/scans" && path != "/offline/shopping" && path != "/offline/recipes" && !strings.HasPrefix(path, "/assets/") {
+		if seen, exists := expected[path]; exists {
+			if seen {
+				t.Fatal("duplicate locale-qualified public shell", path)
+			}
+			expected[path] = true
+		} else if !assetPath.MatchString(path) {
 			t.Fatal("private data entered public asset cache", path)
 		}
 	}
-	if !neutral {
-		t.Fatal("offline restart has no neutral scan document")
-	}
-	if !shoppingNeutral {
-		t.Fatal("offline restart has no exact neutral Shopping document")
-	}
-	if !recipesNeutral {
-		t.Fatal("offline restart has no exact neutral Recipes document")
+	for path, seen := range expected {
+		if !seen {
+			t.Fatal("offline restart lacks an exact locale-qualified neutral document", path)
+		}
 	}
 	for _, caller := range []struct {
 		name, token string
 	}{{"anonymous", ""}, {"current administrator", f.token}} {
 		t.Run(caller.name, func(t *testing.T) {
-			for _, shell := range []struct{ path, marker string }{
-				{"/offline/shopping", "data-shopping-offline"},
-				{"/offline/recipes", `<section id="recipe-offline"`},
-			} {
-				response, raw, requestErr := f.request(http.MethodGet, shell.path, caller.token, "", "", nil, nil)
-				if requestErr != nil || response.StatusCode != http.StatusOK {
-					t.Fatal("neutral document unavailable", shell.path, requestErr)
-				}
-				if !strings.Contains(response.Header.Get("Cache-Control"), "public") || len(response.Cookies()) != 0 {
-					t.Fatal("neutral document set private cache state or a cookie", shell.path)
-				}
-				text := string(raw)
-				for _, required := range []string{`data-user=""`, `data-household=""`, `<meta name="csrf-token" content="">`, shell.marker} {
-					if !strings.Contains(text, required) {
-						t.Fatal("shell did not retain empty identity/CSRF fields and its neutral view", shell.path)
+			for _, shell := range shells {
+				for _, locale := range []string{"de", "en"} {
+					qualified := shell.path + "?lang=" + locale
+					response, raw, requestErr := f.request(http.MethodGet, qualified, caller.token, "", "", nil, nil)
+					if requestErr != nil || response.StatusCode != http.StatusOK {
+						t.Fatal("neutral document unavailable", shell.path, requestErr)
 					}
-				}
-				for _, private := range []string{f.identity.UserID, f.identity.HouseholdID, f.identity.SessionID, f.identity.MembershipID, f.identity.Username, f.token, f.app.Auth.CSRF(f.token, "session")} {
-					if private != "" && strings.Contains(text, private) {
-						t.Fatal("shell included fixture identity or credentials", shell.path)
+					if !strings.Contains(response.Header.Get("Cache-Control"), "public") || len(response.Cookies()) != 0 {
+						t.Fatal("neutral document set private cache state or a cookie", shell.path)
+					}
+					text := string(raw)
+					language := "de-AT"
+					if locale == "en" {
+						language = "en-GB"
+					}
+					if !strings.Contains(text, `lang="`+language+`"`) || !strings.Contains(text, `data-locale="`+locale+`"`) {
+						t.Fatal("public shell language differs from its cache key", qualified)
+					}
+					for _, required := range []string{`data-user=""`, `data-household=""`, `<meta name="csrf-token" content="">`, shell.marker} {
+						if !strings.Contains(text, required) {
+							t.Fatal("shell did not retain empty identity/CSRF fields and its neutral view", shell.path)
+						}
+					}
+					for _, private := range []string{f.identity.UserID, f.identity.HouseholdID, f.identity.SessionID, f.identity.MembershipID, f.identity.Username, f.token, f.app.Auth.CSRF(f.token, "session")} {
+						if private != "" && strings.Contains(text, private) {
+							t.Fatal("shell included fixture identity or credentials", shell.path)
+						}
 					}
 				}
 			}

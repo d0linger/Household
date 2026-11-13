@@ -3,6 +3,7 @@ package web
 import (
 	"context"
 	"errors"
+	"household/internal/i18n"
 	"net/http"
 	"net/url"
 	"strings"
@@ -117,7 +118,7 @@ func (s *Server) writePlanningCalendar(w http.ResponseWriter, r *http.Request, c
 	raw, err := ical.Marshal(calendar.Events)
 	if err != nil {
 		s.Log.Error("calendar encoding failed", "request_id", trace(r))
-		http.Error(w, "Kalender vorübergehend nicht verfügbar", http.StatusInternalServerError)
+		http.Error(w, i18n.Text(requestLocale(r), "Kalender vorübergehend nicht verfügbar"), http.StatusInternalServerError)
 		return
 	}
 	w.Header().Set("Content-Type", "text/calendar; charset=utf-8")
@@ -136,7 +137,7 @@ func (s *Server) planningCalendarFeed(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("X-Robots-Tag", "noindex, nofollow, noarchive")
 	token := r.PathValue("token")
 	if r.URL.RawQuery != "" || !strings.HasSuffix(token, ".ics") || len(strings.TrimSuffix(token, ".ics")) != 43 {
-		http.Error(w, "Nicht gefunden", http.StatusNotFound)
+		http.Error(w, i18n.Text(requestLocale(r), "Nicht gefunden"), http.StatusNotFound)
 		return
 	}
 	s.Store.Gate.RLock()
@@ -146,22 +147,22 @@ func (s *Server) planningCalendarFeed(w http.ResponseWriter, r *http.Request) {
 	if err := s.Auth.Limit(ctx, "mealplan-calendar-feed", s.clientIP(r), 120, time.Minute); err != nil {
 		if errors.Is(err, auth.ErrLimited) {
 			w.Header().Set("Retry-After", "60")
-			http.Error(w, "Kalenderabruf später erneut versuchen", http.StatusTooManyRequests)
+			http.Error(w, i18n.Text(requestLocale(r), "Kalenderabruf später erneut versuchen"), http.StatusTooManyRequests)
 		} else {
-			http.Error(w, "Kalender vorübergehend nicht verfügbar", http.StatusServiceUnavailable)
+			http.Error(w, i18n.Text(requestLocale(r), "Kalender vorübergehend nicht verfügbar"), http.StatusServiceUnavailable)
 		}
 		return
 	}
 	calendar, err := s.Store.PlanningCalendarFeed(ctx, strings.TrimSuffix(token, ".ics"))
 	if errors.Is(err, store.ErrNotFound) || errors.Is(err, store.ErrForbidden) {
-		http.Error(w, "Nicht gefunden", http.StatusNotFound)
+		http.Error(w, i18n.Text(requestLocale(r), "Nicht gefunden"), http.StatusNotFound)
 		return
 	}
 	if err != nil {
 		// No error rendering, URL echo or token-bearing diagnostic on this
 		// public capability route, including failed conditional requests.
 		s.Log.Error("calendar feed unavailable", "request_id", trace(r))
-		http.Error(w, "Kalender vorübergehend nicht verfügbar", http.StatusServiceUnavailable)
+		http.Error(w, i18n.Text(requestLocale(r), "Kalender vorübergehend nicht verfügbar"), http.StatusServiceUnavailable)
 		return
 	}
 	s.writePlanningCalendar(w, r, calendar, false)

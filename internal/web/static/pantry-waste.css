@@ -1,7 +1,7 @@
 .waste-totals{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,15rem),1fr));gap:var(--space-4,1rem)}
-.waste-total{border-left:3px solid var(--accent,#0e6b57);padding:.5rem 1rem;background:var(--ground);border-radius:.4rem}
+.waste-total{border-bottom:1px solid var(--line);padding:.5rem 1rem;background:transparent;border-radius:0}
 .waste-total h3{margin:0 0 .5rem}.waste-total p{margin:.4rem 0}.waste-total strong{font-variant-numeric:tabular-nums}
-.waste-review{border:2px solid var(--accent,#0e6b57);padding:1rem;border-radius:var(--radius,1rem);margin-top:1rem}
+.waste-review{border:2px solid var(--accent);padding:1rem;border-radius:var(--radius,1rem);margin-top:1rem}
 .waste-entry{border-bottom:1px solid var(--line);padding:1rem 0;overflow-wrap:anywhere}.waste-entry:last-child{border-bottom:0}
 .waste-entry p{margin:.3rem 0}.waste-lines{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,16rem),1fr));gap:.5rem 1.25rem}
 #pantry-waste .actions{flex-wrap:wrap}#pantry-waste [hidden]{display:none!important}#pantry-waste fieldset{min-width:0}

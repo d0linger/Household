@@ -1,15 +1,16 @@
 {{define "meters-workspace"}}
 <link rel="stylesheet" href="{{index .Asset "meters.css"}}">
 <section id="meters-workspace" class="energy-workspace" data-pane="{{index .Extra "pane"}}" data-register="{{index .Extra "register_id"}}" data-generation="{{index .Extra "generation"}}" data-ha-available="{{index .Extra "ha_available"}}" data-mqtt-available="{{index .Extra "mqtt_available"}}" aria-busy="true">
- <div class="page-heading"><div><h1 id="energy-heading">Zähler &amp; Energie</h1><p id="energy-context" class="muted">Aktuellen Zählerstand laden …</p></div>{{if .User.CanWrite}}<a id="energy-capture-link" class="button primary" href="/m/meters/workspace/capture">Ablesen</a>{{end}}</div>
- <nav class="energy-nav" aria-label="Zählerbereiche"><a href="/m/meters/workspace/overview" data-energy-pane="overview">Übersicht</a><a href="/m/meters/workspace/capture" data-energy-pane="capture">Ablesen</a><a href="/m/meters/workspace/history" data-energy-pane="history">Verlauf</a><a href="/m/meters/workspace/costs" data-energy-pane="costs">Kosten</a><a href="/m/meters/workspace/plans" data-energy-pane="plans">Ableseplan</a><a href="/m/meters/workspace/imports" data-energy-pane="imports">Import</a><a href="/m/meters/workspace/settings" data-energy-pane="settings">Einrichten</a></nav>
- <p id="energy-status" class="notice" role="status">Messungen werden mit aktueller Berechtigung und Verbindung gespeichert.</p>
- <section id="energy-error" class="notice error" role="alert" tabindex="-1" hidden><h2>Bitte prüfen</h2><p id="energy-error-text"></p><div class="actions"><button id="energy-retry" type="button" hidden>Unveränderten Vorgang erneut prüfen</button><button id="energy-current" type="button">Aktuellen Stand daneben anzeigen</button></div><div id="energy-conflict"></div></section>
- <div id="energy-selection"><label for="energy-register">Zählerregister</label><select id="energy-register"><option value="">Register laden …</option></select></div>
+ {{template "workspace-nav" .}}
+ <div class="page-heading"><div><h1 id="energy-heading">{{t "Zähler & Energie"}}</h1><p id="energy-context" class="muted">{{t "Aktuellen Zählerstand laden …"}}</p></div></div>
+ <p id="energy-status" class="notice" role="status">{{t "Messungen werden mit aktueller Berechtigung und Verbindung gespeichert."}}</p>
+ <section id="energy-error" class="notice error" role="alert" tabindex="-1" hidden><h2>{{t "Bitte prüfen"}}</h2><p id="energy-error-text"></p><div class="actions"><button id="energy-retry" type="button" hidden>{{t "Unveränderten Vorgang erneut prüfen"}}</button><button id="energy-current" type="button">{{t "Aktuellen Stand daneben anzeigen"}}</button></div><div id="energy-conflict"></div></section>
+ <div id="energy-selection"><label for="energy-register">{{t "Zählerregister"}}</label><select id="energy-register"><option value="">{{t "Register laden …"}}</option></select><p class="fine">{{t "Das gewählte Register bleibt beim Bereichswechsel erhalten."}} <a id="energy-selected-overview" href="/m/meters/workspace/overview" data-energy-pane="overview">{{t "Zur Zählerübersicht"}}</a></p></div>
  <div id="energy-filters"></div><div id="energy-content"></div><div id="energy-editor"></div><div id="energy-paging" class="actions"></div>
- <noscript><p>Für die geführte Ablesung wird das lokal bereitgestellte JavaScript benötigt. Die bisherigen <a href="/m/meters/meters">Zählerlisten</a> bleiben erreichbar.</p></noscript>
+ <noscript><p>{{t "Für die geführte Ablesung wird das lokal bereitgestellte JavaScript benötigt. Die bisherigen"}} <a href="/m/meters/meters">{{t "Zählerlisten"}}</a> {{t "bleiben erreichbar."}}</p></noscript>
 </section>
 <script nonce="{{.Nonce}}" src="{{index .Asset "meters-workspace.js"}}" defer></script>
 <script nonce="{{.Nonce}}" src="{{index .Asset "meters-forms.js"}}" defer></script>
 <script nonce="{{.Nonce}}" src="{{index .Asset "meters-finance.js"}}" defer></script>
+<script nonce="{{.Nonce}}" src="{{index .Asset "meters-notifications.js"}}" defer></script>
 {{end}}

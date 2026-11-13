@@ -1,6 +1,7 @@
 package web
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -70,13 +71,7 @@ func (s *Server) password(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/login", http.StatusSeeOther)
 }
 func (s *Server) home(w http.ResponseWriter, r *http.Request) {
-	for _, m := range s.Store.Modules {
-		if _, ok := s.Store.State(m.ID); ok {
-			http.Redirect(w, r, "/m/"+m.ID+"/"+m.Entities[0].ID, http.StatusSeeOther)
-			return
-		}
-	}
-	http.Redirect(w, r, "/settings/modules", http.StatusSeeOther)
+	s.today(w, r)
 }
 
 func (s *Server) resolve(r *http.Request) (module.Descriptor, module.Entity, error) {
@@ -412,11 +407,14 @@ func (s *Server) referencesAPI(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, records)
 }
 func (s *Server) bootstrap(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, 200, map[string]any{"user": identity(r), "modules": s.Store.Modules, "states": s.Store.States(), "csrf": r.Context().Value(csrfKey), "version": "0.1.0"})
+	writeJSON(w, 200, map[string]any{"user": identity(r), "modules": localizedModules(requestLocale(r), orderedModules(s.Store.Modules, requestModuleOrder(r))), "states": s.Store.States(), "csrf": r.Context().Value(csrfKey), "version": "0.1.0", "locale": requestLocale(r)})
 }
 func (s *Server) settings(w http.ResponseWriter, r *http.Request) {
 	p := s.page(r, "Einstellungen")
 	p.View = "settings"
+	if r.URL.Path == "/settings/modules" {
+		p.Title, p.View = "Module", "modules"
+	}
 	s.render(w, r, p)
 }
 func (s *Server) setModule(w http.ResponseWriter, r *http.Request) {
@@ -427,232 +425,68 @@ func (s *Server) setModule(w http.ResponseWriter, r *http.Request) {
 	}
 	http.Redirect(w, r, "/settings/modules", http.StatusSeeOther)
 }
-func (s *Server) securityPage(w http.ResponseWriter, r *http.Request) {
-	p := s.page(r, "Sicherheit")
-	p.View = "security"
-	rows, err := s.Pool.Query(r.Context(), "SELECT id,user_agent,created_at,last_seen_at,idle_expires_at FROM core.sessions WHERE user_id=$1 AND revoked_at IS NULL AND idle_expires_at>now() ORDER BY created_at DESC", identity(r).UserID)
-	if err != nil {
-		s.fail(w, r, err)
-		return
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var id, ua string
-		var created, last, expires time.Time
-		if err = rows.Scan(&id, &ua, &created, &last, &expires); err != nil {
-			s.fail(w, r, err)
-			return
-		}
-		p.Records = append(p.Records, store.Record{"id": id, "user_agent": ua, "created_at": created.Format("02.01.2006 15:04"), "last_seen_at": last.Format("02.01.2006 15:04"), "current": id == identity(r).SessionID})
-	}
-	if err = rows.Err(); err != nil {
-		s.fail(w, r, err)
-		return
-	}
-	s.render(w, r, p)
-}
-func (s *Server) revokeSession(w http.ResponseWriter, r *http.Request) {
-	if !value.ValidUUID(r.PathValue("id")) {
-		s.fail(w, r, store.ErrNotFound)
-		return
-	}
-	if err := s.Auth.RevokeSession(r.Context(), identity(r), r.PathValue("id"), "session_revoked"); err != nil {
-		s.fail(w, r, err)
-		return
-	}
-	http.Redirect(w, r, "/settings/security", http.StatusSeeOther)
-}
-func (s *Server) setupTOTP(w http.ResponseWriter, r *http.Request) {
-	secret, uri, err := s.Auth.SetupTOTP(r.Context(), identity(r))
-	if err != nil {
-		s.fail(w, r, err)
-		return
-	}
-	p := s.page(r, "Zweiten Faktor einrichten")
-	p.View = "totp"
-	p.Extra = map[string]any{"secret": secret, "uri": uri}
-	s.render(w, r, p)
-}
-func (s *Server) enableTOTP(w http.ResponseWriter, r *http.Request) {
-	codes, err := s.Auth.EnableTOTP(r.Context(), identity(r), r.FormValue("code"))
-	if err != nil {
-		s.fail(w, r, err)
-		return
-	}
-	p := s.page(r, "Wiederherstellungscodes")
-	p.View = "recovery"
-	p.Extra = codes
-	s.render(w, r, p)
-}
-
-func (s *Server) usersPage(w http.ResponseWriter, r *http.Request) {
-	if identity(r).Role != "admin" {
-		s.fail(w, r, store.ErrForbidden)
-		return
-	}
-	p := s.page(r, "Benutzerverwaltung")
-	p.View = "users"
-	rows, err := s.Pool.Query(r.Context(), "SELECT u.id,u.username,u.display_name,m.role,u.disabled_at IS NOT NULL FROM core.users u JOIN core.memberships m ON m.user_id=u.id WHERE m.household_id=$1 ORDER BY u.username", identity(r).HouseholdID)
-	if err != nil {
-		s.fail(w, r, err)
-		return
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var id, user, name, role string
-		var disabled bool
-		if err = rows.Scan(&id, &user, &name, &role, &disabled); err != nil {
-			s.fail(w, r, err)
-			return
-		}
-		p.Records = append(p.Records, store.Record{"id": id, "username": user, "display_name": name, "role": role, "disabled": disabled})
-	}
-	if err = rows.Err(); err != nil {
-		s.fail(w, r, err)
-		return
-	}
-	s.render(w, r, p)
-}
-func (s *Server) createUser(w http.ResponseWriter, r *http.Request) {
-	id := identity(r)
-	if id.Role != "admin" || !id.Recent() {
-		s.fail(w, r, store.ErrForbidden)
-		return
-	}
-	role := r.FormValue("role")
-	if role != "admin" && role != "editor" && role != "reader" || !auth.PasswordValid(r.FormValue("password")) {
-		s.fail(w, r, store.Invalid{Message: "Rolle und Startpasswort prüfen (mindestens 14 Zeichen)"})
-		return
-	}
-	hash, err := s.Auth.HashPassword(r.Context(), id.UserID, r.FormValue("password"))
-	if err != nil {
-		s.fail(w, r, err)
-		return
-	}
-	tx, err := audit.Begin(r.Context(), s.Pool)
-	if err != nil {
-		s.fail(w, r, err)
-		return
-	}
-	defer func() { _ = tx.Rollback(r.Context()) }()
-	if err = auth.LockSession(r.Context(), tx, id); err != nil {
-		s.fail(w, r, store.ErrForbidden)
-		return
-	}
-	var uid string
-	err = tx.QueryRow(r.Context(), "INSERT INTO core.users(username,display_name,password_hash) VALUES($1,$2,$3) RETURNING id", r.FormValue("username"), r.FormValue("display_name"), string(hash)).Scan(&uid)
-	if err == nil {
-		_, err = tx.Exec(r.Context(), "INSERT INTO core.memberships(household_id,user_id,role) VALUES($1,$2,$3)", id.HouseholdID, uid, role)
-	}
-	if err == nil {
-		err = store.Audit(r.Context(), tx, id, "core", "users", uid, "user_create", trace(r))
-	}
-	if err == nil {
-		err = tx.Commit(r.Context())
-	}
-	if err != nil {
-		s.fail(w, r, err)
-		return
-	}
-	http.Redirect(w, r, "/settings/users", http.StatusSeeOther)
-}
-func (s *Server) updateUser(w http.ResponseWriter, r *http.Request) {
-	id := identity(r)
-	target := r.PathValue("id")
-	role := r.FormValue("role")
-	disabled := r.FormValue("disabled") == "true"
-	if id.Role != "admin" || !id.Recent() || !value.ValidUUID(target) {
-		s.fail(w, r, store.ErrForbidden)
-		return
-	}
-	if role != "admin" && role != "editor" && role != "reader" {
-		s.fail(w, r, store.Invalid{Message: "ungültige Rolle"})
-		return
-	}
-	tx, err := audit.Begin(r.Context(), s.Pool)
-	if err != nil {
-		s.fail(w, r, err)
-		return
-	}
-	defer func() { _ = tx.Rollback(r.Context()) }()
-	if _, err = tx.Exec(r.Context(), "SELECT id FROM core.households WHERE id=$1 FOR UPDATE", id.HouseholdID); err != nil {
-		s.fail(w, r, err)
-		return
-	}
-	if err = auth.LockSession(r.Context(), tx, id); err != nil {
-		s.fail(w, r, store.ErrForbidden)
-		return
-	}
-	var oldRole string
-	if err = tx.QueryRow(r.Context(), "SELECT role FROM core.memberships WHERE household_id=$1 AND user_id=$2", id.HouseholdID, target).Scan(&oldRole); err != nil {
-		s.fail(w, r, err)
-		return
-	}
-	if oldRole == "admin" && (role != "admin" || disabled) {
-		var admins int
-		err = tx.QueryRow(r.Context(), "SELECT count(*) FROM core.memberships m JOIN core.users u ON u.id=m.user_id WHERE m.household_id=$1 AND m.role='admin' AND m.inactive_at IS NULL AND u.disabled_at IS NULL", id.HouseholdID).Scan(&admins)
-		if err != nil {
-			s.fail(w, r, err)
-			return
-		}
-		if admins <= 1 {
-			s.fail(w, r, store.Invalid{Message: "Der letzte aktive Administrator muss erhalten bleiben"})
-			return
-		}
-	}
-	if role == "reader" || disabled {
-		var responsible bool
-		err = tx.QueryRow(r.Context(), `SELECT EXISTS(SELECT 1 FROM core.financial_policies p JOIN core.memberships m
- ON m.household_id=p.household_id AND m.id=p.responsible_membership_id WHERE p.household_id=$1 AND m.user_id=$2 AND p.retired_at IS NULL)`,
-			id.HouseholdID, target).Scan(&responsible)
-		if err != nil {
-			s.fail(w, r, err)
-			return
-		}
-		if responsible {
-			s.fail(w, r, store.Invalid{Message: "Finanzverantwortung vor Deaktivierung oder Wechsel zur Leserrolle ausdrücklich übertragen; bei fehlendem Inhaltszugriff die administrative Neuzuordnung verwenden"})
-			return
-		}
-	}
-	if _, err = tx.Exec(r.Context(), "UPDATE core.memberships SET role=$3,version=version+1,updated_at=now() WHERE household_id=$1 AND user_id=$2", id.HouseholdID, target, role); err == nil {
-		_, err = tx.Exec(r.Context(), "UPDATE core.users SET disabled_at=CASE WHEN $2 THEN now() END,auth_version=auth_version+1,updated_at=now() WHERE id=$1", target, disabled)
-	}
-	if err == nil {
-		_, err = tx.Exec(r.Context(), "UPDATE core.sessions SET revoked_at=now() WHERE user_id=$1", target)
-	}
-	if err == nil {
-		err = store.Audit(r.Context(), tx, id, "core", "users", target, "user_update", trace(r))
-	}
-	if err == nil {
-		err = tx.Commit(r.Context())
-	}
-	if err != nil {
-		s.fail(w, r, err)
-		return
-	}
-	http.Redirect(w, r, "/settings/users", http.StatusSeeOther)
-}
-
 func (s *Server) preferences(w http.ResponseWriter, r *http.Request) {
 	var in struct {
-		Theme   string `json:"theme"`
-		Offline bool   `json:"offline"`
+		Theme       *string   `json:"theme"`
+		Offline     *bool     `json:"offline"`
+		Locale      *string   `json:"locale"`
+		ModuleOrder *[]string `json:"module_order"`
 	}
 	if err := readJSON(w, r, &in); err != nil {
 		s.fail(w, r, err)
 		return
 	}
-	if in.Theme != "system" && in.Theme != "light" && in.Theme != "dark" {
-		s.fail(w, r, store.Invalid{Message: "ungültige Darstellung"})
+	if in.Theme == nil && in.Offline == nil && in.Locale == nil && in.ModuleOrder == nil {
+		s.fail(w, r, store.Invalid{Message: "Keine Einstellung ausgewählt"})
+		return
+	}
+	if in.Theme != nil {
+		switch *in.Theme {
+		case "system", "light", "dark", "pink-system", "pink-light", "pink-dark":
+		default:
+			s.fail(w, r, store.Invalid{Message: "ungültige Darstellung"})
+			return
+		}
+	}
+	if in.Locale != nil && !validLocale(*in.Locale) {
+		s.fail(w, r, store.Invalid{Message: "Ungültige Sprache"})
+		return
+	}
+	if in.ModuleOrder != nil && !validModuleOrder(*in.ModuleOrder, s.Store.Modules) {
+		s.fail(w, r, store.Invalid{Message: "Ungültige Modulreihenfolge"})
 		return
 	}
 	id := identity(r)
-	_, err := audit.Exec(r.Context(), s.Pool, "INSERT INTO core.user_preferences(household_id,user_id,theme,offline_storage_enabled) VALUES($1,$2,$3,$4) ON CONFLICT(household_id,user_id) DO UPDATE SET theme=excluded.theme,offline_storage_enabled=excluded.offline_storage_enabled,updated_at=now()", id.HouseholdID, id.UserID, in.Theme, in.Offline)
+	tx, err := audit.Begin(r.Context(), s.Pool)
 	if err != nil {
 		s.fail(w, r, err)
 		return
 	}
-	writeJSON(w, 200, map[string]bool{"saved": true})
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), 5*time.Second)
+		defer cancel()
+		_ = tx.Rollback(ctx)
+	}()
+	var savedOrder []string
+	err = tx.QueryRow(r.Context(), `INSERT INTO core.user_preferences(household_id,user_id,theme,offline_storage_enabled,locale,module_order)
+ VALUES($1,$2,coalesce($3::text,'system'),coalesce($4::boolean,false),$5::text,coalesce($6::text[],'{}'::text[]))
+ ON CONFLICT(household_id,user_id) DO UPDATE SET theme=coalesce($3::text,core.user_preferences.theme),
+ offline_storage_enabled=coalesce($4::boolean,core.user_preferences.offline_storage_enabled),
+ locale=coalesce($5::text,core.user_preferences.locale),
+ module_order=coalesce($6::text[],core.user_preferences.module_order),updated_at=now()
+ RETURNING module_order`, id.HouseholdID, id.UserID, in.Theme, in.Offline, in.Locale, in.ModuleOrder).Scan(&savedOrder)
+	if err == nil {
+		err = tx.Commit(r.Context())
+	}
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	if in.Locale != nil {
+		s.localeCookie(w, *in.Locale)
+	}
+	writeJSON(w, 200, map[string]any{"saved": true, "module_order": savedOrder,
+		"effective_module_order": moduleIDs(orderedModules(s.Store.Modules, savedOrder))})
 }
 
 func (s *Server) searchRows(r *http.Request) ([]store.Record, error) {
@@ -681,12 +515,26 @@ func (s *Server) searchAPI(w http.ResponseWriter, r *http.Request) {
 func (s *Server) notifications(w http.ResponseWriter, r *http.Request) {
 	p := s.page(r, "Mitteilungen")
 	p.View = "notifications"
-	// Finance currently publishes no generic notices. Untyped historical rows
-	// have no complete recipient/source proof and cannot disclose a private title.
-	rows, err := s.Pool.Query(r.Context(), "SELECT id,title,coalesce(target_path,''),read_at IS NOT NULL,kind FROM core.notifications n WHERE user_id=$1 AND household_id=$2 AND dismissed_at IS NULL AND module_id IS DISTINCT FROM 'expenses' AND (module_id IS NULL OR EXISTS(SELECT 1 FROM core.module_states m WHERE m.household_id=n.household_id AND m.module_id=n.module_id AND m.state='enabled')) ORDER BY created_at DESC LIMIT 100", identity(r).UserID, identity(r).HouseholdID)
+	records, err := s.notificationRecords(r.Context(), identity(r), requestLocale(r), 100)
 	if err != nil {
 		s.fail(w, r, err)
 		return
+	}
+	p.Records = records
+	s.render(w, r, p)
+}
+func (s *Server) notificationRecords(ctx context.Context, id auth.Identity, locale string, limit int) ([]store.Record, error) {
+	if limit < 1 || limit > 100 {
+		limit = 100
+	}
+	records := []store.Record{}
+	// Finance currently publishes no generic notices. Untyped historical rows
+	// have no complete recipient/source proof and cannot disclose a private title.
+	// Apply the display limit after authority checks so withdrawn Shopping
+	// notices cannot crowd valid notices out of the bounded candidate window.
+	rows, err := s.Pool.Query(ctx, "SELECT id,title,coalesce(target_path,''),read_at IS NOT NULL,kind FROM core.notifications n WHERE user_id=$1 AND household_id=$2 AND dismissed_at IS NULL AND module_id IS DISTINCT FROM 'expenses' AND (module_id IS NULL OR EXISTS(SELECT 1 FROM core.module_states m WHERE m.household_id=n.household_id AND m.module_id=n.module_id AND m.state='enabled')) ORDER BY created_at DESC LIMIT 100", id.UserID, id.HouseholdID)
+	if err != nil {
+		return nil, err
 	}
 	defer rows.Close()
 	type candidate struct {
@@ -698,33 +546,37 @@ func (s *Server) notifications(w http.ResponseWriter, r *http.Request) {
 		var id, title, target, kind string
 		var read bool
 		if err = rows.Scan(&id, &title, &target, &read, &kind); err != nil {
-			s.fail(w, r, err)
-			return
+			return nil, err
 		}
 		candidates = append(candidates, candidate{id, title, target, kind, read})
 	}
 	if err = rows.Err(); err != nil {
-		s.fail(w, r, err)
-		return
+		return nil, err
 	}
 	// Release the cursor before per-notice authority queries, including with a
 	// single-connection pool. New Shopping targets are rebuilt from current state.
 	rows.Close()
 	for _, notice := range candidates {
+		if strings.HasPrefix(notice.kind, "security_") {
+			notice.title = securityNoticeTitle(locale, notice.kind)
+			notice.target = "/settings/security"
+		}
 		if notice.kind == "shopping_list_changed_v1" {
-			projection, projectionErr := s.Store.ShoppingNotificationProjection(r.Context(), identity(r), notice.id)
+			projection, projectionErr := s.Store.ShoppingNotificationProjection(ctx, id, notice.id)
 			if errors.Is(projectionErr, store.ErrNotFound) || errors.Is(projectionErr, store.ErrForbidden) || errors.Is(projectionErr, store.ErrConflict) {
 				continue
 			}
 			if projectionErr != nil {
-				s.fail(w, r, projectionErr)
-				return
+				return nil, projectionErr
 			}
 			notice.id, notice.title, notice.target = projection.ID, projection.Title, projection.TargetPath
 		}
-		p.Records = append(p.Records, store.Record{"id": notice.id, "title": notice.title, "url": notice.target, "read": notice.read})
+		records = append(records, store.Record{"id": notice.id, "title": notice.title, "url": notice.target, "read": notice.read})
+		if len(records) == limit {
+			break
+		}
 	}
-	s.render(w, r, p)
+	return records, nil
 }
 func (s *Server) readNotification(w http.ResponseWriter, r *http.Request) {
 	if !value.ValidUUID(r.PathValue("id")) {

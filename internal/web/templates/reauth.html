@@ -1,0 +1,11 @@
+{{define "reauth-fields"}}
+<label>{{t "Aktuelles Passwort"}}<input type="password" name="password" autocomplete="current-password" maxlength="72" required></label>
+<label>{{t "Sicherheitscode, falls eingerichtet"}}<input name="code" autocomplete="one-time-code" maxlength="64"></label><p class="fine">{{t "Verwende einen Authenticator-Code oder einen unbenutzten Wiederherstellungscode."}}</p>
+<button class="primary">{{t "Anmeldung bestätigen"}}</button><p data-security-status role="status"></p>
+{{end}}
+{{define "security-reauth-dialog"}}
+<dialog id="security-reauth" aria-labelledby="security-reauth-title"><div class="dialog-heading"><h2 id="security-reauth-title">{{t "Anmeldung bestätigen"}}</h2><button type="button" data-close-reauth aria-label="{{t "Schließen"}}">×</button></div><p>{{t "Bestätige deine Identität für die nächsten zehn Minuten. Deine Eingaben bleiben erhalten."}}</p><form method="post" action="/settings/security/reauth" data-reauth-form>{{template "csrf" .}}{{template "reauth-fields" .}}</form><div class="security-passkey-alternative"><button type="button" data-passkey-reauth>{{t "Mit Passkey bestätigen"}}</button><p data-passkey-status role="status"></p></div></dialog>
+{{end}}
+{{define "reauth"}}
+<link rel="stylesheet" href="{{index .Asset "security.css"}}"><h1>{{t "Anmeldung bestätigen"}}</h1><section class="panel narrow"><p>{{t "Sensible Änderungen benötigen eine Bestätigung innerhalb der letzten zehn Minuten."}}</p><form method="post" action="/settings/security/reauth" data-reauth-page>{{template "csrf" .}}<input type="hidden" name="return_to" value="{{index .Extra "return_to"}}">{{template "reauth-fields" .}}</form>{{if index .Extra "passkeys_available"}}<div class="security-passkey-alternative"><button type="button" data-passkey-reauth>{{t "Mit Passkey bestätigen"}}</button><p data-passkey-status role="status"></p></div>{{end}}</section><script nonce="{{.Nonce}}" src="{{index .Asset "security.js"}}" defer></script>
+{{end}}

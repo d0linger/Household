@@ -60,7 +60,7 @@ func TestShoppingTemplatePopulatedUpgrade(t *testing.T) {
 		t.Fatalf("reuse migration changed existing records: %v/%v", unchanged, err)
 	}
 	var policies, events int
-	if err := f.owner.QueryRow(f.ctx, "SELECT (SELECT count(*) FROM core.audit_policies),(SELECT count(*) FROM core.audit_log WHERE resource_id=$1 AND action='CREATE')", product).Scan(&policies, &events); err != nil || policies != 163 || events != 1 {
+	if err := f.owner.QueryRow(f.ctx, "SELECT (SELECT count(*) FROM core.audit_policies),(SELECT count(*) FROM core.audit_log WHERE resource_id=$1 AND action='CREATE')", product).Scan(&policies, &events); err != nil || policies != 165 || events != 1 {
 		t.Fatalf("reuse migration lost audit history: %d/%d/%v", policies, events, err)
 	}
 }

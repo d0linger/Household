@@ -1,0 +1,48 @@
+.notification-settings{max-width:1080px;min-width:0}
+.notification-settings .page-heading{align-items:flex-start;gap:20px;flex-wrap:wrap}
+.notification-settings .page-heading p{max-width:68ch;margin-block:12px 0}
+.notification-section{padding-block:28px;border-top:1px solid var(--line);min-width:0}
+.notification-section-heading{display:flex;justify-content:space-between;align-items:flex-start;gap:20px;margin-bottom:20px}
+.notification-section h2{font-size:21px;line-height:1.3;margin:0 0 8px}
+.notification-section-heading p,.notification-help p,.notification-limits{max-width:72ch;margin:0;color:var(--muted)}
+.notification-connection{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:24px;align-items:start}
+.notification-connection p{margin:0 0 10px;max-width:70ch}
+.notification-actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.notification-connection .notification-actions{flex-direction:column;align-items:stretch;max-width:280px}
+.notification-settings button,.notification-settings .button{min-height:44px;white-space:normal;overflow-wrap:anywhere}
+.notification-settings p,.notification-settings label,.notification-settings h3{overflow-wrap:anywhere}
+.notification-settings [role=status]{font-size:14px;min-height:1.5em;margin-block:12px;color:var(--muted)}
+.notification-settings [data-error=true]{color:var(--danger)}
+.notification-help{margin-top:12px}.notification-help summary{min-height:44px;padding-block:10px;cursor:pointer;font-weight:600}
+.notification-help p{margin-block:12px}.notification-help button{margin-block:8px}
+.notification-connections .se-row{border-bottom:1px solid var(--line);padding-block:12px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
+.notification-connections .se-row p{margin:0;flex:1 1 220px}
+.notification-privacy{font-size:14px;max-width:72ch;color:var(--muted);margin-block:0 16px}
+.notification-preference{display:grid;grid-template-columns:minmax(180px,.9fr) minmax(0,1.1fr);gap:12px 24px;padding-block:20px;border-top:1px solid var(--line)}
+.notification-preference:first-child{border-top:0}.notification-preference h3{font-size:16px;margin:0 0 6px;line-height:1.4}
+.notification-unavailable{grid-template-columns:minmax(0,1fr);padding-block:14px}
+.notification-preference .notification-description{font-size:14px;color:var(--muted);margin:0;max-width:58ch}
+.notification-preference .notification-form{margin:0;min-width:0}.notification-settings label{font-size:14px}
+.notification-setting-check{display:flex;align-items:center;gap:10px;min-height:44px;margin:0;cursor:pointer}
+.notification-setting-check input[type=checkbox]{flex:none;width:20px;height:20px;margin:0;accent-color:var(--accent)}
+.notification-settings input,.notification-settings select{caret-color:var(--accent);min-width:0}
+.notification-quiet{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-block:8px 16px}
+.notification-quiet label:first-child{grid-column:1/-1}.notification-quiet input[type=time]{font-variant-numeric:tabular-nums}
+.notification-preference .notification-actions{justify-content:flex-start;margin-top:10px}
+.notification-device{padding-block:22px;border-top:1px solid var(--line)}.notification-device:first-child{padding-top:0;border-top:0}
+.notification-device-header{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}
+.notification-device-header h3{font-size:18px;line-height:1.4;margin:0 0 4px}.notification-device-header p{font-size:14px;color:var(--muted);margin:0 0 6px}
+.notification-device-category{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px 18px;padding-block:12px;border-top:1px solid var(--line)}
+.notification-device-category>button{align-self:end;justify-self:start}
+.notification-device-category fieldset{margin:0;padding:0;border:0;min-width:0}.notification-device-category legend{font-size:15px;font-weight:600;margin-bottom:4px}
+.notification-device-category .notification-device-fields{display:flex;gap:12px;flex-wrap:wrap;align-items:center}
+.notification-device-category .notification-device-fields>label:first-child{flex:1 1 180px;max-width:300px}
+.notification-device-category [role=status]{grid-column:1/-1;margin:0}
+.notification-device details{margin-top:16px}.notification-device summary{cursor:pointer;padding-block:10px;min-height:44px;font-weight:600}
+.notification-test-result{margin-block:12px 0;max-width:70ch}.notification-test-result p{font-size:14px}.notification-test-result time{font-variant-numeric:tabular-nums}
+.notification-empty{padding-block:12px 20px;color:var(--muted);max-width:68ch}.notification-limits{font-size:14px;padding-block:12px 24px}
+.notification-settings ::selection{background:var(--soft);color:var(--ink)}
+.notification-settings [aria-busy=true]{cursor:progress}
+.notification-settings a{text-underline-offset:.2em}
+@media(max-width:760px){.notification-section{padding-block:24px}.notification-section-heading{flex-wrap:wrap;gap:12px}.notification-connection,.notification-preference{grid-template-columns:minmax(0,1fr);gap:12px}.notification-connection .notification-actions{max-width:none;flex-direction:row;align-items:center}.notification-connection .notification-actions button{flex:1 1 210px}.notification-device-header{flex-wrap:wrap}.notification-device-category{grid-template-columns:minmax(0,1fr)}.notification-device-category>button{justify-self:start}.notification-section-heading h2{font-size:20px}.notification-device-category .notification-device-fields>label:first-child{max-width:none;flex-basis:100%}}
+@media(forced-colors:active){.notification-settings input[type=checkbox]{forced-color-adjust:auto}.notification-section,.notification-preference,.notification-device,.notification-device-category{border-color:CanvasText}}

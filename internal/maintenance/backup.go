@@ -23,6 +23,7 @@ import (
 	"household/internal/database"
 	"household/internal/value"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -37,6 +38,7 @@ type Manifest struct {
 	UploadPath string         `json:"upload_path"`
 	Schemas    map[string]int `json:"schemas"`
 	Files      []File         `json:"files"`
+	Crypto     *CryptoReport  `json:"crypto,omitempty"`
 }
 type limitedBuffer struct{ buffer bytes.Buffer }
 
@@ -221,11 +223,14 @@ func Backup(ctx context.Context, pool *pgxpool.Pool, cfg config.Config) (string,
 			_, _ = audit.Exec(failureCtx, pool, "UPDATE core.backup_runs SET state='failed',finished_at=now(),failure_reason='operator backup failed' WHERE id=$1", run)
 		}
 	}()
-	tx, err := audit.Begin(ctx, pool)
+	tx, err := pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead})
 	if err != nil {
 		return "", err
 	}
-	defer func() { _ = tx.Rollback(ctx) }()
+	defer rollbackCrypto(tx)
+	if err = audit.Bind(ctx, tx); err != nil {
+		return "", err
+	}
 	if _, err = tx.Exec(ctx, "SET LOCAL idle_in_transaction_session_timeout=0"); err != nil {
 		return "", err
 	}
@@ -249,7 +254,20 @@ func Backup(ctx context.Context, pool *pgxpool.Pool, cfg config.Config) (string,
 	if err != nil {
 		return "", err
 	}
-	if _, err = command(ctx, "pg_dump", []string{"--format=custom", "--file=" + filepath.Join(dir, "database.dump"), "--no-owner"}, cfg.DatabaseURL); err != nil {
+	ring, err := cfg.Keyring()
+	if err != nil {
+		return "", err
+	}
+	inventory, err := verifyProtected(ctx, tx, ring)
+	if err != nil {
+		return "", err
+	}
+	manifest.Crypto = &inventory
+	var exported string
+	if err = tx.QueryRow(ctx, "SELECT pg_export_snapshot()").Scan(&exported); err != nil {
+		return "", err
+	}
+	if _, err = command(ctx, "pg_dump", []string{"--format=custom", "--file=" + filepath.Join(dir, "database.dump"), "--no-owner", "--snapshot=" + exported}, cfg.DatabaseURL); err != nil {
 		return "", err
 	}
 	raw, err := json.MarshalIndent(manifest, "", "  ")
@@ -259,13 +277,17 @@ func Backup(ctx context.Context, pool *pgxpool.Pool, cfg config.Config) (string,
 	if err = writePrivate(filepath.Join(dir, "manifest.json"), raw); err != nil {
 		return "", err
 	}
-	// The repository encrypts this key bundle; recovering TOTP requires the original key.
-	keyring, err := json.Marshal(map[string]string{"csrf_secret": cfg.CSRFSecret, "encryption_key": cfg.EncryptionKey, "rate_secret": cfg.RateSecret})
+	// Escrow is private and covered by restic encryption. Its keys verified the
+	// same repeatable-read snapshot imported by pg_dump, including retained keys.
+	keyring, err := encodeSecurityBundle(cfg, ring)
 	if err != nil {
 		return "", err
 	}
 	if err = writePrivate(filepath.Join(dir, "security-keys.json"), keyring); err != nil {
 		return "", err
+	}
+	for i := range keyring {
+		keyring[i] = 0
 	}
 	output, err := command(ctx, "restic", []string{"backup", "--json", "--host", "household", "--tag", "household", "--tag", "v0.1.0", dir, manifest.UploadPath}, "")
 	if err != nil {
@@ -392,9 +414,15 @@ func VerifyRestore(ctx context.Context, pool *pgxpool.Pool, cfg config.Config, s
 			return errors.New("unexpected symlink in restore snapshot")
 		}
 		if entry.Name() == "manifest.json" {
+			if manifestPath != "" {
+				return errors.New("multiple restore manifests")
+			}
 			manifestPath = path
 		}
 		if entry.Name() == "database.dump" {
+			if dumpPath != "" {
+				return errors.New("multiple restore database dumps")
+			}
 			dumpPath = path
 		}
 		return nil
@@ -404,6 +432,13 @@ func VerifyRestore(ctx context.Context, pool *pgxpool.Pool, cfg config.Config, s
 	}
 	if manifestPath == "" || dumpPath == "" {
 		return errors.New("restore manifest or database dump missing")
+	}
+	if filepath.Dir(manifestPath) != filepath.Dir(dumpPath) {
+		return errors.New("restore manifest and dump are not from one bundle")
+	}
+	ring, err := readSecurityBundle(filepath.Join(filepath.Dir(manifestPath), "security-keys.json"))
+	if err != nil {
+		return err
 	}
 	raw, err := os.ReadFile(manifestPath)
 	if err != nil {
@@ -427,6 +462,25 @@ func VerifyRestore(ctx context.Context, pool *pgxpool.Pool, cfg config.Config, s
 		}
 	}
 	if err = database.Ready(ctx, restored); err != nil {
+		return err
+	}
+	protected, err := restored.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+	if err != nil {
+		return err
+	}
+	defer rollbackCrypto(protected)
+	inventory, err := verifyProtected(ctx, protected, ring)
+	if err != nil {
+		return err
+	}
+	if manifest.Crypto != nil {
+		want, _ := json.Marshal(manifest.Crypto)
+		got, _ := json.Marshal(inventory)
+		if !bytes.Equal(want, got) {
+			return errors.New("restored protected inventory differs from backup snapshot")
+		}
+	}
+	if err = protected.Commit(ctx); err != nil {
 		return err
 	}
 	if drift, checkErr := PantryProjection(ctx, restored, false); checkErr != nil {

@@ -1,23 +1,36 @@
 {{define "audit"}}
-<div class="page-heading"><div><p class="eyebrow">ÄNDERUNGEN NACHVOLLZIEHEN</p><h1>Änderungsprotokoll</h1><p class="muted">Wer hat was geändert? Die Historie deines Haushalts.</p></div></div>
-<nav class="entity-tabs" aria-label="Einstellungen"><a href="/settings">Module</a><a href="/settings/security">Sicherheit</a><a href="/settings/users">Benutzer</a><a class="current" aria-current="page" href="/settings/audit">Protokoll</a></nav>
+<link rel="stylesheet" href="{{index .Asset "audit.css"}}">
+<div class="page-heading"><div><h1>{{t "Änderungsprotokoll"}}</h1><p class="muted">{{t "Wer hat was geändert? Die Historie deines Haushalts."}}</p></div></div>
+
 {{$data:=.Extra}}
-<form class="panel audit-filters" action="/settings/audit" method="get">
-  <label>Bereich<select name="module"><option value="">Alle Bereiche</option><option value="core" {{if eq $data.Filter.Module "core"}}selected{{end}}>Haushalt & Sicherheit</option>{{range .Modules}}<option value="{{.ID}}" {{if eq $data.Filter.Module .ID}}selected{{end}}>{{.Title}}</option>{{end}}</select></label>
-  <label>Aktion<select name="action"><option value="">Alle Aktionen</option><option value="CREATE" {{if eq $data.Filter.Action "CREATE"}}selected{{end}}>Angelegt</option><option value="UPDATE" {{if eq $data.Filter.Action "UPDATE"}}selected{{end}}>Geändert</option><option value="DELETE" {{if eq $data.Filter.Action "DELETE"}}selected{{end}}>Gelöscht</option><option value="login_success" {{if eq $data.Filter.Action "login_success"}}selected{{end}}>Anmeldung</option></select></label>
-  <div class="actions"><button class="primary">Filtern</button><a class="button" href="/settings/audit">Zurücksetzen</a></div>
-  <details class="audit-advanced"><summary>Nach Kennung filtern</summary><div class="form-grid"><label>Datensatz-ID<input name="resource" value="{{$data.Filter.Resource}}" maxlength="36" placeholder="UUID"></label><label>Vorgangs-ID<input name="request" value="{{$data.Filter.Request}}" maxlength="36" placeholder="UUID"></label></div></details>
+<div class="audit-workspace">
+<form class="audit-filters" action="/settings/audit" method="get" role="search" aria-label="{{t "Protokoll filtern"}}">
+  <label class="audit-search">{{t "Suchen"}}<input type="search" name="q" value="{{$data.Filter.Query}}" maxlength="100" placeholder="{{t "Benutzername oder Datensatz"}}"></label>
+  <label>{{t "Bereich"}}<select name="module"><option value="">{{t "Alle Bereiche"}}</option><option value="core" {{if eq $data.Filter.Module "core"}}selected{{end}}>{{t "Haushalt & Sicherheit"}}</option>{{range .Modules}}<option value="{{.ID}}" {{if eq $data.Filter.Module .ID}}selected{{end}}>{{.Title}}</option>{{end}}</select></label>
+  <label>{{t "Aktion"}}<select name="action"><option value="">{{t "Alle Aktionen"}}</option>{{range $data.Actions}}<option value="{{.Value}}" {{if eq $data.Filter.Action .Value}}selected{{end}}>{{t .Label}}</option>{{end}}</select></label>
+  <div class="actions"><button class="primary">{{t "Filtern"}}</button><a class="button" href="/settings/audit">{{t "Zurücksetzen"}}</a></div>
+  <details class="audit-advanced" {{if or $data.Filter.Resource $data.Filter.Request}}open{{end}}><summary>{{t "Nach Kennung filtern"}}</summary><div class="form-grid"><label>{{t "Datensatz-ID"}}<input name="resource" value="{{$data.Filter.Resource}}" maxlength="36" placeholder="UUID"></label><label>{{t "Vorgangs-ID"}}<input name="request" value="{{$data.Filter.Request}}" maxlength="36" placeholder="UUID"></label></div></details>
 </form>
-<p class="fine">Nur für Administratoren · Neueste zuerst · Zeiten in UTC. Geschützte Felder zeigen eine Änderung, aber keinen Inhalt. Frühere Einträge enthalten gegebenenfalls keine Feldhistorie.</p>
-<section class="audit-list" aria-label="Protokolleinträge">
+<div class="audit-list-note"><p class="fine">{{t "Neueste zuerst · Zeiten in UTC · Bis zu 50 Einträge pro Seite"}}</p><details><summary>{{t "Hinweise zum Protokoll"}}</summary><p class="fine">{{t "Nur für Administratoren. Benutzernamen zeigen die heutige Zuordnung. Die Suche prüft Benutzernamen und gespeicherte Datensatzbezeichnungen. Geschützte Felder zeigen eine Änderung, aber keinen Inhalt. Frühere Einträge enthalten gegebenenfalls keine Feldhistorie."}}</p></details></div>
+<section class="audit-list" aria-label="{{t "Protokolleinträge"}}">
+{{if $data.Entries}}<div class="audit-columns" aria-hidden="true"><span>{{t "Zeitpunkt · UTC"}}</span><span>{{t "Benutzer"}}</span><span>{{t "Aktion"}}</span><span>{{t "Datensatz"}}</span><span>{{t "Änderungen"}}</span></div>{{end}}
 {{range $data.Entries}}
-<article class="panel audit-entry">
-  <header class="audit-heading"><div><span class="badge">{{.ActionLabel}}</span><h2>{{if .Label}}{{.Label}}{{else}}{{.EntityLabel}}{{end}}</h2><p class="fine">{{.ModuleLabel}} · {{.EntityLabel}}</p></div><time datetime="{{.CreatedAt.Format "2006-01-02T15:04:05Z07:00"}}">{{.TimeLabel}}</time></header>
-  <p class="fine break">{{.ActorLabel}}{{if ne .Outcome "success"}} · Ergebnis: {{.Outcome}}{{end}}</p>
-  {{if .Fields}}<details class="audit-diff"><summary>{{len .Fields}} Feldänderungen ansehen</summary><div class="audit-diff-head" aria-hidden="true"><span>Feld</span><span>Vorher</span><span>Nachher</span></div>{{range .Fields}}<div class="audit-field"><h3>{{.Label}}</h3><div><small>Vorher</small><p>{{.Before}}</p></div><div><small>Nachher</small><p>{{.After}}</p></div></div>{{end}}</details>{{else}}<p class="fine">Ereignis ohne Feldänderungen.</p>{{end}}
-  <details class="audit-meta"><summary>Kennungen</summary><dl><dt>Datensatz</dt><dd>{{if .Resource}}{{.Resource}}{{else}}{{.KeyLabel}}{{end}}</dd><dt>Vorgang</dt><dd>{{.Request}}</dd><dt>Eintrag</dt><dd>{{.ID}}</dd></dl></details>
-</article>
-{{else}}<div class="panel empty"><h2>Keine passenden Einträge</h2><p>Ändere die Filter oder kehre zum vollständigen Protokoll zurück.</p><a class="button" href="/settings/audit">Alle Einträge anzeigen</a></div>{{end}}
+<details class="audit-entry audit-diff">
+  <summary class="audit-row">
+    <time datetime="{{.CreatedAt.Format "2006-01-02T15:04:05Z07:00"}}">{{.TimeLabel}}</time>
+    <span class="audit-actor">{{if .ActorUsername}}{{.ActorUsername}}{{if eq .ActorKind "legacy"}}<small>{{t "Früheres Protokoll"}}</small>{{end}}{{else}}{{t .ActorLabel}}{{end}}</span>
+    <span class="audit-action">{{t .ActionLabel}}{{if ne .Outcome "success"}}<small class="audit-outcome">{{if eq .Outcome "failure"}}{{t "Fehlgeschlagen"}}{{else}}{{t "Abweichendes Ergebnis"}}{{end}}</small>{{end}}</span>
+    <span class="audit-record"><strong>{{if .TitleLabel}}{{t .Title}}{{else}}{{.Title}}{{end}}</strong><small>{{t .ModuleLabel}}{{if ne .Title .EntityLabel}} · {{t .EntityLabel}}{{end}}</small></span>
+    <span class="audit-toggle">{{if eq .FieldCount 1}}{{t "1 Feldänderung"}}{{else if .FieldCount}}{{t "%d Feldänderungen" .FieldCount}}{{else}}{{t "Ereignisdetails"}}{{end}}<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg></span>
+  </summary>
+  <div class="audit-entry-body">
+    {{if .Fields}}<div class="audit-diff-head" aria-hidden="true"><span>{{t "Feld"}}</span><span>{{t "Vorher"}}</span><span>{{t "Nachher"}}</span></div>{{range .Fields}}{{template "audit-field" .}}{{end}}{{else}}<p class="fine">{{if .TechnicalFields}}{{t "Dieser Eintrag enthält technische Änderungen. Öffne die Kennungen und technischen Details."}}{{else}}{{t "Ereignis ohne Feldänderungen."}}{{end}}</p>{{end}}
+    <details class="audit-meta"><summary>{{t "Kennungen und technische Details"}}</summary><dl><dt>{{t "Datensatz-ID"}}</dt><dd>{{if .Resource}}{{.Resource}}{{else}}{{.KeyLabel}}{{end}}</dd><dt>{{t "Vorgangs-ID"}}</dt><dd>{{.Request}}</dd><dt>{{t "Benutzer-ID"}}</dt><dd>{{if .ActorID}}{{.ActorID}}{{else}}{{t "Nicht erfasst"}}{{end}}</dd><dt>{{t "Eintrag"}}</dt><dd>{{.ID}}</dd><dt>{{t "Bereich / Tabelle"}}</dt><dd>{{.Module}} / {{.Entity}}</dd><dt>{{t "Aktion / Ergebnis"}}</dt><dd>{{.Action}} / {{.Outcome}}</dd></dl>{{if .TechnicalFields}}<div class="audit-diff-head" aria-hidden="true"><span>{{t "Feld"}}</span><span>{{t "Vorher"}}</span><span>{{t "Nachher"}}</span></div>{{range .TechnicalFields}}{{template "audit-field" .}}{{end}}{{end}}</details>
+  </div>
+</details>
+{{else}}<div class="empty audit-empty"><h2>{{t "Keine passenden Einträge"}}</h2><p>{{t "Ändere die Filter oder kehre zum vollständigen Protokoll zurück."}}</p><a class="button" href="/settings/audit">{{t "Alle Einträge anzeigen"}}</a></div>{{end}}
 </section>
-{{if $data.NextURL}}<nav class="pagination" aria-label="Protokollseiten"><a class="button" href="{{$data.NextURL}}">Ältere Einträge</a></nav>{{end}}
+{{if or $data.FirstURL $data.NextURL}}<nav class="pagination audit-pagination" aria-label="{{t "Protokollseiten"}}">{{if $data.FirstURL}}<a class="button" href="{{$data.FirstURL}}">{{t "Neueste Einträge"}}</a>{{end}}{{if $data.NextURL}}<a class="button" href="{{$data.NextURL}}">{{t "Ältere Einträge"}}</a>{{end}}</nav>{{end}}
+</div>
 {{end}}
+{{define "audit-field"}}<div class="audit-field"><h3>{{t .Label}}</h3><div><small>{{t "Vorher"}}</small><p>{{if .BeforeLabel}}{{t .Before}}{{else}}{{.Before}}{{end}}</p></div><div><small>{{t "Nachher"}}</small><p>{{if .AfterLabel}}{{t .After}}{{else}}{{.After}}{{end}}</p></div></div>{{end}}
