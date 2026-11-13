@@ -48,6 +48,21 @@ func TestWorkspaceNavigationPrimaryAndContext(t *testing.T) {
 	}
 }
 
+func TestShoppingListDetailKeepsPrimaryNavigationWithoutCollectionFilters(t *testing.T) {
+	for _, role := range []string{"reader", "editor", "admin"} {
+		p := Page{View: "detail", Module: module.Descriptor{ID: "shopping"}, Entity: module.Entity{ID: "lists"}, User: auth.Identity{Role: role}}
+		n := workspaceNavigation(httptest.NewRequest("GET", "/m/shopping/lists/02e532e4-6c04-4e12-8f31-86fe8072202b", nil), p)
+		if len(n.Context) != 0 || len(n.Primary) != 2 || !n.Primary[0].Active || n.Primary[0].Href != "/m/shopping/lists" || n.Primary[1].Href != "/m/shopping/products" || n.ManageHref != "/m/shopping/manage" {
+			t.Fatalf("%s list detail lost primary navigation or retained collection filters: %+v", role, n)
+		}
+		p.View = "module"
+		n = workspaceNavigation(httptest.NewRequest("GET", "/m/shopping/lists?q=is:archived", nil), p)
+		if len(n.Context) != 3 || n.Context[0].Href != "/m/shopping/lists" || n.Context[1].Href != "/m/shopping/lists?q=is:template" || n.Context[2].Href != "/m/shopping/lists?q=is:archived" || !n.Context[2].Active {
+			t.Fatalf("%s collection filters or archive selection changed: %+v", role, n.Context)
+		}
+	}
+}
+
 func TestWorkspaceNavigationScopesAndRoles(t *testing.T) {
 	const vehicle = "02e532e4-6c04-4e12-8f31-86fe8072202b"
 	p := Page{Module: module.Descriptor{ID: "fuel"}, User: auth.Identity{Role: "editor"}}

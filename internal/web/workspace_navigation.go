@@ -133,6 +133,10 @@ func workspaceNavigation(r *http.Request, p Page) WorkspaceNavigation {
 	if p.User.CanWrite() {
 		n.Actions = spec.Actions
 	}
+	// Collection filters should not push the selected list's first action below the mobile rail.
+	if p.Module.ID == "shopping" && p.View == "detail" && p.Entity.ID == "lists" {
+		n.Context = nil
+	}
 	for _, link := range spec.Manage {
 		if p.Module.ID == "pantry" && link.Href == "/m/pantry/food-facts" && !p.User.CanWrite() {
 			continue

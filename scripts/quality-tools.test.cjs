@@ -11,6 +11,26 @@ const {checkActions, checkWorkflow} = require('./check-workflows.cjs');
 const {parseDocument} = require('yaml');
 const {resolveBrowserPrivateRoot} = require('./browser-private-root.cjs');
 
+test('Gosec keeps every package below the loader argument boundary without omitting source', async () => {
+  const root = path.resolve(__dirname, '..');
+  const workflow = parseDocument(await fs.readFile(path.join(root, '.github/workflows/quality.yml'), 'utf8')).toJS();
+  const command = workflow.jobs.GOSec.steps.find(step => step.name === 'Scan all application packages through a short source path').run;
+  assert.match(command, /mktemp -d \/tmp\/hh\.XXXXXX/);
+  assert.match(command, /ln -s "\$GITHUB_WORKSPACE" "\$scan\/s"/);
+  assert.match(command, /cd "\$scan\/s"/);
+  assert.match(command, /-out="\$GITHUB_WORKSPACE\/gosec\.sarif"/);
+  assert.match(command, /\.\/cmd\/\.\.\. \.\/internal\/\.\.\./);
+  const directories = ['cmd', 'internal'];
+  for (const directory of directories) {
+    let bytes = 0;
+    for (const entry of await fs.readdir(path.join(root, directory), {withFileTypes: true})) {
+      if (entry.isDirectory()) directories.push(directory + '/' + entry.name);
+      else if (entry.name.endsWith('.go') && !entry.name.endsWith('_test.go')) bytes += Buffer.byteLength('/tmp/hh.123456/s/' + directory + '/' + entry.name) + 1;
+    }
+    assert.ok(bytes < 16383, directory + ' exceeds the scanner loader argument bound; update its package loader');
+  }
+});
+
 async function privateBrowserFixture(t) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'household-browser-root-test-'));
   t.after(async () => {
