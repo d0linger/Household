@@ -566,12 +566,20 @@ func TestShoppingBarcodePopulatedUpgradePreservesPriorCatalogueAndAudits(t *test
 	fuelModuleUpgradePriorCatalog(t, f)
 	list, product, _ := barcodeFixture(t, f)
 	_, _ = auditCreate(t, f, "shopping", "items", store.Record{"list_id": list, "name": "Prior product item", "product_id": product["id"], "quantity": "1", "unit_code": "piece"})
+	var originalAuditIDs []int64
+	var originalSessionIDs []string
+	if err := f.owner.QueryRow(f.ctx, "SELECT array_agg(id ORDER BY id) FROM core.audit_log").Scan(&originalAuditIDs); err != nil || len(originalAuditIDs) == 0 {
+		t.Fatal("populated predecessor requires audit history", err)
+	}
+	if err := f.owner.QueryRow(f.ctx, "SELECT array_agg(id::text ORDER BY id) FROM core.sessions").Scan(&originalSessionIDs); err != nil || len(originalSessionIDs) == 0 {
+		t.Fatal("populated predecessor requires an existing session", err)
+	}
 	var before, after string
 	query := `SELECT jsonb_build_object('products',(SELECT jsonb_agg(to_jsonb(p) ORDER BY id) FROM shopping.products p),
  'lists',(SELECT jsonb_agg(to_jsonb(l) ORDER BY id) FROM shopping.lists l),
  'items',(SELECT jsonb_agg(to_jsonb(i) ORDER BY id) FROM shopping.items i),
- 'audit',(SELECT jsonb_agg(to_jsonb(a) ORDER BY id) FROM core.audit_log a))::text`
-	if err := f.owner.QueryRow(f.ctx, query).Scan(&before); err != nil {
+ 'audit',(SELECT jsonb_agg(to_jsonb(a) ORDER BY id) FROM core.audit_log a WHERE a.id=ANY($1::bigint[])))::text`
+	if err := f.owner.QueryRow(f.ctx, query, originalAuditIDs).Scan(&before); err != nil {
 		t.Fatal(err)
 	}
 	barcodeRestoreShopping7(t, f)
@@ -583,8 +591,27 @@ func TestShoppingBarcodePopulatedUpgradePreservesPriorCatalogueAndAudits(t *test
 	if err := database.Ready(f.ctx, f.pool); err != nil {
 		t.Fatal("migrated barcode table/audit contract not ready", err)
 	}
-	if err := f.owner.QueryRow(f.ctx, query).Scan(&after); err != nil || before != after {
+	if err := f.owner.QueryRow(f.ctx, query, originalAuditIDs).Scan(&after); err != nil || before != after {
 		t.Fatal("forward migration changed existing catalogue, items or audit", err)
+	}
+	// Core36 backfills historical session freshness and correctly appends an
+	// audit event. Preserve every prior audit row above, and admit only that
+	// exact new event once per old session, even after two full migrations.
+	var added, distinctSessions int
+	var expectedChanges bool
+	err := f.owner.QueryRow(f.ctx, `SELECT count(*),count(DISTINCT resource_id),coalesce(bool_and((
+ module_id='core' AND resource_type='sessions' AND action='UPDATE' AND outcome='success'
+ AND resource_id::text=ANY($2::text[]) AND household_id=$3 AND actor_user_id IS NULL
+ AND actor_kind='operator' AND db_role='household_owner' AND request_id IS NOT NULL
+ AND entity_key=jsonb_build_object('id',resource_id)
+ AND changes='{"reauthenticated_at":{"before":"***REDACTED***","after":"***REDACTED***","before_present":true,"after_present":true,"redacted":true}}'::jsonb) IS TRUE),false)
+ FROM core.audit_log WHERE NOT(id=ANY($1::bigint[]))`, originalAuditIDs, originalSessionIDs, f.identity.HouseholdID).Scan(&added, &distinctSessions, &expectedChanges)
+	if err != nil || added != len(originalSessionIDs) || distinctSessions != added || !expectedChanges {
+		t.Fatal("migration appended unexpected audit history", added, distinctSessions, expectedChanges, err)
+	}
+	var preservedSessions int
+	if err := f.owner.QueryRow(f.ctx, "SELECT count(*) FROM core.sessions WHERE id::text=ANY($1::text[]) AND reauthenticated_at=created_at", originalSessionIDs).Scan(&preservedSessions); err != nil || preservedSessions != len(originalSessionIDs) {
+		t.Fatal("session upgrade changed historical freshness", preservedSessions, err)
 	}
 	var aliases int
 	if err := f.pool.QueryRow(f.ctx, "SELECT count(*) FROM shopping.barcodes").Scan(&aliases); err != nil || aliases != 0 {
