@@ -4,6 +4,7 @@ package web
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -227,13 +228,41 @@ func TestNotificationDevicesControlledDeliveryAndHTTP(t *testing.T) {
 	if target, e := service.DeliveryTarget(f.ctx, f.identity, queued.ID); e != nil || target != "/settings/notifications" {
 		t.Fatal("unsafe test navigation", target, e)
 	}
-	for range 2 {
-		if _, err = service.QueueTest(f.ctx, f.identity, connection.ID); err != nil {
-			t.Fatal("allowed explicit test", err)
+	// Reproduce a minute rollover without sleeping; prior attempts remain durable.
+	if _, err = f.owner.Exec(f.ctx, `UPDATE core.rate_limit_buckets
+ SET window_start=date_trunc('minute',now())-interval '2 minutes',
+ window_end=date_trunc('minute',now())-interval '1 minute'
+ WHERE scope='notification-device-test-v1'`); err != nil {
+		t.Fatal(err)
+	}
+	budgetCtx, cancelBudget := context.WithTimeout(f.ctx, 30*time.Second)
+	defer cancelBudget()
+	accepted, limited := 0, false
+	// Thirty seconds spans at most two fixed windows, each allowing three tests.
+	for range 7 {
+		_, err = service.QueueTest(budgetCtx, f.identity, connection.ID)
+		if err == nil {
+			accepted++
+		} else if errors.Is(err, webpush.ErrLimited) {
+			limited = true
+		} else {
+			t.Fatal("explicit test budget", err)
+		}
+		var total, maximum int
+		if err = f.pool.QueryRow(budgetCtx, `SELECT sum(attempt_count),max(attempt_count)
+ FROM core.rate_limit_buckets WHERE scope='notification-device-test-v1'`).Scan(&total, &maximum); err != nil {
+			t.Fatal(err)
+		}
+		// The owner HTTP request and the foreign-user attempt each consumed one.
+		if total != 2+accepted || maximum > 3 || (limited && maximum != 3) {
+			t.Fatal("persistent per-minute test budget", total, maximum, accepted, limited)
+		}
+		if limited {
+			break
 		}
 	}
-	if _, err = service.QueueTest(f.ctx, f.identity, connection.ID); !errors.Is(err, webpush.ErrLimited) {
-		t.Fatal("persistent test limit missing", err)
+	if !limited {
+		t.Fatal("persistent test limit missing")
 	}
 	var modules int
 	if err = f.pool.QueryRow(f.ctx, `SELECT count(*) FROM core.notification_preferences WHERE category<>'test'`).Scan(&modules); err != nil || modules != 0 {
