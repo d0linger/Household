@@ -3,12 +3,15 @@ package maintenance
 import (
 	"context"
 	"errors"
+	"time"
+
 	"household/internal/audit"
 	"household/internal/database"
 	"household/internal/modules"
 	"household/internal/value"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -17,6 +20,32 @@ func Purge(ctx context.Context, pool *pgxpool.Pool, requestID string) error {
 		return errors.New("purge requires the exact request UUID")
 	}
 	ctx = audit.WithRequest(audit.WithSystem(ctx, "operator"), requestID)
+	return retryPurgeDeadlock(ctx, func() error { return purgeAttempt(ctx, pool, requestID) })
+}
+
+// Only PostgreSQL-confirmed deadlock victims are safe to replay: the entire
+// transaction was aborted. Never replay an ambiguous connection/commit failure.
+func retryPurgeDeadlock(ctx context.Context, attempt func() error) error {
+	for n := 0; ; n++ {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		err := attempt()
+		var failure *pgconn.PgError
+		if n == 2 || !errors.As(err, &failure) || failure.Code != "40P01" {
+			return err
+		}
+		timer := time.NewTimer(time.Duration(n+1) * 100 * time.Millisecond)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return ctx.Err()
+		case <-timer.C:
+		}
+	}
+}
+
+func purgeAttempt(ctx context.Context, pool *pgxpool.Pool, requestID string) error {
 	tx, err := audit.Begin(ctx, pool)
 	if err != nil {
 		return err
