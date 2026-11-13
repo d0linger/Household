@@ -81,7 +81,8 @@ function createGitHubAPI(token, {fetchImpl = globalThis.fetch, timeoutMs = 10000
     const work = async () => {
       const response = await fetchImpl(url, {method: 'GET', redirect: 'error', credentials: 'omit', cache: 'no-store',
         signal: controller.signal, headers: {Accept: 'application/vnd.github+json', Authorization: 'Bearer ' + token,
-          'X-GitHub-Api-Version': '2026-03-10', 'User-Agent': 'Household-release-guard'}});
+          // This supported contract retains merge_commit_sha; migrate before its March 2028 sunset.
+          'X-GitHub-Api-Version': '2022-11-28', 'User-Agent': 'Household-release-guard'}});
       try {
         if (response.redirected || (response.url && response.url !== url)) refuse('GitHub API redirect is not permitted');
         return await boundedJSON(response);
