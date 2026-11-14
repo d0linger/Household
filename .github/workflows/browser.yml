@@ -109,7 +109,12 @@ jobs:
             outputs/planning-suggestions-review
             outputs/pantry-suggestions-review
             outputs/recipe-expansion-review
+            outputs/mealplan-extensions-review
             outputs/expense-editor-review
+            outputs/finance-workspace-review
+            outputs/chores-workspace-review
+            outputs/meters-workspace-review
+            outputs/documents-workspace-review
             outputs/repurchase-review
             outputs/barcode-review
             outputs/pantry-waste-review

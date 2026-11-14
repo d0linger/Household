@@ -79,3 +79,28 @@ test('Meter browser commands retain actual upstream bytes without replay or CDP 
   if(failure==='status')assert.ok(!events.includes('ready'),'Reject failed HTTP before accepting UI state');
  }
 });
+
+test('Finance permanent seal verifies the one real response without CDP reads or invented effects',async()=>{
+ const source=fs.readFileSync(path.join(__dirname,'browser-finance-workspace-check.cjs'),'utf8');
+ const start=source.indexOf('async function sealOperation(key,click){'),end=source.indexOf('  async function get(query)',start);
+ assert.ok(start>=0&&end>start);
+ for(const failure of ['', 'fetch','body','fulfill','status','json','state','effects']){
+  const api='/api/v1/expenses/finance',key='11111111-1111-4111-8111-111111111111',url='http://localhost:8101'+api+'/operations/'+key+'/seal';
+  const bytes=Buffer.from(failure==='json'?'invalid JSON':JSON.stringify({state:failure==='state'?'accepted':'sealed',effects:failure==='effects'?'none':'unknown'}));
+  const events=[];let match,handler,resolve,reject;
+  const request={method:()=> 'POST'};
+  const upstream={body:async()=>{events.push('body');if(failure==='body')throw Error('upstream body failed');return bytes;}};
+  const response={url:()=>url,request:()=>request,status:()=>failure==='status'?409:200,json:()=>{throw Error('CDP response body unavailable');}};
+  const route={request:()=>request,fetch:async options=>{events.push('fetch');assert.deepEqual(JSON.parse(JSON.stringify(options)),{maxRedirects:0,maxRetries:0,timeout:15000});if(failure==='fetch')throw Error('upstream fetch failed');return upstream;},fulfill:async value=>{events.push('fulfill');assert.equal(value.response,upstream);assert.equal(value.body,bytes);if(failure==='fulfill')throw Error('upstream fulfill failed');resolve(response);},abort:async()=>{events.push('abort');reject(Error('request aborted'));}};
+  const page={route:async(m,h)=>{match=m;handler=h;},waitForResponse:predicate=>{assert.equal(predicate(response),true);return new Promise((ok,bad)=>{resolve=ok;reject=bad;});},unroute:async(m,h)=>{assert.equal(m,match);assert.equal(h,handler);events.push('cleanup');}};
+  const scope={page,URL,api,origin:new URL(url),must:assert.ok};vm.runInNewContext(source.slice(start,end),scope);
+  const result=scope.sealOperation(key,async()=>{
+   assert.equal(match(new URL(url)),true);assert.equal(match(new URL(url.replace('localhost:8101','foreign.invalid'))),false);assert.equal(match(new URL(url.replace(key,'22222222-2222-4222-8222-222222222222'))),false);
+   let fallback=false;await handler({request:()=>({method:()=> 'GET'}),fallback:async()=>{fallback=true;}});assert.equal(fallback,true);
+   await handler(route);
+  });
+  if(failure)await assert.rejects(result);else assert.deepEqual(JSON.parse(JSON.stringify(await result)),{state:'sealed',effects:'unknown'});
+  assert.equal(events.filter(e=>e==='fetch').length,1,'Never replay the permanent seal');assert.equal(events.at(-1),'cleanup');
+  if(['fetch','body','fulfill'].includes(failure))assert.ok(events.includes('abort'));
+ }
+});
