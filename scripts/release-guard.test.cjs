@@ -35,7 +35,7 @@ test('release guard accepts only a normal Household main push matching its event
 
 test('promotion evidence excludes unmerged, forked, wrong-source and wrong-commit pull requests', () => {
   assert.equal(isPromotionPR(promotion(), sha), true);
-  const changes = [{number: 0}, {number: '42'}, {state: 'open'}, {merged_at: null}, {merged_at: 'invalid'}, {merge_commit_sha: newer},
+  const changes = [{number: 0}, {number: '42'}, {state: 'open'}, {merged_at: null}, {merged_at: 'invalid'}, {merge_commit_sha: newer}, {merge_commit_sha: null}, {merge_commit_sha: undefined},
     {base: {ref: 'dev', repo: {full_name: repository}}}, {base: {ref: 'main', repo: {full_name: 'attacker/Household'}}},
     {head: {ref: 'feature', repo: {full_name: repository}}}, {head: {ref: 'dev', repo: {full_name: 'attacker/Household'}}}, {head: {ref: 'dev', repo: null}}];
   for (const change of changes) assert.equal(isPromotionPR({...promotion(), ...change}, sha), false);
@@ -48,7 +48,7 @@ test('successful promotion uses only fixed GitHub endpoints, no redirects, and c
     requests.push(url);
     assert.equal(options.method, 'GET'); assert.equal(options.redirect, 'error'); assert.equal(options.credentials, 'omit');
     assert.equal(options.headers.Authorization, 'Bearer synthetic-token-never-print');
-    assert.equal(options.headers['X-GitHub-Api-Version'], '2026-03-10');
+    assert.equal(options.headers['X-GitHub-Api-Version'], '2022-11-28');
     assert.equal(options.signal.aborted, false);
     return json(url.endsWith('/git/ref/heads/main') ? main() : [promotion()]);
   }});

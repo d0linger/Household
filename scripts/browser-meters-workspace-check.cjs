@@ -19,7 +19,23 @@ const hash=data=>crypto.createHash('sha256').update(data).digest('hex');
   let register='';const prefix='Meters browser '+Date.now();
   async function ready(){await page.waitForFunction(()=>document.querySelector('#meters-workspace')?.getAttribute('aria-busy')==='false');const hidden=await page.locator('#energy-error').isHidden();must(hidden,'No unresolved workspace error: '+step+(hidden?'':' · '+await page.locator('#energy-error-text').innerText()));}
   async function pane(name){step=name;await page.goto(origin.origin+'/m/meters/workspace/'+name+(register?'?register='+register:''));await ready();}
-  async function post(action,click){const pending=page.waitForResponse(r=>new URL(r.url()).pathname==='/api/v1/meters/commands'&&r.request().method()==='POST'&&r.request().postDataJSON().action===action);await click();const response=await pending;const data=await response.json();must(response.status()===200,'Actual '+action+' accepted');await ready();return data;}
+  async function post(action,click){
+   const endpoint=url=>url.origin===origin.origin&&url.pathname==='/api/v1/meters/commands';
+   let body,captureError;
+   // Preserve the real upstream bytes before Chromium can discard its response body.
+   const capture=async route=>{
+    if(route.request().method()!=='POST'||route.request().postDataJSON().action!==action)return route.fallback();
+    try{
+     const response=await route.fetch({maxRedirects:0,maxRetries:0,timeout:15000});body=await response.body();
+     await route.fulfill({response,body});
+    }catch(error){captureError=error;await route.abort('failed').catch(()=>{});}
+   };
+   await page.route(endpoint,capture);
+   try{
+    const [response]=await Promise.all([page.waitForResponse(r=>endpoint(new URL(r.url()))&&r.request().method()==='POST'&&r.request().postDataJSON().action===action),click()]);
+    must(response.status()===200,'Actual '+action+' accepted');await ready();return JSON.parse(body.toString('utf8'));
+   }catch(error){throw captureError||error;}finally{await page.unroute(endpoint,capture);}
+  }
   await pane('settings');await page.getByRole('button',{name:'Zähler anlegen',exact:true}).click();await page.locator('[name=name]').fill(prefix);await page.locator('[name=location_note]').fill('Actual isolated browser fixture');const meter=await post('meter.save',()=>page.getByRole('button',{name:'Zähler speichern',exact:true}).click());
   register=await page.evaluate(async meter=>{const overview=await fetch('/api/v1/meters/overview',{cache:'no-store'}).then(r=>r.json());return overview.registers.find(r=>r.meter_id===meter).id;},meter.id);must(!!register,'Actual default register identity loaded');
   await pane('settings');await page.getByRole('button',{name:'Gerät zuordnen',exact:true}).click();await page.locator('[name=serial_number]').fill(prefix+' physical');await page.locator('[name=installed_at]').fill('2026-10-01T12:00');await page.locator('[name=initial_value]').fill('100');await post('device.save',()=>page.getByRole('button',{name:'Gerät speichern',exact:true}).click());
@@ -45,7 +61,7 @@ const hash=data=>crypto.createHash('sha256').update(data).digest('hex');
   for(const mode of [{name:'desktop',width:1440,height:1000,colorScheme:'light'},{name:'mobile',width:390,height:844,colorScheme:'dark'}]){
    await page.setViewportSize({width:mode.width,height:mode.height});await page.emulateMedia({colorScheme:mode.colorScheme,reducedMotion:'reduce'});
    for(const name of ['overview','capture','history','costs','plans','imports','settings']){
-    await pane(name);if(['history','costs'].includes(name)){await page.locator('#energy-filters [name=from]').fill('2026-10-01');await page.locator('#energy-filters [name=through]').fill('2026-10-31');must(await page.locator('#energy-filters form').evaluate(form=>form.reportValidity()),'Valid explicit period form: '+name+' '+mode.name);const requested=page.waitForResponse(response=>{const url=new URL(response.url());return url.pathname==='/api/v1/meters/'+(name==='costs'?'series':'history')&&url.searchParams.get('from')==='2026-10-01'&&url.searchParams.get('through')==='2026-10-31';});await page.getByRole('button',{name:'Zeitraum anzeigen',exact:true}).click();const result=await requested;must(result.status()===200,'Actual selected period response: '+name+' '+mode.name);if(name==='costs'){const actual=await result.json();must(!actual.recalculation_pending&&actual.rows.length>0,'Current populated chart data: '+mode.name+' · rows='+actual.rows.length+' pending='+actual.recalculation_pending);}await ready();}
+    await pane(name);if(['history','costs'].includes(name)){await page.locator('#energy-filters [name=from]').fill('2026-10-01');await page.locator('#energy-filters [name=through]').fill('2026-10-31');must(await page.locator('#energy-filters form').evaluate(form=>form.reportValidity()),'Valid explicit period form: '+name+' '+mode.name);const requested=page.waitForResponse(response=>{const url=new URL(response.url());return url.pathname==='/api/v1/meters/'+(name==='costs'?'series':'history')&&url.searchParams.get('from')==='2026-10-01'&&url.searchParams.get('through')==='2026-10-31';});await page.getByRole('button',{name:'Zeitraum anzeigen',exact:true}).click();const result=await requested;must(result.status()===200,'Actual selected period response: '+name+' '+mode.name);if(name==='costs'){const actual=await page.evaluate(async url=>{const response=await fetch(url,{cache:'no-store'});if(!response.ok)throw Error('Actual chart verification read denied');return response.json();},result.url());must(!actual.recalculation_pending&&actual.rows.length>0,'Current populated chart data: '+mode.name+' · rows='+actual.rows.length+' pending='+actual.recalculation_pending);}await ready();}
     if(name==='costs'){await page.locator('svg.energy-chart').waitFor({state:'visible'});must(true,'Actual populated chart visible: '+mode.name);}
     must(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'No horizontal viewport overflow: '+mode.name+' '+name);await page.keyboard.press('Tab');must(await page.evaluate(()=>document.activeElement!==document.body),'Keyboard focus reachable: '+mode.name+' '+name);const accessibility=await new AxeBuilder({page}).withTags(['wcag2a','wcag2aa','wcag21aa','wcag22aa']).analyze();report.accessibility.push({view:name,mode:mode.name,violations:accessibility.violations});must(accessibility.violations.length===0,'Clean Axe: '+mode.name+' '+name);const file=path.join(output,name+'-'+mode.name+'.png');await page.screenshot({path:file,fullPage:true});report.screenshots.push({path:file,sha256:hash(await fs.readFile(file)),view:name,mode:mode.name});
    }
