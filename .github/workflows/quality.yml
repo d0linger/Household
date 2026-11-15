@@ -108,7 +108,7 @@ jobs:
         shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
     services:
       postgres:
-        image: postgres:18-alpine@sha256:10a5c69a83035ab5239f5620d708520e8b28f5aa1f2b20143e6024532edadfb5
+        image: postgres:18-alpine@sha256:b6972e1115a4ff8eba5d7f7d19184926d1e16d7d1136ae1e1a7ebf286da0f015
         env: {POSTGRES_DB: household_test, POSTGRES_PASSWORD: ci-database-only}
         ports: ['5432:5432']
         options: --health-cmd="pg_isready -U postgres -d household_test" --health-interval=3s --health-timeout=3s --health-retries=15
