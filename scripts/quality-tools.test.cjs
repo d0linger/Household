@@ -10,6 +10,16 @@ const {inspect} = require('./check-oci.cjs');
 const {checkActions, checkWorkflow} = require('./check-workflows.cjs');
 const {parseDocument} = require('yaml');
 const {resolveBrowserPrivateRoot} = require('./browser-private-root.cjs');
+const {PG_IMAGE} = require('./notification-browser-fixture.cjs');
+
+test('CI PostgreSQL services match the browser fixture identity guard', async () => {
+  for (const file of ['browser.yml', 'quality.yml', 'shopping-extensions.yml']) {
+    const workflow = parseDocument(await fs.readFile(path.join(__dirname, '..', '.github/workflows', file), 'utf8')).toJS();
+    for (const job of Object.values(workflow.jobs)) {
+      if (job.services?.postgres) assert.equal(job.services.postgres.image, PG_IMAGE, `${file} ${job.name}`);
+    }
+  }
+});
 
 test('Gosec keeps every package below the loader argument boundary without omitting source', async () => {
   const root = path.resolve(__dirname, '..');
