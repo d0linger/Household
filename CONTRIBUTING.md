@@ -2,7 +2,7 @@
 
 Keep each change focused on one problem and explain why it is needed. For a substantial new feature, agree its scope with the maintainer through an issue or an existing user-approved brief before implementation. Existing approval does not need to be requested again.
 
-Read AGENTS.md, PRODUCT.md, DESIGN.md and docs/implementation.md before changing behavior. Use Go 1.27.3 or newer, PostgreSQL 18 and Docker Compose. Runtime assets are embedded and local; Node dependencies are development-only browser tooling.
+Read AGENTS.md, PRODUCT.md, DESIGN.md and docs/implementation.md before changing behavior. Use Go 1.27.4 or newer, PostgreSQL 18 and Docker Compose. Runtime assets are embedded and local; Node dependencies are development-only browser tooling.
 
 Keep SQL parameterized, queries cancellable, module contracts explicit and immutable histories append-only. Add forward migrations rather than editing released files. Update deploy/migration-checksums.json when adding migrations, then run `node scripts/check-migrations.cjs`. CI rejects modifications/deletions of migrations present on the pull request's base.
 
@@ -22,6 +22,6 @@ Changes to embedded templates, JavaScript, CSS or icons require a new Go binary/
 
 Before promotion to `main`, fill in the PR's operational-impact section against the exact base/head commits: household-data/workflow effects, manual steps, and binary/schema rollback compatibility. Prefer a forward corrective migration; never assume an old binary can run on a new schema. Reassess after either commit changes. These are review notes, not automatic deployment permission.
 
-Keep required checks failing on scanner errors, missing test prerequisites and failed assertions. Do not use `continue-on-error`, skip tests, lower coverage floors or add broad ignore lists to make CI green. Review dependency changes for vulnerabilities, licenses and runtime necessity; scheduled scans also cover advisories published after a commit. See [the reference adoption record](docs/workflow-reference-adoption.md) for the adapted policies and deliberate differences.
+Keep required checks failing on scanner errors, missing test prerequisites and failed assertions. Do not use `continue-on-error`, skip tests, lower coverage floors or add broad ignore lists to make CI green. Review dependency changes for vulnerabilities, licenses and runtime necessity; scheduled scans also cover advisories published after a commit. See [the dependency audit and update policy](docs/dependencies.md) and [the reference adoption record](docs/workflow-reference-adoption.md) for the adapted policies and deliberate differences.
 
 Use synthetic examples in bug reports and UI evidence. Report security concerns privately using [SECURITY.md](SECURITY.md). Contributions are covered by this repository's [MIT license](LICENSE).
