@@ -55,6 +55,16 @@ The published image is `ghcr.io/d0linger/household:production` (also `:latest`).
 - **Encrypted backups:** `docker compose -f compose.yaml -f compose.backup.yaml up -d --build backup` starts scheduled restic snapshots. Keep the repository password separately and rehearse [restore verification](docs/operations.md#restore-verification). A local backup volume does not protect against host loss.
 - **Web Push, Documents inputs and meter adapters:** use only the relevant [Compose overlays](docs/operations.md) and configure their secrets and approvals. They are off by default. Each installation supplies its own origin; no public URL is compiled into the app.
 
+### Optional Web Push
+
+With Go 1.27.4 available on the operator host, generate a new VAPID key pair after initialization:
+
+```sh
+go run ./cmd/household push-keygen --private-out .local/secrets/web_push_private_key --public-out .local/secrets/web_push_public_key
+```
+
+Set `HOUSEHOLD_WEB_PUSH_ENABLED=true` and `HOUSEHOLD_WEB_PUSH_VAPID_CONTACT=mailto:you@example.org` in `.env`, then include `compose.webpush.yaml` in the installation's complete Compose file set. Keep the private key out of Git and preserve it separately in encrypted backup storage; the scheduled backup does not include it. Device delivery needs a reachable HTTPS origin and explicit user consent. See [Web Push operations](docs/operations.md#device-notifications).
+
 ## Configuration
 
 Copy `.env.example` through the initializer. The principal settings are:
