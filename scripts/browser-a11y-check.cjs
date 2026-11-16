@@ -59,6 +59,11 @@ module.exports = async function checkAccessibilityHardening(page, report = {chec
     await page.locator(selector).evaluate(async dialog => {
       await Promise.allSettled(dialog.getAnimations({subtree: true}).map(animation => animation.finished));
     });
+    await page.waitForFunction(target => {
+      const dialog = document.querySelector(target);
+      return dialog && Number(getComputedStyle(dialog).opacity) === 1 &&
+        dialog.getAnimations({subtree: true}).every(animation => animation.playState === 'finished');
+    }, selector, {timeout: 5000});
     const settled = await inspect();
     must(Number(settled.opacity) === 1 && settled.animations.every(animation => animation.state === 'finished'), 'Dialog visual state settled before axe: ' + name);
     const result = await new AxeBuilder({page}).include(selector).withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze();
