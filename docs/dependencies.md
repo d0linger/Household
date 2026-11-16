@@ -11,8 +11,8 @@ Household pins production dependencies and images so a release can be rebuilt an
 | npm lockfile | `npm outdated --json` reports no update. Node packages are development-only. |
 | Base images | `golang:1.27.4-alpine3.24`, `alpine:3.24` and `postgres:18-alpine` resolve to the pinned manifest digests in the Dockerfiles and Compose definitions. |
 | Go CI tools | Latest module queries match the pinned golangci-lint 2.15.0, gosec 2.30.0 and govulncheck 1.9.0. |
-| Trivy | CI now pins 0.76.2 and the SHA-256 of its official Linux archive. The new pin still needs the hosted container check before claiming scanner execution. |
-| GitHub Actions | Actions are pinned to full commit SHAs. Dependabot checks updates against `dev` each Monday; this audit did not independently compare every action with upstream releases. |
+| Trivy | CI pins 0.76.2 and the SHA-256 of its official Linux archive. The PR #18 push and pull-request container checks both passed with this pin. |
+| GitHub Actions | All eight distinct external actions match their upstream latest release tags, and every pinned SHA matches the corresponding tag. Dependabot checks updates against `dev` each Monday. |
 
 The full Go module graph contains 229 entries, 148 of which show a newer release. These are not declared in Household's `go.mod` and none is imported by the checked package tree. Upgrading them as a blanket `go get -u all` would add unneeded dependencies or change version selection without a consumer. If a future feature imports one, review its version and license at that point. This is why “all dependencies” means declared/used dependencies and intentionally pinned build tools, not every transitive graph entry.
 
