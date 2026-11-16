@@ -63,6 +63,25 @@ func validInstant(at time.Time) bool {
 	return !at.IsZero() && at.Year() >= 1900 && at.Year() <= 2200
 }
 
+// HistoryYears is the longest meter history accepted on input.
+const HistoryYears = 30
+
+// InputAccepted bounds instants accepted from outside input (commands, CSV
+// imports, meter feeds). It compares the UTC-normalized value with a margin, so
+// values the database derives from an accepted instant (local-midnight mapping
+// starts, dirty-range ends one second later, local buckets) stay inside the wide
+// 1900..2200 range validInstant keeps for derived values. The history window
+// bounds the rebuild work one early start date can create.
+func InputAccepted(instant, now time.Time) bool {
+	floor := time.Date(1900, time.January, 3, 0, 0, 0, 0, time.UTC)
+	if history := now.UTC().AddDate(-HistoryYears, 0, 0); history.After(floor) {
+		floor = history
+	}
+	ceiling := time.Date(2200, time.December, 29, 0, 0, 0, 0, time.UTC)
+	instant = instant.UTC()
+	return !instant.IsZero() && !instant.Before(floor) && !instant.After(ceiling)
+}
+
 // Between never subtracts unrelated device counters or interprets kW as kWh.
 func Between(kind, unit string, previous, next Point, rollover string, maxGap time.Duration) (Interval, error) {
 	out := Interval{From: previous.At, Through: next.At, DeviceID: next.DeviceID, Unit: unit, Quality: "actual"}

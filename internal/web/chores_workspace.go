@@ -2,6 +2,7 @@ package web
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -12,6 +13,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"household/internal/ical"
 	"household/internal/store"
@@ -260,14 +262,29 @@ func (s *Server) choreWorkspaceAPI(w http.ResponseWriter, r *http.Request) {
 func (s *Server) choreCalendarFeed(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "private, no-store")
 	w.Header().Set("Referrer-Policy", "no-referrer")
-	s.Store.Gate.RLock()
-	defer s.Store.Gate.RUnlock()
 	token := r.PathValue("token")
-	if !strings.HasSuffix(token, ".ics") || r.URL.RawQuery != "" {
+	// Cheap in-memory checks, then the per-client limit, all before the module
+	// gate: a request without a session must not occupy the gate while it waits.
+	if _, enabled := s.Store.State("chores"); !enabled || !strings.HasSuffix(token, ".ics") || r.URL.RawQuery != "" || len(strings.TrimSuffix(token, ".ics")) != 43 {
 		s.fail(w, r, store.ErrNotFound)
 		return
 	}
-	events, err := s.Store.ChoreCalendarFeed(r.Context(), strings.TrimSuffix(token, ".ics"))
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+	if err := s.Auth.Limit(ctx, "chores-calendar-feed", s.clientIP(r), 120, time.Minute); err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	if !s.Store.TryReadGate() {
+		w.Header().Set("Retry-After", "5")
+		s.fail(w, r, store.ErrBusy)
+		return
+	}
+	defer s.Store.Gate.RUnlock()
+	// Bound the gated section well inside the module change's gate wait.
+	gated, release := context.WithTimeout(ctx, feedGateBudget)
+	defer release()
+	events, err := s.Store.ChoreCalendarFeed(gated, strings.TrimSuffix(token, ".ics"))
 	if err != nil {
 		s.fail(w, r, err)
 		return

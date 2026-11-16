@@ -20,6 +20,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -60,6 +61,7 @@ type Server struct {
 	templatesEN   *template.Template
 	assets        map[string]string
 	shutting      atomic.Bool
+	readiness     readinessCache
 	imageSlots    chan struct{}
 	recipeFetcher *recipeimport.Fetcher
 }
@@ -403,10 +405,36 @@ func (s *Server) Handler() http.Handler {
 }
 
 func (s *Server) Stop() { s.shutting.Store(true) }
-func (s *Server) ready(w http.ResponseWriter, r *http.Request) {
-	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+
+// readinessTTL bounds how often the unauthenticated readiness route may run the
+// full database contract inspection, whatever the probe rate.
+const readinessTTL = 5 * time.Second
+
+// readinessCache lets at most one readiness inspection run at a time and shares
+// its result for readinessTTL, so unauthenticated probes cannot multiply
+// catalog queries on the shared application pool.
+type readinessCache struct {
+	mu      sync.Mutex
+	checked time.Time
+	ready   bool
+}
+
+func (s *Server) databaseReady(ctx context.Context) bool {
+	s.readiness.mu.Lock()
+	defer s.readiness.mu.Unlock()
+	if !s.readiness.checked.IsZero() && time.Since(s.readiness.checked) < readinessTTL {
+		return s.readiness.ready
+	}
+	// The shared result must not depend on one probe's connection lifetime.
+	check, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Second)
 	defer cancel()
-	if s.shutting.Load() || database.Ready(ctx, s.Pool) != nil {
+	s.readiness.ready = database.Ready(check, s.Pool) == nil
+	s.readiness.checked = time.Now()
+	return s.readiness.ready
+}
+
+func (s *Server) ready(w http.ResponseWriter, r *http.Request) {
+	if s.shutting.Load() || !s.databaseReady(r.Context()) {
 		writeJSON(w, 503, map[string]string{"status": "unavailable"})
 		return
 	}

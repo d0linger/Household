@@ -78,10 +78,14 @@ func energyNormalize(in EnergyCommand) (Record, error) {
 		}
 		if strings.HasSuffix(name, "_at") && text != "" {
 			instant, err := time.Parse(time.RFC3339Nano, text)
-			if err != nil || instant.Year() < 1900 || instant.Year() > 2200 || instant.Nanosecond()%1000 != 0 {
+			if err != nil || instant.Nanosecond()%1000 != 0 {
 				return nil, Invalid{"Zeitpunkt mit eindeutigem UTC-Offset und höchstens Mikrosekunden angeben"}
 			}
-			text = instant.UTC().Format(time.RFC3339Nano)
+			instant = instant.UTC()
+			if !EnergyInstantAccepted(instant, time.Now()) {
+				return nil, Invalid{"Zeitpunkt innerhalb der letzten 30 Jahre und vor dem 29. Dezember 2200 (UTC) angeben"}
+			}
+			text = instant.Format(time.RFC3339Nano)
 		}
 		if slices.Contains([]string{"value", "initial_value", "new_initial", "old_final", "rollover_value", "price_minor_per_unit", "base_minor_per_day", "daily_warning", "base_load_warning"}, name) && text != "" {
 			if _, err := energy.Decimal(text); err != nil {
@@ -288,4 +292,16 @@ func energySaveReading(ctx context.Context, tx pgx.Tx, id auth.Identity, rid, ke
  WHERE p.household_id=$1 AND p.active AND (NOT p.actual_only OR x.kind='actual')
  AND (x.measured_at AT TIME ZONE r.timezone)::date>=p.anchor_on ON CONFLICT(plan_id,plan_version,due_on,reading_id,reading_revision) DO NOTHING`, id.HouseholdID, rid, id.UserID)
 	return out, err
+}
+
+// EnergyInstantAccepted bounds instants accepted from meter commands and
+// device dates. The year was once checked in the input's own offset before UTC
+// normalization, so offset boundary values stored instants the projection
+// worker refuses and stalled every register. The margin keeps values the
+// database derives from an accepted instant (local-midnight legacy mapping
+// starts, dirty-range ends one second later, local buckets) inside the worker's
+// range. The thirty-year history window bounds the rebuild work one start date
+// can create; consumer-side checks stay wide so derived values are not refused.
+func EnergyInstantAccepted(instant, now time.Time) bool {
+	return energy.InputAccepted(instant, now)
 }

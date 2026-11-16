@@ -16,6 +16,7 @@ import (
 	"strconv"
 	"strings"
 
+	"household/internal/auth"
 	"household/internal/store"
 	"household/internal/value"
 
@@ -201,12 +202,25 @@ func (s *Server) upload(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	var used int64
-	if err = tx.QueryRow(r.Context(), "SELECT coalesce(sum(size_bytes),0) FROM core.attachments WHERE household_id=$1 AND state='ready'", identity(r).HouseholdID).Scan(&used); err != nil {
+	if err = tx.QueryRow(r.Context(), store.UploadQuotaUsedQuery, identity(r).HouseholdID).Scan(&used); err != nil {
 		s.fail(w, r, err)
 		return
 	}
 	if used+int64(len(clean)) > s.Cfg.UploadQuota {
 		s.fail(w, r, store.Invalid{Message: "Speicherlimit des Haushalts erreicht"})
+		return
+	}
+	// Each upload queues image work in the single shared worker queue. Bound what
+	// one member may have outstanding so uploads cannot hold back other members'
+	// and the system's background jobs.
+	var outstanding int
+	if err = tx.QueryRow(r.Context(), uploadJobsOutstandingQuery, identity(r).HouseholdID, identity(r).UserID).Scan(&outstanding); err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	if outstanding >= maxOutstandingUploadJobs {
+		w.Header().Set("Retry-After", "30")
+		s.fail(w, r, auth.ErrLimited)
 		return
 	}
 	if err = os.MkdirAll(s.Cfg.UploadDir, 0750); err != nil {
@@ -382,24 +396,37 @@ func (s *Server) download(w http.ResponseWriter, r *http.Request) {
 	http.ServeContent(w, r, name, info.ModTime(), file)
 }
 
+// maxOutstandingUploadJobs bounds pending or running thumbnail and capture jobs
+// created by one member's uploads.
+const maxOutstandingUploadJobs = 20
+
+const uploadJobsOutstandingQuery = `SELECT count(*) FROM core.jobs j JOIN core.attachments a ON a.household_id=j.household_id
+ AND a.id::text=coalesce(j.payload->>'attachment_id',(SELECT c.source_attachment_id::text FROM core.capture_jobs c WHERE c.id::text=j.payload->>'capture_id'))
+ WHERE j.household_id=$1 AND j.kind IN('thumbnail','capture_ocr') AND j.state IN('pending','running') AND j.attempts<j.max_attempts AND a.uploaded_by=$2`
+
+// downloadAttachmentQuery returns the visible, ready attachment of an enabled
+// module generation together with its owning record.
+const downloadAttachmentQuery = `SELECT a.module_id,a.resource_type,a.resource_id,a.storage_key,a.original_name,a.media_type FROM core.attachments a
+ JOIN core.module_states m ON m.household_id=a.household_id AND m.module_id=a.module_id AND m.state='enabled' AND m.data_generation=a.module_generation
+ WHERE a.id=$1 AND a.household_id=$2 AND a.state='ready' AND core.finance_artifact_visible($2,$3,$4,$5,$6,'attachment',a.id,'view')`
+
 // openDownload authorizes in a short read transaction that ends before a possibly
 // slow client is served, so downloads do not pin pool connections or idle in a
 // transaction; the open descriptor keeps the authorized bytes readable.
+//
+// It never holds one pool connection while waiting for another: the owning
+// record is authorized through Store.Get before the transaction opens, and the
+// transaction then re-reads the attachment so the authorized record still owns it.
+// Holding the transaction across Store.Get let concurrent downloads take every
+// pool connection while each waited for a second one.
 func (s *Server) openDownload(r *http.Request) (file *os.File, name, kind string, err error) {
 	if !value.ValidUUID(r.PathValue("id")) {
 		return nil, "", "", store.ErrNotFound
 	}
-	var mid, entity, rid, key string
-	tx, err := s.Pool.Begin(r.Context())
-	if err != nil {
-		return nil, "", "", err
-	}
-	defer func() { _ = tx.Rollback(r.Context()) }()
 	actor := identity(r)
-	err = tx.QueryRow(r.Context(), `SELECT a.module_id,a.resource_type,a.resource_id,a.storage_key,a.original_name,a.media_type FROM core.attachments a
- JOIN core.module_states m ON m.household_id=a.household_id AND m.module_id=a.module_id AND m.state='enabled' AND m.data_generation=a.module_generation
- WHERE a.id=$1 AND a.household_id=$2 AND a.state='ready' AND core.finance_artifact_visible($2,$3,$4,$5,$6,'attachment',a.id,'view')`,
-		r.PathValue("id"), actor.HouseholdID, actor.UserID, actor.MembershipID, actor.SessionID, actor.AuthVersion).Scan(&mid, &entity, &rid, &key, &name, &kind)
+	args := []any{r.PathValue("id"), actor.HouseholdID, actor.UserID, actor.MembershipID, actor.SessionID, actor.AuthVersion}
+	var mid, entity, rid, key string
+	err = s.Pool.QueryRow(r.Context(), downloadAttachmentQuery, args...).Scan(&mid, &entity, &rid, &key, &name, &kind)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, "", "", store.ErrNotFound
 	}
@@ -414,8 +441,24 @@ func (s *Server) openDownload(r *http.Request) (file *os.File, name, kind string
 	if !ok {
 		return nil, "", "", store.ErrNotFound
 	}
-	if _, err = s.Store.Get(r.Context(), identity(r), m, e, rid); err != nil {
+	if _, err = s.Store.Get(r.Context(), actor, m, e, rid); err != nil {
 		return nil, "", "", err
+	}
+	tx, err := s.Pool.Begin(r.Context())
+	if err != nil {
+		return nil, "", "", err
+	}
+	defer func() { _ = tx.Rollback(r.Context()) }()
+	var lockedModule, lockedEntity, lockedRecord string
+	err = tx.QueryRow(r.Context(), downloadAttachmentQuery+" FOR SHARE OF a", args...).Scan(&lockedModule, &lockedEntity, &lockedRecord, &key, &name, &kind)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, "", "", store.ErrNotFound
+	}
+	if err != nil {
+		return nil, "", "", err
+	}
+	if lockedModule != mid || lockedEntity != entity || lockedRecord != rid {
+		return nil, "", "", store.ErrNotFound
 	}
 	if err = s.Store.LockFinanceArtifact(r.Context(), tx, actor, "attachment", r.PathValue("id"), "view"); err != nil {
 		return nil, "", "", err

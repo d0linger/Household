@@ -38,6 +38,8 @@ func (s *Store) ScheduleChoreWorkspace(ctx context.Context) error {
  OR EXISTS(SELECT 1 FROM core.reminders r WHERE r.household_id=state.household_id AND r.module_id='chores'
  AND r.module_generation=state.data_generation AND r.state='pending' AND r.scheduled_at<=clock_timestamp()))
  AND NOT EXISTS(SELECT 1 FROM core.jobs j WHERE j.dedupe_key='chores-workspace/'||state.household_id::text||'/'||state.data_generation::text||'/'||to_char(clock_timestamp(),'YYYY-MM-DD-HH24-MI'))
+ AND NOT EXISTS(SELECT 1 FROM core.jobs live WHERE live.household_id=state.household_id AND live.module_id='chores'
+ AND live.module_generation=state.data_generation AND live.kind=$1 AND live.state IN('pending','running') AND live.attempts<live.max_attempts)
  ORDER BY state.household_id LIMIT 50 ON CONFLICT(dedupe_key) DO NOTHING`, ChoreWorkspaceJobKind)
 	return err
 }

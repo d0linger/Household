@@ -29,7 +29,7 @@ func (w *Worker) thumbnail(ctx context.Context, job, lease string) error {
 		return errors.New("invalid thumbnail job")
 	}
 	if err = w.financeArtifactPreflight(ctx, job, lease); err != nil {
-		return err
+		return w.retireObsoleteSourceJob(ctx, job, lease, err)
 	}
 	root, err := os.OpenRoot(w.Cfg.UploadDir)
 	if err != nil {

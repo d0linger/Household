@@ -207,6 +207,29 @@ func (s *Store) validateDomain(ctx context.Context, tx pgx.Tx, id auth.Identity,
 		if Int(data["repeat_days"]) == 0 {
 			changed["repeat_days"] = nil
 		}
+		// The active-series cap protects the shared worker. The workspace and the
+		// INSERT trigger enforced it, but a generic insert with active=false
+		// followed by PATCH active=true did not, so check every activation here.
+		if data["active"] == true {
+			wasActive := false
+			if rid != "" {
+				if err := tx.QueryRow(ctx, "SELECT active FROM chores.task_templates WHERE household_id=$1 AND id=$2 FOR UPDATE", id.HouseholdID, rid).Scan(&wasActive); err != nil && !errors.Is(err, pgx.ErrNoRows) {
+					return err
+				}
+			}
+			if !wasActive {
+				if _, err := tx.Exec(ctx, "SELECT pg_advisory_xact_lock(hashtextextended($1,0))", "chores-active-series/"+id.HouseholdID); err != nil {
+					return err
+				}
+				var count int
+				if err := tx.QueryRow(ctx, "SELECT count(*) FROM chores.task_templates WHERE household_id=$1 AND active", id.HouseholdID).Scan(&count); err != nil {
+					return err
+				}
+				if count >= choreMaximumActiveSeries {
+					return bad("Höchstens 500 aktive Aufgabenserien; zuerst nicht mehr benötigte Serien archivieren")
+				}
+			}
+		}
 	case "meters/readings":
 		var register string
 		if err := tx.QueryRow(ctx, `SELECT r.id::text FROM meters.registers r JOIN meters.devices d ON d.meter_id=r.meter_id
@@ -266,6 +289,20 @@ func (s *Store) validateDomain(ctx context.Context, tx pgx.Tx, id auth.Identity,
 	case "meters/devices":
 		if quantity("initial_reading").Sign() < 0 {
 			return bad("Anfangsstand darf nicht negativ sein")
+		}
+		// Device dates become instants at register-local midnight in a trigger;
+		// bound them with the workspace's window so no derived instant falls
+		// outside what the projection worker accepts.
+		now := time.Now()
+		for _, field := range []string{"installed_on", "removed_on"} {
+			day := String(data[field])
+			if day == "" {
+				continue
+			}
+			parsed, err := time.Parse(time.DateOnly, day)
+			if err != nil || !EnergyInstantAccepted(parsed.Add(-14*time.Hour), now) || !EnergyInstantAccepted(parsed.Add(38*time.Hour), now) {
+				return bad("Ein- und Ausbaudatum innerhalb der letzten 30 Jahre angeben")
+			}
 		}
 		if rid != "" {
 			var violates bool

@@ -6,13 +6,13 @@ import (
 	"errors"
 	"slices"
 	"strings"
-	"time"
 
 	"household/internal/auth"
 	"household/internal/document"
 	"household/internal/value"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 func documentLock(ctx context.Context, tx pgx.Tx, id auth.Identity, rid string, version int64) error {
@@ -164,19 +164,32 @@ func (s *Store) documentApply(ctx context.Context, tx pgx.Tx, id auth.Identity, 
 		var v struct {
 			Archived bool `json:"archived"`
 		}
-		if err = documentDecode(in.Data, &v); err == nil {
-			_, err = tx.Exec(ctx, `UPDATE documents.documents SET archived_at=CASE WHEN $3 THEN clock_timestamp() END WHERE household_id=$1 AND id=$2`, id.HouseholdID, in.ID, v.Archived)
+		if err = documentDecode(in.Data, &v); err != nil {
+			break
 		}
-		if err == nil && v.Archived {
+		// Only a real state change has side effects: repeating archived=false on an
+		// active document used to add one reminder per deadline every time.
+		var tag pgconn.CommandTag
+		tag, err = tx.Exec(ctx, `UPDATE documents.documents SET archived_at=CASE WHEN $3 THEN clock_timestamp() END WHERE household_id=$1 AND id=$2 AND (archived_at IS NOT NULL)<>$3`, id.HouseholdID, in.ID, v.Archived)
+		if err != nil || tag.RowsAffected() == 0 {
+			break
+		}
+		if v.Archived {
 			_, err = tx.Exec(ctx, `DELETE FROM core.search_documents WHERE household_id=$1 AND module_id='documents' AND resource_id=$2`, id.HouseholdID, in.ID)
 		}
 		if err == nil && v.Archived {
 			_, err = tx.Exec(ctx, `UPDATE core.reminders SET state='cancelled',cancelled_at=clock_timestamp() WHERE household_id=$1 AND module_id='documents' AND resource_id=$2 AND state='pending'`, id.HouseholdID, in.ID)
 		}
 		if err == nil && !v.Archived {
+			// Restore future reminders under one stable key per deadline and due
+			// date: a repeated cycle revives only cancelled rows, keeps delivered
+			// ones delivered and never re-notifies deadlines whose time has passed.
 			_, err = tx.Exec(ctx, `INSERT INTO core.reminders(household_id,module_id,module_generation,resource_type,resource_id,kind,scheduled_at,timezone,dedupe_key)
- SELECT x.household_id,'documents',$3,'documents',x.document_id,'document_expiry',(x.due_on::timestamp+interval '9 hours'-make_interval(days=>x.remind_days)) AT TIME ZONE h.timezone,h.timezone,'document-deadline/'||x.id::text||'/reactivated/'||$4
- FROM documents.deadlines x JOIN core.households h ON h.id=x.household_id WHERE x.household_id=$1 AND x.document_id=$2 AND x.cancelled_at IS NULL`, id.HouseholdID, in.ID, in.Generation, value.UUID())
+ SELECT x.household_id,'documents',$3,'documents',x.document_id,'document_expiry',(x.due_on::timestamp+interval '9 hours'-make_interval(days=>x.remind_days)) AT TIME ZONE h.timezone,h.timezone,
+ 'document-deadline/'||x.id::text||'/'||x.due_on::text||'/reactivated/'||x.remind_days::text
+ FROM documents.deadlines x JOIN core.households h ON h.id=x.household_id WHERE x.household_id=$1 AND x.document_id=$2 AND x.cancelled_at IS NULL
+ AND (x.due_on::timestamp+interval '9 hours'-make_interval(days=>x.remind_days)) AT TIME ZONE h.timezone>clock_timestamp()
+ ON CONFLICT(dedupe_key) DO UPDATE SET state='pending',cancelled_at=NULL,scheduled_at=excluded.scheduled_at WHERE core.reminders.state='cancelled'`, id.HouseholdID, in.ID, in.Generation)
 		}
 	case "current":
 		var v struct {
@@ -296,7 +309,7 @@ func (s *Store) documentDeadline(ctx context.Context, tx pgx.Tx, id auth.Identit
 	if !v.Confirmed || !slices.Contains(document.DeadlineKinds, v.Kind) || strings.TrimSpace(v.Label) == "" || len(v.Label) > 200 || strings.TrimSpace(v.Source) == "" || len(v.Source) > 200 || v.RemindDays < 0 || v.RemindDays > 366 {
 		return nil, Invalid{"Fristart, Quelle und Datum ausdrücklich bestätigen"}
 	}
-	if _, err := time.Parse(time.DateOnly, v.DueOn); err != nil {
+	if !value.Date(v.DueOn) {
 		return nil, Invalid{"Fristdatum prüfen"}
 	}
 	rid := v.ID
@@ -468,6 +481,10 @@ func (s *Store) documentScan(ctx context.Context, tx pgx.Tx, id auth.Identity, i
 	return out, nil
 }
 
+// maxOutstandingDocumentProcessing bounds one member's pending or running
+// document processing requests.
+const maxOutstandingDocumentProcessing = 10
+
 func documentQueue(ctx context.Context, tx pgx.Tx, id auth.Identity, in DocumentCommand, versionID, operation string, input []byte) (Record, error) {
 	if versionID != "" {
 		if !value.ValidUUID(versionID) {
@@ -479,6 +496,22 @@ func documentQueue(ctx context.Context, tx pgx.Tx, id auth.Identity, in Document
 		}
 	} else if operation != "scan" {
 		return nil, Invalid{"Dateiversion auswählen"}
+	}
+	// Every processing request becomes a job in the single shared worker queue.
+	// Refuse a repeated extraction of a version that is already queued, and bound
+	// what one member may have outstanding, so document commands cannot hold back
+	// other members' and the system's background jobs.
+	var same, mine int
+	if err := tx.QueryRow(ctx, `SELECT count(*) FILTER (WHERE $5='extract' AND operation='extract' AND document_id=$2 AND version_id IS NOT DISTINCT FROM nullif($3,'')::uuid),
+ count(*) FILTER (WHERE requested_by=$4)
+ FROM documents.processing WHERE household_id=$1 AND state IN('pending','running')`, id.HouseholdID, in.ID, versionID, id.UserID, operation).Scan(&same, &mine); err != nil {
+		return nil, err
+	}
+	if same > 0 {
+		return nil, Invalid{"Diese Dateiversion wird bereits verarbeitet"}
+	}
+	if mine >= maxOutstandingDocumentProcessing {
+		return nil, Invalid{"Höchstens 10 offene Dokumentverarbeitungen je Person; bitte warten"}
 	}
 	pid, jid := value.UUID(), value.UUID()
 	payload, _ := json.Marshal(Record{"processing_id": pid})

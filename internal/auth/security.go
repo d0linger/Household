@@ -65,7 +65,14 @@ func (s *Service) Reauthenticate(ctx context.Context, id Identity, password, cod
 	if current != hash {
 		return ErrCredentials
 	}
+	if err = s.factorBudget(ctx, tx, id.UserID); err != nil {
+		return err
+	}
 	if err = s.verifyFactor(ctx, tx, id.UserID, code); err != nil {
+		if errors.Is(err, ErrCredentials) {
+			_ = tx.Rollback(ctx)
+			s.recordFactorFailure(ctx, id.UserID)
+		}
 		return err
 	}
 	if _, err = tx.Exec(ctx, "UPDATE core.sessions SET reauthenticated_at=clock_timestamp() WHERE id=$1", id.SessionID); err != nil {

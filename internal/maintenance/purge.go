@@ -168,19 +168,19 @@ func purgeAttempt(ctx context.Context, pool *pgxpool.Pool, requestID string) err
 	}
 	if mid == "pantry" {
 		var version int
-		var dirty bool
-		if err = tx.QueryRow(ctx, "SELECT version,dirty FROM pantry.schema_migrations").Scan(&version, &dirty); err != nil {
+		var dirty, scrub bool
+		// The scrub decision comes from owner-owned catalog state; the ledger must
+		// match this release exactly instead of acting as a lower bound.
+		if err = tx.QueryRow(ctx, "SELECT version,dirty,to_regprocedure('pantry.clear_extension_responses(uuid)') IS NOT NULL FROM pantry.schema_migrations").Scan(&version, &dirty, &scrub); err != nil {
 			return err
 		}
-		if dirty || version > database.ExpectedVersion("pantry") {
+		if dirty || version != database.ExpectedVersion("pantry") || !scrub {
 			return errors.New("unsupported pantry schema for maintenance deletion")
 		}
-		if version >= 12 {
-			// The exact owner/operator contract removes historical response text
-			// while retaining minimal keys and completed cooking-source fences.
-			if _, err = tx.Exec(ctx, "SELECT pantry.clear_extension_responses($1)", hid); err != nil {
-				return err
-			}
+		// The exact owner/operator contract removes historical response text
+		// while retaining minimal keys and completed cooking-source fences.
+		if _, err = tx.Exec(ctx, "SELECT pantry.clear_extension_responses($1)", hid); err != nil {
+			return err
 		}
 	}
 	// A catalogue source belongs to Recipes. Pantry and Shopping are independent

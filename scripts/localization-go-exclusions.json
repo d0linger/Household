@@ -461,5 +461,9 @@
   "error pattern\ninternal/maintenance/crypto.go\nrotation batch must be between 1 and 100": "Owner-only CLI crypto maintenance diagnostic for protected-row verification/rotation/retirement and private-bundle parsing; no HTTP presentation or typed Invalid/Rejection boundary.",
   "error pattern\ninternal/secretbox/secretbox.go\nsecurity secrets must be independent": "Internal crypto sentinel or key generation/configuration diagnostic. HTTP callers route untyped failures through Server.fail to the translated generic failure; workers and CLI retain operator diagnostics.",
   "error pattern\ninternal/maintenance/crypto.go\ntrailing private bundle data": "Owner-only CLI crypto maintenance diagnostic for protected-row verification/rotation/retirement and private-bundle parsing; no HTTP presentation or typed Invalid/Rejection boundary.",
-  "error pattern\ninternal/maintenance/crypto_backup.go\nunsupported or incomplete backup security bundle": "Operator backup/restore security-bundle diagnostic; the maintenance CLI reports this safely bounded failure, not an application form or translated HTTP error."
+  "error pattern\ninternal/maintenance/crypto_backup.go\nunsupported or incomplete backup security bundle": "Operator backup/restore security-bundle diagnostic; the maintenance CLI reports this safely bounded failure, not an application form or translated HTTP error.",
+  "error pattern\ninternal/database/database.go\ninspect migration ledgers: %w": "Operator readiness diagnostic; HTTP readiness returns only a generic unavailable status.",
+  "error pattern\ninternal/database/database.go\nmigration ledger is writable by the runtime role": "Operator readiness diagnostic; HTTP readiness returns only a generic unavailable status.",
+  "error pattern\ninternal/database/database.go\nprotect migration ledger %s: %w": "Owner migration diagnostic printed by the operator migration command; never an HTTP response.",
+  "error pattern\ninternal/auth/auth.go\nread second-factor budget: %w": "Internal database failure diagnostic; the HTTP boundary returns the generic translated failure."
 }

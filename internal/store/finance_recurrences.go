@@ -85,6 +85,15 @@ func (s *Store) financeRecurrenceCommand(ctx context.Context, tx pgx.Tx, id auth
 	if c.Version == 0 && in.Automatic && (c.InitialAccess == nil || c.InitialAccess.ResponsibleMembershipID == nil) {
 		return nil, Invalid{"Für automatische Entwürfe zuerst ausdrücklich eine verantwortliche schreibfähige Person zuordnen"}
 	}
+	if in.Automatic && in.Active {
+		behind, catchErr := financeAutomaticCatchupPending(ctx, tx, scope, c.ID, in.AnchorOn, in.RepeatUnit, in.RepeatInterval, in.MonthdayPolicy)
+		if catchErr != nil {
+			return nil, catchErr
+		}
+		if behind {
+			return nil, Invalid{"Ältere Fälligkeiten zuerst manuell erzeugen; automatische Entwürfe holen höchstens 31 Tage nach"}
+		}
+	}
 	result, err := financeSaveSupport(ctx, tx, id, scope, c, "recurring_templates",
 		[]string{"name", "anchor_on", "ends_on", "repeat_unit", "repeat_interval", "monthday_policy", "template_kind", "template", "account_id", "active"},
 		[]any{in.Name, in.AnchorOn, in.EndsOn, in.RepeatUnit, in.RepeatInterval, in.MonthdayPolicy, in.TemplateKind, []byte(in.Template), in.AccountID, in.Active}, refs, in)
@@ -203,6 +212,33 @@ func financeNextRecurrence(anchor, after, through, unit string, interval int, po
 		}
 	}
 	return "", Invalid{"Kalenderregel überschreitet die begrenzte Zeitspanne"}
+}
+
+// financeAutomaticCatchupDays bounds how far back automatic recurrence may
+// materialize drafts; an older backlog must first be generated manually so an
+// automatic template with a far-past anchor cannot mass-produce drafts.
+const financeAutomaticCatchupDays = 31
+
+// financeAutomaticCatchupPending reports whether the template's first
+// unmaterialized occurrence lies further back than the automatic catch-up window.
+func financeAutomaticCatchupPending(ctx context.Context, tx pgx.Tx, scope financialScope, template, anchor, unit string, interval int, policy string) (bool, error) {
+	zone, err := time.LoadLocation(scope.timezone)
+	if err != nil {
+		return false, err
+	}
+	today := scope.readAt.In(zone)
+	cutoff := today.AddDate(0, 0, -financeAutomaticCatchupDays).Format(time.DateOnly)
+	last := ""
+	if template != "" {
+		if last, err = financeRecurrenceState(ctx, tx, scope.householdID, template); err != nil {
+			return false, err
+		}
+	}
+	next, err := financeNextRecurrence(anchor, last, today.Format(time.DateOnly), unit, interval, policy)
+	if err != nil {
+		return false, err
+	}
+	return next != "" && next < cutoff, nil
 }
 
 func financeRecurrenceState(ctx context.Context, tx pgx.Tx, household, template string) (string, error) {
@@ -399,19 +435,22 @@ func (s *Store) CompleteFinanceRecurrenceJob(ctx context.Context, job, lease str
 		return err
 	}
 	through := scope.readAt.In(zone).Format(time.DateOnly)
-	result, err := s.financeGenerateRecurrence(ctx, tx, id, scope, row, through)
+	behind, err := financeAutomaticCatchupPending(ctx, tx, scope, template, String(row["anchor_on"]), String(row["repeat_unit"]), int(Int(row["repeat_interval"])), String(row["monthday_policy"]))
 	if err != nil {
 		return err
 	}
-	impact, _ := result["impact"].(Record)
-	backlog, _ := impact["backlog"].(bool)
-	state := "done"
-	if backlog {
-		state = "pending"
+	outcome := ""
+	if behind {
+		// The backlog exceeds the automatic window: leave it for a manual catch-up.
+		outcome = "catchup_required"
+	} else if _, err = s.financeGenerateRecurrence(ctx, tx, id, scope, row, through); err != nil {
+		return err
 	}
-	tag, err := tx.Exec(ctx, `UPDATE core.jobs SET state=$3,finished_at=CASE WHEN $3='done' THEN now() ELSE NULL END,
- available_at=now()+interval '30 seconds',lease_token=NULL,lease_until=NULL,attempts=0
- WHERE id=$1 AND lease_token=$2 AND state='running' AND lease_until>now()`, job, lease, state)
+	// One bounded batch per scheduled job. Any remaining backlog stays visible as
+	// next_due and continues with the next scheduled day or a manual generate;
+	// the job never re-queues itself or resets its attempts.
+	tag, err := tx.Exec(ctx, `UPDATE core.jobs SET state='done',finished_at=now(),last_error=nullif($3,''),lease_token=NULL,lease_until=NULL
+ WHERE id=$1 AND lease_token=$2 AND state='running' AND lease_until>now()`, job, lease, outcome)
 	if err != nil {
 		return err
 	}

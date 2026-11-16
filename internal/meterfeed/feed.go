@@ -118,7 +118,7 @@ func transportTLS(config Config) (*tls.Config, error) {
 
 func validSample(sample Sample, source Source) bool {
 	if !energy.ValidType(source.Kind, source.Unit) || sample.MeasurementKind != source.Kind || sample.Unit != source.Unit ||
-		!slices.Contains([]string{"actual", "estimated"}, sample.Quality) || sample.MeasuredAt.Year() < 1900 || sample.MeasuredAt.Year() > 2200 ||
+		!slices.Contains([]string{"actual", "estimated"}, sample.Quality) || !energy.InputAccepted(sample.MeasuredAt, time.Now()) ||
 		sample.MeasuredAt.Nanosecond()%1000 != 0 || sample.MeasuredAt.After(time.Now()) {
 		return false
 	}
@@ -126,7 +126,7 @@ func validSample(sample Sample, source Source) bool {
 		return false
 	}
 	if source.Kind == "interval" {
-		return sample.IntervalStartedAt != nil && sample.IntervalStartedAt.Year() >= 1900 &&
+		return sample.IntervalStartedAt != nil && energy.InputAccepted(*sample.IntervalStartedAt, time.Now()) &&
 			sample.IntervalStartedAt.Before(sample.MeasuredAt) && sample.IntervalStartedAt.Nanosecond()%1000 == 0 && !sample.RolloverConfirmed
 	}
 	return sample.IntervalStartedAt == nil && (!sample.RolloverConfirmed || source.Kind == "cumulative")

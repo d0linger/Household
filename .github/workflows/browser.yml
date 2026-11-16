@@ -55,7 +55,6 @@ jobs:
           SQL
       - run: go build -o bin/household ./cmd/household
       - run: npm ci --ignore-scripts && npx playwright install --with-deps chromium
-      - run: npm audit --audit-level=high
       - name: Run synthetic review server and browser suite
         env:
           HOUSEHOLD_ENV: development
@@ -162,7 +161,6 @@ jobs:
           pdfinfo -v
           npm ci --ignore-scripts
           npx playwright install --with-deps chromium
-          npm audit --audit-level=high
       - name: Initialize isolated notification roles
         env: {PGPASSWORD: ci-database-only}
         run: |

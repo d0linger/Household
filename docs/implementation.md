@@ -1573,3 +1573,39 @@ PR18 head 3ad876c passed all69 hosted checks and all11 workflows; the exact dev-
 PR19 first head 2f7cc2c failed the hosted Browser baseline while scanning the Settings tray: the browser test accepted rejected `animation.finished` promises from `Promise.allSettled`, then immediately required opacity1 and every current animation to be finished. The application, CSS and browser assertions were unchanged from PR18's passing head. The test now waits up to5 seconds for that same final visual condition before running Axe; it retains the exact opacity/animation assertion and fails if the state never settles. Corrected-head browser and full hosted acceptance remain pending.
 
 Focused local verification on the isolated `household-tests` PostgreSQL fixture (127.0.0.1:55434) and review server (127.0.0.1:8101): `browser-check.cjs` passed115 checks with11 screenshots, zero page errors and zero external requests; `browser-a11y-check.cjs` passed38 checks and three dialog scans. An initial standalone A11y invocation failed before reaching the dialog because the fixture still had its bootstrap password; running the registered baseline first established the expected synthetic account state. The verified 8101 Household process and tmpfs test container/network were removed after testing. No local runtime or live data was changed.
+
+### Security audit remediation and CI de-duplication — 16 November 2026
+
+The deep security audit (28 confirmed findings: 3 medium, 25 low; 6 needing validation; 2 rejected) was revalidated against `9f3c439` before fixing. Every finding touched files that changed after the audit snapshot. The Core 42P08 chores outbox defect was already fixed on `HEAD`. Of the rerun harnesses, 31 runs still reproduced their findings on `9f3c439`. The energy-catchup harness again accepted a 1900 device start. The shopping fan-out harness failed during fixture setup because it predates Core40's push-encryption column, so it is inconclusive. The 1900-meter-backfill harness was killed by the sandbox memory limit (exit 137) and is also inconclusive.
+
+Fixes on `dev`:
+- Medium: attachment downloads read and authorize before taking their row lock, without a nested pool acquisition. `/health/ready` runs one cached (5 s) and bounded (2 s) inspection at a time. The chores scheduler gained the live-job guard.
+- Worker: it claims at most 10 jobs and 5 per kind per tick, within 25 s. A failed job no longer ends the tick. Thumbnail and OCR jobs whose source is gone retire as `obsolete_source`. The archived-vehicle fuel capture expires instead of pinning the queue head.
+- Producer bounds: 20 pending preview/OCR jobs per uploader. Document processing refuses duplicates and allows at most 10 outstanding per member. Superseded shopping change events are coalesced before staging. An automatic finance recurrence runs one batch per job, never re-queues and refuses automatic consent beyond 31 days of backlog. The 500 active chore series quota also covers generic and conversion paths.
+- Abuse limits: a login budget per network prefix (IPv4 /24, IPv6 /64), and 10 failed second-factor attempts per account per 15 minutes for login and re-authentication. Calendar feeds are rate limited before the gate, never wait for the gate and have a 5 s budget. CSV exports have a 16 MiB budget for every module and two concurrent slots. The upload quota counts every stored byte.
+- Disclosure: CSV import confirmation checks Finance write scope before validation. Goal contributions deny hidden claims before the capacity comparison. Fuel binding, Meters bill and expense-editor audit rows follow the named entry's Finance visibility.
+- Inputs: one malformed IMAP, watch-folder or Paperless item is logged and skipped instead of halting its input. Meter devices, energy commands, CSV and feed instants use one UTC bound with a 1900-01-03 to 2200-12-29 margin and a 30-year history window. Document reactivation reminders are idempotent.
+- Database: Core41 (`000041_security_hardening`) scopes access-change consent revocation to the target template. It rotates the recurrence scheduler's bounded selection and skips consents already scheduled or holding a live job. It gates the three audit row kinds and re-pins `finance_ready` plus Fuel's Core-version and authority-hash pins. After migrating, the owner revokes runtime writes on every `schema_migrations` ledger; readiness fails if one is writable. Purge requires the exact Pantry ledger version and the owner-owned scrub function. Core41 rewrites no data.
+
+Not changed: digest keys stay per recipient, list and minute; the per-kind claim cap bounds their share instead. The 30-year meter history still allows about 263k hourly aggregates for one early register. Needs-validation leads (definer `search_path` with `pg_temp`, ZIP export memory, recipe import decoding, image decode budget) remain open.
+
+CI de-duplication: `go vet -tags=integration,testtools ./...` now runs once in `GOLint` instead of in all 16 test shards. `npm audit --audit-level=high` runs once in `WorkflowAndSecrets` instead of in the browser baseline, the 6-way notification matrix and Shopping extensions. The weekly security-maintenance audit is unchanged. The shard regression test asserts the new placement.
+
+Core41 also freezes the seven Core40 function definitions it replaces in the owner-only `core.security_hardening_predecessor_catalog()`. The Core39 upgrade fixtures first reconstruct exact Core40 from it, instead of bypassing guards.
+
+Local evidence: Go unit tests for all packages, `gofmt`, integration-tagged `go vet`, 524/524 Node tests, the localization build, workflow policy and 120 migration checksums passed.
+
+Targeted integration campaign on the isolated 55434 fixture:
+- Store: 31 mains passed (2450 s), including the far-past consent refusal.
+- Database and document inputs passed.
+- Web: 50 of 52 mains passed in the first run (6337 s). The two Documents upgrade mains then failed with `unexpected crypto predecessor source 41` because their helper only knew Core40. After the predecessor snapshot was added, those two plus the five other Core39-reconstruction mains passed (650 s).
+- Maintenance: all five mains passed when run one at a time from a clean schema. Their 20-second fixture reset is close to this Windows host's measured 17.9 s full-schema drop. Two runs started while the audit sandboxes were still active timed out inside migration and passed on rerun.
+
+Not run: the pinned golangci-lint v2.15.0 was not available offline, and the older global binary cannot read Go 1.27 export data. Actionlint was not installed. The full native campaign, browser acceptance and hosted CI were not run and remain pending.
+
+Local stack refresh (authorized in `AGENTS.md`):
+- `household:local` was tagged `household:rollback-pre-core41` and the app was stopped.
+- A one-off encrypted backup used `household-backup:pre-core41`, built from committed Core40 `9f3c439`, and produced snapshot `259f7e22`. Its isolated `restore-check` exited 0 and the run is recorded `complete` and verified.
+- The rebuilt image then migrated core to 41 (not dirty). `household_app` has no UPDATE on `core.schema_migrations`.
+- The app came back healthy: `/health/ready` and `/health/live` returned 200, `/login` returned 200 on the canonical host, and the new translations are embedded in the running binary.
+- Named volumes and secrets were unchanged. The task-owned restore and test databases were removed. No push, publication or remote deployment occurred.

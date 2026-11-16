@@ -544,6 +544,9 @@ func (s *Store) SaveChoreSeries(ctx context.Context, id auth.Identity, key, requ
 			}
 			templateID := in.ID
 			if templateID == "" {
+				if _, err := tx.Exec(ctx, "SELECT pg_advisory_xact_lock(hashtextextended($1,0))", "chores-active-series/"+id.HouseholdID); err != nil {
+					return nil, err
+				}
 				var count int
 				if err := tx.QueryRow(ctx, "SELECT count(*) FROM chores.task_templates WHERE household_id=$1 AND active", id.HouseholdID).Scan(&count); err != nil {
 					return nil, err

@@ -134,7 +134,11 @@ func (s *Store) fuelModuleCaptureClaim(ctx context.Context) (fuelCaptureLease, e
 		return out, err
 	}
 	if !transitioned {
-		return fuelCaptureLease{}, nil
+		// The SQL claim seam refuses states the Go checks above do not see, such
+		// as a vehicle archived after staging. Returning without a state change
+		// left the job at the head of the household queue until its expiry, so a
+		// refused claim is terminal like every other lost authority.
+		return expire()
 	}
 	return out, tx.Commit(ctx)
 }

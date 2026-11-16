@@ -218,13 +218,56 @@ func (w *Worker) scheduleHousekeeping(ctx context.Context) error {
 
 // jobs claims up to ten due jobs. A failure ends this tick's claims; failJob
 // has already scheduled its retry.
+// jobsPerKindPerTick caps one job kind's share of the ten claims per tick.
+const jobsPerKindPerTick = 5
+
+// jobsTickBudget bounds the wall-clock time one tick spends claiming jobs.
+const jobsTickBudget = 25 * time.Second
+
+// claimError marks a failure to claim a job, as opposed to a claimed job that
+// failed. Only the former stops the tick's claim loop.
+type claimError struct{ err error }
+
+func (e claimError) Error() string { return "claim job: " + e.err.Error() }
+func (e claimError) Unwrap() error { return e.err }
+
+// jobs claims up to ten due jobs per tick. A failed job has already been moved to
+// backoff by failJob, so it no longer stops the loop: otherwise one deterministic
+// failure per tick would hold every other job kind behind it.
 func (w *Worker) jobs(ctx context.Context) error {
+	var failed []error
+	claimed := map[string]int{}
+	deadline := time.Now().Add(jobsTickBudget)
 	for range 10 {
-		if err := w.job(ctx); err != nil {
-			return err
+		if time.Now().After(deadline) {
+			break
+		}
+		// No single job kind may take more than half a tick, so a burst from one
+		// producer (shopping digests and pushes, document processing, uploads,
+		// recurrence backlog) cannot hold every other kind behind it.
+		exhausted := []string{}
+		for kind, count := range claimed {
+			if count >= jobsPerKindPerTick {
+				exhausted = append(exhausted, kind)
+			}
+		}
+		kind, err := w.job(ctx, exhausted)
+		if kind == "" && err == nil {
+			break
+		}
+		if kind != "" {
+			claimed[kind]++
+		}
+		if err == nil {
+			continue
+		}
+		failed = append(failed, err)
+		var claim claimError
+		if errors.As(err, &claim) || ctx.Err() != nil {
+			break
 		}
 	}
-	return nil
+	return errors.Join(failed...)
 }
 func (w *Worker) deliver(ctx context.Context) error {
 	ctx = audit.WithSystem(ctx, "worker")
@@ -282,17 +325,23 @@ func (w *Worker) outbox(ctx context.Context) error {
 	_, err := audit.Exec(ctx, w.Pool, `INSERT INTO core.event_deliveries(event_id,consumer_id,state,delivered_at) SELECT e.id,'local-projections-v1','done',now() FROM core.outbox_events e JOIN core.module_states m ON m.household_id=e.household_id AND m.module_id=e.module_id AND m.state='enabled' AND m.data_generation=e.module_generation WHERE NOT EXISTS(SELECT 1 FROM core.event_deliveries d WHERE d.event_id=e.id AND d.consumer_id='local-projections-v1') ORDER BY e.created_at LIMIT 100 ON CONFLICT DO NOTHING`)
 	return err
 }
-func (w *Worker) job(ctx context.Context) (jobErr error) {
+func (w *Worker) job(ctx context.Context, exhausted []string) (kind string, jobErr error) {
 	ctx = audit.WithSystem(ctx, "worker")
 	lease := value.UUID()
-	var id, kind string
-	err := w.Pool.QueryRow(ctx, `WITH candidate AS(SELECT j.id FROM core.jobs j WHERE kind NOT IN('energy_adapter','notification_push_v1','pantry_notification_scan_v1','pantry_low_stock_scan_v1','fuel_notification_scan_v1','finance_notification_scan_v1','meter_notification_scan_v1','document_notification_scan_v1','mealplan_notification_scan_v1','security_notification_source_v1') AND ((state='pending' AND available_at<=now()) OR (state='running' AND lease_until<now())) AND attempts<max_attempts AND (module_id IS NULL OR EXISTS(SELECT 1 FROM core.module_states m WHERE m.household_id=j.household_id AND m.module_id=j.module_id AND m.state='enabled' AND m.data_generation=j.module_generation)) ORDER BY available_at LIMIT 1 FOR UPDATE SKIP LOCKED) UPDATE core.jobs j SET state='running',lease_token=$1,lease_until=now()+interval '60 seconds',attempts=attempts+1 FROM candidate c WHERE j.id=c.id RETURNING j.id,j.kind`, lease).Scan(&id, &kind)
+	var id string
+	err := w.Pool.QueryRow(ctx, `WITH candidate AS(SELECT j.id FROM core.jobs j WHERE NOT (kind=ANY($2::text[])) AND kind NOT IN('energy_adapter','notification_push_v1','pantry_notification_scan_v1','pantry_low_stock_scan_v1','fuel_notification_scan_v1','finance_notification_scan_v1','meter_notification_scan_v1','document_notification_scan_v1','mealplan_notification_scan_v1','security_notification_source_v1') AND ((state='pending' AND available_at<=now()) OR (state='running' AND lease_until<now())) AND attempts<max_attempts AND (module_id IS NULL OR EXISTS(SELECT 1 FROM core.module_states m WHERE m.household_id=j.household_id AND m.module_id=j.module_id AND m.state='enabled' AND m.data_generation=j.module_generation)) ORDER BY available_at LIMIT 1 FOR UPDATE SKIP LOCKED) UPDATE core.jobs j SET state='running',lease_token=$1,lease_until=now()+interval '60 seconds',attempts=attempts+1 FROM candidate c WHERE j.id=c.id RETURNING j.id,j.kind`, lease, exhausted).Scan(&id, &kind)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return nil
+		return "", nil
 	}
 	if err != nil {
-		return err
+		return "", claimError{err}
 	}
+	return kind, w.run(ctx, id, kind, lease)
+}
+
+// run executes one claimed job and records a failure (including a panic) so the
+// lease is released and the job enters backoff.
+func (w *Worker) run(ctx context.Context, id, kind, lease string) (jobErr error) {
 	defer func() {
 		// A panicking handler must still release its lease and enter backoff.
 		if value := recover(); value != nil {

@@ -10,6 +10,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/netip"
 	"strings"
@@ -143,6 +144,44 @@ func (s *Service) Bootstrap(ctx context.Context, modules []string, enabled map[s
 	return tx.Commit(ctx)
 }
 
+// factorFailureLimit bounds wrong second-factor codes per account and window,
+// independently of the password-calibrated login budgets.
+const (
+	factorFailureLimit  = 10
+	factorFailureWindow = 15 * time.Minute
+)
+
+func (s *Service) limitSubject(scope, subject string) []byte {
+	mac := hmac.New(sha256.New, []byte(s.cfg.RateSecret))
+	mac.Write([]byte(scope + "\x00" + subject))
+	return mac.Sum(nil)
+}
+
+// factorBudget refuses a second-factor check once the account has used its
+// failure budget for the current window. It only reads, inside the caller's
+// transaction, so it neither takes a second pool connection nor counts attempts.
+func (s *Service) factorBudget(ctx context.Context, tx pgx.Tx, user string) error {
+	var count int
+	err := tx.QueryRow(ctx, `SELECT coalesce(max(attempt_count),0) FROM core.rate_limit_buckets
+	 WHERE scope='totp-failure' AND subject_hash=$1 AND window_start=to_timestamp(floor(extract(epoch FROM clock_timestamp())/$2)*$2)`,
+		s.limitSubject("totp-failure", user), factorFailureWindow.Seconds()).Scan(&count)
+	if err != nil {
+		return fmt.Errorf("read second-factor budget: %w", err)
+	}
+	if count >= factorFailureLimit {
+		return ErrLimited
+	}
+	return nil
+}
+
+// recordFactorFailure counts one wrong second-factor code. Callers release their
+// transaction first: the failure must survive its rollback.
+func (s *Service) recordFactorFailure(ctx context.Context, user string) {
+	if err := s.Limit(context.WithoutCancel(ctx), "totp-failure", user, factorFailureLimit, factorFailureWindow); err != nil && !errors.Is(err, ErrLimited) {
+		slog.Default().Error("record second-factor failure", "error", err)
+	}
+}
+
 func (s *Service) Limit(ctx context.Context, scope, subject string, limit int, window time.Duration) error {
 	mac := hmac.New(sha256.New, []byte(s.cfg.RateSecret))
 	mac.Write([]byte(scope + "\x00" + subject))
@@ -162,6 +201,12 @@ func (s *Service) Limit(ctx context.Context, scope, subject string, limit int, w
 
 func (s *Service) Login(ctx context.Context, username, password, code, ip, ua string) (token string, result Identity, loginErr error) {
 	if err := s.Limit(ctx, "login-network", ip, 100, 15*time.Minute); err != nil {
+		return "", Identity{}, err
+	}
+	// The exact-address budget alone is free to evade by rotating addresses inside
+	// one IPv6 /56 (or IPv4 /24), and unknown account names always start a fresh
+	// account budget, so the client network as a whole is bounded as well.
+	if err := s.Limit(ctx, "login-network-prefix", networkPrefix(ip), 300, 15*time.Minute); err != nil {
 		return "", Identity{}, err
 	}
 	// The tight budget is per account and client network, so one network cannot
@@ -224,7 +269,14 @@ func (s *Service) Login(ctx context.Context, username, password, code, ip, ua st
 	if !hmac.Equal([]byte(hash), []byte(currentHash)) {
 		return "", Identity{}, ErrCredentials
 	}
+	if err = s.factorBudget(ctx, tx, uid); err != nil {
+		return "", Identity{}, err
+	}
 	if err = s.verifyFactor(ctx, tx, uid, code); err != nil {
+		if errors.Is(err, ErrCredentials) {
+			_ = tx.Rollback(ctx)
+			s.recordFactorFailure(ctx, uid)
+		}
 		return "", Identity{}, err
 	}
 	raw, err := s.createSession(ctx, tx, uid, ip, ua)

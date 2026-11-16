@@ -68,6 +68,11 @@ type Candidate struct {
 	Key   string
 	Name  string
 	Bytes []byte
+	// Rejected names why the adapter could not turn this source item into a
+	// document (for example malformed MIME or a message over the batch caps on
+	// its own). Rejected items carry no bytes; the cursor still moves past them
+	// so one permanently invalid item cannot halt the source.
+	Rejected string
 }
 type Cursor struct {
 	UIDValidity uint64 `json:"uid_validity"`

@@ -29,6 +29,12 @@ var ErrConflict = errors.New("inzwischen geändert; bitte neu laden und prüfen"
 var ErrForbidden = errors.New("keine Berechtigung")
 var ErrBusy = errors.New("module werden gerade verwendet")
 
+// UploadQuotaUsedQuery sums every attachment the household still stores. Rows
+// leave core.attachments only when the file tombstone worker removes the file,
+// so orphaned and purged bytes keep counting until they are really gone;
+// counting only ready rows let deleting parents and re-uploading exceed the bound.
+const UploadQuotaUsedQuery = `SELECT coalesce(sum(size_bytes),0) FROM core.attachments WHERE household_id=$1`
+
 // gateWait bounds how long a module change waits for in-flight requests.
 const gateWait = 10 * time.Second
 
@@ -50,6 +56,8 @@ type Store struct {
 	Modules        []module.Descriptor
 	snapshot       atomic.Value
 	Gate           sync.RWMutex
+	// gatePending counts module changes waiting for or holding Gate.
+	gatePending atomic.Int32
 }
 type Mutation struct {
 	Data              map[string]json.RawMessage `json:"data"`
@@ -180,7 +188,21 @@ func (s *Store) SetModule(ctx context.Context, id auth.Identity, mid string, ena
 
 // lockGate takes the module gate for writing without queueing behind readers.
 // A blocked Gate.Lock would stall every new request until one slow reader ended.
+// TryReadGate takes Gate for reading without blocking. It refuses while a module
+// change is waiting for or holding the gate, so callers without a session (the
+// capability calendar feeds) can never keep an administrator's module change
+// from finding a reader-free instant. A true result must be released with
+// Gate.RUnlock.
+func (s *Store) TryReadGate() bool {
+	if s.gatePending.Load() > 0 {
+		return false
+	}
+	return s.Gate.TryRLock()
+}
+
 func (s *Store) lockGate(ctx context.Context, wait time.Duration) error {
+	s.gatePending.Add(1)
+	defer s.gatePending.Add(-1)
 	ctx, cancel := context.WithTimeout(ctx, wait)
 	defer cancel()
 	poll := time.NewTicker(10 * time.Millisecond)

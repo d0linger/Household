@@ -276,7 +276,8 @@ test('quality workflow uses isolated sixteen-job matrix and validates complete a
   assert.equal(tests['timeout-minutes'], 75);
   assert.ok(!tests.steps.some(step=>(step.run||'').includes('run-shopping-push-testtools.cjs')));
   assert.ok(!tests.steps.some(step=>step.with?.name==='shopping-controlled-push'));
-  assert.ok(tests.steps.some(step=>(step.run||'').includes('go vet -tags=integration,testtools')));
+  assert.ok(!tests.steps.some(step=>(step.run||'').includes('go vet')), 'tagged vet runs once in GOLint, not per shard');
+  assert.ok(workflow.jobs.GOLint.steps.some(step=>(step.run||'')==='go vet -tags=integration,testtools ./...'));
   assert.match(workflow.jobs.UnitTests.steps.map(step=>step.run||'').join('\n'), /check-coverage\.cjs outputs\/qa\/unit\/coverage\.out 14 /);
   assert.equal(tests.services.postgres.env.POSTGRES_DB, 'household_test');
   assert.equal(tests.env.HOUSEHOLD_REQUIRE_INTEGRATION, '1');

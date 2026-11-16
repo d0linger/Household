@@ -28,6 +28,10 @@ func notificationCryptoRestore39(t *testing.T, f *integrationFixture) {
 	if version == 39 {
 		return
 	}
+	if version == 41 {
+		notificationHardeningRestore40(t, f)
+		version = 40
+	}
 	if version != 40 {
 		t.Fatal("unexpected crypto predecessor source", version)
 	}
@@ -70,6 +74,37 @@ func notificationCryptoRestore39(t *testing.T, f *integrationFixture) {
  END $restore$;`)
 	if err != nil {
 		t.Fatal("restore exact Core39 predecessor", err)
+	}
+	if err = tx.Commit(f.ctx); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// notificationHardeningRestore40 reverts Core41's function replacements from
+// its frozen predecessor evidence, again only in the disposable owner fixture.
+func notificationHardeningRestore40(t *testing.T, f *integrationFixture) {
+	t.Helper()
+	tx, err := f.owner.Begin(f.ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer notificationCryptoRollback(tx)
+	_, err = tx.Exec(f.ctx, `DO $restore$
+ DECLARE snapshot jsonb;item record;
+ BEGIN
+ IF current_database()<>'household_test' OR NOT(SELECT count(*)=1 AND bool_and(version=41 AND NOT dirty) FROM core.schema_migrations) THEN
+ RAISE EXCEPTION 'Hardening predecessor requires the isolated Core41 fixture';END IF;
+ snapshot=core.security_hardening_predecessor_catalog();
+ IF (SELECT count(*) FROM jsonb_object_keys(snapshot))<>7 THEN RAISE EXCEPTION 'Missing frozen Core40 evidence';END IF;
+ FOR item IN SELECT key,value FROM jsonb_each(snapshot) ORDER BY key LOOP
+ EXECUTE item.value->>'definition';END LOOP;
+ DROP FUNCTION core.security_hardening_predecessor_catalog();
+ UPDATE core.schema_migrations SET version=40 WHERE version=41 AND NOT dirty;
+ IF NOT core.finance_ready() OR NOT fuel.module_ready() OR NOT fuel.overview_ready() THEN
+ RAISE EXCEPTION 'Core40 reconstruction changed reviewed contracts';END IF;
+ END $restore$;`)
+	if err != nil {
+		t.Fatal("restore exact Core40 predecessor", err)
 	}
 	if err = tx.Commit(f.ctx); err != nil {
 		t.Fatal(err)
