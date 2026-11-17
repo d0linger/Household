@@ -31,7 +31,7 @@ node scripts/fuel-browser-contracts.cjs record-native $PWD outputs/fuel-browser-
 
 This command runs real Go tests and must only be used in an authorized execution phase. Output is bounded; passwords, database URIs and token-like output are redacted. Stderr is decoded and redacted by complete line, including a final unterminated line, so a secret split between byte chunks is not published.
 
-Both Docker images must be built from that same source with label `household.source-manifest-sha256=<manifest hash>`. The application uses Dockerfile target `ocr`; the toolbox uses `deploy/backup/Dockerfile`. Supply exact immutable `sha256:...` image IDs. The runner requires their label to match and configured user `10001:10001`; tags alone are insufficient.
+Both Docker images must be built from that same source with label `household.source-manifest-sha256=<manifest hash>`. The application and the toolbox both use Dockerfile target `ocr`, which includes restic and the PostgreSQL 18 client; CI passes the same image ID for both. Supply exact immutable `sha256:...` image IDs. The runner requires their label to match and configured user `10001:10001`; tags alone are insufficient.
 
 ```powershell
 pwsh -File scripts/run-fuel-module-browser.ps1 `

@@ -58,21 +58,35 @@ func configured(name string) (bool, error) {
 	return path != "", err
 }
 
-// databaseURL builds a PostgreSQL URL from HOUSEHOLD_DATABASE_PASSWORD when no
-// complete URL is configured. The password is percent-encoded, so maintenance
-// tools and pgx parse the same connection. An empty result means unconfigured.
+// Secret reads a secret setting from its value, its _FILE path or the secrets
+// folder, in that order. An empty result means unconfigured.
+func Secret(name string) (string, error) { return secret(name) }
+
+// ConnectionURL builds a PostgreSQL URL for user and password on
+// HOUSEHOLD_DATABASE_HOST (default db:5432) and HOUSEHOLD_DATABASE_NAME
+// (default household). Credentials are percent-encoded, so maintenance tools
+// and pgx parse the same connection.
+func ConnectionURL(user, password string) (string, error) {
+	return connectionURL("HOUSEHOLD_DATABASE_HOST", "db:5432", env("HOUSEHOLD_DATABASE_NAME", "household"), user, password)
+}
+
+func connectionURL(hostVariable, defaultHost, databaseName, user, password string) (string, error) {
+	host := env(hostVariable, defaultHost)
+	if name, port, err := net.SplitHostPort(host); err != nil || name == "" || port == "" {
+		return "", fmt.Errorf("%s must be host:port", hostVariable)
+	}
+	u := url.URL{Scheme: "postgres", User: url.UserPassword(user, password), Host: host, Path: "/" + databaseName, RawQuery: "sslmode=disable"}
+	return u.String(), nil
+}
+
+// databaseURL builds the URL from HOUSEHOLD_DATABASE_PASSWORD when no complete
+// URL is configured. An empty result means unconfigured.
 func databaseURL(hostVariable, defaultHost, databaseName string) (string, error) {
 	password, err := secret("HOUSEHOLD_DATABASE_PASSWORD")
 	if err != nil || password == "" {
 		return "", err
 	}
-	host := env(hostVariable, defaultHost)
-	if name, port, err := net.SplitHostPort(host); err != nil || name == "" || port == "" {
-		return "", fmt.Errorf("%s must be host:port", hostVariable)
-	}
-	user := env("HOUSEHOLD_DATABASE_USER", "household_app")
-	u := url.URL{Scheme: "postgres", User: url.UserPassword(user, password), Host: host, Path: "/" + databaseName, RawQuery: "sslmode=disable"}
-	return u.String(), nil
+	return connectionURL(hostVariable, defaultHost, databaseName, env("HOUSEHOLD_DATABASE_USER", "household_app"), password)
 }
 
 func loadDatabaseURL(c *Config) error {
@@ -95,12 +109,24 @@ func loadDatabaseURL(c *Config) error {
 
 // RestoreDatabaseURL returns the disposable restore target: an explicit
 // HOUSEHOLD_RESTORE_DATABASE_URL, or household_restore on
-// HOUSEHOLD_RESTORE_DATABASE_HOST (default restore-db:5432) with the same
-// database user and password as the source.
+// HOUSEHOLD_RESTORE_DATABASE_HOST (default: the application's database
+// server) with the same database user and password as the source.
 func RestoreDatabaseURL() (string, error) {
 	target, err := secret("HOUSEHOLD_RESTORE_DATABASE_URL")
 	if err != nil || target != "" {
 		return target, err
 	}
-	return databaseURL("HOUSEHOLD_RESTORE_DATABASE_HOST", "restore-db:5432", "household_restore")
+	return databaseURL("HOUSEHOLD_RESTORE_DATABASE_HOST", env("HOUSEHOLD_DATABASE_HOST", "db:5432"), "household_restore")
+}
+
+// RestoreSuperuserURLs address the restore server as postgres: its
+// maintenance database (to create and drop household_restore) and
+// household_restore itself (to prepare the roles).
+func RestoreSuperuserURLs(password string) (maintenance, restore string, err error) {
+	host := env("HOUSEHOLD_DATABASE_HOST", "db:5432")
+	if maintenance, err = connectionURL("HOUSEHOLD_RESTORE_DATABASE_HOST", host, "postgres", "postgres", password); err != nil {
+		return "", "", err
+	}
+	restore, err = connectionURL("HOUSEHOLD_RESTORE_DATABASE_HOST", host, "household_restore", "postgres", password)
+	return maintenance, restore, err
 }

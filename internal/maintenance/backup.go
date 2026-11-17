@@ -191,8 +191,8 @@ func Backup(ctx context.Context, pool *pgxpool.Pool, cfg config.Config) (string,
 		return "", err
 	}
 	defer unlock()
-	if os.Getenv("RESTIC_REPOSITORY") == "" || os.Getenv("RESTIC_PASSWORD_FILE") == "" {
-		return "", errors.New("encrypted restic repository and password file required")
+	if os.Getenv("RESTIC_REPOSITORY") == "" || os.Getenv("RESTIC_PASSWORD_FILE") == "" && os.Getenv("RESTIC_PASSWORD") == "" {
+		return "", errors.New("encrypted restic repository and password required")
 	}
 	if _, err := command(ctx, "restic", []string{"snapshots", "--json"}, ""); err != nil {
 		if _, err = command(ctx, "restic", []string{"init"}, ""); err != nil {

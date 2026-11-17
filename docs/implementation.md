@@ -1625,3 +1625,70 @@ Evidence:
 - `household init --development` inside the rebuilt image created all 15 files in an empty scratch folder and refused a second run.
 
 Not run: `compose.all.yaml` was not started (it shares the project name with the running dev stack and needs real integration endpoints), the integration test campaigns and browser suites were not rerun, and the shell wrapper was not executed on Linux.
+
+## Single-file installation for non-experts (2026-11-17)
+
+Changes:
+- Image: the `runtime` stage adds `restic` and `postgresql18-client`, creates `/data/backups` and `/work` for uid 10001, and defaults `HOUSEHOLD_UPLOAD_DIR=/data/uploads`. The container workflow now builds and publishes the `ocr` target, so the published image includes Tesseract and the backup tools.
+- `household start` reads `POSTGRES_PASSWORD`, `HOUSEHOLD_OWNER_PASSWORD` and `HOUSEHOLD_APP_PASSWORD`. As the superuser it runs `database.Bootstrap`, which mirrors `deploy/postgres/init.sh` idempotently: it creates the roles or updates their passwords, gives the database to the owner, limits CONNECT and revokes public-schema CREATE. It then migrates as the owner, validates the serve configuration, and `exec`s `household serve` as `household_app` with the setup credentials removed from the environment.
+- `household init` prints a complete commented German `.env` (all generated secrets, the Web Push key, optional integrations commented out) and refuses to print to a terminal. `--files` keeps the secrets-folder behaviour, which the initialize scripts now pass.
+- Features: OCR defaults to on when `/usr/bin/tesseract` exists. A Web Push private key turns Web Push on unless `HOUSEHOLD_WEB_PUSH_ENABLED` is set. The VAPID contact defaults to the HTTPS origin. Backups accept `RESTIC_PASSWORD` as well as `RESTIC_PASSWORD_FILE`.
+- `deploy/simple/compose.yaml` (db, app with `start`, backup) and the German guide `docs/installation.md`.
+
+Evidence:
+- `gofmt`, `go vet ./...`, Linux `go vet` of `cmd`, all Go unit tests (including new start, init, auto-enable and default tests) and 524/524 Node tests passed. The workflow policy check passed.
+- The image built locally. In it, `pg_dump` 18.7, `restic` 0.18.1 and `/usr/bin/tesseract` are present, and `/work` and `/data/backups` are owned by uid 10001.
+- End to end in a scratch folder, as project `household-simpletest` on port 8109, with no repository files:
+  - `init --development > .env` was followed by `docker compose up -d --wait` on a fresh database. Role setup and migration took about 80 s. The first run exposed that the image health check marked the app unhealthy during that time; the compose file now gives it a 10-minute start period, and the backup service's inherited health check is disabled.
+  - After the fix: `/health/ready` and `/login` returned 200, and the first `backup-loop` run created snapshot `86726b4f`.
+  - A restart (the `ALTER ROLE` path) came back healthy, and PID 1 (`household serve`) had no `POSTGRES_PASSWORD`, owner or app password variables.
+  - The test project, its volumes and its image were removed afterwards.
+- The dev stack was rebuilt (runtime target) and is healthy on 8100. No migration changed.
+
+Not run: the CI Trivy gate for the larger `ocr` image (adds Tesseract and restic) has not run yet, and a fixable HIGH/CRITICAL finding there would block publication. The published `:production` image does not contain these changes until the release pipeline runs. Restore verification through the simple compose and a real HTTPS reverse proxy were not tested.
+
+## One compose file as the only setup (2026-11-17)
+
+Changes:
+- `compose.yaml` (45 lines) is now the only deployment file. Removed:
+  - `compose.all.yaml`, `.env.all.example` and `.env.example`;
+  - every overlay (`backup`, `keyring`, `backup-keyring`, `webpush`, `documents*`, `meters-*`, `ocr`);
+  - `deploy/simple/` and `deploy/backup/Dockerfile`.
+- `compose.yaml` contents:
+  - `db` runs as uid 70.
+  - `app` (`start`) and `backup` share one hardening anchor: read-only, size-limited `/tmp`, `cap_drop: ALL`, `no-new-privileges`, `env_file: .env`, a 20 s stop grace period and bounded logs.
+  - It defines no custom networks and no cgroup limits, so it runs under rootless Docker.
+- The image's `HEALTHCHECK` now has a 10-minute start period and a 5 s start interval. Its environment defaults `RESTIC_REPOSITORY=/data/backups` and `RESTIC_CACHE_DIR`.
+- `household setup` creates the roles and migrates without serving.
+- `restore-check` with `POSTGRES_PASSWORD` and no explicit restore URL works on a temporary database, so the separate `restore-db` service is gone. Steps:
+  1. Create `household_restore` on the application's server, replacing any leftover copy.
+  2. Prepare the roles in it.
+  3. Verify the snapshot.
+  4. Always drop the copy (`DROP DATABASE ... WITH (FORCE)`), also after a failure.
+- `household init --files` now only creates the test-database secrets, without `.env`, Web Push or placeholder files. The initialize scripts describe it that way.
+- `scripts/test-recovery.ps1` uses its own in-memory container `household-recovery-test-db` on `household_default`, prepared with `backup setup`.
+- CI (`fuel-ocr-recovery`) passes the runtime image as the toolbox, and the scripts use `/data/backups`. The Dependabot entry for `deploy/backup` is gone.
+- Docs now describe `.env` and the `backup` maintenance service: README, installation (with a rootless section), operations, security, the meters contract and the Fuel browser notes.
+- OCR runs locally in the container: Tesseract (`deu+eng` from Alpine's `tesseract-ocr` packages) for images and scanned PDF pages, and poppler (`pdftotext`, `pdftoppm`) for PDF text and page rendering.
+
+Evidence:
+- Local stack migration:
+  - A pre-switch backup `292c207a` was taken with the committed setup and the old backup image; its `restore-check` on the old `restore-db` exited 0.
+  - `.env` was generated from the existing `.local/secrets` values, keeping the encryption, CSRF, rate, role and restic secrets. The previous `.env` is kept at `.local/env.pre-single-compose`; `household:local` from before is tagged `household:rollback-pre-single-compose`.
+  - The stack runs from `compose.yaml` with `HOUSEHOLD_IMAGE=household:local`. Data is intact: 2 users, core version 41, not dirty. `db` runs as uid 70, `app` as uid 10001, and `serve` has no superuser or owner password in its environment.
+  - New backups `d9b538d0` and `98e9361e` were created. `restore-check 98e9361e` exited 0, and `household_restore` was dropped afterwards.
+  - The old `household_backup_repository` and `household_backup_work` volumes are kept. The stale `household_database` and `household_web` networks were removed.
+- Fresh installation from the 45-line file (scratch project, port 8109, removed afterwards): `init --development` was followed by `up -d --wait` (healthy). `/health/ready` and `/login` returned 200, the first backup `d7cc19d1` was created, its `restore-check` exited 0, and a restart came back healthy.
+- `gofmt`, `go vet` (Windows and Linux), all Go unit tests, 524/524 Node tests and the workflow policy check passed.
+- `scripts/test-recovery.ps1` now passes (`"passed": true`) on its own in-memory container, leaving no container or volume behind. Two pre-existing fixture defects were fixed:
+  - Since Core30, owner maintenance inserts skip the finance producer (`core.finance_real_maintenance()`), so the live entry's policy and three subjects are now explicit fixture rows.
+  - Since Core29, the duplicate-key probe on `core.expense_edit_operations` needs the audit actor context: it now sets `household.audit_*` inside a rolled-back transaction, so the `ON CONFLICT DO NOTHING` result is reached.
+- `scripts/verify.ps1` passed: formatting, vet, shuffled unit tests and coverage, module verification, 120 migration checksums, workflow policy, local-artifact and quality-tool tests.
+- Integration tests (`-tags=integration,testtools`) on the isolated 55434 database passed for `cmd/household`, `internal/config`, `internal/database` and `internal/maintenance` (411 s). The store and web integration suites were not rerun; this change does not touch them.
+
+- Docs gained a migration guide from the `.local/secrets` setup to `.env` (installation, linked from operations), and testing, Shopping and meters references were updated.
+
+Not run:
+- Rootless Docker (Windows Docker Desktop here).
+- The CI Fuel browser recovery workflow and the Trivy scan of the `ocr` image.
+- A real HTTPS reverse proxy.

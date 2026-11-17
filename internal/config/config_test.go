@@ -195,6 +195,9 @@ func setValidEnvironment(t *testing.T) {
 		t.Setenv(name, "")
 		t.Setenv(name+"_FILE", "")
 	}
+	installed := ocrInstalled
+	ocrInstalled = func() bool { return false }
+	t.Cleanup(func() { ocrInstalled = installed })
 	t.Setenv("HOUSEHOLD_ENV", "development")
 	t.Setenv("HOUSEHOLD_DATABASE_URL", "postgres://synthetic@localhost/unused")
 	t.Setenv("HOUSEHOLD_CSRF_SECRET", strings.Repeat("c", 32))

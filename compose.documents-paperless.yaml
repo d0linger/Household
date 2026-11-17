@@ -1,9 +1,0 @@
-# Optional: use after compose.documents.yaml. Mounts the Paperless API token as
-# a Docker secret; the host file stays operator-owned and outside Git.
-services:
-  app:
-    secrets:
-      - document_paperless_token
-secrets:
-  document_paperless_token:
-    file: ${HOUSEHOLD_DOCUMENT_PAPERLESS_TOKEN_PATH:?Set the operator-owned Paperless token file path}

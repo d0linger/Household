@@ -56,19 +56,17 @@ Bounded reconciliation removes terminal delivery intents after 30 days and inbox
 
 ## Operator account recovery
 
-Stop the app, set a fresh password in `.local/secrets/bootstrap_password`, and run the owner-credential migration service as a one-off:
-
-Use the **same complete Compose file set and environment** as the running installation for every command. The base-only example below applies only to the default configuration. For a keyring installation add `-f compose.yaml -f compose.keyring.yaml` to every invocation; retain configured Web Push/Documents/Meters overlays too. If backup overlays are present, keep `compose.backup-keyring.yaml` after `compose.backup.yaml`. Dropping these can restart an app with the wrong encryption parser or lose configured integration settings. See [the overlay examples](operations.md#encryption-keys-and-rotation).
+Set a fresh password in `HOUSEHOLD_ADMIN_PASSWORD` in `.env`, stop the app and run the recovery through the owner-credential `backup` service:
 
 ```sh
 docker compose stop app
-docker compose run --rm --no-deps migrate recover admin
+docker compose run --rm --no-deps backup recover admin
 docker compose up -d app
 ```
 
 This forces a password change and revokes all sessions. Existing MFA remains required. If the authenticator and recovery codes are both lost, explicitly add `--reset-mfa` to the recovery command. That action removes the factor/codes and records an audit event. Recovery refuses runtime-role credentials.
 
-Keep secrets outside Git and back up the restic repository password independently. Preserve every required encryption reader, including the explicit legacy key while legacy records remain. Restoring an encrypted snapshot provides its security-key bundle; perform any key migration as controlled maintenance, never by simply replacing the encryption key file. Preserve the optional VAPID private key separately in encrypted storage: the automatic backup escrow does not include it.
+Keep `.env` outside Git and back it up independently; it holds the restic repository password. Preserve every required encryption reader, including the explicit legacy key while legacy records remain. Restoring an encrypted snapshot provides its security-key bundle; perform any key migration as controlled maintenance, never by simply replacing the encryption key in `.env`. The automatic backup escrow does not include the VAPID private key; preserving `.env` does.
 
 ## Verification interpretation
 

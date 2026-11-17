@@ -56,6 +56,12 @@ func run(log *slog.Logger) error {
 		fmt.Println("Household 0.1.0")
 		return nil
 	}
+	if command == "start" {
+		return runStart()
+	}
+	if command == "setup" {
+		return runSetup()
+	}
 	if command == "init" {
 		return runInit(os.Args[2:], os.Stdout)
 	}
@@ -158,7 +164,17 @@ func run(log *slog.Logger) error {
 		}
 		verifyCtx, cancel := context.WithTimeout(ctx, 30*time.Minute)
 		defer cancel()
-		return maintenance.VerifyRestore(verifyCtx, pool, cfg, os.Args[2], target)
+		verify := func() error { return maintenance.VerifyRestore(verifyCtx, pool, cfg, os.Args[2], target) }
+		// With the superuser password (compose.yaml), verify into a temporary
+		// household_restore on the database server and drop it afterwards.
+		superuser, err := config.Secret("POSTGRES_PASSWORD")
+		if err != nil {
+			return err
+		}
+		if superuser != "" && os.Getenv("HOUSEHOLD_RESTORE_DATABASE_URL") == "" && os.Getenv("HOUSEHOLD_RESTORE_DATABASE_URL_FILE") == "" {
+			return withRestoreTarget(verifyCtx, superuser, verify)
+		}
+		return verify()
 	case "purge":
 		if len(os.Args) != 3 {
 			return errors.New("usage: household purge REQUEST_UUID")
@@ -203,7 +219,7 @@ func run(log *slog.Logger) error {
 		return a.RecoverPassword(ctx, os.Args[2], cfg.AdminPassword, len(os.Args) == 4)
 	}
 	if command != "serve" {
-		return errors.New("unknown command; use init, serve, migrate, healthcheck, recover, version, push-keygen, encryption-keygen, encryption-reencrypt or encryption-retirement-check")
+		return errors.New("unknown command; use init, setup, start, serve, migrate, healthcheck, recover, version, push-keygen, encryption-keygen, encryption-reencrypt or encryption-retirement-check")
 	}
 	if err = database.Ready(ctx, pool); err != nil {
 		return err

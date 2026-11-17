@@ -63,7 +63,7 @@ func TestDatabaseURLSources(t *testing.T) {
 		t.Fatal("database URL settings not honored", err)
 	}
 	restore, err := RestoreDatabaseURL()
-	if err != nil || restore != "postgres://household_owner:synthetic-owner@restore-db:5432/household_restore?sslmode=disable" {
+	if err != nil || restore != "postgres://household_owner:synthetic-owner@127.0.0.1:55434/household_restore?sslmode=disable" {
 		t.Fatal("restore URL not derived from the source credentials", err)
 	}
 	t.Setenv("HOUSEHOLD_RESTORE_DATABASE_URL", "postgres://explicit@restore/household_restore")
@@ -113,5 +113,29 @@ func TestSecretsFolderEncryptionAndOptionalFiles(t *testing.T) {
 	cfg, err := Load()
 	if err != nil || cfg.WebPushPrivateKey != key || cfg.MeterFeeds.CAPEM != nil {
 		t.Fatal("folder Web Push key or empty CA placeholder handled wrongly", err)
+	}
+}
+
+func TestFeaturesTurnOnWhenConfigured(t *testing.T) {
+	setValidEnvironment(t)
+	ocrInstalled = func() bool { return true }
+	scalar := make([]byte, 32)
+	scalar[31] = 1
+	t.Setenv("HOUSEHOLD_WEB_PUSH_VAPID_PRIVATE_KEY", base64.RawURLEncoding.EncodeToString(scalar))
+	t.Setenv("HOUSEHOLD_ORIGIN", "https://household.example.org")
+	cfg, err := Load()
+	if err != nil || !cfg.OCREnabled || !cfg.WebPushEnabled || cfg.WebPushContact != "https://household.example.org" {
+		t.Fatal("installed OCR, a push key or the origin contact default were not used", err)
+	}
+	t.Setenv("HOUSEHOLD_OCR_ENABLED", "false")
+	t.Setenv("HOUSEHOLD_WEB_PUSH_ENABLED", "false")
+	t.Setenv("HOUSEHOLD_WEB_PUSH_VAPID_CONTACT", "mailto:ops@example.org")
+	if cfg, err = Load(); err != nil || cfg.OCREnabled || cfg.WebPushEnabled || cfg.WebPushContact != "mailto:ops@example.org" {
+		t.Fatal("explicit settings must win", err)
+	}
+	t.Setenv("HOUSEHOLD_WEB_PUSH_ENABLED", "")
+	t.Setenv("HOUSEHOLD_WEB_PUSH_VAPID_PRIVATE_KEY", "")
+	if cfg, err = Load(); err != nil || cfg.WebPushEnabled {
+		t.Fatal("Web Push must stay off without a key", err)
 	}
 }

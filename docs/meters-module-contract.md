@@ -61,13 +61,13 @@ No endpoint is contacted without explicit operator configuration and an enabled 
 | Environment | Meaning |
 |---|---|
 | `HOUSEHOLD_METERS_HA_URL` | Fixed trusted `https://host[:port]` origin; no credentials, path, query or fragment. |
-| `HOUSEHOLD_METERS_HA_TOKEN_FILE` | Operator-owned Home Assistant token file, mounted through `compose.meters-ha.yaml`. |
-| `HOUSEHOLD_METERS_MQTT_URL` | Fixed authenticated `mqtts://host[:port]` broker, mounted with `compose.meters-mqtt.yaml`. |
-| `HOUSEHOLD_METERS_MQTT_USER`, `HOUSEHOLD_METERS_MQTT_PASSWORD_FILE` | Explicit broker account and mounted password file. |
-| `HOUSEHOLD_METERS_CA_FILE` | Optional mounted PEM CA bundle, maximum 128 KiB; `compose.meters-ca.yaml` provides the secret mount. System roots otherwise apply. |
+| `HOUSEHOLD_METERS_HA_TOKEN` | Home Assistant token, set in `.env` (or `_FILE` / `/run/secrets/meters_ha_token`). |
+| `HOUSEHOLD_METERS_MQTT_URL` | Fixed authenticated `mqtts://host[:port]` broker. |
+| `HOUSEHOLD_METERS_MQTT_USER`, `HOUSEHOLD_METERS_MQTT_PASSWORD` | Explicit broker account and password (or `_FILE`). |
+| `HOUSEHOLD_METERS_CA_FILE` | Optional mounted PEM CA bundle, maximum 128 KiB; add `- ./meters-ca.pem:/config/meters-ca.pem:ro` under `app.volumes` in `compose.yaml` and set `HOUSEHOLD_METERS_CA_FILE=/config/meters-ca.pem`. System roots otherwise apply. |
 | `HOUSEHOLD_METERS_ALLOW_PLAINTEXT` | Defaults false. Explicitly permits operator-trusted HTTP/MQTT, principally isolated counterpart testing. No TLS verification bypass exists. |
 
-Compose overlay host variables are `HOUSEHOLD_METERS_HA_TOKEN_PATH`, `HOUSEHOLD_METERS_MQTT_PASSWORD_PATH` and optional `HOUSEHOLD_METERS_CA_PATH`. Combine only the overlays actually configured with the normal `compose.yaml`. Application and PostgreSQL remain the same isolated Docker services; no extra production telemetry container is required. Rotate a secret by replacing the operator-owned file and restarting the app. Disable a source in Settings or remove its operator configuration to stop ingestion; existing values remain.
+All settings live in `.env` next to the normal `compose.yaml`. Application and PostgreSQL remain the same isolated Docker services; no extra production telemetry container is required. Rotate a secret by changing it in `.env` and recreating the app (`docker compose up -d`). Disable a source in Settings or remove its operator configuration to stop ingestion; existing values remain.
 
 HA uses fixed `/api/states/sensor.…`, bounded 64 KiB responses, a five-second request timeout, verified TLS, no HTTP proxy or redirects and the source's real `last_updated`. `total_increasing` is required for cumulative sensors; `measurement` for interval/power, with explicit interval start where applicable. Only the closed m³→m3 alias is normalized. Unknown/unavailable/nonnumeric states are rejected.
 

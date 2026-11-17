@@ -13,8 +13,9 @@ import (
 )
 
 func loadWebPush(c *Config) error {
-	if raw := os.Getenv("HOUSEHOLD_WEB_PUSH_ENABLED"); raw != "" {
-		enabled, err := strconv.ParseBool(raw)
+	setting := os.Getenv("HOUSEHOLD_WEB_PUSH_ENABLED")
+	if setting != "" {
+		enabled, err := strconv.ParseBool(setting)
 		if err != nil {
 			return errors.New("invalid web push setting")
 		}
@@ -50,6 +51,10 @@ func loadWebPush(c *Config) error {
 	c.WebPushPrivateKey = strings.TrimSpace(private)
 	if c.WebPushPrivateKey == "" {
 		return nil
+	}
+	// A configured key turns Web Push on unless it is explicitly disabled.
+	if setting == "" {
+		c.WebPushEnabled = true
 	}
 	if len(c.WebPushPrivateKey) > 128 {
 		return errors.New("invalid web push private key")

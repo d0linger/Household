@@ -76,7 +76,7 @@ jobs:
           }
           $pin=(Get-FileHash -LiteralPath outputs/fuel-browser-native/module-source-manifest.json -Algorithm SHA256).Hash.ToLowerInvariant()
           "sha256=$pin" >> $env:GITHUB_OUTPUT
-      - name: Build current non-root OCR runtime and real backup toolbox
+      - name: Build current non-root OCR runtime (also the backup toolbox)
         id: images
         env:
           NATIVE_PIN: ${{ steps.native.outputs.sha256 }}
@@ -85,13 +85,10 @@ jobs:
           if($env:NATIVE_PIN -notmatch '^[a-f0-9]{64}$'){throw 'Native source pin missing'}
           docker build --target ocr --label "household.source-manifest-sha256=$env:NATIVE_PIN" --iidfile .local/fuel-ci-runtime.iid .
           if($LASTEXITCODE){throw 'Current OCR image build failed'}
-          docker build -f deploy/backup/Dockerfile --label "household.source-manifest-sha256=$env:NATIVE_PIN" --iidfile .local/fuel-ci-backup.iid .
-          if($LASTEXITCODE){throw 'Current backup image build failed'}
-          foreach($name in @('runtime','backup')){
-            $id=[IO.File]::ReadAllText((Join-Path $PWD ".local/fuel-ci-$name.iid")).Trim()
-            if($id -notmatch '^sha256:[a-f0-9]{64}$'){throw 'Immutable image ID missing'}
-            "$name=$id" >> $env:GITHUB_OUTPUT
-          }
+          # The runtime image ships restic and the PostgreSQL 18 client, so it is also the toolbox.
+          $id=[IO.File]::ReadAllText((Join-Path $PWD '.local/fuel-ci-runtime.iid')).Trim()
+          if($id -notmatch '^sha256:[a-f0-9]{64}$'){throw 'Immutable image ID missing'}
+          foreach($name in @('runtime','backup')){"$name=$id" >> $env:GITHUB_OUTPUT}
       - name: Run all20 human workflows with six actual OCR sources and real recovery
         env:
           NATIVE_PIN: ${{ steps.native.outputs.sha256 }}
@@ -142,7 +139,7 @@ jobs:
           $marker=Join-Path $PWD '.local/fuel-browser-ci-owned.json'
           if(Test-Path -LiteralPath $marker){
             if(((Get-Content -LiteralPath $marker -Raw)|ConvertFrom-Json).ci -ne $env:FUEL_CI_RUN){throw 'Private cleanup owner differs'}
-            foreach($relative in @('.local/secrets','.env','.local/fuel-browser-ci-compose.json','.local/fuel-ci-runtime.iid','.local/fuel-ci-backup.iid')){
+            foreach($relative in @('.local/secrets','.env','.local/fuel-browser-ci-compose.json','.local/fuel-ci-runtime.iid')){
               $target=[IO.Path]::GetFullPath((Join-Path $PWD $relative))
               if(!$target.StartsWith($PWD.Path+[IO.Path]::DirectorySeparatorChar,[StringComparison]::Ordinal)){throw 'Cleanup target leaves checkout'}
               if(Test-Path -LiteralPath $target){

@@ -11,11 +11,8 @@ import (
 
 func TestInitCreatesSecretsOnceWithoutPrintingThem(t *testing.T) {
 	t.Chdir(t.TempDir())
-	if err := os.WriteFile(".env.example", []byte("HOUSEHOLD_ORIGIN=https://household.example.org\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
 	var out bytes.Buffer
-	if err := runInit(nil, &out); err != nil {
+	if err := runInit([]string{"--files"}, &out); err != nil {
 		t.Fatal(err)
 	}
 	for _, name := range generatedSecrets {
@@ -29,16 +26,11 @@ func TestInitCreatesSecretsOnceWithoutPrintingThem(t *testing.T) {
 			}
 		}
 	}
-	for _, name := range append([]string{"web_push_private_key", "web_push_public_key"}, placeholderSecrets...) {
-		if _, err := os.Stat(filepath.Join(".local", "secrets", name)); err != nil {
-			t.Fatalf("%s missing", name)
-		}
-	}
-	if env, err := os.ReadFile(".env"); err != nil || !strings.Contains(string(env), "household.example.org") {
-		t.Fatal(".env was not copied from the template")
+	if _, err := os.Stat(".env"); !os.IsNotExist(err) {
+		t.Fatal("--files must not write .env")
 	}
 	before, _ := os.ReadFile(filepath.Join(".local", "secrets", "csrf_secret"))
-	if err := runInit(nil, &out); err == nil {
+	if err := runInit([]string{"--files"}, &out); err == nil {
 		t.Fatal("a second run must refuse existing secrets")
 	}
 	if after, _ := os.ReadFile(filepath.Join(".local", "secrets", "csrf_secret")); !bytes.Equal(before, after) {
@@ -46,22 +38,45 @@ func TestInitCreatesSecretsOnceWithoutPrintingThem(t *testing.T) {
 	}
 }
 
-func TestInitDevelopmentAndCleanupOnFailure(t *testing.T) {
+func TestInitRejectsArguments(t *testing.T) {
 	t.Chdir(t.TempDir())
 	var out bytes.Buffer
-	if err := runInit([]string{"--env-template", "missing.example"}, &out); err == nil {
-		t.Fatal("missing template must fail")
+	if runInit([]string{"extra"}, &out) == nil || runInit([]string{"--files", "extra"}, &out) == nil {
+		t.Fatal("unexpected arguments must fail")
 	}
-	if _, err := os.Stat(filepath.Join(".local", "secrets")); !os.IsNotExist(err) {
-		t.Fatal("a failed run must not leave partial secrets")
+	if _, err := os.Stat(".local"); !os.IsNotExist(err) {
+		t.Fatal("rejected runs must not create files")
 	}
-	if err := runInit([]string{"--development"}, &out); err != nil {
+}
+
+func TestInitPrintsCompleteEnvironment(t *testing.T) {
+	t.Chdir(t.TempDir())
+	var out bytes.Buffer
+	if err := runInit(nil, &out); err != nil {
 		t.Fatal(err)
 	}
-	if env, err := os.ReadFile(".env"); err != nil || !strings.Contains(string(env), "HOUSEHOLD_ENV=development") {
-		t.Fatal("development .env not written")
+	values := map[string]string{}
+	for _, line := range strings.Split(out.String(), "\n") {
+		if name, value, ok := strings.Cut(line, "="); ok && !strings.HasPrefix(line, "#") {
+			values[name] = value
+		}
 	}
-	if runInit([]string{"extra"}, &out) == nil {
-		t.Fatal("unexpected arguments must fail")
+	for _, name := range []string{"POSTGRES_PASSWORD", "HOUSEHOLD_OWNER_PASSWORD", "HOUSEHOLD_APP_PASSWORD", "HOUSEHOLD_CSRF_SECRET", "HOUSEHOLD_RATE_SECRET", "HOUSEHOLD_ENCRYPTION_KEY", "HOUSEHOLD_ADMIN_PASSWORD", "RESTIC_PASSWORD"} {
+		if len(values[name]) != 48 {
+			t.Fatalf("%s missing or malformed", name)
+		}
+	}
+	if len(values["HOUSEHOLD_WEB_PUSH_VAPID_PRIVATE_KEY"]) != 43 || values["HOUSEHOLD_ORIGIN"] != "https://household.example.org" {
+		t.Fatal("Web Push key or origin placeholder missing")
+	}
+	if values["POSTGRES_PASSWORD"] == values["HOUSEHOLD_OWNER_PASSWORD"] {
+		t.Fatal("secrets must be independent")
+	}
+	if _, err := os.Stat(".local"); !os.IsNotExist(err) {
+		t.Fatal("printing .env must not create files")
+	}
+	out.Reset()
+	if err := runInit([]string{"--development"}, &out); err != nil || !strings.Contains(out.String(), "HOUSEHOLD_ENV=development\nHOUSEHOLD_ORIGIN=http://localhost:8100\n") {
+		t.Fatal("development settings missing", err)
 	}
 }

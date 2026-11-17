@@ -19,7 +19,7 @@ function classifyPath(name) {
       || /^\.impeccable\/(?:critique|review)\//.test(lower)
       || /^\.claude\/worktrees\//.test(lower)) return 'Local state or generated evidence';
   if ((base === '.env' || base.startsWith('.env.'))
-      && !['.env.example', '.env.production.example', '.env.all.example'].includes(name)) return 'Private environment file';
+      && !['.env.example', '.env.production.example'].includes(name)) return 'Private environment file';
   if (/\.(?:pem|key|p12|pfx|jks|exe|dll|so|dylib|test|dump|backup|sqlite|sqlite3|db|db-wal|db-shm|har|mp4|webm|log|prof|cover|tmp|swp|swo|bak)$/i.test(base)
       || base.endsWith('~')) return 'Private material or generated binary/report';
   if (['go.work', 'go.work.sum', 'household'].includes(lower)

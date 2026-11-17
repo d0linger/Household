@@ -100,6 +100,8 @@ func Load() (Config, error) {
 	}
 	c := Config{Listen: env("HOUSEHOLD_LISTEN", DefaultListen), Origin: env("HOUSEHOLD_ORIGIN", "http://localhost:8100"), AdminUsername: env("HOUSEHOLD_ADMIN_USERNAME", "admin"), HouseholdName: env("HOUSEHOLD_NAME", "Mein Haushalt"), UploadDir: env("HOUSEHOLD_UPLOAD_DIR", ".local/uploads"), Production: mode == "production", MaxConnections: 10, SessionIdle: 24 * time.Hour, SessionAbsolute: 30 * 24 * time.Hour, UploadQuota: 2 << 30}
 	var err error
+	// OCR is on wherever the image ships Tesseract, unless explicitly disabled.
+	c.OCREnabled = ocrInstalled()
 	if raw := os.Getenv("HOUSEHOLD_OCR_ENABLED"); raw != "" {
 		c.OCREnabled, err = strconv.ParseBool(raw)
 		if err != nil {
@@ -154,6 +156,10 @@ func Load() (Config, error) {
 	c.Origin, err = normalizeOrigin(c.Origin, c.Production)
 	if err != nil {
 		return Config{}, err
+	}
+	// Push services need a contact; the HTTPS origin is a valid default.
+	if c.WebPushContact == "" && strings.HasPrefix(c.Origin, "https://") && validWebPushContact(c.Origin) {
+		c.WebPushContact = c.Origin
 	}
 	if c.DatabaseURL == "" {
 		return Config{}, errors.New("database URL or database password is required")
@@ -244,6 +250,12 @@ func normalizeOrigin(raw string, production bool) (string, error) {
 	// Browser Origin headers omit a root slash and default ports. Keep the
 	// configured origin in that same form for the exact CSRF origin comparison.
 	return u.Scheme + "://" + host, nil
+}
+
+// ocrInstalled reports whether the Tesseract binary the OCR paths call exists.
+var ocrInstalled = func() bool {
+	info, err := os.Stat("/usr/bin/tesseract")
+	return err == nil && info.Mode().IsRegular()
 }
 
 func env(name, fallback string) string {

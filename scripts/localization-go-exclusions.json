@@ -121,7 +121,7 @@
   "error pattern\ninternal/audit/audit.go\nencode audit metadata: %w": "Internal/operator diagnostic outside typed Invalid/Rejection and HTTP presentation boundaries; preserve diagnostic text.",
   "error pattern\ninternal/webpush/jobs.go\nencode fixed push payload failed": "Internal/operator diagnostic outside typed Invalid/Rejection and HTTP presentation boundaries; preserve diagnostic text.",
   "error pattern\ninternal/webpush/subscriptions.go\nencode push connection failed": "Internal/operator diagnostic outside typed Invalid/Rejection and HTTP presentation boundaries; preserve diagnostic text.",
-  "error pattern\ninternal/maintenance/backup.go\nencrypted restic repository and password file required": "Internal/operator diagnostic outside typed Invalid/Rejection and HTTP presentation boundaries; preserve diagnostic text.",
+  "error pattern\ninternal/maintenance/backup.go\nencrypted restic repository and password required": "Internal/operator diagnostic outside typed Invalid/Rejection and HTTP presentation boundaries; preserve diagnostic text.",
   "error pattern\ninternal/auth/auth.go\nenforce persistent rate limit: %w": "Internal/operator diagnostic outside typed Invalid/Rejection and HTTP presentation boundaries; preserve diagnostic text.",
   "error pattern\ninternal/expenseedit/lines.go\nexpense allocation rows changed since complete read": "Internal/operator diagnostic outside typed Invalid/Rejection and HTTP presentation boundaries; preserve diagnostic text.",
   "error pattern\ninternal/worker/worker.go\nexpire meal reservations: %w": "Internal/operator diagnostic outside typed Invalid/Rejection and HTTP presentation boundaries; preserve diagnostic text.",
@@ -468,5 +468,17 @@
   "error pattern\ninternal/database/database.go\ninspect migration ledgers: %w": "Operator readiness diagnostic; HTTP readiness returns only a generic unavailable status.",
   "error pattern\ninternal/database/database.go\nmigration ledger is writable by the runtime role": "Operator readiness diagnostic; HTTP readiness returns only a generic unavailable status.",
   "error pattern\ninternal/database/database.go\nprotect migration ledger %s: %w": "Owner migration diagnostic printed by the operator migration command; never an HTTP response.",
-  "error pattern\ninternal/auth/auth.go\nread second-factor budget: %w": "Internal database failure diagnostic; the HTTP boundary returns the generic translated failure."
+  "error pattern\ninternal/auth/auth.go\nread second-factor budget: %w": "Internal database failure diagnostic; the HTTP boundary returns the generic translated failure.",
+  "error pattern\ninternal/database/bootstrap.go\nconnect as database superuser: %w": "Internal/operator diagnostic outside typed Invalid/Rejection and HTTP presentation boundaries; preserve diagnostic text.",
+  "error pattern\ninternal/database/bootstrap.go\ndatabase setup needs two different role passwords": "Internal/operator diagnostic outside typed Invalid/Rejection and HTTP presentation boundaries; preserve diagnostic text.",
+  "error pattern\ninternal/database/bootstrap.go\ndatabase setup: %w": "Internal/operator diagnostic outside typed Invalid/Rejection and HTTP presentation boundaries; preserve diagnostic text.",
+  "error pattern\ninternal/database/bootstrap.go\ninspect role %s: %w": "Internal/operator diagnostic outside typed Invalid/Rejection and HTTP presentation boundaries; preserve diagnostic text.",
+  "error pattern\ninternal/database/bootstrap.go\nparse database setup configuration": "Internal/operator diagnostic outside typed Invalid/Rejection and HTTP presentation boundaries; preserve diagnostic text.",
+  "error pattern\ninternal/database/bootstrap.go\nprepare database setup: %w": "Internal/operator diagnostic outside typed Invalid/Rejection and HTTP presentation boundaries; preserve diagnostic text.",
+  "error pattern\ninternal/database/bootstrap.go\nrestrict public schema: %w": "Internal/operator diagnostic outside typed Invalid/Rejection and HTTP presentation boundaries; preserve diagnostic text.",
+  "error pattern\ninternal/database/bootstrap.go\nset up role %s": "Internal/operator diagnostic outside typed Invalid/Rejection and HTTP presentation boundaries; preserve diagnostic text.",
+  "error pattern\ninternal/database/bootstrap.go\nconnect for restore maintenance: %w": "Internal/operator diagnostic outside typed Invalid/Rejection and HTTP presentation boundaries; preserve diagnostic text.",
+  "error pattern\ninternal/database/bootstrap.go\nparse restore maintenance configuration": "Internal/operator diagnostic outside typed Invalid/Rejection and HTTP presentation boundaries; preserve diagnostic text.",
+  "error pattern\ninternal/database/bootstrap.go\nrestore database maintenance: %w": "Internal/operator diagnostic outside typed Invalid/Rejection and HTTP presentation boundaries; preserve diagnostic text.",
+  "error pattern\ninternal/database/bootstrap.go\nrestore maintenance must not connect to the restore database": "Internal/operator diagnostic outside typed Invalid/Rejection and HTTP presentation boundaries; preserve diagnostic text."
 }

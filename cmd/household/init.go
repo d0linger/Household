@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"household/internal/webpush"
 )
@@ -16,21 +17,28 @@ import (
 // generatedSecrets are random values every installation needs.
 var generatedSecrets = []string{"postgres_password", "owner_password", "app_password", "csrf_secret", "encryption_key", "rate_secret", "bootstrap_password", "restic_password"}
 
-// placeholderSecrets stay empty until the operator enables that integration;
-// an empty file counts as not configured, but Compose can already mount it.
-var placeholderSecrets = []string{"document_imap_password", "document_paperless_token", "meters_ha_token", "meters_mqtt_password", "meters_ca.pem"}
-
-const developmentEnvironment = "HOUSEHOLD_ENV=development\nHOUSEHOLD_ORIGIN=http://localhost:8100\nHOUSEHOLD_PORT=8100\nHOUSEHOLD_NAME=Mein Haushalt\n"
-
-// runInit creates every secret file and a starting .env in the current folder.
-// It runs before configuration and database access and never prints secrets.
+// runInit prints a complete .env with fresh secrets to standard output, or
+// with --files creates the .local/secrets folder that the isolated test
+// database (compose.test.yaml) and local test tooling read. It runs before configuration and
+// database access, and never prints secrets to a terminal.
 func runInit(args []string, out io.Writer) error {
 	flags := flag.NewFlagSet("init", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
-	development := flags.Bool("development", false, "write a local development .env")
-	template := flags.String("env-template", ".env.example", "settings template copied to .env")
+	files := flags.Bool("files", false, "create .local/secrets instead of printing .env")
+	development := flags.Bool("development", false, "local development settings")
 	if flags.Parse(args) != nil || flags.NArg() != 0 {
-		return errors.New("usage: household init [--development] [--env-template FILE]")
+		return errors.New("usage: household init [--development] > .env, or household init --files")
+	}
+	if !*files {
+		if terminal(out) {
+			return errors.New("refusing to print secrets to the terminal; run: household init > .env")
+		}
+		content, err := environmentFile(*development)
+		if err != nil {
+			return err
+		}
+		_, err = io.WriteString(out, content)
+		return err
 	}
 	dir := filepath.Join(".local", "secrets")
 	if err := os.MkdirAll(filepath.Dir(dir), 0o700); err != nil {
@@ -58,26 +66,8 @@ func runInit(args []string, out io.Writer) error {
 			return err
 		}
 	}
-	private, public, err := webpush.GenerateKeys()
-	if err != nil {
-		return errors.New("push key generation failed")
-	}
-	if err = writeNewFile(filepath.Join(dir, "web_push_private_key"), private+"\n"); err != nil {
-		return err
-	}
-	if err = writeNewFile(filepath.Join(dir, "web_push_public_key"), public+"\n"); err != nil {
-		return err
-	}
-	for _, name := range placeholderSecrets {
-		if err = writeNewFile(filepath.Join(dir, name), ""); err != nil {
-			return err
-		}
-	}
-	if err = writeEnvironment(*development, *template); err != nil {
-		return err
-	}
 	complete = true
-	_, err = fmt.Fprintln(out, "Secrets created in .local/secrets. Sign in with .local/secrets/bootstrap_password and change it immediately. Never commit or share these files.")
+	_, err := fmt.Fprintln(out, "Test secrets created in .local/secrets. Never commit or share these files.")
 	return err
 }
 
@@ -107,27 +97,78 @@ func writeNewFile(name, content string) error {
 	return file.Close()
 }
 
-// writeEnvironment keeps an existing .env and otherwise starts one.
-func writeEnvironment(development bool, template string) error {
-	if _, err := os.Lstat(".env"); err == nil {
-		return nil
+// terminal reports whether out is an interactive terminal.
+func terminal(out io.Writer) bool {
+	file, ok := out.(*os.File)
+	if !ok {
+		return false
 	}
-	content := developmentEnvironment
-	if !development {
-		// security: the template path is an explicit local CLI argument.
-		raw, err := os.ReadFile(template) // #nosec G304 G703 -- operator-selected local template
+	info, err := file.Stat()
+	return err == nil && info.Mode()&os.ModeCharDevice != 0
+}
+
+// environmentFile renders the single .env used by compose.yaml.
+func environmentFile(development bool) (string, error) {
+	values := map[string]string{}
+	for _, name := range []string{"POSTGRES_PASSWORD", "HOUSEHOLD_OWNER_PASSWORD", "HOUSEHOLD_APP_PASSWORD", "HOUSEHOLD_CSRF_SECRET", "HOUSEHOLD_RATE_SECRET", "HOUSEHOLD_ENCRYPTION_KEY", "HOUSEHOLD_ADMIN_PASSWORD", "RESTIC_PASSWORD"} {
+		value, err := randomSecret()
 		if err != nil {
-			return fmt.Errorf("could not read %s; copy a settings template to .env yourself", template)
+			return "", err
 		}
-		content = string(raw)
+		values[name] = value
 	}
-	file, err := os.OpenFile(".env", os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	private, _, err := webpush.GenerateKeys()
 	if err != nil {
-		return errors.New("could not create .env")
+		return "", errors.New("push key generation failed")
 	}
-	if _, err = io.WriteString(file, content); err != nil {
-		_ = file.Close()
-		return errors.New("could not write .env")
+	values["HOUSEHOLD_WEB_PUSH_VAPID_PRIVATE_KEY"] = private
+	origin := "HOUSEHOLD_ORIGIN=https://household.example.org"
+	if development {
+		origin = "HOUSEHOLD_ENV=development\nHOUSEHOLD_ORIGIN=http://localhost:8100"
 	}
-	return file.Close()
+	var b strings.Builder
+	b.WriteString(`# Household-Einstellungen, erzeugt mit "household init".
+# Diese Datei enthält Passwörter und den Verschlüsselungsschlüssel: sicher aufbewahren,
+# zusammen mit den Backups sichern und niemals teilen. Ohne sie sind die Daten verloren.
+
+# 1. Adresse, unter der Household im Browser erreichbar ist (HTTPS über einen Reverse Proxy).
+#    Nur zum lokalen Ausprobieren: HOUSEHOLD_ENV=development und HOUSEHOLD_ORIGIN=http://localhost:8100
+`)
+	b.WriteString(origin + "\n")
+	b.WriteString(`# Netzwerk des Reverse Proxys in CIDR-Schreibweise; leer vertraut keinem Proxy.
+HOUSEHOLD_TRUSTED_PROXIES=
+# Port auf diesem Rechner (nur 127.0.0.1) und Name des Haushalts.
+HOUSEHOLD_PORT=8100
+HOUSEHOLD_NAME=Mein Haushalt
+
+# 2. Erste Anmeldung: Benutzer "admin" mit diesem Passwort, danach sofort ändern.
+HOUSEHOLD_ADMIN_USERNAME=admin
+`)
+	b.WriteString("HOUSEHOLD_ADMIN_PASSWORD=" + values["HOUSEHOLD_ADMIN_PASSWORD"] + "\n")
+	b.WriteString("\n# 3. Automatisch erzeugt. Nicht ändern, sonst sind Daten oder Backups nicht mehr lesbar.\n")
+	for _, name := range []string{"POSTGRES_PASSWORD", "HOUSEHOLD_OWNER_PASSWORD", "HOUSEHOLD_APP_PASSWORD", "HOUSEHOLD_CSRF_SECRET", "HOUSEHOLD_RATE_SECRET", "HOUSEHOLD_ENCRYPTION_KEY", "HOUSEHOLD_WEB_PUSH_VAPID_PRIVATE_KEY", "RESTIC_PASSWORD"} {
+		b.WriteString(name + "=" + values[name] + "\n")
+	}
+	b.WriteString(`
+# 4. Optional. Eine Funktion ist aktiv, sobald ihre Zeilen ausgefüllt und ohne "#" sind.
+# Dokumente per E-Mail (IMAP über TLS):
+# HOUSEHOLD_DOCUMENT_IMAP_ADDRESS=imap.example.org:993
+# HOUSEHOLD_DOCUMENT_IMAP_USER=scanner@example.org
+# HOUSEHOLD_DOCUMENT_IMAP_PASSWORD=
+# HOUSEHOLD_DOCUMENT_IMAP_MAILBOX=INBOX
+# Dokumente aus Paperless-ngx (Tag-Nummer, nur so markierte Dokumente):
+# HOUSEHOLD_DOCUMENT_PAPERLESS_URL=https://paperless.example.org
+# HOUSEHOLD_DOCUMENT_PAPERLESS_TOKEN=
+# HOUSEHOLD_DOCUMENT_PAPERLESS_TAG=1
+# Zählerstände aus Home Assistant:
+# HOUSEHOLD_METERS_HA_URL=https://homeassistant.example.org
+# HOUSEHOLD_METERS_HA_TOKEN=
+# Zählerstände über MQTT (TLS):
+# HOUSEHOLD_METERS_MQTT_URL=mqtts://mqtt.example.org:8883
+# HOUSEHOLD_METERS_MQTT_USER=household
+# HOUSEHOLD_METERS_MQTT_PASSWORD=
+# Kontakt für Push-Dienste; leer verwendet die Adresse aus Abschnitt 1.
+# HOUSEHOLD_WEB_PUSH_VAPID_CONTACT=mailto:ich@example.org
+`)
+	return b.String(), nil
 }
