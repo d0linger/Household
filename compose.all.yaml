@@ -1,0 +1,99 @@
+# Household with every optional service. Settings: .env (from .env.all.example).
+# Secrets: .local/secrets/ (household init). Each secret is mounted as /run/secrets/<name>,
+# where the app reads HOUSEHOLD_<NAME>; no *_FILE wiring is needed.
+name: household
+x-log: &log {driver: json-file, options: {max-size: 10m, max-file: '3'}}
+x-base: &base {read_only: true, init: true, cap_drop: [ALL], security_opt: ['no-new-privileges:true'], pids_limit: 100, mem_limit: 512m, networks: [database], logging: *log, tmpfs: ['/tmp:rw,noexec,nosuid,size=64m']}
+x-pg: &pg {image: 'postgres:18-alpine@sha256:b6972e1115a4ff8eba5d7f7d19184926d1e16d7d1136ae1e1a7ebf286da0f015', secrets: [postgres_password, owner_password, app_password], networks: [database]}
+x-env: &env {HOUSEHOLD_ENV: '${HOUSEHOLD_ENV:-production}', HOUSEHOLD_ORIGIN: '${HOUSEHOLD_ORIGIN:?Set HOUSEHOLD_ORIGIN}', HOUSEHOLD_UPLOAD_DIR: /data/uploads, GOMEMLIMIT: 400MiB}
+x-owner: &owner {source: owner_password, target: /run/secrets/database_password}
+x-init: &init ./deploy/postgres/init.sh:/docker-entrypoint-initdb.d/10-household.sh:ro
+
+services:
+  db:
+    <<: *pg
+    restart: unless-stopped
+    environment: {POSTGRES_DB: household, POSTGRES_USER: postgres, POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password, POSTGRES_INITDB_ARGS: --auth-host=scram-sha-256 --data-checksums}
+    volumes: [postgres:/var/lib/postgresql, *init]
+    healthcheck: {test: [CMD-SHELL, pg_isready -U postgres -d household], interval: 5s, timeout: 3s, retries: 15}
+    shm_size: 128m
+    mem_limit: 512m
+    security_opt: ['no-new-privileges:true']
+    logging: *log
+
+  migrate:
+    <<: *base
+    image: household:local
+    command: [migrate]
+    restart: 'no'
+    environment:
+      <<: *env
+      HOUSEHOLD_DATABASE_USER: household_owner
+      HOUSEHOLD_ADMIN_USERNAME: ${HOUSEHOLD_ADMIN_USERNAME:-admin}
+      HOUSEHOLD_NAME: ${HOUSEHOLD_NAME:-Mein Haushalt}
+    secrets: [*owner, admin_password, csrf_secret, rate_secret, encryption_key]
+    depends_on: {db: {condition: service_healthy}}
+    healthcheck: {disable: true}
+
+  app:
+    <<: *base
+    image: household:local
+    build: {context: ., target: ocr}
+    restart: unless-stopped
+    stop_grace_period: 20s
+    ports: ['127.0.0.1:${HOUSEHOLD_PORT:-8100}:8080']
+    networks: [database, frontend]
+    volumes: [uploads:/data/uploads, '${HOUSEHOLD_DOCUMENT_WATCH_HOST_DIR:?Set the scanner folder}:/inbox:ro']
+    env_file: .env                            # every HOUSEHOLD_* setting goes to the app
+    environment:
+      <<: *env
+      HOUSEHOLD_OCR_ENABLED: 'true'
+      HOUSEHOLD_WEB_PUSH_ENABLED: 'true'
+      HOUSEHOLD_DOCUMENT_WATCH_DIR: /inbox
+    secrets: [{source: app_password, target: /run/secrets/database_password}, admin_password, csrf_secret, rate_secret, encryption_key,
+              web_push_vapid_private_key, document_imap_password, document_paperless_token, meters_ha_token, meters_mqtt_password, meters_ca]
+    depends_on: {db: {condition: service_healthy}, migrate: {condition: service_completed_successfully}}
+
+  backup:                                     # encrypted restic snapshots, daily 03:00 Europe/Vienna
+    <<: *base
+    image: household-backup:local
+    build: {context: ., dockerfile: deploy/backup/Dockerfile}
+    command: [backup-loop]
+    restart: unless-stopped
+    tmpfs: ['/tmp:rw,noexec,nosuid,size=128m']
+    volumes: [uploads:/data/uploads:ro, backup_work:/work, backup_repository:/repository]
+    environment:
+      <<: *env
+      HOUSEHOLD_DATABASE_USER: household_owner
+      HOUSEHOLD_BACKUP_WORK: /work
+      RESTIC_REPOSITORY: /repository
+      RESTIC_PASSWORD_FILE: /run/secrets/restic_password
+      RESTIC_CACHE_DIR: /tmp/restic-cache
+    secrets: [*owner, restic_password, csrf_secret, rate_secret, encryption_key]
+    depends_on: {app: {condition: service_healthy}}
+
+  restore-db:                                 # restore checks only: --profile recovery
+    <<: *pg
+    profiles: [recovery]
+    environment: {POSTGRES_DB: household_restore, POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password, POSTGRES_INITDB_ARGS: --auth-host=scram-sha-256 --data-checksums}
+    volumes: [*init]
+    tmpfs: ['/var/lib/postgresql:rw,size=512m']
+    healthcheck: {test: [CMD-SHELL, pg_isready -U postgres -d household_restore], interval: 2s, timeout: 3s, retries: 20}
+
+networks: {database: {internal: true}, frontend: {}}
+volumes: {postgres: {}, uploads: {}, backup_work: {}, backup_repository: {}}
+secrets:                                      # household init creates every file; fill the empty integration ones
+  postgres_password: {file: .local/secrets/postgres_password}
+  owner_password: {file: .local/secrets/owner_password}
+  app_password: {file: .local/secrets/app_password}
+  admin_password: {file: .local/secrets/bootstrap_password}
+  csrf_secret: {file: .local/secrets/csrf_secret}
+  rate_secret: {file: .local/secrets/rate_secret}
+  encryption_key: {file: .local/secrets/encryption_key}
+  restic_password: {file: .local/secrets/restic_password}
+  web_push_vapid_private_key: {file: .local/secrets/web_push_private_key}
+  document_imap_password: {file: .local/secrets/document_imap_password}
+  document_paperless_token: {file: .local/secrets/document_paperless_token}
+  meters_ha_token: {file: .local/secrets/meters_ha_token}
+  meters_mqtt_password: {file: .local/secrets/meters_mqtt_password}
+  meters_ca: {file: .local/secrets/meters_ca.pem}

@@ -27,7 +27,7 @@ The UI offers Ocean and Pink families, each with Light, Dark and System appearan
 
 ## Quick start
 
-Requirements: Docker Engine with Compose v2. Docker Desktop is optional. The following creates local development secrets, starts an isolated PostgreSQL container and binds Household to `127.0.0.1:8100`.
+Requirements: Docker Engine with Compose v2. Docker Desktop is optional. The following creates local development secrets, starts an isolated PostgreSQL container and binds Household to `127.0.0.1:8100`. The initializer runs `household init` with Go when it is installed, otherwise inside the freshly built image.
 
 **Windows PowerShell**
 
@@ -43,7 +43,7 @@ sh scripts/initialize.sh --development
 docker compose up -d --build
 ```
 
-Open [http://localhost:8100](http://localhost:8100). Sign in as `admin` using `.local/secrets/bootstrap_password`; change that password at first sign-in. The initializer refuses to overwrite existing secrets. PostgreSQL has no published port. Development mode belongs on a private machine, not a public interface.
+Open [http://localhost:8100](http://localhost:8100). Sign in as `admin` using `.local/secrets/bootstrap_password`; change that password at first sign-in. The initializer refuses to overwrite existing secrets. It creates every secret file, including the Web Push key pair and empty placeholders for the optional integrations. PostgreSQL has no published port. Development mode belongs on a private machine, not a public interface.
 
 For production, initialize without the development switch (`./scripts/initialize.ps1` on Windows or `sh scripts/initialize.sh` on Linux/macOS). Edit `.env` before starting: set the exact HTTPS `HOUSEHOLD_ORIGIN` and `HOUSEHOLD_TRUSTED_PROXIES` to the reverse proxy's exact CIDR. Then run `docker compose up -d --build`, complete the bootstrap password change, and verify an encrypted backup by restoring it to the isolated recovery service. See [deployment, upgrades and recovery](docs/operations.md). The app supports one instance per household and one application replica.
 
@@ -53,15 +53,12 @@ The published image is `ghcr.io/d0linger/household:production` (also `:latest`).
 
 - **Local OCR:** `docker compose -f compose.yaml -f compose.ocr.yaml up -d --build` adds Tesseract with German/English language data. Existing PDF text is preferred; extracted values remain subject to review.
 - **Encrypted backups:** `docker compose -f compose.yaml -f compose.backup.yaml up -d --build backup` starts scheduled restic snapshots. Keep the repository password separately and rehearse [restore verification](docs/operations.md#restore-verification). A local backup volume does not protect against host loss.
-- **Web Push, Documents inputs and meter adapters:** use only the relevant [Compose overlays](docs/operations.md) and configure their secrets and approvals. They are off by default. Each installation supplies its own origin; no public URL is compiled into the app.
+- **Web Push, Documents inputs and meter adapters:** use only the relevant [Compose overlays](docs/operations.md) and configure their secrets and approvals. They are off by default. Each installation supplies its own origin; no public URL is compiled into the app. Documents credentials are mounted as secrets through `compose.documents-imap.yaml` and `compose.documents-paperless.yaml`, after `compose.documents.yaml`.
+- **Everything at once:** [`compose.all.yaml`](compose.all.yaml) is one standalone file with OCR, Web Push, every Documents input, both meter adapters and scheduled backups. Run the initializer with `--env-template .env.all.example` (`-EnvTemplate .env.all.example` in PowerShell); the resulting `.env` selects that file. Fill in its values and the empty integration files in `.local/secrets/`, then run `docker compose config --quiet` and `docker compose up -d --build`. Delete an integration's lines from both files if you do not use it. All nine modules always run inside the single `app` service; administrators enable optional modules in the app.
 
 ### Optional Web Push
 
-With Go 1.27.4 available on the operator host, generate a new VAPID key pair after initialization:
-
-```sh
-go run ./cmd/household push-keygen --private-out .local/secrets/web_push_private_key --public-out .local/secrets/web_push_public_key
-```
+The initializer already creates the VAPID key pair in `.local/secrets/web_push_private_key` and `web_push_public_key`. Installations initialized before that can create one with `go run ./cmd/household push-keygen --private-out .local/secrets/web_push_private_key --public-out .local/secrets/web_push_public_key`.
 
 Set `HOUSEHOLD_WEB_PUSH_ENABLED=true` and `HOUSEHOLD_WEB_PUSH_VAPID_CONTACT=mailto:you@example.org` in `.env`, then include `compose.webpush.yaml` in the installation's complete Compose file set. Keep the private key out of Git and preserve it separately in encrypted backup storage; the scheduled backup does not include it. Device delivery needs a reachable HTTPS origin and explicit user consent. See [Web Push operations](docs/operations.md#device-notifications).
 
@@ -78,7 +75,7 @@ Copy `.env.example` through the initializer. The principal settings are:
 | `HOUSEHOLD_ADMIN_USERNAME` | Bootstrap account name, default `admin`. |
 | `HOUSEHOLD_OFF_ENABLED` | Optional product suggestions, off by default. |
 
-Database URLs, CSRF/encryption/rate keys and the bootstrap password are mounted as secret files by Compose. Never commit `.env`, `.local/secrets`, uploads or backup repositories. See [operations](docs/operations.md) for key rotation, restore and full configuration; [`.env.example`](.env.example) lists optional adapters.
+Database passwords, CSRF/encryption/rate keys and the bootstrap password are mounted as secret files by Compose. The images look for each secret setting `HOUSEHOLD_<NAME>` in `/run/secrets/<name>` (for example `HOUSEHOLD_CSRF_SECRET` in `csrf_secret`), so Compose files only list which secrets a service gets; explicit `HOUSEHOLD_<NAME>` or `HOUSEHOLD_<NAME>_FILE` settings still take precedence, and empty files count as unset. Without `HOUSEHOLD_DATABASE_URL`, the app connects as `HOUSEHOLD_DATABASE_USER` (default `household_app`) with `database_password` to `HOUSEHOLD_DATABASE_HOST` (default `db:5432`) and `HOUSEHOLD_DATABASE_NAME` (default `household`); restore checks use `household_restore` on `restore-db:5432` with the same credentials unless `HOUSEHOLD_RESTORE_DATABASE_URL` is set. Never commit `.env`, `.local/secrets`, uploads or backup repositories. See [operations](docs/operations.md) for key rotation, restore and full configuration; [`.env.example`](.env.example) lists optional adapters.
 
 Passkeys need the configured HTTPS hostname, or `localhost` in development. Numeric IP origins cannot enroll passkeys. Password, TOTP and recovery codes remain available. Ocean/Pink and DE/EN require no external assets or translation service.
 

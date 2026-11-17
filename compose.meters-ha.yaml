@@ -2,7 +2,6 @@ services:
   app:
     environment:
       HOUSEHOLD_METERS_HA_URL: ${HOUSEHOLD_METERS_HA_URL:?Set the explicitly trusted Home Assistant origin}
-      HOUSEHOLD_METERS_HA_TOKEN_FILE: /run/secrets/meters_ha_token
       HOUSEHOLD_METERS_ALLOW_PLAINTEXT: ${HOUSEHOLD_METERS_ALLOW_PLAINTEXT:-false}
     secrets:
       - meters_ha_token

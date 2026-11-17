@@ -1,24 +1,24 @@
-param([switch]$Development)
+# Creates .local/secrets and .env through `household init` (Go, or Docker without Go),
+# then restricts the secrets folder to the current Windows account.
+# Usage: ./scripts/initialize.ps1 [-Development] [-EnvTemplate .env.all.example]
+param([switch]$Development,[string]$EnvTemplate='.env.example')
 $ErrorActionPreference = 'Stop'
 $taskRoot = Split-Path -Parent $PSScriptRoot
-$taskSecrets = Join-Path $taskRoot '.local/secrets'
-if (Test-Path -LiteralPath $taskSecrets) {throw 'Secrets already exist. Preserve them; use the recovery runbook for rotation.'}
-New-Item -ItemType Directory -Path $taskSecrets -Force | Out-Null
-function New-HouseholdSecret {
-    $taskBytes = New-Object byte[] 36
-    $taskGenerator = [Security.Cryptography.RandomNumberGenerator]::Create()
-    try {$taskGenerator.GetBytes($taskBytes)} finally {$taskGenerator.Dispose()}
-    return [Convert]::ToBase64String($taskBytes).Replace('+','-').Replace('/','_').TrimEnd('=')
-}
-$taskValues = @{}
-foreach ($taskName in @('postgres_password','owner_password','app_password','csrf_secret','encryption_key','rate_secret','bootstrap_password','restic_password')) {
-    $taskValues[$taskName] = New-HouseholdSecret
-    [IO.File]::WriteAllText((Join-Path $taskSecrets $taskName),$taskValues[$taskName])
-}
-[IO.File]::WriteAllText((Join-Path $taskSecrets 'app_database_url'),"postgres://household_app:$($taskValues['app_password'])@db:5432/household?sslmode=disable")
-[IO.File]::WriteAllText((Join-Path $taskSecrets 'owner_database_url'),"postgres://household_owner:$($taskValues['owner_password'])@db:5432/household?sslmode=disable")
-[IO.File]::WriteAllText((Join-Path $taskSecrets 'restore_database_url'),"postgres://household_owner:$($taskValues['owner_password'])@restore-db:5432/household_restore?sslmode=disable")
+$taskArguments = @('init','--env-template',$EnvTemplate)
+if ($Development) {$taskArguments += '--development'}
+Push-Location $taskRoot
+try {
+    if (Get-Command go -ErrorAction SilentlyContinue) {
+        & go run ./cmd/household @taskArguments
+    } else {
+        docker build --quiet --target runtime -t household:local . | Out-Null
+        if ($LASTEXITCODE) {throw 'Image build failed'}
+        & docker run --rm --read-only -v "${taskRoot}:/work" -w /work household:local @taskArguments
+    }
+    if ($LASTEXITCODE) {throw 'household init failed'}
+} finally {Pop-Location}
 if ($env:OS -eq 'Windows_NT') {
+    $taskSecrets = Join-Path $taskRoot '.local/secrets'
     $taskIdentity = [Security.Principal.WindowsIdentity]::GetCurrent().Name
     $taskACL = Get-Acl -LiteralPath $taskSecrets
     $taskACL.SetAccessRuleProtection($true,$false)
@@ -26,9 +26,3 @@ if ($env:OS -eq 'Windows_NT') {
     $taskACL.AddAccessRule($taskRule)
     Set-Acl -LiteralPath $taskSecrets -AclObject $taskACL
 }
-$taskEnvPath = Join-Path $taskRoot '.env'
-if (!(Test-Path -LiteralPath $taskEnvPath)) {
-    if ($Development) {[IO.File]::WriteAllText($taskEnvPath,"HOUSEHOLD_ENV=development`nHOUSEHOLD_ORIGIN=http://localhost:8100`nHOUSEHOLD_PORT=8100`nHOUSEHOLD_NAME=Mein Haushalt`n")}
-    else {Copy-Item -LiteralPath (Join-Path $taskRoot '.env.example') -Destination $taskEnvPath}
-}
-Write-Output 'Secrets created under .local/secrets. Read bootstrap_password locally for the first login; change it immediately. Do not commit or share these files.'

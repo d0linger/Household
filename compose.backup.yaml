@@ -14,18 +14,15 @@ services:
     environment:
       HOUSEHOLD_ENV: ${HOUSEHOLD_ENV:-production}
       HOUSEHOLD_ORIGIN: ${HOUSEHOLD_ORIGIN:?Set a canonical origin}
-      HOUSEHOLD_DATABASE_URL_FILE: /run/secrets/owner_database_url
-      HOUSEHOLD_CSRF_SECRET_FILE: /run/secrets/csrf_secret
-      HOUSEHOLD_ENCRYPTION_KEY_FILE: /run/secrets/encryption_key
-      HOUSEHOLD_RATE_SECRET_FILE: /run/secrets/rate_secret
+      HOUSEHOLD_DATABASE_USER: household_owner
       HOUSEHOLD_UPLOAD_DIR: /data/uploads
-      HOUSEHOLD_RESTORE_DATABASE_URL_FILE: /run/secrets/restore_database_url
       HOUSEHOLD_BACKUP_WORK: /work
       RESTIC_REPOSITORY: /repository
       RESTIC_PASSWORD_FILE: /run/secrets/restic_password
       RESTIC_CACHE_DIR: /tmp/restic-cache
       GOMEMLIMIT: 400MiB
-    secrets: [owner_database_url,restore_database_url,csrf_secret,encryption_key,rate_secret,restic_password]
+    # Restore checks use household_restore on restore-db with the same owner credentials.
+    secrets: [{source: owner_password, target: /run/secrets/database_password},csrf_secret,encryption_key,rate_secret,restic_password]
     volumes: [uploads:/data/uploads:ro,backup_work:/work,backup_repository:/repository]
     networks: [database]
     depends_on: {app: {condition: service_healthy}}
@@ -44,7 +41,6 @@ services:
     healthcheck: {test: [CMD-SHELL, pg_isready -U postgres -d household_restore], interval: 2s, timeout: 3s, retries: 20}
 secrets:
   restic_password: {file: .local/secrets/restic_password}
-  restore_database_url: {file: .local/secrets/restore_database_url}
 volumes:
   backup_work: {}
   backup_repository: {}

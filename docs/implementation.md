@@ -1609,3 +1609,19 @@ Local stack refresh (authorized in `AGENTS.md`):
 - The rebuilt image then migrated core to 41 (not dirty). `household_app` has no UPDATE on `core.schema_migrations`.
 - The app came back healthy: `/health/ready` and `/health/live` returned 200, `/login` returned 200 on the canonical host, and the new translations are embedded in the running binary.
 - Named volumes and secrets were unchanged. The task-owned restore and test databases were removed. No push, publication or remote deployment occurred.
+
+## Simpler secrets and setup (2026-11-17)
+
+Changes:
+- Secrets folder: both images set `HOUSEHOLD_SECRETS_DIR=/run/secrets`. A secret setting `HOUSEHOLD_<NAME>` without a value or `_FILE` is read from `/run/secrets/<name>`; explicit settings win, empty files count as unset, and a non-regular entry is an error. The encryption key and keyring are discovered this way only when neither has an explicit source, and both present in the folder are refused. Web Push and the meters CA use the same lookup.
+- Database URLs: without `HOUSEHOLD_DATABASE_URL`, the app builds `postgres://USER:PASSWORD@HOST/NAME?sslmode=disable` from `HOUSEHOLD_DATABASE_PASSWORD` (percent-encoded), `HOUSEHOLD_DATABASE_USER` (default `household_app`), `HOUSEHOLD_DATABASE_HOST` (default `db:5432`) and `HOUSEHOLD_DATABASE_NAME` (default `household`). URL and password together are refused. Restore checks default to `household_restore` on `restore-db:5432` with the same credentials. The `app_database_url`, `owner_database_url` and `restore_database_url` secret files are no longer generated or mounted; existing files are simply unused.
+- `household init [--development] [--env-template FILE]` creates every secret (including the Web Push key pair and empty integration placeholders) exclusively, rolls back on failure, never prints values, and starts `.env`. `scripts/initialize.sh`/`.ps1` now run it with Go, or inside the image without Go; the PowerShell wrapper still restricts the folder ACL.
+- Compose: no `*_FILE` wiring; services list secrets, and per-service names use absolute targets such as `/run/secrets/database_password`. The keyring overlays now use the absolute target `/run/secrets/encryption_key`; the committed relative target did not replace the legacy mount in `docker compose config` (Compose 5.7.0 showed both), so the ordering note about `!reset` is gone. `compose.all.yaml` is 99 lines with 14 secrets.
+
+Evidence:
+- `gofmt`, `go vet ./...`, integration-tagged vet of `cmd`, `config` and `maintenance`, all Go unit tests, and 524/524 Node tests passed. New tests cover folder lookup, precedence, empty placeholders, the encryption conflict, URL building and encoding, restore defaults and `init`.
+- Rendered `docker compose config` for the base, Web Push + keyring, backup + both keyring overlays, Documents/Meters overlays and `compose.all.yaml`: each service mounts one `encryption_key` and the intended secrets.
+- Local stack: `household:local` was tagged `household:rollback-pre-secrets-dir`, rebuilt and recreated (no migration change, so no pre-upgrade backup was required). `migrate` exited 0 and `app` became healthy with no `*_FILE` variables; `/health/ready` returned 200. A backup through `compose.backup.yaml` produced snapshot `bd7078b7`, and `restore-check` on the disposable `restore-db` exited 0 using the derived restore URL; `restore-db` was removed afterwards.
+- `household init --development` inside the rebuilt image created all 15 files in an empty scratch folder and refused a second run.
+
+Not run: `compose.all.yaml` was not started (it shares the project name with the running dev stack and needs real integration endpoints), the integration test campaigns and browser suites were not rerun, and the shell wrapper was not executed on Linux.

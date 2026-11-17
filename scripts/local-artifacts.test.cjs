@@ -8,7 +8,7 @@ const {execFileSync, spawnSync} = require('node:child_process');
 const {classifyPath, inspectIndex} = require('./check-local-artifacts.cjs');
 
 test('publication guard preserves authored source, icons, examples and migrations', () => {
-  for (const name of ['README.md', '.env.example', '.env.production.example', '.github/workflows/quality.yml',
+  for (const name of ['README.md', '.env.example', '.env.production.example', '.env.all.example', '.github/workflows/quality.yml',
     'internal/web/static/icon-192.png', 'internal/web/static/icon.svg', 'internal/backup/backup.go',
     'internal/database/migrations/core/001_init.sql', 'docs/backup.md',
     'design-preview/whole-page-concepts.fragment.html', 'design-preview/designVariantsConfig.ts']) {

@@ -8,6 +8,7 @@ RUN GOMAXPROCS=2 GOMEMLIMIT=2GiB CGO_ENABLED=0 go build -trimpath -ldflags="-s -
 FROM postgres:18-alpine@sha256:b6972e1115a4ff8eba5d7f7d19184926d1e16d7d1136ae1e1a7ebf286da0f015
 RUN apk add --no-cache restic tzdata && addgroup -S -g 10001 household && adduser -S -D -H -u 10001 -G household household && mkdir /work /repository && chown 10001:10001 /work /repository
 COPY --from=build /out/household /usr/local/bin/household
+ENV HOUSEHOLD_SECRETS_DIR=/run/secrets
 USER 10001:10001
 WORKDIR /work
 ENTRYPOINT ["household"]

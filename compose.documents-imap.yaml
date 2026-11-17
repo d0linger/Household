@@ -1,0 +1,9 @@
+# Optional: use after compose.documents.yaml. Mounts the IMAP password as a
+# Docker secret; the host file stays operator-owned and outside Git.
+services:
+  app:
+    secrets:
+      - document_imap_password
+secrets:
+  document_imap_password:
+    file: ${HOUSEHOLD_DOCUMENT_IMAP_PASSWORD_PATH:?Set the operator-owned IMAP password file path}

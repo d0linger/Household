@@ -28,6 +28,12 @@ func loadWebPush(c *Config) error {
 	if private != "" && file != "" {
 		return errors.New("both web push private key and file are configured")
 	}
+	if private == "" && file == "" {
+		var err error
+		if file, err = conventionalPath("HOUSEHOLD_WEB_PUSH_VAPID_PRIVATE_KEY"); err != nil {
+			return err
+		}
+	}
 	if file != "" {
 		// security: this bounded secret path comes only from operator configuration.
 		reader, err := os.Open(file) // #nosec G304 G703 -- trusted deployment secret path

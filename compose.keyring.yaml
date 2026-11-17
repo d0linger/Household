@@ -1,26 +1,20 @@
-# Optional: use after compose.yaml. Requires Docker Compose 2.24.4 or later.
-# No secret is generated or replaced on the host. The explicit file is private.
-# Matching secret targets replace only the legacy encryption mount; unrelated
-# optional secrets (Web Push, adapters) survive Compose's normal merge rules.
+# Optional: replaces the single encryption key with a reviewed keyring for app and
+# migrate. No secret is generated or replaced on the host; the file stays private.
+# The ring is mounted over the encryption_key target, and the explicit
+# HOUSEHOLD_ENCRYPTION_KEYRING_FILE turns off secrets-folder discovery of the old key.
 services:
   app:
     environment:
-      HOUSEHOLD_ENCRYPTION_KEY: !reset null
-      HOUSEHOLD_ENCRYPTION_KEY_FILE: !reset null
-      HOUSEHOLD_ENCRYPTION_KEYRING: !reset null
       HOUSEHOLD_ENCRYPTION_KEYRING_FILE: /run/secrets/encryption_key
     secrets:
       - source: encryption_keyring
-        target: encryption_key
+        target: /run/secrets/encryption_key
   migrate:
     environment:
-      HOUSEHOLD_ENCRYPTION_KEY: !reset null
-      HOUSEHOLD_ENCRYPTION_KEY_FILE: !reset null
-      HOUSEHOLD_ENCRYPTION_KEYRING: !reset null
       HOUSEHOLD_ENCRYPTION_KEYRING_FILE: /run/secrets/encryption_key
     secrets:
       - source: encryption_keyring
-        target: encryption_key
+        target: /run/secrets/encryption_key
 secrets:
   encryption_keyring:
     file: ${HOUSEHOLD_ENCRYPTION_KEYRING_PATH:?Set the private reviewed encryption keyring file path}

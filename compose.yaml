@@ -12,11 +12,6 @@ x-app: &app
     HOUSEHOLD_ENV: ${HOUSEHOLD_ENV:-production}
     HOUSEHOLD_ORIGIN: ${HOUSEHOLD_ORIGIN:?Set a canonical origin}
     HOUSEHOLD_LISTEN: :8080
-    HOUSEHOLD_DATABASE_URL_FILE: /run/secrets/app_database_url
-    HOUSEHOLD_CSRF_SECRET_FILE: /run/secrets/csrf_secret
-    HOUSEHOLD_ENCRYPTION_KEY_FILE: /run/secrets/encryption_key
-    HOUSEHOLD_RATE_SECRET_FILE: /run/secrets/rate_secret
-    HOUSEHOLD_ADMIN_PASSWORD_FILE: /run/secrets/bootstrap_password
     HOUSEHOLD_ADMIN_USERNAME: ${HOUSEHOLD_ADMIN_USERNAME:-admin}
     HOUSEHOLD_NAME: ${HOUSEHOLD_NAME:-Mein Haushalt}
     HOUSEHOLD_UPLOAD_DIR: /data/uploads
@@ -25,7 +20,8 @@ x-app: &app
     HOUSEHOLD_OFF_USER_AGENT: ${HOUSEHOLD_OFF_USER_AGENT:-}
     HOUSEHOLD_OFF_STAGING: ${HOUSEHOLD_OFF_STAGING:-false}
     GOMEMLIMIT: 400MiB
-  secrets: [app_database_url,csrf_secret,encryption_key,rate_secret,bootstrap_password]
+  # Mounted under /run/secrets/<name>, where the image looks for HOUSEHOLD_<NAME>.
+  secrets: [{source: app_password, target: /run/secrets/database_password},csrf_secret,encryption_key,rate_secret,admin_password]
   networks: [database,frontend]
   logging: {driver: json-file, options: {max-size: 10m, max-file: '3'}}
 services:
@@ -50,8 +46,8 @@ services:
     command: [migrate]
     environment:
       <<: *environment
-      HOUSEHOLD_DATABASE_URL_FILE: /run/secrets/owner_database_url
-    secrets: [owner_database_url,csrf_secret,encryption_key,rate_secret,bootstrap_password]
+      HOUSEHOLD_DATABASE_USER: household_owner
+    secrets: [{source: owner_password, target: /run/secrets/database_password},csrf_secret,encryption_key,rate_secret,admin_password]
     depends_on: {db: {condition: service_healthy}}
     networks: [database]
     healthcheck: {disable: true}
@@ -74,9 +70,7 @@ secrets:
   postgres_password: {file: .local/secrets/postgres_password}
   owner_password: {file: .local/secrets/owner_password}
   app_password: {file: .local/secrets/app_password}
-  app_database_url: {file: .local/secrets/app_database_url}
-  owner_database_url: {file: .local/secrets/owner_database_url}
   csrf_secret: {file: .local/secrets/csrf_secret}
   encryption_key: {file: .local/secrets/encryption_key}
   rate_secret: {file: .local/secrets/rate_secret}
-  bootstrap_password: {file: .local/secrets/bootstrap_password}
+  admin_password: {file: .local/secrets/bootstrap_password}

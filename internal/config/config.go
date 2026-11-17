@@ -64,6 +64,12 @@ func boundedSecret(name string, limit int) (string, error) {
 	if v != "" && path != "" {
 		return "", fmt.Errorf("both %s and file are configured", name)
 	}
+	if v == "" && path == "" {
+		var err error
+		if path, err = conventionalPath(name); err != nil {
+			return "", err
+		}
+	}
 	if path != "" {
 		// security: secret-file paths come solely from deployment configuration.
 		reader, err := os.Open(path) // #nosec G304 G703 -- trusted operator secret path
@@ -133,11 +139,14 @@ func Load() (Config, error) {
 	if err = loadDocumentInputs(&c); err != nil {
 		return Config{}, err
 	}
-	for name, target := range map[string]*string{"HOUSEHOLD_DATABASE_URL": &c.DatabaseURL, "HOUSEHOLD_CSRF_SECRET": &c.CSRFSecret, "HOUSEHOLD_RATE_SECRET": &c.RateSecret, "HOUSEHOLD_ADMIN_PASSWORD": &c.AdminPassword, "HOUSEHOLD_METRICS_TOKEN": &c.MetricsToken} {
+	for name, target := range map[string]*string{"HOUSEHOLD_CSRF_SECRET": &c.CSRFSecret, "HOUSEHOLD_RATE_SECRET": &c.RateSecret, "HOUSEHOLD_ADMIN_PASSWORD": &c.AdminPassword, "HOUSEHOLD_METRICS_TOKEN": &c.MetricsToken} {
 		*target, err = secret(name)
 		if err != nil {
 			return Config{}, err
 		}
+	}
+	if err = loadDatabaseURL(&c); err != nil {
+		return Config{}, err
 	}
 	if err = loadEncryption(&c); err != nil {
 		return Config{}, err
@@ -147,7 +156,7 @@ func Load() (Config, error) {
 		return Config{}, err
 	}
 	if c.DatabaseURL == "" {
-		return Config{}, errors.New("database URL is required")
+		return Config{}, errors.New("database URL or database password is required")
 	}
 	for name, key := range map[string]string{"CSRF": c.CSRFSecret, "rate": c.RateSecret} {
 		if len(strings.TrimSpace(key)) < 32 || strings.Contains(strings.ToLower(key), "change-me") {

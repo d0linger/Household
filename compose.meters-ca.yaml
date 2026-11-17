@@ -1,7 +1,5 @@
 services:
   app:
-    environment:
-      HOUSEHOLD_METERS_CA_FILE: /run/secrets/meters_ca
     secrets:
       - meters_ca
 secrets:
