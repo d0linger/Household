@@ -144,7 +144,9 @@ const _householdText_app_js = (source, ...args) => { const i18n = globalThis.Hou
         const restoreFocus = document.activeElement === retry;
         select.append(fragment); select.disabled = initiallyDisabled; select.dataset.referenceState = 'ready'; notice.hidden = true;
         nextCursor = page.next_cursor; next.hidden = !nextCursor;
-        status.textContent = rows.length ? rows.length + (_householdText_app_js(' Treffer auf dieser Seite. Gewählte Einträge bleiben erhalten.')) : (_householdText_app_js('Keine passenden Treffer. Gewählte Einträge bleiben erhalten.'));
+        // Without a search term the list simply opens; result counts only answer a search.
+        if (!currentQuery && !cursor) status.textContent = rows.length ? '' : (_householdText_app_js('Noch keine Einträge zur Auswahl.'));
+        else status.textContent = rows.length ? rows.length + (_householdText_app_js(' Treffer auf dieser Seite. Gewählte Einträge bleiben erhalten.')) : (_householdText_app_js('Keine passenden Treffer. Gewählte Einträge bleiben erhalten.'));
         if (restoreFocus) select.focus();
       } catch {
         select.dataset.referenceState = 'error';

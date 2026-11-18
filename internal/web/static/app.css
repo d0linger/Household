@@ -283,3 +283,8 @@ dialog {overflow:auto;overscroll-behavior:contain;scroll-padding-block:20px}
   .panel,.auth-card {outline:1px solid CanvasText}
   :focus-visible {outline-color:Highlight}
 }
+/* 2026-11-17 polish: routine workspace status is quiet text, not an accent panel;
+   back links and selection controls keep usable targets. */
+.workspace-status,#fm-status {margin:0 0 12px;color:var(--muted);font-size:var(--text-secondary,.875rem);line-height:1.5}
+.back-link {min-height:44px;display:inline-flex;align-items:center}
+input[type=checkbox],input[type=radio] {min-width:24px;min-height:24px}

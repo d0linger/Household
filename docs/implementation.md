@@ -1692,3 +1692,47 @@ Not run:
 - Rootless Docker (Windows Docker Desktop here).
 - The CI Fuel browser recovery workflow and the Trivy scan of the `ocr` image.
 - A real HTTPS reverse proxy.
+
+## Critique and polish of all pages (2026-11-17)
+
+Critique (`/impeccable critique`, dual agent on the synthetic review server :8101) scored 21/40, with 3 P1 and 2 P2 issues. The snapshot is `.impeccable/critique/2026-11-17T21-30-17Z__localhost.md`.
+
+- **CLI detector:** 65 findings. All are false positives: the Go-template stylesheet hrefs cannot be resolved, so the detector measured unstyled markup, and the receipt image it flagged is hidden and filled by JavaScript.
+- **In-page overlay:** could not run, because the app's CSP (no `wasm-unsafe-eval`) blocks the WebAssembly detector core.
+
+Polish (refinement within Ocean/Ruhe; no visual-world change):
+- Fuel no longer shows the "Antwort nicht bestätigt" recovery lock after a server-confirmed operation. `accepted()` marks the stored locator as accepted, and a reload forgets it. A lost response still requires the explicit status check, as the browser test expects.
+- Fuel previews and receipts show labelled fields first. Unlabelled technical keys (IDs, raw keys) move into a collapsed "Technische Details" section. The capture pane opens the fill-up form by default, and the pane summary formats today's date by language.
+- Recipe servings and quantities drop trailing zeros ("2.000000" → "2", "1.250000" → "1.25"). The values stay exact.
+- Search shows the module's localized name instead of its key.
+- Finance tables format civil dates (`*_on`, `next_due`) by language without shifting the day.
+- Routine workspace status lines (Chores, Documents, Meters, Finance, Fuel) are quiet secondary text instead of accent notices.
+- Chores Today shows only "Aufgaben für" in front; the other six filters sit under "Weitere Filter · N aktiv", following the Documents pattern.
+- The Meters module link opens its workspace instead of the legacy entity list. Manage pages are titled "Verwalten · <Modul>".
+- Reference selectors announce result counts only after a search. With no search term they say nothing, or "Noch keine Einträge zur Auswahl." when the list is empty.
+- Touch targets and labels:
+  - Workspace context links and the Manage link are 44px high at every width; back links are 44px; checkboxes and radios are at least 24px.
+  - Today's "Aktualisieren" no longer breaks mid-word.
+  - The tray button's accessible name is now "Einstellungen und Konto öffnen".
+
+Evidence:
+- `go vet`, all Go unit tests, 524/524 Node tests, the localization catalog check and the localization message audit passed.
+- Full browser regression (`npm run test:browser`, 34 components):
+  - The first two runs exposed two regressions from the recipe decimal change, both fixed:
+    - The history preview must keep the exact `125.000001` notation, so the comma localization was dropped.
+    - The substitution handoff compared the normalized quantity with the raw server value; it now uses the same normalization.
+  - The third run passed 33 of 34 components. `browser-documents-workspace-check` stopped at "Actual local PDF processing failed". The review server runs natively on Windows without Tesseract, while earlier passing Documents runs used the container image with Poppler/Tesseract. This change only renamed the Documents status class. The component was not rerun in a container, so Documents remains unverified for this change.
+- Re-inspected on the review server:
+  - Mobile: Today, Chores Today and Fuel capture.
+  - Desktop: Finance entries, the Fuel Manage page and search.
+
+Not changed (recorded for later):
+- H1 placement across modules.
+- Module naming drift.
+- Over-applied Fuel previews for low-stakes writes.
+- Finance filter panels.
+- Plural forms such as "1 Einträge".
+- Hidden decorative eyebrow markup.
+- Forced-password-change confirmation field.
+- Notification timestamps.
+- The service-worker registration error seen only in the embedded browser pane.

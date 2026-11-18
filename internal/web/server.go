@@ -163,6 +163,9 @@ func New(ctx context.Context, pool *pgxpool.Pool, cfg config.Config, mods []modu
 		if m.ID == "documents" {
 			return "/m/documents/workspace/inbox"
 		}
+		if m.ID == "meters" {
+			return "/m/meters/workspace/overview"
+		}
 		return "/m/" + m.ID + "/" + m.Entities[0].ID
 	}, "dict": dict, "icon": func(asset map[string]string, name string) string { return asset["icons.svg"] + "#" + name }}).Funcs(localizedTemplateFuncs("de")).ParseFS(files, "templates/*.html")
 	if err != nil {
