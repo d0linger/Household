@@ -28,7 +28,14 @@ func loadMeterFeeds(c *Config) error {
 			return errors.New("invalid optional meter adapter transport setting")
 		}
 	}
-	if path := os.Getenv("HOUSEHOLD_METERS_CA_FILE"); path != "" {
+	path := os.Getenv("HOUSEHOLD_METERS_CA_FILE")
+	if path == "" {
+		// The CA is a public certificate, but it is mounted like the secrets.
+		if path, err = conventionalPath("HOUSEHOLD_METERS_CA"); err != nil {
+			return err
+		}
+	}
+	if path != "" {
 		// security: only the operator's deployment environment selects this public CA file.
 		file, err := os.Open(path) // #nosec G304 G703 -- trusted operator certificate path
 		if err != nil {

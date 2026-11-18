@@ -167,3 +167,31 @@ func FuzzDecimalRemainsExact(f *testing.F) {
 		}
 	})
 }
+
+func TestInputAcceptedBoundsUTCWithMarginAndHistory(t *testing.T) {
+	now := time.Date(2026, time.November, 16, 12, 0, 0, 0, time.UTC)
+	vienna := time.FixedZone("CET", 3600)
+	west := time.FixedZone("UTC-2", -2*3600)
+	for _, tc := range []struct {
+		name   string
+		at     time.Time
+		accept bool
+	}{
+		{"recent", now.AddDate(-1, 0, 0), true},
+		{"history edge", now.AddDate(-HistoryYears, 0, 1), true},
+		{"older than history", now.AddDate(-HistoryYears, 0, -1), false},
+		{"1900 in offset zone", time.Date(1900, time.January, 1, 0, 0, 0, 0, vienna), false},
+		{"2200 west of UTC", time.Date(2200, time.December, 31, 23, 0, 0, 0, west), false},
+		{"ceiling margin", time.Date(2200, time.December, 29, 0, 0, 1, 0, time.UTC), false},
+		{"zero", time.Time{}, false},
+	} {
+		if got := InputAccepted(tc.at, now); got != tc.accept {
+			t.Errorf("%s: InputAccepted(%s)=%v, want %v", tc.name, tc.at, got, tc.accept)
+		}
+	}
+	// Without the history window, the fixed floor keeps a two-day margin.
+	early := time.Date(1910, time.January, 1, 0, 0, 0, 0, time.UTC)
+	if InputAccepted(time.Date(1900, time.January, 2, 23, 0, 0, 0, time.UTC), early) || !InputAccepted(time.Date(1900, time.January, 3, 0, 0, 0, 0, time.UTC), early) {
+		t.Fatal("fixed 1900-01-03 floor is not applied when the history window reaches earlier")
+	}
+}

@@ -129,12 +129,29 @@ func (w *Worker) documentInput(ctx context.Context, job, lease string) (jobErr e
 			}
 		}()
 		for _, candidate := range candidates {
-			media, inputErr := documentInputMedia(candidate.Bytes)
-			if inputErr != nil {
-				return inputErr
+			// Permanent per-item failures are recorded and skipped so the cursor
+			// moves past them; only transient failures roll back the whole batch.
+			reason := candidate.Rejected
+			media := ""
+			if reason == "" {
+				var inputErr error
+				if media, inputErr = documentInputMedia(candidate.Bytes); inputErr != nil {
+					reason = inputErr.Error()
+				}
 			}
-			if len(candidate.Key) == 0 || len(candidate.Key) > 300 {
-				return errors.New("document input identity exceeds limit")
+			if reason == "" && (len(candidate.Key) == 0 || len(candidate.Key) > 300) {
+				reason = "document input identity exceeds limit"
+			}
+			// Checked before any receipt lookup or file write, so an invalid name
+			// is skipped instead of rolling back the whole batch.
+			if reason == "" && (!utf8.ValidString(candidate.Key) || !utf8.ValidString(candidate.Name)) {
+				reason = "document input name is not valid UTF-8"
+			}
+			if reason != "" {
+				if w.Log != nil {
+					w.Log.Warn("document input item rejected", "source_id", source, "reason", reason)
+				}
+				continue
 			}
 			sum := sha256.Sum256(candidate.Bytes)
 			var duplicate bool
@@ -145,7 +162,7 @@ func (w *Worker) documentInput(ctx context.Context, job, lease string) (jobErr e
 				continue
 			}
 			var used int64
-			if e = tx.QueryRow(ctx, `SELECT coalesce(sum(size_bytes),0) FROM core.attachments WHERE household_id=$1 AND state='ready'`, household).Scan(&used); e != nil {
+			if e = tx.QueryRow(ctx, store.UploadQuotaUsedQuery, household).Scan(&used); e != nil {
 				return e
 			}
 			if used+int64(len(candidate.Bytes)) > w.Cfg.UploadQuota {
@@ -185,7 +202,8 @@ func (w *Worker) documentInput(ctx context.Context, job, lease string) (jobErr e
 				return e
 			}
 			if media != "application/pdf" {
-				payload, _ := json.Marshal(store.Record{"attachment_id": aid, "storage_key": key})
+				// The origin keeps automatic intake out of the approver's manual upload budget.
+				payload, _ := json.Marshal(store.Record{"attachment_id": aid, "storage_key": key, "origin": "document_input"})
 				_, e = tx.Exec(ctx, `INSERT INTO core.jobs(household_id,module_id,module_generation,kind,payload,dedupe_key) VALUES($1,'documents',$2,'thumbnail',$3,$4)`, household, generation, payload, "thumbnail/"+aid)
 				if e != nil {
 					return e

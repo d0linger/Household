@@ -817,5 +817,6 @@
   "Zählerreihen und Fahrten prüfen.": "Check odometer series and trips.",
   "Zählerstände prüfen; überlappende Strecken werden nicht ungeprüft addiert": "Check odometer readings; overlapping distances will not be added without review",
   "Ähnliche Tankung ist bereits vorhanden oder zugleich ausgewählt": "A similar fill-up already exists or is selected at the same time",
-  "Zählerreihe fehlt oder ist nicht eindeutig passend; vor der Übernahme ausdrücklich auswählen": "The odometer series is missing or does not match unambiguously; explicitly select one before importing"
+  "Zählerreihe fehlt oder ist nicht eindeutig passend; vor der Übernahme ausdrücklich auswählen": "The odometer series is missing or does not match unambiguously; explicitly select one before importing",
+  "Technische Details": "Technical details"
 }

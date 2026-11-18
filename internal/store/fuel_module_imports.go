@@ -45,9 +45,42 @@ func fuelModuleImportObject(raw any, output any) error {
 	return nil
 }
 
+// fuelImportMaxFlagValues bounds each explicit full-tank or missing-fill mapping.
+const fuelImportMaxFlagValues = 32
+
+// fuelModuleImportFlagMaps decodes the explicit flag mappings once, before any
+// row is read, and returns a shallow copy of options that carries the decoded
+// maps. Row lookups then never re-encode the caller's configuration.
+func fuelModuleImportFlagMaps(options Record) (Record, error) {
+	decoded := make(Record, len(options))
+	for key, entry := range options {
+		decoded[key] = entry
+	}
+	for _, name := range []string{"full_tank_values", "missing_values"} {
+		if options[name] == nil {
+			continue
+		}
+		choices := map[string]bool{}
+		if err := fuelModuleImportObject(options[name], &choices); err != nil {
+			// A malformed mapping fails only the rows that consult it, as before.
+			decoded[name] = err
+			continue
+		}
+		if len(choices) > fuelImportMaxFlagValues {
+			return nil, Invalid{"CSV-Zuordnung oder Entscheidungen sind ungültig"}
+		}
+		decoded[name] = choices
+	}
+	return decoded, nil
+}
+
 func fuelModuleImportParse(ctx context.Context, profile, text string, options Record) (Record, []FuelModuleWarning, error) {
 	if !slices.Contains([]string{"fuelio", "drivvo", "spritmonitor", "household"}, profile) {
 		return nil, nil, Invalid{"Ein dokumentiertes CSV-Profil auswählen"}
+	}
+	options, err := fuelModuleImportFlagMaps(options)
+	if err != nil {
+		return nil, nil, err
 	}
 	if len(text) == 0 || len(text) > fuelImportMaxBytes || !utf8.ValidString(text) || strings.ContainsRune(text, 0) {
 		return nil, nil, Invalid{"CSV muss gültiges UTF-8 sein und darf höchstens zwei MiB enthalten"}
@@ -480,9 +513,19 @@ func fuelModuleImportValues(fields map[string]string, options Record) (Record, [
 			configuration = "missing_values"
 		}
 		if options[configuration] != nil {
-			choices := map[string]bool{}
-			if err := fuelModuleImportObject(options[configuration], &choices); err != nil {
-				return false, err
+			// fuelModuleImportParse decodes the mappings once; direct callers may
+			// still pass the raw request value.
+			var choices map[string]bool
+			switch mapping := options[configuration].(type) {
+			case map[string]bool:
+				choices = mapping
+			case error:
+				return false, mapping
+			default:
+				choices = map[string]bool{}
+				if err := fuelModuleImportObject(mapping, &choices); err != nil {
+					return false, err
+				}
 			}
 			if selected, found := choices[text]; found {
 				return selected, nil

@@ -27,47 +27,37 @@ The UI offers Ocean and Pink families, each with Light, Dark and System appearan
 
 ## Quick start
 
-Requirements: Docker Engine with Compose v2. Docker Desktop is optional. The following creates local development secrets, starts an isolated PostgreSQL container and binds Household to `127.0.0.1:8100`.
-
-**Windows PowerShell**
-
-```powershell
-./scripts/initialize.ps1 -Development
-docker compose up -d --build
-```
-
-**Linux/macOS**
+Requirements: Docker Engine with Compose v2 (rootful or [rootless](docs/installation.md#rootless-docker)). No source code, Go or scripts are needed. [`compose.yaml`](compose.yaml) is the only deployment file. Step-by-step guide in German: [docs/installation.md](docs/installation.md).
 
 ```sh
-sh scripts/initialize.sh --development
-docker compose up -d --build
+curl -fsSLO https://raw.githubusercontent.com/d0linger/Household/main/compose.yaml
+(umask 077; set -C; docker run --rm ghcr.io/d0linger/household:production init > .env)
+# set HOUSEHOLD_ORIGIN in .env; for a local trial use "init --development" instead
+docker compose up -d
 ```
 
-Open [http://localhost:8100](http://localhost:8100). Sign in as `admin` using `.local/secrets/bootstrap_password`; change that password at first sign-in. The initializer refuses to overwrite existing secrets. PostgreSQL has no published port. Development mode belongs on a private machine, not a public interface.
+`umask 077` keeps `.env` readable only by your user, and `set -C` refuses to overwrite an existing `.env`, whose keys an installation needs; delete an empty `.env` left by a failed run before retrying. `household init` writes one `.env` with every setting and freshly generated password and key, including the Web Push key. It never prints them to a terminal. **Back up `.env` separately:** without it, encrypted data and backups cannot be read.
 
-For production, initialize without the development switch (`./scripts/initialize.ps1` on Windows or `sh scripts/initialize.sh` on Linux/macOS). Edit `.env` before starting: set the exact HTTPS `HOUSEHOLD_ORIGIN` and `HOUSEHOLD_TRUSTED_PROXIES` to the reverse proxy's exact CIDR. Then run `docker compose up -d --build`, complete the bootstrap password change, and verify an encrypted backup by restoring it to the isolated recovery service. See [deployment, upgrades and recovery](docs/operations.md). The app supports one instance per household and one application replica.
+`docker compose up -d` then starts three services:
+- `db`: PostgreSQL, without a published port.
+- `app`: its `start` command creates the database roles as the PostgreSQL superuser, migrates as the owner and serves as the restricted app role on `127.0.0.1:8100`.
+- `backup`: daily encrypted restic snapshots. It is also the owner-credential maintenance service, e.g. `docker compose run --rm --no-deps backup recover admin`.
 
-The published image is `ghcr.io/d0linger/household:production` (also `:latest`). Pin a deployment to a verified digest rather than a mutable tag. This repository's Compose file builds `household:local`; switching a live installation to a published digest is an operator deployment step. No workflow deploys to a server.
+Every container runs without root; `app` and `backup` also run with a read-only root filesystem (`db` keeps PostgreSQL's writable root). Sign in as `admin` with `HOUSEHOLD_ADMIN_PASSWORD` and change it at first sign-in.
 
-## Optional services
+For production, put an HTTPS reverse proxy in front, set the exact `HOUSEHOLD_ORIGIN` and `HOUSEHOLD_TRUSTED_PROXIES`, and verify an encrypted backup with `docker compose run --rm --no-deps backup restore-check SNAPSHOT_ID`, which restores into a temporary database of its own (`household_restore_auto_…`) on the same server and then drops it. If the process is killed or the server connection fails, that cleanup can be skipped or fail; the next automatic check removes such leftovers once they are older than six hours. An explicit `HOUSEHOLD_RESTORE_DATABASE_URL` target is never dropped. See [deployment, upgrades and recovery](docs/operations.md). The app supports one instance per household and one application replica.
 
-- **Local OCR:** `docker compose -f compose.yaml -f compose.ocr.yaml up -d --build` adds Tesseract with German/English language data. Existing PDF text is preferred; extracted values remain subject to review.
-- **Encrypted backups:** `docker compose -f compose.yaml -f compose.backup.yaml up -d --build backup` starts scheduled restic snapshots. Keep the repository password separately and rehearse [restore verification](docs/operations.md#restore-verification). A local backup volume does not protect against host loss.
-- **Web Push, Documents inputs and meter adapters:** use only the relevant [Compose overlays](docs/operations.md) and configure their secrets and approvals. They are off by default. Each installation supplies its own origin; no public URL is compiled into the app.
+The published image is `ghcr.io/d0linger/household:production` (also `:latest`). It is built from the `ocr` target and includes Tesseract, `restic` and the PostgreSQL 18 client. Pin a deployment to a verified digest rather than a mutable tag. To run a local build instead, use `docker build --target ocr -t household:local .` and set `HOUSEHOLD_IMAGE=household:local` in `.env`. No workflow deploys to a server.
 
-### Optional Web Push
+## Features that switch on by configuration
 
-With Go 1.27.4 available on the operator host, generate a new VAPID key pair after initialization:
-
-```sh
-go run ./cmd/household push-keygen --private-out .local/secrets/web_push_private_key --public-out .local/secrets/web_push_public_key
-```
-
-Set `HOUSEHOLD_WEB_PUSH_ENABLED=true` and `HOUSEHOLD_WEB_PUSH_VAPID_CONTACT=mailto:you@example.org` in `.env`, then include `compose.webpush.yaml` in the installation's complete Compose file set. Keep the private key out of Git and preserve it separately in encrypted backup storage; the scheduled backup does not include it. Device delivery needs a reachable HTTPS origin and explicit user consent. See [Web Push operations](docs/operations.md#device-notifications).
+- **OCR:** Local Tesseract with German/English data. It is on whenever the image contains it, unless `HOUSEHOLD_OCR_ENABLED=false`. Existing PDF text is preferred; extracted values remain subject to review.
+- **Web Push:** On when `HOUSEHOLD_WEB_PUSH_VAPID_PRIVATE_KEY` is set (`init` generates it), unless `HOUSEHOLD_WEB_PUSH_ENABLED=false`. The contact defaults to the HTTPS origin. Device delivery needs a reachable HTTPS origin and explicit user consent; see [Web Push operations](docs/operations.md#device-notifications).
+- **Documents inputs and meter adapters:** Fill in their lines in section 4 of `.env` (IMAP, Paperless, Home Assistant, MQTT), then approve them in the app. A scanner folder is enabled by uncommenting its line under `app.volumes` in `compose.yaml`. For a private meter CA, add `- ./meters-ca.pem:/config/meters-ca.pem:ro` under `app.volumes` and set `HOUSEHOLD_METERS_CA_FILE=/config/meters-ca.pem` in `.env`. All nine modules run inside the single `app` service; administrators enable optional modules in the app.
 
 ## Configuration
 
-Copy `.env.example` through the initializer. The principal settings are:
+`.env` is the only configuration file. The principal settings are:
 
 | Setting | Purpose |
 | --- | --- |
@@ -75,10 +65,11 @@ Copy `.env.example` through the initializer. The principal settings are:
 | `HOUSEHOLD_ORIGIN` | Exact external browser origin; also used for passkeys and push. |
 | `HOUSEHOLD_PORT` | Local published port, default `8100`. |
 | `HOUSEHOLD_TRUSTED_PROXIES` | Exact proxy CIDRs; empty trusts none. |
-| `HOUSEHOLD_ADMIN_USERNAME` | Bootstrap account name, default `admin`. |
+| `HOUSEHOLD_ADMIN_USERNAME` / `_PASSWORD` | Bootstrap account; change the password at first sign-in. |
+| `HOUSEHOLD_IMAGE` | Image to run, default `ghcr.io/d0linger/household:production`. |
 | `HOUSEHOLD_OFF_ENABLED` | Optional product suggestions, off by default. |
 
-Database URLs, CSRF/encryption/rate keys and the bootstrap password are mounted as secret files by Compose. Never commit `.env`, `.local/secrets`, uploads or backup repositories. See [operations](docs/operations.md) for key rotation, restore and full configuration; [`.env.example`](.env.example) lists optional adapters.
+Generated values (`POSTGRES_PASSWORD`, `HOUSEHOLD_OWNER_PASSWORD`, `HOUSEHOLD_APP_PASSWORD`, CSRF/rate/encryption keys, the VAPID key and `RESTIC_PASSWORD`) must not be changed casually. With `compose.yaml`, `app` and `backup` connect to `db:5432/household` with the role passwords from `.env`; do not set `HOUSEHOLD_DATABASE_URL` there. `HOUSEHOLD_DATABASE_URL` is for running `household serve` or maintenance commands outside this Compose file, and then without `HOUSEHOLD_DATABASE_PASSWORD` (an explicit setting wins over a file in `/run/secrets`, two explicit sources are refused). Every `HOUSEHOLD_<NAME>` secret also accepts `HOUSEHOLD_<NAME>_FILE` or a file `/run/secrets/<name>`, for operators who mount secrets as files. `RESTIC_PASSWORD` belongs to restic and does not use that folder. To keep it in a file instead: save the existing repository password (keep a separate copy for recovery), make it readable only by the container user (`sudo chown 10001 restic_password && chmod 0400 restic_password`; with rootless Docker, use the UID that 10001 maps to), mount it read-only on `backup` (`- ./restic_password:/run/secrets/restic_password:ro` under `backup.volumes`), set `RESTIC_PASSWORD_FILE=/run/secrets/restic_password` there and remove `RESTIC_PASSWORD` from `.env`. Never commit `.env`, `.local/secrets`, uploads or backup repositories. See [operations](docs/operations.md) for key rotation, restore and full configuration.
 
 Passkeys need the configured HTTPS hostname, or `localhost` in development. Numeric IP origins cannot enroll passkeys. Password, TOTP and recovery codes remain available. Ocean/Pink and DE/EN require no external assets or translation service.
 
@@ -86,7 +77,7 @@ Passkeys need the configured HTTPS hostname, or `localhost` in development. Nume
 
 Passwords use bcrypt; sessions are stored as hashes and can be revoked. PostgreSQL holds durable rate limits, audit history and module data. State-changing requests require CSRF protection; HTTP responses use a restrictive CSP and related headers. Financial and stock corrections append new records rather than silently changing posted history. Audit history records actors and before/after fields where permitted. [Security design](docs/security.md) and [private reporting](SECURITY.md) give details and limits.
 
-The app image runs without root, with a read-only root filesystem and bounded writable paths. The database has a persistent named volume; uploads use another named volume. Backups must include both data and the required security keys. Schema changes use checksum-checked forward migrations. Read the [upgrade and rollback procedure](docs/operations.md#upgrades-and-rollback) before changing a live installation.
+The app image runs without root, with a read-only root filesystem and bounded writable paths. The database has a persistent named volume; uploads use another named volume. Backups must include both data and the required security keys. Schema changes use checksum-checked forward migrations. The runtime role can read but not write migration ledgers, and `/health/ready` serializes and caches its database inspection for five seconds. Member-triggered background work (uploads, document processing, exports, recurrences, notifications) has per-member or per-kind bounds; see [shared resources](docs/security.md#shared-resources-and-background-work). Read the [upgrade and rollback procedure](docs/operations.md#upgrades-and-rollback) before changing a live installation.
 
 ## Development and release
 

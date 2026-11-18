@@ -400,5 +400,7 @@
   "Änderungen werden zur Prüfung geladen …": "Loading changes for review …",
   "Öffnen →": "Open →",
   "Überlappende Messintervalle verhindern eine eindeutige Zeitaggregation": "Overlapping measurement intervals prevent unambiguous time aggregation",
-  "Überlauf abgeleitet": "Rollover derived"
+  "Überlauf abgeleitet": "Rollover derived",
+  "Noch keine Einträge zur Auswahl.": "No entries to choose from yet.",
+  "Einstellungen und Konto öffnen": "Open settings and account"
 }

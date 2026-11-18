@@ -13,8 +13,9 @@ import (
 )
 
 func loadWebPush(c *Config) error {
-	if raw := os.Getenv("HOUSEHOLD_WEB_PUSH_ENABLED"); raw != "" {
-		enabled, err := strconv.ParseBool(raw)
+	setting := os.Getenv("HOUSEHOLD_WEB_PUSH_ENABLED")
+	if setting != "" {
+		enabled, err := strconv.ParseBool(setting)
 		if err != nil {
 			return errors.New("invalid web push setting")
 		}
@@ -27,6 +28,12 @@ func loadWebPush(c *Config) error {
 	private, file := os.Getenv("HOUSEHOLD_WEB_PUSH_VAPID_PRIVATE_KEY"), os.Getenv("HOUSEHOLD_WEB_PUSH_VAPID_PRIVATE_KEY_FILE")
 	if private != "" && file != "" {
 		return errors.New("both web push private key and file are configured")
+	}
+	if private == "" && file == "" {
+		var err error
+		if file, err = conventionalPath("HOUSEHOLD_WEB_PUSH_VAPID_PRIVATE_KEY"); err != nil {
+			return err
+		}
 	}
 	if file != "" {
 		// security: this bounded secret path comes only from operator configuration.
@@ -45,6 +52,10 @@ func loadWebPush(c *Config) error {
 	if c.WebPushPrivateKey == "" {
 		return nil
 	}
+	// A configured key turns Web Push on unless it is explicitly disabled.
+	if setting == "" {
+		c.WebPushEnabled = true
+	}
 	if len(c.WebPushPrivateKey) > 128 {
 		return errors.New("invalid web push private key")
 	}
@@ -56,6 +67,26 @@ func loadWebPush(c *Config) error {
 		return errors.New("web push private key is outside the P-256 scalar range")
 	}
 	return nil
+}
+
+// originWebPushContact derives the default contact from an HTTPS origin. A push
+// contact may not carry a port other than 443, so an origin such as
+// https://household.example.org:8443 yields https://household.example.org.
+// Other origins yield no contact; the push status then stays not_configured.
+func originWebPushContact(origin string) string {
+	parsed, err := url.Parse(origin)
+	if err != nil || parsed.Scheme != "https" || parsed.Hostname() == "" {
+		return ""
+	}
+	host := parsed.Hostname()
+	if strings.Contains(host, ":") {
+		host = "[" + host + "]"
+	}
+	contact := (&url.URL{Scheme: "https", Host: host}).String()
+	if !validWebPushContact(contact) {
+		return ""
+	}
+	return contact
 }
 
 func validWebPushContact(value string) bool {

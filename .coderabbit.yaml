@@ -1,0 +1,22 @@
+# CodeRabbit review settings. CodeRabbit does not review this repository
+# automatically; request a review on a pull request with "@coderabbitai full review".
+# Path filters keep large pull requests under the review file limit by leaving out
+# prose and generated files. Code, templates, workflows, scripts and Compose stay in.
+reviews:
+  auto_review:
+    enabled: false
+  path_filters:
+    - "!docs/**"
+    - "!internal/web/static/i18n-catalog.js"
+    - "!deploy/migration-checksums.json"
+    # Compose overlays removed by the single-compose setup (PR 20).
+    - "!compose.backup-keyring.yaml"
+    - "!compose.backup.yaml"
+    - "!compose.documents-watch.yaml"
+    - "!compose.documents.yaml"
+    - "!compose.keyring.yaml"
+    - "!compose.meters-ca.yaml"
+    - "!compose.meters-ha.yaml"
+    - "!compose.meters-mqtt.yaml"
+    - "!compose.ocr.yaml"
+    - "!compose.webpush.yaml"

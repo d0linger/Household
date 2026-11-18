@@ -181,7 +181,7 @@ SELECT json_build_object('version',current_setting('server_version_num')::intege
  $taskCommon=@('HOUSEHOLD_ENV=development','HOUSEHOLD_ORIGIN=http://127.0.0.1:8101','HOUSEHOLD_ADMIN_USERNAME=bootstrap','HOUSEHOLD_CSRF_SECRET_FILE=/run/secrets/csrf','HOUSEHOLD_ENCRYPTION_KEY_FILE=/run/secrets/encryption','HOUSEHOLD_RATE_SECRET_FILE=/run/secrets/rate','HOUSEHOLD_UPLOAD_DIR=/data/uploads','GOMEMLIMIT=400MiB')
  $taskAppEnv=Join-Path $taskPrivate 'app.env';$taskToolEnv=Join-Path $taskPrivate 'toolbox.env'
  [IO.File]::WriteAllLines($taskAppEnv,$taskCommon+@('HOUSEHOLD_LISTEN=:8080','HOUSEHOLD_DATABASE_URL_FILE=/run/secrets/app-url','HOUSEHOLD_ADMIN_PASSWORD_FILE=/run/secrets/bootstrap','HOUSEHOLD_OCR_ENABLED=true'),[Text.UTF8Encoding]::new($false))
- [IO.File]::WriteAllLines($taskToolEnv,$taskCommon+@('HOUSEHOLD_DATABASE_URL_FILE=/run/secrets/source-url','HOUSEHOLD_RESTORE_DATABASE_URL_FILE=/run/secrets/target-url','HOUSEHOLD_BACKUP_WORK=/work','RESTIC_REPOSITORY=/repository','RESTIC_PASSWORD_FILE=/run/secrets/restic','RESTIC_CACHE_DIR=/tmp/restic-cache'),[Text.UTF8Encoding]::new($false))
+ [IO.File]::WriteAllLines($taskToolEnv,$taskCommon+@('HOUSEHOLD_DATABASE_URL_FILE=/run/secrets/source-url','HOUSEHOLD_RESTORE_DATABASE_URL_FILE=/run/secrets/target-url','HOUSEHOLD_BACKUP_WORK=/work','RESTIC_REPOSITORY=/data/backups','RESTIC_PASSWORD_FILE=/run/secrets/restic','RESTIC_CACHE_DIR=/tmp/restic-cache'),[Text.UTF8Encoding]::new($false))
  $taskBase=@('run','--detach','--label',"household.fuel.browser.run=$taskRun",'--network',$taskNetwork,'--read-only','--cap-drop','ALL','--security-opt','no-new-privileges:true','--memory','512m','--pids-limit','150','--init','--tmpfs','/tmp:rw,noexec,nosuid,size=128m')
  if($CIRun){$taskBase+=@('--label',"household.fuel.browser.ci=$CIRun")}
  $taskAppArgs=$taskBase+@('--name',$taskNames.app,'--publish','127.0.0.1:8101:8080','--env-file',$taskAppEnv,'--mount',"type=volume,source=$($taskVolumes.uploads),target=/data/uploads")
@@ -192,7 +192,7 @@ SELECT json_build_object('version',current_setting('server_version_num')::intege
  if(!$taskReady){throw 'Own OCR runtime did not become ready on8101'}
  $null=Invoke-FuelDocker -Arguments @('exec',$taskNames.app,'tesseract','--version')
  $null=Invoke-FuelDocker -Arguments @('exec',$taskNames.app,'pdftoppm','-v')
- $taskToolArgs=$taskBase+@('--name',$taskNames.toolbox,'--env-file',$taskToolEnv,'--mount',"type=volume,source=$($taskVolumes.uploads),target=/data/uploads,readonly",'--mount',"type=volume,source=$($taskVolumes.work),target=/work",'--mount',"type=volume,source=$($taskVolumes.repository),target=/repository",'--entrypoint','sleep')
+ $taskToolArgs=$taskBase+@('--name',$taskNames.toolbox,'--env-file',$taskToolEnv,'--mount',"type=volume,source=$($taskVolumes.uploads),target=/data/uploads,readonly",'--mount',"type=volume,source=$($taskVolumes.work),target=/work",'--mount',"type=volume,source=$($taskVolumes.repository),target=/data/backups",'--entrypoint','sleep')
  foreach($taskName in @('csrf','encryption','rate','source-url','target-url','restic')){$taskToolArgs=Add-FuelMount $taskToolArgs (Join-Path $taskPrivate $taskName) ('/run/secrets/'+$taskName)}
  $null=Invoke-FuelDocker -Arguments ($taskToolArgs+@($BackupImageId,'1800'));$taskCreatedContainers+=$taskNames.toolbox
  $null=Invoke-FuelDocker -Arguments @('exec',$taskNames.toolbox,'pg_dump','--version');$null=Invoke-FuelDocker -Arguments @('exec',$taskNames.toolbox,'pg_restore','--version')

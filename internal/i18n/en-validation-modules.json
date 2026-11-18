@@ -477,5 +477,8 @@
   "Dieser Barcode ist bereits dem Produkt „%s“ zugeordnet. Bestehende Zuordnung prüfen.": "This barcode is already assigned to the product “%s”. Review the existing mapping.",
   "Charge oder Bestand wurde geändert. Verfügbar: %s %s. Menge und gespeicherten Stand ausdrücklich prüfen.": "The batch or stock has changed. Available: %s %s. Explicitly review the quantity and saved version.",
   "Text enthält: %s": "Text contains: %s",
-  "unbekanntes oder geschütztes Feld: %s": "unknown or protected field: %s"
+  "unbekanntes oder geschütztes Feld: %s": "unknown or protected field: %s",
+  "Diese Dateiversion wird bereits verarbeitet": "This file version is already being processed",
+  "Höchstens 10 offene Dokumentverarbeitungen je Person; bitte warten": "At most 10 open document processing requests per person; please wait",
+  "Zeitpunkt innerhalb der letzten 30 Jahre und vor dem 29. Dezember 2200 (UTC) angeben": "Enter a time within the last 30 years and before 29 December 2200 (UTC)"
 }

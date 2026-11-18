@@ -64,27 +64,37 @@ func boundedSecret(name string, limit int) (string, error) {
 	if v != "" && path != "" {
 		return "", fmt.Errorf("both %s and file are configured", name)
 	}
+	if v == "" && path == "" {
+		var err error
+		if path, err = conventionalPath(name); err != nil {
+			return "", err
+		}
+	}
 	if path != "" {
-		// security: secret-file paths come solely from deployment configuration.
-		reader, err := os.Open(path) // #nosec G304 G703 -- trusted operator secret path
-		if err != nil {
-			return "", fmt.Errorf("%s secret file could not be read", name)
-		}
-		defer func() { _ = reader.Close() }()
-		info, err := reader.Stat()
-		if err != nil || !info.Mode().IsRegular() || info.Size() > int64(limit) {
-			return "", fmt.Errorf("%s secret file exceeds its bounded format", name)
-		}
-		b, err := io.ReadAll(io.LimitReader(reader, int64(limit)+1))
-		if err != nil || len(b) > limit {
-			return "", fmt.Errorf("%s secret file exceeds its bounded format", name)
-		}
-		v = strings.TrimSpace(string(b))
+		return readSecretFile(name, path, limit)
 	}
 	if len(v) > limit {
 		return "", fmt.Errorf("%s secret exceeds its bounded format", name)
 	}
 	return v, nil
+}
+
+func readSecretFile(name, path string, limit int) (string, error) {
+	// security: secret-file paths come solely from deployment configuration.
+	reader, err := os.Open(path) // #nosec G304 G703 -- trusted operator secret path
+	if err != nil {
+		return "", fmt.Errorf("%s secret file could not be read", name)
+	}
+	defer func() { _ = reader.Close() }()
+	info, err := reader.Stat()
+	if err != nil || !info.Mode().IsRegular() || info.Size() > int64(limit) {
+		return "", fmt.Errorf("%s secret file exceeds its bounded format", name)
+	}
+	b, err := io.ReadAll(io.LimitReader(reader, int64(limit)+1))
+	if err != nil || len(b) > limit {
+		return "", fmt.Errorf("%s secret file exceeds its bounded format", name)
+	}
+	return strings.TrimSpace(string(b)), nil
 }
 
 func Load() (Config, error) {
@@ -94,6 +104,8 @@ func Load() (Config, error) {
 	}
 	c := Config{Listen: env("HOUSEHOLD_LISTEN", DefaultListen), Origin: env("HOUSEHOLD_ORIGIN", "http://localhost:8100"), AdminUsername: env("HOUSEHOLD_ADMIN_USERNAME", "admin"), HouseholdName: env("HOUSEHOLD_NAME", "Mein Haushalt"), UploadDir: env("HOUSEHOLD_UPLOAD_DIR", ".local/uploads"), Production: mode == "production", MaxConnections: 10, SessionIdle: 24 * time.Hour, SessionAbsolute: 30 * 24 * time.Hour, UploadQuota: 2 << 30}
 	var err error
+	// OCR is on wherever the image ships Tesseract, unless explicitly disabled.
+	c.OCREnabled = ocrInstalled()
 	if raw := os.Getenv("HOUSEHOLD_OCR_ENABLED"); raw != "" {
 		c.OCREnabled, err = strconv.ParseBool(raw)
 		if err != nil {
@@ -133,11 +145,14 @@ func Load() (Config, error) {
 	if err = loadDocumentInputs(&c); err != nil {
 		return Config{}, err
 	}
-	for name, target := range map[string]*string{"HOUSEHOLD_DATABASE_URL": &c.DatabaseURL, "HOUSEHOLD_CSRF_SECRET": &c.CSRFSecret, "HOUSEHOLD_RATE_SECRET": &c.RateSecret, "HOUSEHOLD_ADMIN_PASSWORD": &c.AdminPassword, "HOUSEHOLD_METRICS_TOKEN": &c.MetricsToken} {
+	for name, target := range map[string]*string{"HOUSEHOLD_CSRF_SECRET": &c.CSRFSecret, "HOUSEHOLD_RATE_SECRET": &c.RateSecret, "HOUSEHOLD_ADMIN_PASSWORD": &c.AdminPassword, "HOUSEHOLD_METRICS_TOKEN": &c.MetricsToken} {
 		*target, err = secret(name)
 		if err != nil {
 			return Config{}, err
 		}
+	}
+	if err = loadDatabaseURL(&c); err != nil {
+		return Config{}, err
 	}
 	if err = loadEncryption(&c); err != nil {
 		return Config{}, err
@@ -146,8 +161,12 @@ func Load() (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	// Push services need a contact; the HTTPS origin's host is a valid default.
+	if c.WebPushContact == "" {
+		c.WebPushContact = originWebPushContact(c.Origin)
+	}
 	if c.DatabaseURL == "" {
-		return Config{}, errors.New("database URL is required")
+		return Config{}, errors.New("database URL or database password is required")
 	}
 	for name, key := range map[string]string{"CSRF": c.CSRFSecret, "rate": c.RateSecret} {
 		if len(strings.TrimSpace(key)) < 32 || strings.Contains(strings.ToLower(key), "change-me") {
@@ -235,6 +254,12 @@ func normalizeOrigin(raw string, production bool) (string, error) {
 	// Browser Origin headers omit a root slash and default ports. Keep the
 	// configured origin in that same form for the exact CSRF origin comparison.
 	return u.Scheme + "://" + host, nil
+}
+
+// ocrInstalled reports whether the Tesseract binary the OCR paths call exists.
+var ocrInstalled = func() bool {
+	info, err := os.Stat("/usr/bin/tesseract")
+	return err == nil && info.Mode().IsRegular()
 }
 
 func env(name, fallback string) string {

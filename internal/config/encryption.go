@@ -2,7 +2,6 @@ package config
 
 import (
 	"errors"
-	"os"
 
 	"household/internal/secretbox"
 )
@@ -17,12 +16,25 @@ func (c Config) Keyring() (*secretbox.Keyring, error) {
 }
 
 func loadEncryption(c *Config) error {
-	ringConfigured := os.Getenv("HOUSEHOLD_ENCRYPTION_KEYRING") != "" || os.Getenv("HOUSEHOLD_ENCRYPTION_KEYRING_FILE") != ""
-	oldConfigured := os.Getenv("HOUSEHOLD_ENCRYPTION_KEY") != "" || os.Getenv("HOUSEHOLD_ENCRYPTION_KEY_FILE") != ""
+	ringConfigured := explicitlyConfigured("HOUSEHOLD_ENCRYPTION_KEYRING")
+	oldConfigured := explicitlyConfigured("HOUSEHOLD_ENCRYPTION_KEY")
 	if ringConfigured && oldConfigured {
 		return errors.New("encryption keyring and legacy secret sources are mutually exclusive")
 	}
 	var err error
+	if !ringConfigured && !oldConfigured {
+		// Only the secrets folder names a source: choose the keyring when it is
+		// present, and refuse both rather than guessing which one is current.
+		if ringConfigured, err = configured("HOUSEHOLD_ENCRYPTION_KEYRING"); err != nil {
+			return err
+		}
+		if oldConfigured, err = configured("HOUSEHOLD_ENCRYPTION_KEY"); err != nil {
+			return err
+		}
+		if ringConfigured && oldConfigured {
+			return errors.New("encryption keyring and legacy secret sources are mutually exclusive")
+		}
+	}
 	if ringConfigured {
 		var raw string
 		raw, err = boundedSecret("HOUSEHOLD_ENCRYPTION_KEYRING", secretbox.MaxConfigSize)

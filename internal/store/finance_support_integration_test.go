@@ -150,29 +150,60 @@ func financeSupportInitialRecurrence(t *testing.T, f *recipeExpansionFixture, ri
 	return receipt
 }
 
+func TestFinanceSupportAutomaticRecurrenceRefusesFarPastBacklog(t *testing.T) {
+	f := newRecipeExpansionFixture(t)
+	raw, err := json.Marshal(FinanceIncomeInput{OccurredOn: "1900-01-01", Description: "Far past automatic sentinel", Payee: "Counterparty", Money: finance.MoneyInput{Currency: "EUR", Exponent: 2, Minor: "100"}, State: "draft"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rid := value.UUID()
+	input, err := json.Marshal(FinanceRecurrenceInput{TemplateKind: "income", Name: "Far past automatic", AnchorOn: "1900-01-01", RepeatUnit: "day", RepeatInterval: 1, MonthdayPolicy: "clamp", Template: raw, Active: true, Automatic: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	gen, stamp := financeNativeScope(t, f, "recurrences", rid, 0)
+	member := f.identity.MembershipID
+	c := FinanceCommand{Resource: "recurrences", Action: "save", ID: rid, Generation: gen, AccessVersion: stamp, Payload: input, InitialAccess: &FinanceInitialAccess{AccessMode: "household", ResponsibleMembershipID: &member, Grants: []FinanceInitialGrant{}}}
+	var invalid Invalid
+	if _, err = f.store.FinancePreview(f.ctx, f.identity, value.UUID(), value.UUID(), c); !errors.As(err, &invalid) {
+		t.Fatal("automatic consent accepted a backlog far outside the catch-up window", err)
+	}
+}
+
 func TestFinanceSupportRecurringExpenseIncomeCatchupConsentAndCadence(t *testing.T) {
 	f := newRecipeExpansionFixture(t)
 	category := financeNativeCategory(t, f)
+	view, err := f.store.FinanceView(f.ctx, f.identity, FinanceQuery{Pane: "planning", Section: "recurrences"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	today, err := time.Parse(time.DateOnly, String(view["today"]))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Automatic consent only accepts a backlog inside the 31-day catch-up window.
+	anchor := today.AddDate(0, 0, -20)
+	anchorOn := anchor.Format(time.DateOnly)
 	for _, kind := range []string{"expense", "income"} {
 		t.Run(kind, func(t *testing.T) {
 			rid := value.UUID()
 			var template any = financeNativeEntry(category, "100")
 			if kind == "income" {
-				template = FinanceIncomeInput{OccurredOn: "2026-10-01", Description: "Salary draft without invented account", Payee: "Actual recurring counterparty", Money: finance.MoneyInput{Currency: "USD", Exponent: 2, Minor: "200"}, State: "draft"}
+				template = FinanceIncomeInput{OccurredOn: anchorOn, Description: "Salary draft without invented account", Payee: "Actual recurring counterparty", Money: finance.MoneyInput{Currency: "USD", Exponent: 2, Minor: "200"}, State: "draft"}
 			}
 			raw, err := json.Marshal(template)
 			if err != nil {
 				t.Fatal(err)
 			}
-			input := FinanceRecurrenceInput{TemplateKind: kind, Name: "Reviewed recurring " + kind, AnchorOn: "2026-10-01", RepeatUnit: "day", RepeatInterval: 1, MonthdayPolicy: "clamp", Template: raw, Active: true, Automatic: true}
+			input := FinanceRecurrenceInput{TemplateKind: kind, Name: "Reviewed recurring " + kind, AnchorOn: anchorOn, RepeatUnit: "day", RepeatInterval: 1, MonthdayPolicy: "clamp", Template: raw, Active: true, Automatic: true}
 			created := financeSupportInitialRecurrence(t, f, rid, input)
 			row := financeSupportDetail(t, f, "recurrences", rid, "")
 			if row["automatic"] != true || row["automation_reason"] != "enabled" {
 				t.Fatal("explicit current responsible-user consent is not effective", row)
 			}
-			through, expected := "2026-10-03", 3
+			through, expected := anchor.AddDate(0, 0, 2).Format(time.DateOnly), 3
 			if kind == "expense" {
-				through, expected = "2026-10-15", 15
+				through, expected = anchor.AddDate(0, 0, 14).Format(time.DateOnly), 15
 			}
 			command, key, preview := financeNativePreview(t, f, "recurrences", "generate", rid, Int(created["saved_version"]), FinanceGenerateInput{Through: through})
 			firstBatch := preview["impact"].(Record)

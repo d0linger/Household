@@ -395,5 +395,6 @@
   "Änderung der Zählerreihe widerspricht vorhandenen Tank-, Lade-, Foto- oder Fahrtdaten": "The odometer series change contradicts existing fill-up, charging, photo or trip data",
   "Übersprungene Bankzeile darf keine Kategorie übernehmen": "A skipped bank row cannot receive a category",
   "betrag, Währung und geprüften exakten Kurs prüfen": "Check the amount, currency and reviewed exact exchange rate",
-  "vollständige exakte Aufteilung mit eindeutigen Personen prüfen": "Review the complete exact split with distinct people"
+  "vollständige exakte Aufteilung mit eindeutigen Personen prüfen": "Review the complete exact split with distinct people",
+  "Ältere Fälligkeiten zuerst manuell erzeugen; automatische Entwürfe holen höchstens 31 Tage nach": "Generate older due dates manually first; automatic drafts catch up at most 31 days"
 }

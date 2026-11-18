@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 )
 
 type Config struct {
@@ -68,10 +69,26 @@ type Candidate struct {
 	Key   string
 	Name  string
 	Bytes []byte
+	// Rejected names why the adapter could not turn this source item into a
+	// document (for example malformed MIME or a message over the batch caps on
+	// its own). Rejected items carry no bytes; the cursor still moves past them
+	// so one permanently invalid item cannot halt the source.
+	Rejected string
 }
 type Cursor struct {
 	UIDValidity uint64 `json:"uid_validity"`
 	LastUID     uint64 `json:"last_uid"`
 	Page        int    `json:"page"`
 	After       string `json:"after"`
+	// Settling names the watch-inbox file that stopped the last batch because
+	// it may still be written. Its settling period runs from when the worker
+	// first saw it with this size and modification time, so a producer clock
+	// that runs ahead cannot hold the inbox.
+	Settling      string    `json:"settling,omitempty"`
+	SettlingSize  int64     `json:"settling_size,omitempty"`
+	SettlingMod   time.Time `json:"settling_mod,omitzero"`
+	SettlingSince time.Time `json:"settling_since,omitzero"`
+	// SettlingFile identifies the observed file where the platform allows it,
+	// so a replacement with the same name, size and time settles anew.
+	SettlingFile string `json:"settling_file,omitempty"`
 }

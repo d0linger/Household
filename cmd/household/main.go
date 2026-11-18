@@ -11,7 +11,6 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"strings"
 	"syscall"
 	"time"
 
@@ -56,6 +55,15 @@ func run(log *slog.Logger) error {
 	if command == "version" {
 		fmt.Println("Household 0.1.0")
 		return nil
+	}
+	if command == "start" {
+		return runStart()
+	}
+	if command == "setup" {
+		return runSetup()
+	}
+	if command == "init" {
+		return runInit(os.Args[2:], os.Stdout)
 	}
 	if command == "push-keygen" {
 		return runPushKeygen(os.Args[2:])
@@ -150,18 +158,27 @@ func run(log *slog.Logger) error {
 		if len(os.Args) != 3 {
 			return errors.New("usage: household restore-check SNAPSHOT")
 		}
-		target := os.Getenv("HOUSEHOLD_RESTORE_DATABASE_URL")
-		if file := os.Getenv("HOUSEHOLD_RESTORE_DATABASE_URL_FILE"); file != "" {
-			// security: operator-owned environment setting, never HTTP input.
-			b, e := os.ReadFile(file) // #nosec G304 G703 -- trusted operator secret path
-			if e != nil {
-				return e
-			}
-			target = strings.TrimSpace(string(b))
+		// One read decides both the target and whether it is explicit.
+		target, explicit, err := config.RestoreTarget(cfg.DatabaseURL)
+		if err != nil {
+			return err
+		}
+		if err = maintenance.ValidateRestoreTarget(cfg.DatabaseURL, target); err != nil {
+			return err
 		}
 		verifyCtx, cancel := context.WithTimeout(ctx, 30*time.Minute)
 		defer cancel()
-		return maintenance.VerifyRestore(verifyCtx, pool, cfg, os.Args[2], target)
+		verify := func(target string) error { return maintenance.VerifyRestore(verifyCtx, pool, cfg, os.Args[2], target) }
+		superuser, err := config.Secret("POSTGRES_PASSWORD")
+		if err != nil {
+			return err
+		}
+		// An explicit target, or no superuser to create one, is used as it is.
+		// Otherwise each check gets its own database on the source's server.
+		if explicit || superuser == "" {
+			return verify(target)
+		}
+		return withRestoreTarget(verifyCtx, cfg.DatabaseURL, target, superuser, verify)
 	case "purge":
 		if len(os.Args) != 3 {
 			return errors.New("usage: household purge REQUEST_UUID")
@@ -206,7 +223,7 @@ func run(log *slog.Logger) error {
 		return a.RecoverPassword(ctx, os.Args[2], cfg.AdminPassword, len(os.Args) == 4)
 	}
 	if command != "serve" {
-		return errors.New("unknown command; use serve, migrate, healthcheck, recover, version, push-keygen, encryption-keygen, encryption-reencrypt or encryption-retirement-check")
+		return errors.New("unknown command; use init, setup, start, serve, migrate, healthcheck, recover, version, push-keygen, encryption-keygen, encryption-reencrypt or encryption-retirement-check")
 	}
 	if err = database.Ready(ctx, pool); err != nil {
 		return err

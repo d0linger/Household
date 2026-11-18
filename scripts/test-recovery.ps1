@@ -1,47 +1,71 @@
-param([string]$BackupImage='household-backup:local')
+param([string]$BackupImage='household:local',[string]$ProjectName='')
 $ErrorActionPreference='Stop'
 $taskRoot=Split-Path -Parent $PSScriptRoot
+# Every name, directory, password and report belongs to this run only.
+$taskRun=[guid]::NewGuid().ToString('N').Substring(0,12)
+$taskCleanupErrors=[Collections.Generic.List[string]]::new()
 Push-Location $taskRoot
 try {
-    # Only the disposable recovery service is used; the live Household database is never a test source/target.
-    docker compose -f compose.yaml -f compose.backup.yaml --profile recovery up -d --wait restore-db
-    if($LASTEXITCODE -ne 0){throw 'Recovery database unavailable'}
-    $taskDirectory=Join-Path $taskRoot '.local/recovery-test'
+  try {
+    # A run-owned in-memory PostgreSQL container on the local stack's network is the only
+    # source and target; the live Household database and its passwords are never used.
+    $taskDirectory=Join-Path $taskRoot ".local/recovery-test/$taskRun"
     $taskSecrets=Join-Path $taskDirectory 'secrets'
     $taskUploads=Join-Path $taskDirectory 'uploads'
     New-Item -ItemType Directory -Force $taskSecrets,$taskUploads,'outputs/recovery-review' | Out-Null
+    # Restrict the secret directory before any credential is written; new files inherit it.
     $taskActor=[Security.Principal.WindowsIdentity]::GetCurrent().Name
     & icacls $taskSecrets /inheritance:r /grant:r "${taskActor}:(OI)(CI)F" 'SYSTEM:(OI)(CI)F' /Q | Out-Null
     if($LASTEXITCODE -ne 0){throw 'Could not restrict fixture secret directory'}
-    foreach($taskExistingSecret in (Get-ChildItem -LiteralPath $taskSecrets -File)){
-      & icacls $taskExistingSecret.FullName /inheritance:e /grant:r "${taskActor}:F" 'SYSTEM:F' /Q | Out-Null
-      if($LASTEXITCODE -ne 0){throw 'Could not set fixture secret permissions'}
-    }
-    $taskOwner=[IO.File]::ReadAllText((Join-Path $taskRoot '.local/secrets/owner_password'))
     $taskRandom={ [Convert]::ToHexString([Security.Cryptography.RandomNumberGenerator]::GetBytes(32)) }
-    [IO.File]::WriteAllText((Join-Path $taskSecrets 'source_url'),"postgres://household_owner:${taskOwner}@restore-db:5432/household_fixture?sslmode=disable")
-    [IO.File]::WriteAllText((Join-Path $taskSecrets 'target_url'),"postgres://household_owner:${taskOwner}@restore-db:5432/household_restore?sslmode=disable")
+    $taskPostgresPassword=& $taskRandom;$taskOwnerPassword=& $taskRandom;$taskAppPassword=& $taskRandom
+    $taskDatabase="household-recovery-test-db-$taskRun"
+    $taskDatabaseEnv=Join-Path $taskSecrets 'postgres.env'
+    [IO.File]::WriteAllLines($taskDatabaseEnv,@('POSTGRES_DB=household_restore',"POSTGRES_PASSWORD=$taskPostgresPassword"))
+    # Join the network of the running Compose project; -ProjectName selects a non-default one.
+    $taskCompose=@('compose');if($ProjectName){$taskCompose+=@('-p',$ProjectName)}
+    $taskStackDatabase=& docker @taskCompose ps -q db
+    if($LASTEXITCODE -ne 0 -or !$taskStackDatabase){throw 'The local compose.yaml stack is not running (pass -ProjectName for a non-default project)'}
+    $taskNetwork=docker inspect $taskStackDatabase --format '{{range $name, $_ := .NetworkSettings.Networks}}{{$name}}{{println}}{{end}}' | Where-Object {$_} | Select-Object -First 1
+    if($LASTEXITCODE -ne 0 -or !$taskNetwork){throw 'Could not resolve the local stack network'}
+    $taskContainer=docker run -d --rm --name $taskDatabase --network $taskNetwork --user 70:70 --env-file $taskDatabaseEnv `
+      --tmpfs '/var/lib/postgresql:rw,size=512m,uid=70,gid=70' postgres:18-alpine@sha256:b6972e1115a4ff8eba5d7f7d19184926d1e16d7d1136ae1e1a7ebf286da0f015
+    if($LASTEXITCODE -ne 0 -or !$taskContainer){$taskContainer=$null;throw 'Recovery database container could not start'}
+    $taskReady=$false
+    for($taskAttempt=0;$taskAttempt -lt 60;$taskAttempt++){docker exec $taskContainer pg_isready -h 127.0.0.1 -U postgres -d household_restore | Out-Null;if($LASTEXITCODE -eq 0){$taskReady=$true;break};Start-Sleep -Seconds 1}
+    if(!$taskReady){throw 'Recovery database did not become ready'}
+    $taskOwner=[uri]::EscapeDataString($taskOwnerPassword)
+    [IO.File]::WriteAllText((Join-Path $taskSecrets 'source_url'),"postgres://household_owner:${taskOwner}@${taskDatabase}:5432/household_fixture?sslmode=disable")
+    [IO.File]::WriteAllText((Join-Path $taskSecrets 'target_url'),"postgres://household_owner:${taskOwner}@${taskDatabase}:5432/household_restore?sslmode=disable")
     foreach($taskSecretName in @('csrf','encryption','rate','restic')){[IO.File]::WriteAllText((Join-Path $taskSecrets $taskSecretName),(& $taskRandom))}
+    $taskSetupEnv=Join-Path $taskSecrets 'setup.env'
+    [IO.File]::WriteAllLines($taskSetupEnv,@("POSTGRES_PASSWORD=$taskPostgresPassword","HOUSEHOLD_OWNER_PASSWORD=$taskOwnerPassword","HOUSEHOLD_APP_PASSWORD=$taskAppPassword",
+      "HOUSEHOLD_DATABASE_HOST=${taskDatabase}:5432",'HOUSEHOLD_DATABASE_NAME=household_fixture'))
     $taskEnvironment=Join-Path $taskDirectory 'fixture.env'
     [IO.File]::WriteAllLines($taskEnvironment,@(
       'HOUSEHOLD_ENV=development','HOUSEHOLD_ORIGIN=http://localhost:8102',
       'HOUSEHOLD_DATABASE_URL_FILE=/run/secrets/source_url','HOUSEHOLD_RESTORE_DATABASE_URL_FILE=/run/secrets/target_url',
       'HOUSEHOLD_CSRF_SECRET_FILE=/run/secrets/csrf','HOUSEHOLD_ENCRYPTION_KEY_FILE=/run/secrets/encryption',
       'HOUSEHOLD_RATE_SECRET_FILE=/run/secrets/rate','HOUSEHOLD_UPLOAD_DIR=/data/uploads',
-      'HOUSEHOLD_BACKUP_WORK=/work','RESTIC_REPOSITORY=/repository','RESTIC_PASSWORD_FILE=/run/secrets/restic','RESTIC_CACHE_DIR=/tmp/restic-cache'))
-    $taskSuffix=[guid]::NewGuid().ToString('N').Substring(0,12)
-    $taskRepoVolume="household-recovery-test-repository-$taskSuffix"
-    $taskWorkVolume="household-recovery-test-work-$taskSuffix"
-    $taskDockerArguments=@('run','--rm','--network','household_database','--env-file',$taskEnvironment)
+      'HOUSEHOLD_BACKUP_WORK=/work','RESTIC_REPOSITORY=/data/backups','RESTIC_PASSWORD_FILE=/run/secrets/restic','RESTIC_CACHE_DIR=/tmp/restic-cache'))
+    $taskRepoVolume="household-recovery-test-repository-$taskRun"
+    $taskWorkVolume="household-recovery-test-work-$taskRun"
+    $taskDockerArguments=@('run','--rm','--network',$taskNetwork,'--env-file',$taskEnvironment)
     foreach($taskSecretName in @('source_url','target_url','csrf','encryption','rate','restic')){
       $taskDockerArguments+=@('--mount',"type=bind,source=$(Join-Path $taskSecrets $taskSecretName),target=/run/secrets/$taskSecretName,readonly")
     }
     $taskDockerArguments+=@('--mount',"type=bind,source=$taskUploads,target=/data/uploads,readonly",
-      '--mount',"type=volume,source=$taskRepoVolume,target=/repository",
+      '--mount',"type=volume,source=$taskRepoVolume,target=/data/backups",
       '--mount',"type=volume,source=$taskWorkVolume,target=/work",$BackupImage)
-    docker compose -f compose.yaml -f compose.backup.yaml exec -T restore-db createdb -U postgres -O household_owner household_fixture
+    docker exec -i $taskDatabase createdb -U postgres household_fixture
     if($LASTEXITCODE -ne 0){throw 'Fixture database already exists or could not be created; refusing to overwrite it'}
     try {
+      # Create the Household roles in the disposable cluster with the image under test and
+      # this run's own passwords, then hand the fixture to the owner.
+      docker run --rm --network $taskNetwork --env-file $taskSetupEnv $BackupImage setup
+      if($LASTEXITCODE -ne 0){throw 'Fixture database setup failed'}
+      docker exec $taskDatabase psql -U postgres -v ON_ERROR_STOP=1 -c 'ALTER DATABASE household_restore OWNER TO household_owner' -c 'REVOKE ALL ON DATABASE household_restore FROM PUBLIC' -c 'GRANT CONNECT ON DATABASE household_restore TO household_app,household_owner' | Out-Null
+      if($LASTEXITCODE -ne 0){throw 'Restore target preparation failed'}
       $taskRehearsalTimer=[Diagnostics.Stopwatch]::StartNew()
       & docker @taskDockerArguments migrate
       if($LASTEXITCODE -ne 0){throw 'Fixture migrations failed'}
@@ -52,7 +76,7 @@ try {
       $taskExpenseCategory=[guid]::NewGuid().ToString();$taskExpenseEntry=[guid]::NewGuid().ToString()
       $taskExpenseOperation=[guid]::NewGuid().ToString();$taskExpenseKey=[guid]::NewGuid().ToString()
       $taskExpenseLine=[guid]::NewGuid().ToString();$taskExpenseDiscount=[guid]::NewGuid().ToString()
-      $taskRetiredPolicy=[guid]::NewGuid().ToString();$taskRetiredEntry=[guid]::NewGuid().ToString();$taskRetiredLine=[guid]::NewGuid().ToString()
+      $taskLivePolicy=[guid]::NewGuid().ToString();$taskRetiredPolicy=[guid]::NewGuid().ToString();$taskRetiredEntry=[guid]::NewGuid().ToString();$taskRetiredLine=[guid]::NewGuid().ToString()
       $taskPlanningBinding=[guid]::NewGuid().ToString()
       $taskPurchaseOperation=[guid]::NewGuid().ToString();$taskPurchaseReceipt=[guid]::NewGuid().ToString();$taskPurchaseKey=[guid]::NewGuid().ToString()
       $taskIngredientCatalog=[guid]::NewGuid().ToString();$taskIngredientBinding=[guid]::NewGuid().ToString()
@@ -95,6 +119,14 @@ INSERT INTO expenses.entry_lines(id,household_id,entry_id,category_id,amount_min
  ('$taskExpenseDiscount','$taskHousehold','$taskExpenseEntry','$taskExpenseCategory',-1,'Recovery explicit discount',1,'$taskUser',4);
 INSERT INTO core.expense_edit_operations(id,household_id,created_by,request_key,request_hash,expenses_generation,operation,entry_id,result_version)
  VALUES('$taskExpenseOperation','$taskHousehold','$taskUser','$taskExpenseKey',decode(repeat('9a',32),'hex'),1,'post','$taskExpenseEntry',17);
+-- Since Core30, owner maintenance inserts do not run the finance producer, so the live
+-- entry's policy and subjects are explicit fixture rows like the retained ones below.
+INSERT INTO core.financial_policies(id,household_id,module_id,module_generation,resource_type,resource_id,created_by,changed_by)
+ VALUES('$taskLivePolicy','$taskHousehold','expenses',1,'entries','$taskExpenseEntry','$taskUser','$taskUser');
+INSERT INTO core.financial_subjects(household_id,module_id,module_generation,resource_type,resource_id,policy_id,created_by,changed_by) VALUES
+ ('$taskHousehold','expenses',1,'entries','$taskExpenseEntry','$taskLivePolicy','$taskUser','$taskUser'),
+ ('$taskHousehold','expenses',1,'entry_lines','$taskExpenseLine','$taskLivePolicy','$taskUser','$taskUser'),
+ ('$taskHousehold','expenses',1,'entry_lines','$taskExpenseDiscount','$taskLivePolicy','$taskUser','$taskUser');
 -- Retained identity is synthetic maintenance data, without a live Expenses source.
 INSERT INTO core.financial_policies(id,household_id,module_id,module_generation,resource_type,resource_id,retired_at,created_by,changed_by,version)
  VALUES('$taskRetiredPolicy','$taskHousehold','expenses',1,'entries','$taskRetiredEntry','2026-10-25T01:30:00Z','$taskUser','$taskUser',7);
@@ -197,7 +229,7 @@ INSERT INTO shopping.planning_purchase_receipts(id,household_id,operation_id,req
  FROM core.planning_purchase_requirements r WHERE r.household_id='$taskHousehold' AND r.last_sync_operation_id='$taskPurchaseOperation';
 COMMIT;
 "@
-      $taskSQL | docker compose -f compose.yaml -f compose.backup.yaml exec -T restore-db psql -U postgres -d household_fixture -v ON_ERROR_STOP=1
+      $taskSQL | docker exec -i $taskDatabase psql -U postgres -d household_fixture -v ON_ERROR_STOP=1
       if($LASTEXITCODE -ne 0){throw 'Fixture insertion failed'}
       $taskExpenseSnapshotSQL=@"
 SELECT jsonb_build_object(
@@ -212,7 +244,7 @@ SELECT jsonb_build_object(
  'artifact_scopes',(SELECT jsonb_agg(to_jsonb(r) ORDER BY r.id) FROM core.financial_artifact_scope_versions r WHERE r.household_id='$taskHousehold')
 )::text
 "@
-      $taskExpenseBefore=docker compose -f compose.yaml -f compose.backup.yaml exec -T restore-db psql -U postgres -d household_fixture -Atc $taskExpenseSnapshotSQL
+      $taskExpenseBefore=docker exec -i $taskDatabase psql -U postgres -d household_fixture -Atc $taskExpenseSnapshotSQL
       if($LASTEXITCODE -ne 0 -or !$taskExpenseBefore){throw 'Financial source snapshot unavailable'}
       $taskBackupTimer=[Diagnostics.Stopwatch]::StartNew()
       $taskBackupOutput=& docker @taskDockerArguments backup
@@ -224,57 +256,57 @@ SELECT jsonb_build_object(
       $taskRestoreTimer=[Diagnostics.Stopwatch]::StartNew()
       & docker @taskDockerArguments restore-check $taskSnapshot
       if($LASTEXITCODE -ne 0){throw 'Fixture restore or binary hash verification failed'}
-      $taskRestored=docker compose -f compose.yaml -f compose.backup.yaml exec -T restore-db psql -U postgres -d household_restore -Atc "SELECT name||'|'||quantity::text||'|'||unit_code FROM shopping.items WHERE id='$taskItem'"
+      $taskRestored=docker exec -i $taskDatabase psql -U postgres -d household_restore -Atc "SELECT name||'|'||quantity::text||'|'||unit_code FROM shopping.items WHERE id='$taskItem'"
       if($LASTEXITCODE -ne 0 -or $taskRestored -ne 'Synthetic rice|2.500000|kg'){throw 'Restored domain values differ'}
-      $taskStock=docker compose -f compose.yaml -f compose.backup.yaml exec -T restore-db psql -U postgres -d household_restore -Atc "SELECT quantity::text||'|'||movement_count FROM pantry.lot_balances WHERE lot_id='$taskLot'"
+      $taskStock=docker exec -i $taskDatabase psql -U postgres -d household_restore -Atc "SELECT quantity::text||'|'||movement_count FROM pantry.lot_balances WHERE lot_id='$taskLot'"
       if($LASTEXITCODE -ne 0 -or $taskStock -ne '9007199254.740992|2'){throw 'Restored stock projection was lost or counted twice'}
-      $taskTarget=docker compose -f compose.yaml -f compose.backup.yaml exec -T restore-db psql -U postgres -d household_restore -Atc "SELECT low_stock_threshold::text||'|'||target_stock::text||'|'||pantry.replenishment_ready()::text||'|'||(SELECT target_stock IS NULL FROM pantry.products WHERE household_id='$taskHousehold' AND name='Recovery no target')::text FROM pantry.products WHERE id='$taskProduct'"
+      $taskTarget=docker exec -i $taskDatabase psql -U postgres -d household_restore -Atc "SELECT low_stock_threshold::text||'|'||target_stock::text||'|'||pantry.replenishment_ready()::text||'|'||(SELECT target_stock IS NULL FROM pantry.products WHERE household_id='$taskHousehold' AND name='Recovery no target')::text FROM pantry.products WHERE id='$taskProduct'"
       if($LASTEXITCODE -ne 0 -or $taskTarget -ne '1.000000|3.000000|true|true'){throw 'Restored minimum, target, unknown target or target readiness differs'}
-      $taskPantryDaily=docker compose -f compose.yaml -f compose.backup.yaml exec -T restore-db psql -U postgres -d household_restore -Atc "SELECT p.quantity::text||'|'||b.code||'|'||(l.opened_on+l.after_open_days)::text||'|'||l.after_open_source||'|'||(o.snapshot->>'quantity')||'|'||(o.snapshot->>'stock_after') FROM pantry.stock_operations o JOIN pantry.lots l ON l.id=o.lot_id JOIN pantry.packs p ON p.product_id=l.product_id JOIN pantry.barcodes b ON b.pack_id=p.id WHERE o.id='$taskStockOperation'"
+      $taskPantryDaily=docker exec -i $taskDatabase psql -U postgres -d household_restore -Atc "SELECT p.quantity::text||'|'||b.code||'|'||(l.opened_on+l.after_open_days)::text||'|'||l.after_open_source||'|'||(o.snapshot->>'quantity')||'|'||(o.snapshot->>'stock_after') FROM pantry.stock_operations o JOIN pantry.lots l ON l.id=o.lot_id JOIN pantry.packs p ON p.product_id=l.product_id JOIN pantry.barcodes b ON b.pack_id=p.id WHERE o.id='$taskStockOperation'"
       if($LASTEXITCODE -ne 0 -or $taskPantryDaily -ne '500.001000|00073Recovery|2026-10-27|manufacturer|0.000001|9007199254.740992'){throw 'Restored pack, leading-zero barcode, opening hint or durable stock receipt differs'}
-      $taskStockDuplicate=docker compose -f compose.yaml -f compose.backup.yaml exec -T restore-db psql -U postgres -d household_restore -Atc "WITH attempted AS (INSERT INTO pantry.stock_operations(household_id,lot_id,movement_id,kind,request_key,request_hash,snapshot,created_by) SELECT household_id,lot_id,movement_id,kind,request_key,request_hash,snapshot,created_by FROM pantry.stock_operations WHERE id='$taskStockOperation' ON CONFLICT(household_id,created_by,request_key) DO NOTHING RETURNING id) SELECT count(*) FROM attempted"
+      $taskStockDuplicate=docker exec -i $taskDatabase psql -U postgres -d household_restore -Atc "WITH attempted AS (INSERT INTO pantry.stock_operations(household_id,lot_id,movement_id,kind,request_key,request_hash,snapshot,created_by) SELECT household_id,lot_id,movement_id,kind,request_key,request_hash,snapshot,created_by FROM pantry.stock_operations WHERE id='$taskStockOperation' ON CONFLICT(household_id,created_by,request_key) DO NOTHING RETURNING id) SELECT count(*) FROM attempted"
       if($LASTEXITCODE -ne 0 -or $taskStockDuplicate -ne '0'){throw 'Restored durable stock-operation uniqueness failed'}
-      $taskCheckout=docker compose -f compose.yaml -f compose.backup.yaml exec -T restore-db psql -U postgres -d household_restore -Atc "SELECT (snapshot->>'restored_completion')||'|'||(snapshot->>'quantity')||'|'||item_count::text FROM shopping.checkouts WHERE list_id='$taskList'"
+      $taskCheckout=docker exec -i $taskDatabase psql -U postgres -d household_restore -Atc "SELECT (snapshot->>'restored_completion')||'|'||(snapshot->>'quantity')||'|'||item_count::text FROM shopping.checkouts WHERE list_id='$taskList'"
       if($LASTEXITCODE -ne 0 -or $taskCheckout -ne 'once-only|9007199254.740992|1'){throw 'Restored durable completion differs'}
-      $taskRecipeBefore=docker compose -f compose.yaml -f compose.backup.yaml exec -T restore-db psql -U postgres -d household_restore -Atc "SELECT count(*)::text||'|'||min(snapshot->'ingredients'->0->>'quantity') FROM recipes.versions WHERE recipe_id='$taskRecipe'"
+      $taskRecipeBefore=docker exec -i $taskDatabase psql -U postgres -d household_restore -Atc "SELECT count(*)::text||'|'||min(snapshot->'ingredients'->0->>'quantity') FROM recipes.versions WHERE recipe_id='$taskRecipe'"
       if($LASTEXITCODE -ne 0 -or $taskRecipeBefore -ne '1|9007199254.740993'){throw 'Restored recipe version lost exact history'}
-      $taskIngredientIdentity=docker compose -f compose.yaml -f compose.backup.yaml exec -T restore-db psql -U postgres -d household_restore -Atc "SELECT c.name||'|'||a.name||'|'||i.catalog_label||'|'||b.version::text||'|'||b.source_generation::text||'|'||b.target_generation::text||'|'||(b.product_id='$taskProduct')::text||'|'||(v.snapshot->'ingredients'->0->>'catalog_id'='$taskIngredientCatalog')::text FROM recipes.ingredient_catalog c JOIN recipes.ingredient_aliases a ON a.catalog_id=c.id JOIN recipes.ingredients i ON i.catalog_id=c.id JOIN core.ingredient_product_bindings b ON b.catalog_id=c.id JOIN recipes.versions v ON v.recipe_id=i.recipe_id AND v.revision=1 WHERE c.id='$taskIngredientCatalog'"
+      $taskIngredientIdentity=docker exec -i $taskDatabase psql -U postgres -d household_restore -Atc "SELECT c.name||'|'||a.name||'|'||i.catalog_label||'|'||b.version::text||'|'||b.source_generation::text||'|'||b.target_generation::text||'|'||(b.product_id='$taskProduct')::text||'|'||(v.snapshot->'ingredients'->0->>'catalog_id'='$taskIngredientCatalog')::text FROM recipes.ingredient_catalog c JOIN recipes.ingredient_aliases a ON a.catalog_id=c.id JOIN recipes.ingredients i ON i.catalog_id=c.id JOIN core.ingredient_product_bindings b ON b.catalog_id=c.id JOIN recipes.versions v ON v.recipe_id=i.recipe_id AND v.revision=1 WHERE c.id='$taskIngredientCatalog'"
       if($LASTEXITCODE -ne 0 -or $taskIngredientIdentity -ne 'Recovery rice identity|Recovery rice alias|Recovery rice identity|1|1|1|true|true'){throw 'Restored catalogue, alias, captured label, generation-bound binding or source snapshot differs'}
-      $taskCookingBefore=docker compose -f compose.yaml -f compose.backup.yaml exec -T restore-db psql -U postgres -d household_restore -Atc "SELECT count(*)::text||'|'||count(*) FILTER(WHERE state='running' AND deadline='2026-10-25T01:30:00Z')::text||'|'||count(*) FILTER(WHERE state='paused' AND remaining_millis=77501)::text FROM recipes.cooking_timers WHERE session_id='$taskCooking'"
+      $taskCookingBefore=docker exec -i $taskDatabase psql -U postgres -d household_restore -Atc "SELECT count(*)::text||'|'||count(*) FILTER(WHERE state='running' AND deadline='2026-10-25T01:30:00Z')::text||'|'||count(*) FILTER(WHERE state='paused' AND remaining_millis=77501)::text FROM recipes.cooking_timers WHERE session_id='$taskCooking'"
       if($LASTEXITCODE -ne 0 -or $taskCookingBefore -ne '2|1|1'){throw 'Restored timer deadline or paused milliseconds changed'}
-      $taskCookingResult=docker compose -f compose.yaml -f compose.backup.yaml exec -T restore-db psql -U postgres -d household_restore -Atc "SELECT s.state||'|'||r.actual_servings::text||'|'||r.notes||'|'||v.revision::text FROM recipes.cooking_records r JOIN recipes.cooking_sessions s ON s.id=r.session_id JOIN recipes.versions v ON v.id=r.source_version_id WHERE r.id='$taskCookingRecord'"
+      $taskCookingResult=docker exec -i $taskDatabase psql -U postgres -d household_restore -Atc "SELECT s.state||'|'||r.actual_servings::text||'|'||r.notes||'|'||v.revision::text FROM recipes.cooking_records r JOIN recipes.cooking_sessions s ON s.id=r.session_id JOIN recipes.versions v ON v.id=r.source_version_id WHERE r.id='$taskCookingRecord'"
       if($LASTEXITCODE -ne 0 -or $taskCookingResult -ne 'completed|3.000001|Synthetic confirmed note|1'){throw 'Restored immutable cooking result differs'}
-      $taskCookingDuplicate=docker compose -f compose.yaml -f compose.backup.yaml exec -T restore-db psql -U postgres -d household_restore -Atc "WITH attempted AS (INSERT INTO recipes.cooking_records(household_id,session_id,user_id,source_version_id,actual_servings,cooked_on) SELECT household_id,session_id,user_id,source_version_id,actual_servings,cooked_on FROM recipes.cooking_records WHERE id='$taskCookingRecord' ON CONFLICT(household_id,session_id) DO NOTHING RETURNING id) SELECT count(*) FROM attempted"
+      $taskCookingDuplicate=docker exec -i $taskDatabase psql -U postgres -d household_restore -Atc "WITH attempted AS (INSERT INTO recipes.cooking_records(household_id,session_id,user_id,source_version_id,actual_servings,cooked_on) SELECT household_id,session_id,user_id,source_version_id,actual_servings,cooked_on FROM recipes.cooking_records WHERE id='$taskCookingRecord' ON CONFLICT(household_id,session_id) DO NOTHING RETURNING id) SELECT count(*) FROM attempted"
       if($LASTEXITCODE -ne 0 -or $taskCookingDuplicate -ne '0'){throw 'Restored completion uniqueness failed'}
-      $taskCookingPostingResult=docker compose -f compose.yaml -f compose.backup.yaml exec -T restore-db psql -U postgres -d household_restore -Atc "SELECT p.mode||'|'||p.movement_count::text||'|'||m.quantity::text||'|'||(r.snapshot->'source'->>'actual_servings')||'|'||(r.snapshot->'decisions'->0->>'actual')||'|'||(p.cooking_record_id='$taskCookingRecord')::text FROM core.cooking_stock_postings p JOIN pantry.cooking_stock_receipts r ON r.id=p.id JOIN pantry.cooking_stock_movements m ON m.posting_id=p.id WHERE p.id='$taskCookingPosting'"
+      $taskCookingPostingResult=docker exec -i $taskDatabase psql -U postgres -d household_restore -Atc "SELECT p.mode||'|'||p.movement_count::text||'|'||m.quantity::text||'|'||(r.snapshot->'source'->>'actual_servings')||'|'||(r.snapshot->'decisions'->0->>'actual')||'|'||(p.cooking_record_id='$taskCookingRecord')::text FROM core.cooking_stock_postings p JOIN pantry.cooking_stock_receipts r ON r.id=p.id JOIN pantry.cooking_stock_movements m ON m.posting_id=p.id WHERE p.id='$taskCookingPosting'"
       if($LASTEXITCODE -ne 0 -or $taskCookingPostingResult -ne 'stock|1|0.000001|3.000001|0.000001|true'){throw 'Restored cooking stock proof, receipt or exact movement differs'}
-      $taskCookingPostingDuplicate=docker compose -f compose.yaml -f compose.backup.yaml exec -T restore-db psql -U postgres -d household_restore -Atc "WITH attempted AS (INSERT INTO core.cooking_stock_postings(household_id,recipes_generation,cooking_record_id,source_version_id,pantry_generation,created_by,request_key,request_hash,decision_count,movement_count,mode) SELECT household_id,recipes_generation,cooking_record_id,source_version_id,pantry_generation,created_by,gen_random_uuid(),request_hash,decision_count,movement_count,mode FROM core.cooking_stock_postings WHERE id='$taskCookingPosting' ON CONFLICT(household_id,recipes_generation,cooking_record_id) DO NOTHING RETURNING id) SELECT count(*) FROM attempted"
+      $taskCookingPostingDuplicate=docker exec -i $taskDatabase psql -U postgres -d household_restore -Atc "WITH attempted AS (INSERT INTO core.cooking_stock_postings(household_id,recipes_generation,cooking_record_id,source_version_id,pantry_generation,created_by,request_key,request_hash,decision_count,movement_count,mode) SELECT household_id,recipes_generation,cooking_record_id,source_version_id,pantry_generation,created_by,gen_random_uuid(),request_hash,decision_count,movement_count,mode FROM core.cooking_stock_postings WHERE id='$taskCookingPosting' ON CONFLICT(household_id,recipes_generation,cooking_record_id) DO NOTHING RETURNING id) SELECT count(*) FROM attempted"
       if($LASTEXITCODE -ne 0 -or $taskCookingPostingDuplicate -ne '0'){throw 'Restored permanent cooking-stock uniqueness failed'}
-      $taskPantryBatch=docker compose -f compose.yaml -f compose.backup.yaml exec -T restore-db psql -U postgres -d household_restore -Atc "SELECT d.state||'|'||r.kind||'|'||r.line_count::text||'|'||r.movement_count::text||'|'||l.counted_quantity::text||'|'||m.quantity_delta::text||'|'||b.quantity::text FROM pantry.stock_batch_receipts r JOIN pantry.stock_batch_drafts d ON d.id=r.draft_id JOIN pantry.stock_batch_lines l ON l.receipt_id=r.id JOIN pantry.stock_movements m ON m.id=l.movement_id JOIN pantry.lot_balances b ON b.lot_id=l.lot_id WHERE r.id='$taskBatchReceipt'"
+      $taskPantryBatch=docker exec -i $taskDatabase psql -U postgres -d household_restore -Atc "SELECT d.state||'|'||r.kind||'|'||r.line_count::text||'|'||r.movement_count::text||'|'||l.counted_quantity::text||'|'||m.quantity_delta::text||'|'||b.quantity::text FROM pantry.stock_batch_receipts r JOIN pantry.stock_batch_drafts d ON d.id=r.draft_id JOIN pantry.stock_batch_lines l ON l.receipt_id=r.id JOIN pantry.stock_movements m ON m.id=l.movement_id JOIN pantry.lot_balances b ON b.lot_id=l.lot_id WHERE r.id='$taskBatchReceipt'"
       if($LASTEXITCODE -ne 0 -or $taskPantryBatch -ne 'posted|intake|1|1|0.125001|0.125001|0.125001'){throw 'Restored intake draft, receipt, journal or projection differs'}
-      $taskPantryDraft=docker compose -f compose.yaml -f compose.backup.yaml exec -T restore-db psql -U postgres -d household_restore -Atc "SELECT state||'|'||version::text||'|'||(payload->'lines'->0->>'quantity')||'|'||(owner_id='$taskUser')::text FROM pantry.stock_batch_drafts WHERE id='$taskPrivateDraft'"
+      $taskPantryDraft=docker exec -i $taskDatabase psql -U postgres -d household_restore -Atc "SELECT state||'|'||version::text||'|'||(payload->'lines'->0->>'quantity')||'|'||(owner_id='$taskUser')::text FROM pantry.stock_batch_drafts WHERE id='$taskPrivateDraft'"
       if($LASTEXITCODE -ne 0 -or $taskPantryDraft -ne 'active|1|1,|true'){throw 'Restored private incomplete draft differs'}
-      $taskPantryBatchDuplicate=docker compose -f compose.yaml -f compose.backup.yaml exec -T restore-db psql -U postgres -d household_restore -Atc "SELECT count(*) FROM pg_constraint WHERE conrelid='pantry.stock_batch_receipts'::regclass AND contype='u' AND pg_get_constraintdef(oid)='UNIQUE (household_id, draft_id)'"
+      $taskPantryBatchDuplicate=docker exec -i $taskDatabase psql -U postgres -d household_restore -Atc "SELECT count(*) FROM pg_constraint WHERE conrelid='pantry.stock_batch_receipts'::regclass AND contype='u' AND pg_get_constraintdef(oid)='UNIQUE (household_id, draft_id)'"
       if($LASTEXITCODE -ne 0 -or $taskPantryBatchDuplicate -ne '1'){throw 'Restored durable same-draft uniqueness constraint missing'}
-      $taskPantryBatchIndexes=docker compose -f compose.yaml -f compose.backup.yaml exec -T restore-db psql -U postgres -d household_restore -Atc "SELECT count(*) FROM pg_indexes WHERE schemaname='pantry' AND indexname IN('pantry_inventory_page','pantry_batch_lot_history','pantry_batch_owner')"
+      $taskPantryBatchIndexes=docker exec -i $taskDatabase psql -U postgres -d household_restore -Atc "SELECT count(*) FROM pg_indexes WHERE schemaname='pantry' AND indexname IN('pantry_inventory_page','pantry_batch_lot_history','pantry_batch_owner')"
       if($LASTEXITCODE -ne 0 -or $taskPantryBatchIndexes -ne '3'){throw 'Restored batch query indexes missing'}
-      docker compose -f compose.yaml -f compose.backup.yaml exec -T restore-db psql -U postgres -d household_restore -v ON_ERROR_STOP=1 -c "BEGIN; SET ROLE household_owner; UPDATE recipes.recipes SET title='After restore',version=version+1 WHERE id='$taskRecipe'; UPDATE recipes.ingredients SET quantity=9007199254.740992 WHERE recipe_id='$taskRecipe'; COMMIT;"
+      docker exec -i $taskDatabase psql -U postgres -d household_restore -v ON_ERROR_STOP=1 -c "BEGIN; SET ROLE household_owner; UPDATE recipes.recipes SET title='After restore',version=version+1 WHERE id='$taskRecipe'; UPDATE recipes.ingredients SET quantity=9007199254.740992 WHERE recipe_id='$taskRecipe'; COMMIT;"
       if($LASTEXITCODE -ne 0){throw 'Recipe edit after restore failed'}
-      $taskRecipeAfter=docker compose -f compose.yaml -f compose.backup.yaml exec -T restore-db psql -U postgres -d household_restore -Atc "SELECT count(*)::text||'|'||max(snapshot->'ingredients'->0->>'quantity') FILTER(WHERE revision=1)||'|'||max(snapshot->'ingredients'->0->>'quantity') FILTER(WHERE revision=2) FROM recipes.versions WHERE recipe_id='$taskRecipe'"
+      $taskRecipeAfter=docker exec -i $taskDatabase psql -U postgres -d household_restore -Atc "SELECT count(*)::text||'|'||max(snapshot->'ingredients'->0->>'quantity') FILTER(WHERE revision=1)||'|'||max(snapshot->'ingredients'->0->>'quantity') FILTER(WHERE revision=2) FROM recipes.versions WHERE recipe_id='$taskRecipe'"
       if($LASTEXITCODE -ne 0 -or $taskRecipeAfter -ne '2|9007199254.740993|9007199254.740992'){throw 'Recipe history after restore was overwritten or not appended once'}
-      $taskPlanning=docker compose -f compose.yaml -f compose.backup.yaml exec -T restore-db psql -U postgres -d household_restore -Atc "SELECT count(*)::text||'|'||min(c.servings)::text||'|'||max(c.servings)::text||'|'||min(c.snapshot->'ingredients'->0->>'quantity')||'|'||bool_and(c.source_revision=1 AND m.status='open' AND p.copy_source_plan='$taskPlan' AND p.copy_key='$taskCopyKey' AND p.copy_request_hash=decode(repeat('ab',32),'hex'))::text FROM mealplan.components c JOIN mealplan.meals m ON m.id=c.meal_id JOIN mealplan.plans p ON p.id=m.plan_id WHERE m.id='$taskMeal'"
+      $taskPlanning=docker exec -i $taskDatabase psql -U postgres -d household_restore -Atc "SELECT count(*)::text||'|'||min(c.servings)::text||'|'||max(c.servings)::text||'|'||min(c.snapshot->'ingredients'->0->>'quantity')||'|'||bool_and(c.source_revision=1 AND m.status='open' AND p.copy_source_plan='$taskPlan' AND p.copy_key='$taskCopyKey' AND p.copy_request_hash=decode(repeat('ab',32),'hex'))::text FROM mealplan.components c JOIN mealplan.meals m ON m.id=c.meal_id JOIN mealplan.plans p ON p.id=m.plan_id WHERE m.id='$taskMeal'"
       if($LASTEXITCODE -ne 0 -or $taskPlanning -ne '2|1.500001|2.500001|9007199254.740993|true'){throw 'Restored plan lost component portions, frozen source or durable copy provenance'}
-      $taskParticipants=docker compose -f compose.yaml -f compose.backup.yaml exec -T restore-db psql -U postgres -d household_restore -Atc "SELECT string_agg(s.detail,'|' ORDER BY s.mode),core.planning_participants_ready(),core.audit_ready() FROM (SELECT m.servings_mode mode,m.servings_mode||':'||m.servings::text||':'||m.guest_count::text||':'||(SELECT count(*) FROM mealplan.participants p WHERE p.meal_id=m.id)::text||':'||(SELECT count(*) FROM mealplan.participants p JOIN core.memberships r ON r.id=p.membership_id JOIN core.users u ON u.id=r.user_id WHERE p.meal_id=m.id AND r.inactive_at IS NOT NULL AND u.disabled_at IS NOT NULL)::text||':'||(SELECT servings::text FROM mealplan.components c WHERE c.meal_id=m.id AND c.servings_mode='meal')||':'||(SELECT servings::text FROM mealplan.components c WHERE c.meal_id=m.id AND c.servings_mode='independent') detail FROM mealplan.meals m WHERE m.id IN('$taskPortionMeal','$taskPortionCopy')) s"
+      $taskParticipants=docker exec -i $taskDatabase psql -U postgres -d household_restore -Atc "SELECT string_agg(s.detail,'|' ORDER BY s.mode),core.planning_participants_ready(),core.audit_ready() FROM (SELECT m.servings_mode mode,m.servings_mode||':'||m.servings::text||':'||m.guest_count::text||':'||(SELECT count(*) FROM mealplan.participants p WHERE p.meal_id=m.id)::text||':'||(SELECT count(*) FROM mealplan.participants p JOIN core.memberships r ON r.id=p.membership_id JOIN core.users u ON u.id=r.user_id WHERE p.meal_id=m.id AND r.inactive_at IS NOT NULL AND u.disabled_at IS NOT NULL)::text||':'||(SELECT servings::text FROM mealplan.components c WHERE c.meal_id=m.id AND c.servings_mode='meal')||':'||(SELECT servings::text FROM mealplan.components c WHERE c.meal_id=m.id AND c.servings_mode='independent') detail FROM mealplan.meals m WHERE m.id IN('$taskPortionMeal','$taskPortionCopy')) s"
       if($LASTEXITCODE -ne 0 -or $taskParticipants -ne 'manual:2.500001:2:1:1:2.500001:1.500001|participants:3.000000:1:2:1:3.000000:2.500001|t|t'){throw 'Restored participant roster, inactive identity, guests, exact effective portions or readiness differs'}
-      $taskParticipantIdentities=docker compose -f compose.yaml -f compose.backup.yaml exec -T restore-db psql -U postgres -d household_restore -Atc "SELECT count(*)::text||'|'||count(DISTINCT id)::text||'|'||bool_and(household_id='$taskHousehold')::text FROM mealplan.participants WHERE meal_id IN('$taskPortionMeal','$taskPortionCopy')"
+      $taskParticipantIdentities=docker exec -i $taskDatabase psql -U postgres -d household_restore -Atc "SELECT count(*)::text||'|'||count(DISTINCT id)::text||'|'||bool_and(household_id='$taskHousehold')::text FROM mealplan.participants WHERE meal_id IN('$taskPortionMeal','$taskPortionCopy')"
       if($LASTEXITCODE -ne 0 -or $taskParticipantIdentities -ne '3|3|true'){throw 'Restored participant rows lost independent identities or household scope'}
-      $taskPlanningDuplicate=docker compose -f compose.yaml -f compose.backup.yaml exec -T restore-db psql -U postgres -d household_restore -Atc "WITH attempted AS (INSERT INTO mealplan.plans(household_id,name,starts_on,ends_on,created_by,copy_source_plan,copy_key,copy_request_hash) VALUES('$taskHousehold','Repeated copy','2026-10-29','2026-11-04','$taskUser','$taskPlan','$taskCopyKey',decode(repeat('ab',32),'hex')) ON CONFLICT(household_id,created_by,copy_source_plan,copy_key) DO NOTHING RETURNING id) SELECT count(*) FROM attempted"
+      $taskPlanningDuplicate=docker exec -i $taskDatabase psql -U postgres -d household_restore -Atc "WITH attempted AS (INSERT INTO mealplan.plans(household_id,name,starts_on,ends_on,created_by,copy_source_plan,copy_key,copy_request_hash) VALUES('$taskHousehold','Repeated copy','2026-10-29','2026-11-04','$taskUser','$taskPlan','$taskCopyKey',decode(repeat('ab',32),'hex')) ON CONFLICT(household_id,created_by,copy_source_plan,copy_key) DO NOTHING RETURNING id) SELECT count(*) FROM attempted"
       if($LASTEXITCODE -ne 0 -or $taskPlanningDuplicate -ne '0'){throw 'Restored durable week-copy uniqueness failed'}
-      $taskReservationResult=docker compose -f compose.yaml -f compose.backup.yaml exec -T restore-db psql -U postgres -d household_restore -Atc "SELECT r.revision::text||'|'||r.version::text||'|'||a.quantity::text||'|'||(r.state='active' AND r.expires_at>clock_timestamp())::text||'|'||(r.request_key='$taskReservationKey' AND r.request_hash=decode(repeat('9a',32),'hex') AND r.source_basis=mealplan.reservation_basis(r.household_id,r.meal_id))::text||'|'||core.meal_reservations_ready()::text FROM core.meal_reservations r JOIN core.meal_reservation_allocations a ON a.household_id=r.household_id AND a.reservation_id=r.id WHERE r.id='$taskReservation'"
+      $taskReservationResult=docker exec -i $taskDatabase psql -U postgres -d household_restore -Atc "SELECT r.revision::text||'|'||r.version::text||'|'||a.quantity::text||'|'||(r.state='active' AND r.expires_at>clock_timestamp())::text||'|'||(r.request_key='$taskReservationKey' AND r.request_hash=decode(repeat('9a',32),'hex') AND r.source_basis=mealplan.reservation_basis(r.household_id,r.meal_id))::text||'|'||core.meal_reservations_ready()::text FROM core.meal_reservations r JOIN core.meal_reservation_allocations a ON a.household_id=r.household_id AND a.reservation_id=r.id WHERE r.id='$taskReservation'"
       if($LASTEXITCODE -ne 0 -or $taskReservationResult -ne '1|1|0.250001|true|true|true'){throw 'Restored reservation lost exact amount, monotone revision, immutable operation identity or readiness'}
-      $taskPlanningBindingResult=docker compose -f compose.yaml -f compose.backup.yaml exec -T restore-db psql -U postgres -d household_restore -Atc "SELECT b.version::text||'|'||(b.source_hash=sha256(convert_to(c.snapshot::text,'UTF8')))::text||'|'||(b.ingredient_id=(c.snapshot->'ingredients'->0->>'id')::uuid)::text||'|'||(b.product_id='$taskProduct' AND b.mealplan_generation=1 AND b.pantry_generation=1 AND b.unit_code='kg')::text||'|'||core.planning_bindings_ready()::text FROM core.planning_ingredient_bindings b JOIN mealplan.components c ON c.household_id=b.household_id AND c.id=b.component_id WHERE b.household_id='$taskHousehold' AND b.id='$taskPlanningBinding'"
+      $taskPlanningBindingResult=docker exec -i $taskDatabase psql -U postgres -d household_restore -Atc "SELECT b.version::text||'|'||(b.source_hash=sha256(convert_to(c.snapshot::text,'UTF8')))::text||'|'||(b.ingredient_id=(c.snapshot->'ingredients'->0->>'id')::uuid)::text||'|'||(b.product_id='$taskProduct' AND b.mealplan_generation=1 AND b.pantry_generation=1 AND b.unit_code='kg')::text||'|'||core.planning_bindings_ready()::text FROM core.planning_ingredient_bindings b JOIN mealplan.components c ON c.household_id=b.household_id AND c.id=b.component_id WHERE b.household_id='$taskHousehold' AND b.id='$taskPlanningBinding'"
       if($LASTEXITCODE -ne 0 -or $taskPlanningBindingResult -ne '1|true|true|true|true'){throw 'Restored plan mapping lost its version, frozen source identity, current product/unit or readiness'}
-      $taskPurchaseResult=docker compose -f compose.yaml -f compose.backup.yaml exec -T restore-db psql -U postgres -d household_restore -Atc "SELECT count(*)::text||'|'||bool_and(r.active AND r.pending_quantity=0 AND r.procurement_disposition='none' AND r.item_id IS NULL AND r.version=1)::text||'|'||bool_and(r.source_hash=sha256(convert_to(c.snapshot::text,'UTF8')) AND r.reviewed_basis_hash=decode(repeat('84',32),'hex') AND r.binding_id=b.id AND r.binding_version=b.version)::text||'|'||core.planning_purchases_ready()::text FROM core.planning_purchase_requirements r JOIN mealplan.components c ON c.household_id=r.household_id AND c.id=r.component_id JOIN core.planning_ingredient_bindings b ON b.household_id=r.household_id AND b.component_id=r.component_id AND b.ingredient_id=r.ingredient_id WHERE r.household_id='$taskHousehold' AND r.last_sync_operation_id='$taskPurchaseOperation'"
+      $taskPurchaseResult=docker exec -i $taskDatabase psql -U postgres -d household_restore -Atc "SELECT count(*)::text||'|'||bool_and(r.active AND r.pending_quantity=0 AND r.procurement_disposition='none' AND r.item_id IS NULL AND r.version=1)::text||'|'||bool_and(r.source_hash=sha256(convert_to(c.snapshot::text,'UTF8')) AND r.reviewed_basis_hash=decode(repeat('84',32),'hex') AND r.binding_id=b.id AND r.binding_version=b.version)::text||'|'||core.planning_purchases_ready()::text FROM core.planning_purchase_requirements r JOIN mealplan.components c ON c.household_id=r.household_id AND c.id=r.component_id JOIN core.planning_ingredient_bindings b ON b.household_id=r.household_id AND b.component_id=r.component_id AND b.ingredient_id=r.ingredient_id WHERE r.household_id='$taskHousehold' AND r.last_sync_operation_id='$taskPurchaseOperation'"
       if($LASTEXITCODE -ne 0 -or $taskPurchaseResult -ne '2|true|true|true'){throw 'Restored active zero-purchase scope lost source, mapping, exact amount or readiness'}
       $taskPurchaseDetailCheck=@"
 SELECT count(*)=2 AND count(DISTINCT r.id)=2 AND count(DISTINCT (r.component_id,r.ingredient_id))=2
@@ -285,21 +317,21 @@ SELECT count(*)=2 AND count(DISTINCT r.id)=2 AND count(DISTINCT (r.component_id,
  ON r.household_id=p.household_id AND r.id=(entry->>'requirement_id')::uuid
  AND r.component_id=(entry->>'component_id')::uuid AND r.ingredient_id=(entry->>'ingredient_id')::uuid
 "@
-      $taskPurchaseProof=docker compose -f compose.yaml -f compose.backup.yaml exec -T restore-db psql -U postgres -d household_restore -Atc "SELECT (p.request_key='$taskPurchaseKey' AND p.request_hash=decode(repeat('82',32),'hex') AND p.scope_hash=decode(repeat('83',32),'hex') AND p.receipt_id='$taskPurchaseReceipt' AND p.source_count=2 AND p.change_count=2 AND p.created_count=0 AND p.updated_count=0 AND p.removed_count=0 AND d.id=p.receipt_id AND d.request_hash=p.request_hash AND d.scope_hash=p.scope_hash AND d.created_by=p.created_by AND d.mealplan_generation=p.mealplan_generation AND d.pantry_generation=p.pantry_generation AND d.shopping_generation=p.shopping_generation)::text||'|'||jsonb_array_length(d.snapshot->'sources')::text||'|'||($taskPurchaseDetailCheck)::text FROM core.planning_purchase_operations p JOIN shopping.planning_purchase_receipts d ON d.household_id=p.household_id AND d.operation_id=p.id CROSS JOIN LATERAL (SELECT d.snapshot) payload WHERE p.id='$taskPurchaseOperation'"
+      $taskPurchaseProof=docker exec -i $taskDatabase psql -U postgres -d household_restore -Atc "SELECT (p.request_key='$taskPurchaseKey' AND p.request_hash=decode(repeat('82',32),'hex') AND p.scope_hash=decode(repeat('83',32),'hex') AND p.receipt_id='$taskPurchaseReceipt' AND p.source_count=2 AND p.change_count=2 AND p.created_count=0 AND p.updated_count=0 AND p.removed_count=0 AND d.id=p.receipt_id AND d.request_hash=p.request_hash AND d.scope_hash=p.scope_hash AND d.created_by=p.created_by AND d.mealplan_generation=p.mealplan_generation AND d.pantry_generation=p.pantry_generation AND d.shopping_generation=p.shopping_generation)::text||'|'||jsonb_array_length(d.snapshot->'sources')::text||'|'||($taskPurchaseDetailCheck)::text FROM core.planning_purchase_operations p JOIN shopping.planning_purchase_receipts d ON d.household_id=p.household_id AND d.operation_id=p.id CROSS JOIN LATERAL (SELECT d.snapshot) payload WHERE p.id='$taskPurchaseOperation'"
       if($LASTEXITCODE -ne 0 -or $taskPurchaseProof -ne 'true|2|true'){throw 'Restored permanent request proof or exact complete detail receipt differs'}
       # Read-only adversarial projections prove the completeness predicate rejects
       # duplicate and unknown source identities without changing restored data.
-      $taskPurchaseDetailValidation=docker compose -f compose.yaml -f compose.backup.yaml exec -T restore-db psql -U postgres -d household_restore -Atc "SELECT string_agg(payload.kind||':'||($taskPurchaseDetailCheck)::text,'|' ORDER BY payload.kind) FROM core.planning_purchase_operations p JOIN shopping.planning_purchase_receipts d ON d.household_id=p.household_id AND d.operation_id=p.id CROSS JOIN LATERAL (VALUES ('actual',d.snapshot),('duplicate',jsonb_set(d.snapshot,'{sources}',jsonb_build_array(d.snapshot->'sources'->0,d.snapshot->'sources'->0))),('unknown',jsonb_set(d.snapshot,'{sources,0,requirement_id}',to_jsonb(gen_random_uuid()::text)))) payload(kind,snapshot) WHERE p.id='$taskPurchaseOperation'"
+      $taskPurchaseDetailValidation=docker exec -i $taskDatabase psql -U postgres -d household_restore -Atc "SELECT string_agg(payload.kind||':'||($taskPurchaseDetailCheck)::text,'|' ORDER BY payload.kind) FROM core.planning_purchase_operations p JOIN shopping.planning_purchase_receipts d ON d.household_id=p.household_id AND d.operation_id=p.id CROSS JOIN LATERAL (VALUES ('actual',d.snapshot),('duplicate',jsonb_set(d.snapshot,'{sources}',jsonb_build_array(d.snapshot->'sources'->0,d.snapshot->'sources'->0))),('unknown',jsonb_set(d.snapshot,'{sources,0,requirement_id}',to_jsonb(gen_random_uuid()::text)))) payload(kind,snapshot) WHERE p.id='$taskPurchaseOperation'"
       if($LASTEXITCODE -ne 0 -or $taskPurchaseDetailValidation -ne 'actual:true|duplicate:false|unknown:false'){throw 'Purchase detail verification accepted a duplicate or missing restored source'}
-      $taskPurchaseDuplicate=docker compose -f compose.yaml -f compose.backup.yaml exec -T restore-db psql -U postgres -d household_restore -Atc "WITH attempt AS (INSERT INTO core.planning_purchase_operations(household_id,created_by,request_key,request_hash,scope_hash,mealplan_generation,pantry_generation,shopping_generation,receipt_id,kind,source_count,change_count,created_count,updated_count,removed_count) SELECT household_id,created_by,request_key,request_hash,scope_hash,mealplan_generation,pantry_generation,shopping_generation,gen_random_uuid(),kind,source_count,change_count,created_count,updated_count,removed_count FROM core.planning_purchase_operations WHERE id='$taskPurchaseOperation' ON CONFLICT(household_id,created_by,request_key) DO NOTHING RETURNING id) SELECT count(*) FROM attempt"
+      $taskPurchaseDuplicate=docker exec -i $taskDatabase psql -U postgres -d household_restore -Atc "WITH attempt AS (INSERT INTO core.planning_purchase_operations(household_id,created_by,request_key,request_hash,scope_hash,mealplan_generation,pantry_generation,shopping_generation,receipt_id,kind,source_count,change_count,created_count,updated_count,removed_count) SELECT household_id,created_by,request_key,request_hash,scope_hash,mealplan_generation,pantry_generation,shopping_generation,gen_random_uuid(),kind,source_count,change_count,created_count,updated_count,removed_count FROM core.planning_purchase_operations WHERE id='$taskPurchaseOperation' ON CONFLICT(household_id,created_by,request_key) DO NOTHING RETURNING id) SELECT count(*) FROM attempt"
       if($LASTEXITCODE -ne 0 -or $taskPurchaseDuplicate -ne '0'){throw 'Restored durable purchase request key allowed a duplicate proof'}
-      $taskExpenseResult=docker compose -f compose.yaml -f compose.backup.yaml exec -T restore-db psql -U postgres -d household_restore -Atc "SELECT e.amount_minor::text||'|'||e.version::text||'|'||(e.kind='expense' AND e.state='posted' AND e.paid_by_membership_id IS NULL AND e.occurred_on='2026-10-26' AND e.posted_at='2026-10-26T01:30:00Z')::text||'|'||string_agg(l.amount_minor::text||':'||l.version::text||':'||l.position::text,',' ORDER BY l.position,l.id)||'|'||(sum(l.amount_minor)=e.amount_minor AND bool_and(l.category_id='$taskExpenseCategory' AND l.created_by='$taskUser'))::text||'|'||expenses.editing_ready()::text||'|'||core.expense_editing_ready()::text FROM expenses.entries e JOIN expenses.entry_lines l ON l.household_id=e.household_id AND l.entry_id=e.id WHERE e.household_id='$taskHousehold' AND e.id='$taskExpenseEntry' GROUP BY e.id"
+      $taskExpenseResult=docker exec -i $taskDatabase psql -U postgres -d household_restore -Atc "SELECT e.amount_minor::text||'|'||e.version::text||'|'||(e.kind='expense' AND e.state='posted' AND e.paid_by_membership_id IS NULL AND e.occurred_on='2026-10-26' AND e.posted_at='2026-10-26T01:30:00Z')::text||'|'||string_agg(l.amount_minor::text||':'||l.version::text||':'||l.position::text,',' ORDER BY l.position,l.id)||'|'||(sum(l.amount_minor)=e.amount_minor AND bool_and(l.category_id='$taskExpenseCategory' AND l.created_by='$taskUser'))::text||'|'||expenses.editing_ready()::text||'|'||core.expense_editing_ready()::text FROM expenses.entries e JOIN expenses.entry_lines l ON l.household_id=e.household_id AND l.entry_id=e.id WHERE e.household_id='$taskHousehold' AND e.id='$taskExpenseEntry' GROUP BY e.id"
       if($LASTEXITCODE -ne 0 -or $taskExpenseResult -ne '999999999999|17|true|1000000000000:3:0,-1:4:1|true|true|true'){throw 'Restored expense lost exact signed allocation, order, versions, unknown payer or readiness'}
-      $taskExpenseProof=docker compose -f compose.yaml -f compose.backup.yaml exec -T restore-db psql -U postgres -d household_restore -Atc "SELECT (household_id='$taskHousehold' AND created_by='$taskUser' AND request_key='$taskExpenseKey' AND request_hash=decode(repeat('9a',32),'hex') AND expenses_generation=1 AND operation='post' AND entry_id='$taskExpenseEntry' AND result_version=17 AND version=1)::text FROM core.expense_edit_operations WHERE id='$taskExpenseOperation'"
+      $taskExpenseProof=docker exec -i $taskDatabase psql -U postgres -d household_restore -Atc "SELECT (household_id='$taskHousehold' AND created_by='$taskUser' AND request_key='$taskExpenseKey' AND request_hash=decode(repeat('9a',32),'hex') AND expenses_generation=1 AND operation='post' AND entry_id='$taskExpenseEntry' AND result_version=17 AND version=1)::text FROM core.expense_edit_operations WHERE id='$taskExpenseOperation'"
       if($LASTEXITCODE -ne 0 -or $taskExpenseProof -ne 'true'){throw 'Restored minimal financial operation proof differs'}
-      $taskExpenseDuplicate=docker compose -f compose.yaml -f compose.backup.yaml exec -T restore-db psql -U postgres -d household_restore -Atc "WITH attempt AS (INSERT INTO core.expense_edit_operations(household_id,created_by,request_key,request_hash,expenses_generation,operation,entry_id,result_version) SELECT household_id,created_by,request_key,request_hash,expenses_generation+1,'save',entry_id,result_version FROM core.expense_edit_operations WHERE id='$taskExpenseOperation' ON CONFLICT(household_id,created_by,request_key) DO NOTHING RETURNING id) SELECT count(*) FROM attempt"
+      $taskExpenseDuplicate=docker exec -i $taskDatabase psql -U postgres -d household_restore -qAt -c 'BEGIN' -c "SET LOCAL household.audit_kind='user'" -c "SET LOCAL household.audit_user='$taskUser'" -c "SET LOCAL household.audit_household='$taskHousehold'" -c "WITH attempt AS (INSERT INTO core.expense_edit_operations(household_id,created_by,request_key,request_hash,expenses_generation,operation,entry_id,result_version) SELECT household_id,created_by,request_key,request_hash,expenses_generation+1,'save',entry_id,result_version FROM core.expense_edit_operations WHERE id='$taskExpenseOperation' ON CONFLICT(household_id,created_by,request_key) DO NOTHING RETURNING id) SELECT count(*) FROM attempt" -c 'ROLLBACK'
       if($LASTEXITCODE -ne 0 -or $taskExpenseDuplicate -ne '0'){throw 'Restored durable financial key allowed duplication across action/generation'}
-      $taskFinancialBindings=docker compose -f compose.yaml -f compose.backup.yaml exec -T restore-db psql -U postgres -d household_restore -Atc "SELECT (SELECT count(*) FROM core.financial_policies WHERE household_id='$taskHousehold')::text||'|'||(SELECT count(*) FROM core.financial_subjects WHERE household_id='$taskHousehold')::text||'|'||(SELECT count(*) FROM core.financial_policies WHERE household_id='$taskHousehold' AND retired_at IS NOT NULL)::text||'|'||(SELECT count(*) FROM core.financial_subjects WHERE household_id='$taskHousehold' AND retired_at IS NOT NULL)::text||'|'||(core.financial_foundation_ready() AND expenses.financial_bindings_ready() AND (SELECT bool_and(access_mode='household' AND responsible_membership_id IS NULL AND module_generation=1) FROM core.financial_policies WHERE household_id='$taskHousehold'))::text"
+      $taskFinancialBindings=docker exec -i $taskDatabase psql -U postgres -d household_restore -Atc "SELECT (SELECT count(*) FROM core.financial_policies WHERE household_id='$taskHousehold')::text||'|'||(SELECT count(*) FROM core.financial_subjects WHERE household_id='$taskHousehold')::text||'|'||(SELECT count(*) FROM core.financial_policies WHERE household_id='$taskHousehold' AND retired_at IS NOT NULL)::text||'|'||(SELECT count(*) FROM core.financial_subjects WHERE household_id='$taskHousehold' AND retired_at IS NOT NULL)::text||'|'||(core.financial_foundation_ready() AND expenses.financial_bindings_ready() AND (SELECT bool_and(access_mode='household' AND responsible_membership_id IS NULL AND module_generation=1) FROM core.financial_policies WHERE household_id='$taskHousehold'))::text"
       if($LASTEXITCODE -ne 0 -or $taskFinancialBindings -ne '2|5|1|2|true'){throw 'Restored financial policy identities, tombstones or rollout readiness differ'}
       $taskFinancialRequirementsSQL=@"
 SELECT (SELECT count(*) FROM core.financial_requirement_sets WHERE household_id='$taskHousehold')::text||'|'||
@@ -312,16 +344,65 @@ SELECT (SELECT count(*) FROM core.financial_requirement_sets WHERE household_id=
  AND EXISTS(SELECT 1 FROM core.financial_artifact_scope_versions WHERE household_id='$taskHousehold' AND artifact_kind='attachment' AND revision=2 AND previous_id='fe260000-0000-4000-8000-000000000021' AND created_at='1999-01-01T00:00:00Z')
  AND (SELECT count(*) FROM core.financial_requirement_members m JOIN core.financial_subjects s ON s.household_id=m.household_id AND s.id=m.subject_id AND s.policy_id=m.policy_id WHERE m.household_id='$taskHousehold' AND s.retired_at IS NOT NULL)=1)::text
 "@
-      $taskFinancialRequirements=docker compose -f compose.yaml -f compose.backup.yaml exec -T restore-db psql -U postgres -d household_restore -Atc $taskFinancialRequirementsSQL
+      $taskFinancialRequirements=docker exec -i $taskDatabase psql -U postgres -d household_restore -Atc $taskFinancialRequirementsSQL
       if($LASTEXITCODE -ne 0 -or $taskFinancialRequirements -ne '3|2|8|true'){throw 'Restored financial original requirements, typed scope keys or revisions differ'}
-      $taskExpenseAfter=docker compose -f compose.yaml -f compose.backup.yaml exec -T restore-db psql -U postgres -d household_restore -Atc $taskExpenseSnapshotSQL
+      $taskExpenseAfter=docker exec -i $taskDatabase psql -U postgres -d household_restore -Atc $taskExpenseSnapshotSQL
       if($LASTEXITCODE -ne 0 -or $taskExpenseBefore -cne $taskExpenseAfter){throw 'Financial logical snapshot differs after restore or duplicate attempt'}
+      # The automatic path: no explicit target, setup credentials present. restore-check creates
+      # its own household_restore_auto_* database on the fixture server, restores into it and drops it.
+      $taskAutoEnvironment=Join-Path $taskDirectory 'fixture-automatic.env'
+      [IO.File]::WriteAllLines($taskAutoEnvironment,@((Get-Content -LiteralPath $taskEnvironment) | Where-Object {$_ -notlike 'HOUSEHOLD_RESTORE_DATABASE_URL_FILE=*'}))
+      $taskAutoSecrets=Join-Path $taskSecrets 'automatic.env'
+      [IO.File]::WriteAllLines($taskAutoSecrets,@("POSTGRES_PASSWORD=$taskPostgresPassword","HOUSEHOLD_OWNER_PASSWORD=$taskOwnerPassword","HOUSEHOLD_APP_PASSWORD=$taskAppPassword"))
+      # Build the arguments without the target_url mount, and clear both explicit restore
+      # settings so no image default can select household_restore again.
+      $taskAutoArguments=[Collections.Generic.List[string]]::new()
+      for($taskIndex=0;$taskIndex -lt $taskDockerArguments.Count-1;$taskIndex++){
+        if($taskDockerArguments[$taskIndex] -eq '--mount' -and $taskDockerArguments[$taskIndex+1] -like '*target=/run/secrets/target_url*'){$taskIndex++;continue}
+        $taskAutoArguments.Add($taskDockerArguments[$taskIndex])
+      }
+      $taskAutoArguments[5]=$taskAutoEnvironment
+      $taskAutoArguments.AddRange([string[]]@('--env-file',$taskAutoSecrets,'-e','HOUSEHOLD_RESTORE_DATABASE_URL=','-e','HOUSEHOLD_RESTORE_DATABASE_URL_FILE=',$BackupImage))
+      & docker @taskAutoArguments restore-check $taskSnapshot
+      if($LASTEXITCODE -ne 0){throw 'Automatic restore-check without an explicit target failed'}
+      # The fixed target still holds the edit made after the explicit restore: the
+      # automatic check restored into its own database, not into household_restore.
+      $taskFixedTarget=docker exec -i $taskDatabase psql -U postgres -d household_restore -Atc "SELECT title FROM recipes.recipes WHERE id='$taskRecipe'"
+      if($LASTEXITCODE -ne 0 -or $taskFixedTarget -ne 'After restore'){throw 'Automatic restore-check wrote into the fixed household_restore target'}
+      $taskAutoLeftovers=docker exec -i $taskDatabase psql -U postgres -d household_restore -Atc "SELECT count(*) FROM pg_database WHERE datname LIKE 'household\_restore\_auto\_%'"
+      if($LASTEXITCODE -ne 0 -or $taskAutoLeftovers -ne '0'){throw 'Automatic restore-check left its temporary database behind'}
       $taskRestoreTimer.Stop()
       $taskRehearsalTimer.Stop()
-      [ordered]@{passed=$true;source='disposable household_fixture';target='disposable household_restore';snapshot=$taskSnapshot;domainValue=$taskRestored;stockProjection=$taskStock;pantryTarget=$taskTarget;pantryDaily=$taskPantryDaily;stockDuplicateInserted=$taskStockDuplicate;pantryBatch=$taskPantryBatch;pantryPrivateDraft=$taskPantryDraft;pantryBatchUniqueConstraint=$taskPantryBatchDuplicate;durableCompletion=$taskCheckout;recipeVersionsAfterEdit=$taskRecipeAfter;cookingTimers=$taskCookingBefore;cookingRecord=$taskCookingResult;cookingDuplicateInserted=$taskCookingDuplicate;cookingStockPosting=$taskCookingPostingResult;cookingStockDuplicateInserted=$taskCookingPostingDuplicate;planningComponents=$taskPlanning;planningDuplicateInserted=$taskPlanningDuplicate;planningParticipants=$taskParticipants;planningParticipantIdentities=$taskParticipantIdentities;mealReservation=$taskReservationResult;planningIngredientBinding=$taskPlanningBindingResult;planningPurchaseScope=$taskPurchaseResult;planningPurchaseProof=$taskPurchaseProof;planningPurchaseDetailValidation=$taskPurchaseDetailValidation;planningPurchaseDuplicateInserted=$taskPurchaseDuplicate;expensePosted=$taskExpenseResult;expenseMinimalProof=$taskExpenseProof;expenseDuplicateInserted=$taskExpenseDuplicate;expenseLogicalSnapshotEqual=($taskExpenseBefore -ceq $taskExpenseAfter);financialBindings=$taskFinancialBindings;financialRequirements=$taskFinancialRequirements;hashedFiles=2;includesOriginalAndPreview=$true;backupSeconds=[Math]::Round($taskBackupTimer.Elapsed.TotalSeconds,2);restoreAndVerifySeconds=[Math]::Round($taskRestoreTimer.Elapsed.TotalSeconds,2);rehearsalSeconds=[Math]::Round($taskRehearsalTimer.Elapsed.TotalSeconds,2);scope='Small synthetic local fixture; not acceptance of a production RTO/RPO or authenticated restored-service replay';verifiedAt=[DateTime]::UtcNow.ToString('o')} | ConvertTo-Json | Set-Content outputs/recovery-review/report.json
-      Get-Content outputs/recovery-review/report.json
+      # Published only after every run-owned resource is removed.
+      $taskReport=[ordered]@{passed=$true;run=$taskRun;image=$BackupImage;automaticRestoreCheck='per-run database restored, verified and dropped';source='disposable household_fixture';target='disposable household_restore';snapshot=$taskSnapshot;domainValue=$taskRestored;stockProjection=$taskStock;pantryTarget=$taskTarget;pantryDaily=$taskPantryDaily;stockDuplicateInserted=$taskStockDuplicate;pantryBatch=$taskPantryBatch;pantryPrivateDraft=$taskPantryDraft;pantryBatchUniqueConstraint=$taskPantryBatchDuplicate;durableCompletion=$taskCheckout;recipeVersionsAfterEdit=$taskRecipeAfter;cookingTimers=$taskCookingBefore;cookingRecord=$taskCookingResult;cookingDuplicateInserted=$taskCookingDuplicate;cookingStockPosting=$taskCookingPostingResult;cookingStockDuplicateInserted=$taskCookingPostingDuplicate;planningComponents=$taskPlanning;planningDuplicateInserted=$taskPlanningDuplicate;planningParticipants=$taskParticipants;planningParticipantIdentities=$taskParticipantIdentities;mealReservation=$taskReservationResult;planningIngredientBinding=$taskPlanningBindingResult;planningPurchaseScope=$taskPurchaseResult;planningPurchaseProof=$taskPurchaseProof;planningPurchaseDetailValidation=$taskPurchaseDetailValidation;planningPurchaseDuplicateInserted=$taskPurchaseDuplicate;expensePosted=$taskExpenseResult;expenseMinimalProof=$taskExpenseProof;expenseDuplicateInserted=$taskExpenseDuplicate;expenseLogicalSnapshotEqual=($taskExpenseBefore -ceq $taskExpenseAfter);financialBindings=$taskFinancialBindings;financialRequirements=$taskFinancialRequirements;hashedFiles=2;includesOriginalAndPreview=$true;backupSeconds=[Math]::Round($taskBackupTimer.Elapsed.TotalSeconds,2);restoreAndVerifySeconds=[Math]::Round($taskRestoreTimer.Elapsed.TotalSeconds,2);rehearsalSeconds=[Math]::Round($taskRehearsalTimer.Elapsed.TotalSeconds,2);scope='Small synthetic local fixture; not acceptance of a production RTO/RPO or authenticated restored-service replay';verifiedAt=[DateTime]::UtcNow.ToString('o')} | ConvertTo-Json
     } finally {
-      docker compose -f compose.yaml -f compose.backup.yaml exec -T restore-db dropdb -U postgres household_fixture
-      docker volume rm $taskRepoVolume $taskWorkVolume | Out-Null
+      foreach($taskVolume in @($taskRepoVolume,$taskWorkVolume)){
+        try{docker volume rm $taskVolume 2>&1 | Out-Null;if($LASTEXITCODE -ne 0){$taskCleanupErrors.Add("volume $taskVolume")}}catch{$taskCleanupErrors.Add("volume $taskVolume")}
+      }
     }
-} finally {Pop-Location}
+  } catch {
+    $taskFailure=$_
+    throw
+  } finally {
+    # Remove only what this run created: its container, its directory and fixture uploads.
+    if($taskContainer){
+      try{docker rm -f $taskContainer 2>&1 | Out-Null;if($LASTEXITCODE -ne 0){$taskCleanupErrors.Add("container $taskDatabase")}}catch{$taskCleanupErrors.Add("container $taskDatabase")}
+    }
+    if($taskDirectory -and (Test-Path -LiteralPath $taskDirectory)){
+      try{Remove-Item -LiteralPath $taskDirectory -Recurse -Force}catch{$taskCleanupErrors.Add("directory $taskDirectory")}
+    }
+    if($taskCleanupErrors.Count){
+      $taskCleanupMessage='Recovery rehearsal could not remove: '+($taskCleanupErrors -join ', ')
+      # Keep a rehearsal failure as the reported error; otherwise cleanup alone fails the run.
+      if($taskFailure){Write-Warning $taskCleanupMessage}else{throw "$taskCleanupMessage; the rehearsal is not reported as passed"}
+    }
+  }
+} finally {
+  Pop-Location
+}
+if($taskReport){
+  # A run-specific report: an earlier pass can never stand in for this run.
+  $taskReportPath=Join-Path $taskRoot "outputs/recovery-review/report-$taskRun.json"
+  $taskReport | Set-Content $taskReportPath
+  Get-Content $taskReportPath
+}

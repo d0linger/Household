@@ -178,7 +178,7 @@ func Migrate(ctx context.Context, dsn string) error {
 		{"meters", 2}, {"core", 33}, {"fuel", 10}, {"pantry", 16}, {"mealplan", 11},
 		{"documents", 2}, {"core", 34}, {"fuel", 11}, {"pantry", 17}, {"mealplan", 12},
 		{"core", 35}, {"core", 36}, {"core", 37}, {"core", 38}, {"pantry", 18}, {"fuel", 12},
-		{"core", 39}, {"expenses", 6}, {"meters", 3}, {"documents", 3}, {"mealplan", 13}, {"core", 40}} {
+		{"core", 39}, {"expenses", 6}, {"meters", 3}, {"documents", 3}, {"mealplan", 13}, {"core", 40}, {"core", 41}} {
 		if err = migrateSchema(stage.schema, &stage.version); err != nil {
 			return err
 		}
@@ -192,6 +192,17 @@ func Migrate(ctx context.Context, dsn string) error {
 	// exist. The separate migration role alone may install triggers.
 	if _, err = lock.Exec(ctx, "SELECT core.install_audit_triggers()"); err != nil {
 		return fmt.Errorf("install audit triggers: %w", err)
+	}
+	// Migration ledgers are owner state that migrate, readiness and purge trust:
+	// the runtime role may read them but never write them.
+	for _, schema := range Schemas {
+		ledger := pgx.Identifier{schema, "schema_migrations"}.Sanitize()
+		if _, err = lock.Exec(ctx, "REVOKE ALL ON "+ledger+" FROM PUBLIC"); err != nil {
+			return fmt.Errorf("protect migration ledger %s: %w", schema, err)
+		}
+		if _, err = lock.Exec(ctx, "DO $ledger$ BEGIN IF EXISTS(SELECT 1 FROM pg_roles WHERE rolname='household_app') THEN EXECUTE 'REVOKE ALL ON "+strings.ReplaceAll(ledger, "'", "''")+" FROM household_app'; EXECUTE 'GRANT SELECT ON "+strings.ReplaceAll(ledger, "'", "''")+" TO household_app'; END IF; END $ledger$"); err != nil {
+			return fmt.Errorf("protect migration ledger %s: %w", schema, err)
+		}
 	}
 	return nil
 }
@@ -220,6 +231,13 @@ func Ready(ctx context.Context, pool *pgxpool.Pool) error {
 		if dirty || version != ExpectedVersion(schema) {
 			return fmt.Errorf("incompatible schema %s", schema)
 		}
+	}
+	var writable bool
+	if err := pool.QueryRow(ctx, ledgerWritableQuery, Schemas).Scan(&writable); err != nil {
+		return fmt.Errorf("inspect migration ledgers: %w", err)
+	}
+	if writable {
+		return errors.New("migration ledger is writable by the runtime role")
 	}
 	return inspectReadiness(ctx, pool, readinessChecks())
 }
@@ -265,6 +283,11 @@ func readinessChecks() []readinessCheck {
 		{"SELECT mealplan.notification_ready()", "inspect meal notification sources: %w", "incomplete meal notification source contract", 1},
 	}
 }
+
+// ledgerWritableQuery reports whether the runtime role (or PUBLIC) may change
+// any module migration ledger.
+const ledgerWritableQuery = `SELECT coalesce(bool_or(has_table_privilege(r.rolname,format('%I.schema_migrations',s),'INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER')),false)
+ FROM unnest($1::text[]) s CROSS JOIN pg_roles r WHERE r.rolname='household_app'`
 
 func ExpectedVersion(schema string) int {
 	entries, err := fs.Glob(migrations, "migrations/"+schema+"/*.up.sql")

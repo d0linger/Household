@@ -27,7 +27,7 @@ type CSVProblem struct {
 // offset remains the portable way to import either side of a clock transition.
 func ParseTimestamp(text, zone string) (time.Time, error) {
 	if at, err := time.Parse(time.RFC3339Nano, text); err == nil {
-		if !validInstant(at) || at.Nanosecond()%1000 != 0 {
+		if !InputAccepted(at, time.Now()) || at.Nanosecond()%1000 != 0 {
 			return time.Time{}, ErrInvalid
 		}
 		return at.UTC(), nil
@@ -53,7 +53,7 @@ func ParseTimestamp(text, zone string) (time.Time, error) {
 			matches = append(matches, candidate)
 		}
 	}
-	if len(matches) != 1 {
+	if len(matches) != 1 || !InputAccepted(matches[0], time.Now()) {
 		return time.Time{}, ErrInvalid
 	}
 	return matches[0].UTC(), nil

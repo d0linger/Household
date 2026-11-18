@@ -1,0 +1,211 @@
+package database
+
+import (
+	"context"
+	"crypto/rand"
+	"encoding/hex"
+	"errors"
+	"fmt"
+	"regexp"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
+)
+
+// Bootstrap prepares a fresh PostgreSQL database for Household as the
+// superuser, matching deploy/postgres/init.sh: it creates the owner and app
+// login roles (or updates their passwords), hands the current database to the
+// owner and limits CONNECT and public-schema CREATE. Every step is idempotent,
+// so it runs safely on every start. Passwords never appear in errors.
+func Bootstrap(ctx context.Context, superuserURL, ownerPassword, appPassword string) error {
+	return bootstrap(ctx, superuserURL, ownerPassword, appPassword, true)
+}
+
+// PrepareRestoreDatabase prepares a restore check's own database like Bootstrap,
+// but never changes an existing role: roles are cluster-wide, and a restore
+// check must not rotate the passwords the running app uses. Missing roles are
+// created; a concurrent check creating the same role first is accepted. If an
+// existing role has another password, the restore itself fails to authenticate.
+func PrepareRestoreDatabase(ctx context.Context, superuserURL, ownerPassword, appPassword string) error {
+	return bootstrap(ctx, superuserURL, ownerPassword, appPassword, false)
+}
+
+func bootstrap(ctx context.Context, superuserURL, ownerPassword, appPassword string, rotate bool) error {
+	if ownerPassword == "" || appPassword == "" || ownerPassword == appPassword {
+		return errors.New("database setup needs two different role passwords")
+	}
+	cfg, err := pgx.ParseConfig(superuserURL)
+	if err != nil {
+		return errors.New("parse database setup configuration")
+	}
+	cfg.ConnectTimeout = 5 * time.Second
+	cfg.RuntimeParams["search_path"] = "pg_catalog"
+	cfg.RuntimeParams["application_name"] = "household-setup"
+	conn, err := pgx.ConnectConfig(ctx, cfg)
+	if err != nil {
+		return fmt.Errorf("connect as database superuser: %w", err)
+	}
+	defer func() { _ = conn.Close(context.Background()) }()
+	for _, role := range []struct{ name, password string }{{"household_owner", ownerPassword}, {"household_app", appPassword}} {
+		var exists bool
+		if err = conn.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname=$1)", role.name).Scan(&exists); err != nil {
+			return fmt.Errorf("inspect role %s: %w", role.name, err)
+		}
+		if exists && !rotate {
+			continue
+		}
+		template := "CREATE ROLE %I LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT PASSWORD %L"
+		if exists {
+			template = "ALTER ROLE %I PASSWORD %L"
+		}
+		err = execFormatted(ctx, conn, template, role.name, role.password)
+		// Roles are cluster-wide: a concurrent setup may create the role first.
+		// Setup then sets its password; a restore check leaves it unchanged.
+		var pgErr *pgconn.PgError
+		if !exists && errors.As(err, &pgErr) && (pgErr.Code == "42710" || pgErr.Code == "23505") {
+			err = nil
+			if rotate {
+				err = execFormatted(ctx, conn, "ALTER ROLE %I PASSWORD %L", role.name, role.password)
+			}
+		}
+		if err != nil {
+			return fmt.Errorf("set up role %s", role.name)
+		}
+	}
+	for _, template := range []string{
+		"ALTER DATABASE %I OWNER TO household_owner",
+		"REVOKE ALL ON DATABASE %I FROM PUBLIC",
+		"GRANT CONNECT ON DATABASE %I TO household_app,household_owner",
+	} {
+		var statement string
+		if err = conn.QueryRow(ctx, "SELECT format($1::text, current_database())", template).Scan(&statement); err != nil {
+			return fmt.Errorf("prepare database setup: %w", err)
+		}
+		if _, err = conn.Exec(ctx, statement); err != nil {
+			return fmt.Errorf("database setup: %w", err)
+		}
+	}
+	if _, err = conn.Exec(ctx, "REVOKE CREATE ON SCHEMA public FROM PUBLIC"); err != nil {
+		return fmt.Errorf("restrict public schema: %w", err)
+	}
+	return nil
+}
+
+// execFormatted lets the server quote the role name and password with format().
+func execFormatted(ctx context.Context, conn *pgx.Conn, template, name, password string) error {
+	var statement string
+	if err := conn.QueryRow(ctx, "SELECT format($1::text, $2::text, $3::text)", template, name, password).Scan(&statement); err != nil {
+		return err
+	}
+	_, err := conn.Exec(ctx, statement)
+	return err
+}
+
+// AutomaticRestorePrefix starts the name of every database an automatic
+// restore check creates. Each run gets its own database
+// (household_restore_auto_<unix seconds>_<random>) and drops only that one, so
+// concurrent checks, aliases of the same server and explicit targets named
+// household_restore can never drop each other's database.
+const AutomaticRestorePrefix = "household_restore_auto_"
+
+var automaticRestoreName = regexp.MustCompile(`^household_restore_auto_([0-9]{10})_[0-9a-f]{16}$`)
+
+// automaticRestoreStale bounds how long an automatic check may run before a
+// later check treats its database as the leftover of an interrupted run. The
+// verification itself is bounded to 30 minutes.
+const automaticRestoreStale = 6 * time.Hour
+
+// ErrRestoreSelfTarget refuses restore maintenance through a restore database.
+var ErrRestoreSelfTarget = errors.New("restore maintenance must not connect to a restore database")
+
+// IsAutomaticRestoreDatabase reports whether name is an automatic check's database.
+func IsAutomaticRestoreDatabase(name string) bool { return automaticRestoreName.MatchString(name) }
+
+// WithAutomaticRestoreDatabase creates a new, uniquely named restore database
+// on the server behind maintenanceURL (a superuser connection to a maintenance
+// database), runs use with its name and always drops it again. Before that, it
+// drops leftovers of interrupted automatic checks older than six hours.
+func WithAutomaticRestoreDatabase(ctx context.Context, maintenanceURL string, use func(name string) error) (err error) {
+	cfg, err := pgx.ParseConfig(maintenanceURL)
+	if err != nil {
+		return errors.New("parse restore maintenance configuration")
+	}
+	if strings.HasPrefix(cfg.Database, "household_restore") {
+		return ErrRestoreSelfTarget
+	}
+	random := make([]byte, 8)
+	if _, err = rand.Read(random); err != nil {
+		return errors.New("restore database name generation failed")
+	}
+	now := time.Now()
+	name := fmt.Sprintf("%s%d_%s", AutomaticRestorePrefix, now.Unix(), hex.EncodeToString(random))
+	cfg.ConnectTimeout = 5 * time.Second
+	prepareCtx, cancel := context.WithTimeout(ctx, time.Minute)
+	defer cancel()
+	conn, err := pgx.ConnectConfig(prepareCtx, cfg)
+	if err != nil {
+		return fmt.Errorf("connect for restore maintenance: %w", err)
+	}
+	defer func() { _ = conn.Close(context.Background()) }()
+	if err = dropStaleAutomaticRestores(prepareCtx, conn, now); err != nil {
+		return err
+	}
+	if _, err = conn.Exec(prepareCtx, "CREATE DATABASE "+pgx.Identifier{name}.Sanitize()); err != nil {
+		return fmt.Errorf("restore database maintenance: %w", err)
+	}
+	defer func() {
+		cleanupCtx, cancelCleanup := context.WithTimeout(context.WithoutCancel(ctx), time.Minute)
+		defer cancelCleanup()
+		if dropErr := dropRestoreDatabase(cleanupCtx, conn, cfg, name); dropErr != nil {
+			// Report it even after a failed verification: the restored copy may
+			// still be on disk until a later check removes the leftover.
+			err = errors.Join(err, fmt.Errorf("drop restore database %s: %w", name, dropErr))
+		}
+	}()
+	return use(name)
+}
+
+// dropRestoreDatabase drops name through conn, or through a new maintenance
+// connection when the server ended the idle session during verification.
+func dropRestoreDatabase(ctx context.Context, conn *pgx.Conn, cfg *pgx.ConnConfig, name string) error {
+	drop := "DROP DATABASE IF EXISTS " + pgx.Identifier{name}.Sanitize() + " WITH (FORCE)"
+	_, err := conn.Exec(ctx, drop)
+	if err == nil || !conn.IsClosed() {
+		return err
+	}
+	fresh, connectErr := pgx.ConnectConfig(ctx, cfg.Copy())
+	if connectErr != nil {
+		return errors.Join(err, connectErr)
+	}
+	defer func() { _ = fresh.Close(context.Background()) }()
+	_, err = fresh.Exec(ctx, drop)
+	return err
+}
+
+func dropStaleAutomaticRestores(ctx context.Context, conn *pgx.Conn, now time.Time) error {
+	rows, err := conn.Query(ctx, "SELECT datname FROM pg_database WHERE starts_with(datname,$1) ORDER BY datname LIMIT 100", AutomaticRestorePrefix)
+	if err != nil {
+		return fmt.Errorf("list restore databases: %w", err)
+	}
+	names, err := pgx.CollectRows(rows, pgx.RowTo[string])
+	if err != nil {
+		return fmt.Errorf("list restore databases: %w", err)
+	}
+	for _, name := range names {
+		match := automaticRestoreName.FindStringSubmatch(name)
+		if match == nil {
+			continue
+		}
+		created, parseErr := strconv.ParseInt(match[1], 10, 64)
+		if parseErr != nil || now.Sub(time.Unix(created, 0)) < automaticRestoreStale {
+			continue
+		}
+		if _, err = conn.Exec(ctx, "DROP DATABASE IF EXISTS "+pgx.Identifier{name}.Sanitize()+" WITH (FORCE)"); err != nil {
+			return fmt.Errorf("drop stale restore database: %w", err)
+		}
+	}
+	return nil
+}

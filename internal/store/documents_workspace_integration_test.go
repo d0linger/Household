@@ -9,12 +9,14 @@ import (
 	"errors"
 	"sync"
 	"testing"
+	"time"
 
 	"household/internal/audit"
 	"household/internal/database"
 	"household/internal/document"
 	"household/internal/value"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -246,5 +248,80 @@ func TestDocumentsNativeOriginalVersionScanJobCancelRetryAndSearch(t *testing.T)
 	documentNativeWrite(t, f, "retry", rid, Int(current["version"]), Record{"processing_id": pid})
 	if err = f.owner.QueryRow(f.ctx, `SELECT p.state,j.state FROM documents.processing p JOIN core.jobs j ON j.id=p.job_id WHERE p.id=$1`, pid).Scan(&state, &jobState); err != nil || state != "pending" || jobState != "pending" {
 		t.Fatal("explicit retry", state, jobState, err)
+	}
+	// Regression: a retry passes the same admission checks as a new request, so
+	// it cannot duplicate an extraction that is already queued for the version.
+	fresh := func() int64 {
+		detail, err := f.store.DocumentDetail(f.ctx, f.identity, rid)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return Int(detail["version"])
+	}
+	first := String(documentNativeWrite(t, f, "extract", rid, fresh(), Record{"version_id": vid})["processing_id"])
+	documentNativeWrite(t, f, "cancel", rid, fresh(), Record{"processing_id": first})
+	documentNativeWrite(t, f, "extract", rid, fresh(), Record{"version_id": vid})
+	_, err = f.store.DocumentWrite(f.ctx, f.identity, value.UUID(), value.UUID(), documentNativeCommand(t, f, "retry", rid, fresh(), Record{"processing_id": first}))
+	var invalid Invalid
+	if !errors.As(err, &invalid) || invalid.Message != "Diese Dateiversion wird bereits verarbeitet" {
+		t.Fatal("retry duplicated a queued extraction", err)
+	}
+	if err = f.owner.QueryRow(f.ctx, `SELECT state FROM documents.processing WHERE id=$1`, first).Scan(&state); err != nil || state != "cancelled" {
+		t.Fatal("refused retry changed the request", state, err)
+	}
+}
+
+// Regression: a no-op archive request keeps the version, unarchiving never adds
+// a second pending reminder for a deadline edited while archived, and a
+// cancellation keeps a stored due date that predates the range check.
+func TestDocumentsNativeArchiveNoOpRemindersAndLegacyDeadlineCancel(t *testing.T) {
+	f := newRecipeExpansionFixture(t)
+	d := documentNativeWrite(t, f, "save", "", 0, documentNativeMetadata("Archive invoice"))
+	rid := String(d["id"])
+	version := func() int64 {
+		detail, err := f.store.DocumentDetail(f.ctx, f.identity, rid)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return Int(detail["version"])
+	}
+	before := version()
+	documentNativeWrite(t, f, "archive", rid, before, Record{"archived": false})
+	if after := version(); after != before {
+		t.Fatal("a no-op archive request changed the document version", before, after)
+	}
+	due := time.Now().UTC().AddDate(0, 2, 0).Format(time.DateOnly)
+	deadline := documentNativeWrite(t, f, "deadline", rid, version(), Record{"deadline_id": "", "deadline_version": 0, "kind": "return", "due_on": due, "label": "Return item", "remind_days": 7, "source": "Printed receipt", "confirmed": true, "cancelled": false})
+	deadlineID := String(deadline["deadline_id"])
+	documentNativeWrite(t, f, "archive", rid, version(), Record{"archived": true})
+	documentNativeWrite(t, f, "deadline", rid, version(), Record{"deadline_id": deadlineID, "deadline_version": 1, "kind": "return", "due_on": due, "label": "Return item edited", "remind_days": 7, "source": "Printed receipt", "confirmed": true, "cancelled": false})
+	var pending int
+	if err := f.owner.QueryRow(f.ctx, `SELECT count(*) FROM core.reminders WHERE module_id='documents' AND state='pending' AND dedupe_key LIKE $1`, "document-deadline/"+deadlineID+"/%").Scan(&pending); err != nil || pending != 0 {
+		t.Fatal("an archived document must not get a pending reminder", pending, err)
+	}
+	documentNativeWrite(t, f, "archive", rid, version(), Record{"archived": false})
+	if err := f.owner.QueryRow(f.ctx, `SELECT count(*) FROM core.reminders WHERE module_id='documents' AND state='pending' AND dedupe_key LIKE $1`, "document-deadline/"+deadlineID+"/%").Scan(&pending); err != nil || pending != 1 {
+		t.Fatal("unarchiving must not add a second pending reminder", pending, err)
+	}
+	if _, err := f.owner.Exec(f.ctx, `UPDATE documents.deadlines SET due_on='2201-01-01' WHERE id=$1`, deadlineID); err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && (pgErr.Code == "23514" || pgErr.Code == "22008") {
+			t.Skip("the schema itself refuses dates after 2200:", err)
+		}
+		t.Fatal("legacy deadline fixture", err)
+	}
+	cancel := Record{"deadline_id": deadlineID, "deadline_version": 2, "kind": "return", "due_on": "2202-01-01", "label": "Return item edited", "remind_days": 7, "source": "Printed receipt", "confirmed": true, "cancelled": true}
+	// A changed out-of-range date is refused, also while cancelling.
+	_, err := f.store.DocumentWrite(f.ctx, f.identity, value.UUID(), value.UUID(), documentNativeCommand(t, f, "deadline", rid, version(), cancel))
+	var invalid Invalid
+	if !errors.As(err, &invalid) || invalid.Message != "Fristdatum prüfen" {
+		t.Fatal("a cancellation must not store a changed, unvalidated date", err)
+	}
+	// The stored legacy date itself can be cancelled.
+	cancel["due_on"] = "2201-01-01"
+	documentNativeWrite(t, f, "deadline", rid, version(), cancel)
+	var cancelled bool
+	if err = f.owner.QueryRow(f.ctx, `SELECT cancelled_at IS NOT NULL AND due_on='2201-01-01' FROM documents.deadlines WHERE id=$1`, deadlineID).Scan(&cancelled); err != nil || !cancelled {
+		t.Fatal("the legacy deadline was not cancelled with its stored date", err)
 	}
 }

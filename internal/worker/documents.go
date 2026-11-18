@@ -245,7 +245,7 @@ func (w *Worker) finishDocumentJob(ctx context.Context, root *os.Root, job, leas
 			return err
 		}
 		var used int64
-		if err = tx.QueryRow(ctx, `SELECT coalesce(sum(size_bytes),0) FROM core.attachments WHERE household_id=$1 AND state='ready'`, work.Household).Scan(&used); err != nil {
+		if err = tx.QueryRow(ctx, store.UploadQuotaUsedQuery, work.Household).Scan(&used); err != nil {
 			return err
 		}
 		if used+int64(len(derived)) > w.Cfg.UploadQuota {

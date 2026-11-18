@@ -9,10 +9,12 @@ try {
     New-Item -ItemType Directory -Force $taskOutput | Out-Null
     $taskOwner=[IO.File]::ReadAllText((Join-Path $taskRoot '.local/secrets/owner_password'))
     $taskApp=[IO.File]::ReadAllText((Join-Path $taskRoot '.local/secrets/app_password'))
+    $taskSuperuser=[uri]::EscapeDataString([IO.File]::ReadAllText((Join-Path $taskRoot '.local/secrets/postgres_password')).TrimEnd("`r","`n"))
     $taskEnvironment=Join-Path $taskRoot '.local/secrets/race_test.env'
     [IO.File]::WriteAllLines($taskEnvironment,@(
       "HOUSEHOLD_TEST_OWNER_URL=postgres://household_owner:${taskOwner}@db:5432/household_test?sslmode=disable",
       "HOUSEHOLD_TEST_APP_URL=postgres://household_app:${taskApp}@db:5432/household_test?sslmode=disable",
+      "HOUSEHOLD_TEST_SUPERUSER_URL=postgres://postgres:${taskSuperuser}@db:5432/postgres?sslmode=disable",
       'HOUSEHOLD_REQUIRE_INTEGRATION=1','CGO_ENABLED=1','GOCACHE=/cache/build',"HOUSEHOLD_TEST_PATTERN=$Run"))
     try {
       $taskImage=[regex]::Match([IO.File]::ReadAllText((Join-Path $taskRoot 'Dockerfile')),'(?m)^FROM (golang:\S+@sha256:[0-9a-f]{64}) AS build').Groups[1].Value

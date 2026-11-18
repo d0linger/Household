@@ -12,6 +12,7 @@ import (
 
 	"household/internal/audit"
 	"household/internal/auth"
+	"household/internal/i18n"
 	"household/internal/module"
 	"household/internal/store"
 	"household/internal/value"
@@ -501,6 +502,15 @@ func (s *Server) searchPage(w http.ResponseWriter, r *http.Request) {
 	p := s.page(r, "Suche")
 	p.View = "search"
 	p.Query = r.URL.Query().Get("q")
+	// Show the module's localized name instead of its technical key.
+	locale := requestLocale(r)
+	for _, row := range rows {
+		if id, ok := row["module"].(string); ok {
+			if descriptor, found := s.Store.Module(id); found {
+				row["module"] = i18n.Text(locale, descriptor.Short)
+			}
+		}
+	}
 	p.Records = rows
 	s.render(w, r, p)
 }

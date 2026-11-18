@@ -838,5 +838,6 @@
   "“ startet ab Bestätigung für ": "” starts upon confirmation for ",
   "“ von diesem Gerät gelöscht.": "” deleted from this device.",
   "“ wird aus dieser Sitzung entfernt. Ein laufender Timer endet dadurch.": "” will be removed from this session. This ends a running timer.",
-  "„Ohne Zubereitung“ und „Gekocht seit“ getrennt verwenden.": "Use “Without preparation” and “Cooked since” separately."
+  "„Ohne Zubereitung“ und „Gekocht seit“ getrennt verwenden.": "Use “Without preparation” and “Cooked since” separately.",
+  "Diese Rezeptkopie ist abgelaufen oder wurde gelöscht.": "This recipe copy has expired or was deleted."
 }

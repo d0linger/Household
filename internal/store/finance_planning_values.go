@@ -231,11 +231,22 @@ func financeContributionCommand(ctx context.Context, tx pgx.Tx, id auth.Identity
 		if event != *in.EventID || state != "posted" || native <= 0 || code != String(goal["currency_code"]) || int64(exponent) != Int(goal["currency_exponent"]) || goal["account_id"] != nil && account != String(goal["account_id"]) {
 			return nil, Invalid{"Beitrag und Ziel müssen zum bestätigten Eingang und seiner Währung passen"}
 		}
+		predicate, authArgs, predicateErr := financeResourcePredicate(scope, "goal_contributions", "view", "t", 3)
+		if predicateErr != nil {
+			return nil, predicateErr
+		}
 		var used string
-		err = tx.QueryRow(ctx, `SELECT coalesce(sum(CASE WHEN contribution_kind='ledger_recorded' THEN amount_minor::numeric WHEN contribution_kind='reversal' THEN -amount_minor::numeric ELSE 0 END),0)::text
- FROM expenses.goal_contributions WHERE household_id=$1 AND movement_id=$2`, id.HouseholdID, *in.MovementID).Scan(&used)
+		var hidden bool
+		err = tx.QueryRow(ctx, `SELECT coalesce(sum(CASE WHEN t.contribution_kind='ledger_recorded' THEN t.amount_minor::numeric WHEN t.contribution_kind='reversal' THEN -t.amount_minor::numeric ELSE 0 END),0)::text,
+ coalesce(bool_or((`+predicate+`) IS NOT TRUE),false)
+ FROM expenses.goal_contributions t WHERE t.household_id=$1 AND t.movement_id=$2`, append([]any{id.HouseholdID, *in.MovementID}, authArgs...)...).Scan(&used, &hidden)
 		if err != nil {
 			return nil, err
+		}
+		if hidden {
+			// Deny neutrally before any capacity comparison, so the remaining
+			// capacity never reveals the total of claims the caller cannot see.
+			return nil, ErrForbidden
 		}
 		claimed, ok := new(big.Int).SetString(used, 10)
 		if !ok {

@@ -219,6 +219,23 @@ func (s *Store) ShoppingNotificationProjection(ctx context.Context, id auth.Iden
 	return out, tx.Commit(ctx)
 }
 
+// shoppingCoalesceEventsQuery acknowledges pending shopping events superseded by
+// a newer pending event of the same household, generation, actor, list set and
+// kind. Events with a durable recipient cursor are never coalesced.
+const shoppingCoalesceEventsQuery = `WITH pending AS(
+ SELECT e.id,row_number() OVER(PARTITION BY e.household_id,e.module_generation,e.actor_user_id,e.payload->'shopping'->'list_ids',e.payload->'shopping'->>'kind'
+  ORDER BY e.created_at DESC,e.id DESC) AS rank
+ FROM core.outbox_events e
+ JOIN core.module_states m ON m.household_id=e.household_id AND m.module_id='shopping' AND m.state='enabled' AND m.data_generation=e.module_generation
+ LEFT JOIN core.event_deliveries d ON d.event_id=e.id AND d.consumer_id=$1
+ WHERE e.module_id='shopping' AND e.event_type='record_changed' AND e.event_version=2 AND octet_length(e.payload::text)<=1024
+  AND e.payload->'shopping'->>'kind' IN('item_changed','item_deleted','list_changed')
+  AND (d.event_id IS NULL OR (d.state='pending' AND d.last_error IS NULL)))
+INSERT INTO core.event_deliveries(event_id,consumer_id,state,delivered_at,attempts,last_error)
+SELECT id,$1,'done',clock_timestamp(),1,'coalesced' FROM pending WHERE rank>1 ORDER BY id LIMIT 5000
+ON CONFLICT(event_id,consumer_id) DO UPDATE SET state='done',delivered_at=excluded.delivered_at,attempts=core.event_deliveries.attempts+1,last_error='coalesced'
+ WHERE core.event_deliveries.state='pending' AND core.event_deliveries.last_error IS NULL`
+
 // StageShoppingNotifications only stages committed changes. Its event-row lock
 // and durable cursor make each bounded recipient pass restartable.
 func (s *Store) StageShoppingNotifications(ctx context.Context, limit int) (int, error) {
@@ -227,6 +244,15 @@ func (s *Store) StageShoppingNotifications(ctx context.Context, limit int) (int,
 	}
 	ctx, cancel := context.WithTimeout(audit.WithSystem(ctx, "worker"), 20*time.Second)
 	defer cancel()
+	// Bulk writes (clone, import, many edits) emit one event per row. Staging an
+	// event only depends on its actor, lists and kind, and digests read the
+	// current list, so an untouched pending event that a newer pending event
+	// supersedes is acknowledged in one set-based statement. Staging cost then
+	// follows distinct changes instead of rows, and one member's bulk work no
+	// longer delays other members' notifications past their window.
+	if _, err := audit.Exec(ctx, s.Pool, shoppingCoalesceEventsQuery, shoppingNotificationConsumer); err != nil {
+		return 0, err
+	}
 	rows, err := s.Pool.Query(ctx, `SELECT e.id,e.household_id FROM core.outbox_events e
  JOIN core.module_states m ON m.household_id=e.household_id AND m.module_id='shopping' AND m.state='enabled' AND m.data_generation=e.module_generation
  LEFT JOIN core.event_deliveries d ON d.event_id=e.id AND d.consumer_id=$1

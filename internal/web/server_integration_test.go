@@ -296,6 +296,10 @@ func TestApplicationContract(t *testing.T) {
 	if call("POST", "/api/v1/m/meters/readings", mutation("meters", store.Record{"device_id": device["id"], "measured_at": "2026-01-15T12:00:00Z", "value": "200"}, 0), value.UUID()).status != 422 {
 		t.Fatal("earlier meter reading exceeded later history")
 	}
+	// Regression: the generic readings path applies reading.save's instant bound.
+	if rejected := call("POST", "/api/v1/m/meters/readings", mutation("meters", store.Record{"device_id": device["id"], "measured_at": "2300-01-01T12:00:00Z", "value": "900"}, 0), value.UUID()); rejected.status != 422 || !bytes.Contains(rejected.body, []byte("29. Dezember 2200")) {
+		t.Fatal("meter reading after 2200 was not refused by the application instant bound", rejected.status)
+	}
 	otherLocation := create("pantry", "locations", store.Record{"name": "Other " + prefix})
 	if call("PATCH", "/api/v1/m/pantry/lots/"+store.String(lot["id"]), mutation("pantry", store.Record{"location_id": otherLocation["id"]}, 1), value.UUID()).status != 422 {
 		t.Fatal("stock silently moved through lot edit")
@@ -494,6 +498,69 @@ func TestApplicationContract(t *testing.T) {
 		return response.Header.Get("Location")
 	}
 	stepCapture := seedCapture("recipes", "steps", store.String(step["id"]))
+	// Regression: the upload job limit admits an upload that brings this
+	// member's claimable jobs to exactly 20 and refuses one beyond it with
+	// Retry-After 30, through the real upload handler.
+	uploadPlain := func() *integrationResponse {
+		t.Helper()
+		var body bytes.Buffer
+		form := multipart.NewWriter(&body)
+		for k, v := range map[string]string{"generation": fmt.Sprint(app.Store.States()["recipes"].Generation)} {
+			if err := form.WriteField(k, v); err != nil {
+				t.Fatal(err)
+			}
+		}
+		part, err := form.CreateFormFile("file", "limit.png")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err = part.Write(picture.Bytes()); err != nil {
+			t.Fatal(err)
+		}
+		if err = form.Close(); err != nil {
+			t.Fatal(err)
+		}
+		response, _, err := fixture.request(http.MethodPost, "/api/v1/m/recipes/steps/"+store.String(step["id"])+"/attachments", token, app.Auth.CSRF(token, "session"), form.FormDataContentType(), &body, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return response
+	}
+	// The documented limit is 20, independent of the handler's constant and of
+	// the production count: park this member's other outstanding jobs, then
+	// seed exactly 19 known jobs, one of them a claimable capture OCR job.
+	const documentedUploadJobLimit = 20
+	var parked []string
+	if err = fixture.owner.QueryRow(ctx, `WITH parked AS(UPDATE core.jobs SET state='paused' WHERE household_id=$1 AND kind IN('thumbnail','capture_ocr') AND state IN('pending','running') RETURNING id)
+ SELECT coalesce(array_agg(id::text),'{}') FROM parked`, fixture.identity.HouseholdID).Scan(&parked); err != nil {
+		t.Fatal("park outstanding jobs", err)
+	}
+	var captureID string
+	if err = fixture.owner.QueryRow(ctx, `SELECT c.id::text FROM core.capture_jobs c JOIN core.attachments a ON a.id=c.source_attachment_id WHERE a.household_id=$1 AND a.uploaded_by=$2 ORDER BY c.created_at DESC LIMIT 1`,
+		fixture.identity.HouseholdID, fixture.identity.UserID).Scan(&captureID); err != nil {
+		t.Fatal("capture fixture", err)
+	}
+	if _, err = fixture.owner.Exec(ctx, `INSERT INTO core.jobs(household_id,module_id,module_generation,kind,payload,dedupe_key,available_at)
+ SELECT a.household_id,a.module_id,a.module_generation,'thumbnail',jsonb_build_object('attachment_id',a.id,'storage_key','limit-fixture'),'limit-fixture/'||n,clock_timestamp()+interval '1 hour'
+ FROM (SELECT * FROM core.attachments WHERE household_id=$1 AND uploaded_by=$2 AND module_id='recipes' ORDER BY created_at DESC LIMIT 1) a CROSS JOIN generate_series(1,$3) n
+ UNION ALL SELECT c.household_id,c.module_id,c.module_generation,'capture_ocr',jsonb_build_object('capture_id',c.id),'limit-fixture/ocr',clock_timestamp()+interval '1 hour'
+ FROM core.capture_jobs c WHERE c.id=$4`,
+		fixture.identity.HouseholdID, fixture.identity.UserID, documentedUploadJobLimit-2, captureID); err != nil {
+		t.Fatal("seed outstanding upload jobs", err)
+	}
+	if admitted := uploadPlain(); admitted.StatusCode == http.StatusTooManyRequests || admitted.StatusCode >= 400 {
+		t.Fatal("an upload reaching exactly the job limit must be admitted", admitted.StatusCode)
+	}
+	if refused := uploadPlain(); refused.StatusCode != http.StatusTooManyRequests || refused.Header.Get("Retry-After") != "30" {
+		t.Fatal("an upload beyond the job limit must be refused with Retry-After 30", refused.StatusCode, refused.Header.Get("Retry-After"))
+	}
+	if _, err = fixture.owner.Exec(ctx, `DELETE FROM core.jobs WHERE household_id=$1 AND kind IN('thumbnail','capture_ocr') AND (dedupe_key LIKE 'limit-fixture/%'
+ OR payload->>'attachment_id' IN(SELECT id::text FROM core.attachments WHERE household_id=$1 AND original_name='limit.png'))`, fixture.identity.HouseholdID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = fixture.owner.Exec(ctx, `UPDATE core.jobs SET state='pending' WHERE id::text=ANY($1)`, parked); err != nil {
+		t.Fatal("restore parked jobs", err)
+	}
 	stepInput := mutation("recipes", store.Record{"recipe_id": recipe["id"], "instruction": "Captured step", "timer_seconds": 0}, 0)
 	stepFirst := call("POST", stepCapture+"/confirm", stepInput, value.UUID())
 	stepReplay := call("POST", stepCapture+"/confirm", stepInput, value.UUID())

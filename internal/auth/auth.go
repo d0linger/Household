@@ -10,6 +10,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/netip"
 	"strings"
@@ -143,11 +144,96 @@ func (s *Service) Bootstrap(ctx context.Context, modules []string, enabled map[s
 	return tx.Commit(ctx)
 }
 
+// factorFailureLimit bounds wrong second-factor codes per account and window,
+// independently of the password-calibrated login budgets.
+const (
+	factorFailureLimit  = 10
+	factorFailureWindow = 15 * time.Minute
+	// factorAccountingTimeout bounds counting one wrong code after the request.
+	factorAccountingTimeout = 10 * time.Second
+	// factorRecoveryTimeout bounds the rollback and pool retry after a failed write.
+	factorRecoveryTimeout = 5 * time.Second
+)
+
+func (s *Service) limitSubject(scope, subject string) []byte {
+	mac := hmac.New(sha256.New, []byte(s.cfg.RateSecret))
+	mac.Write([]byte(scope + "\x00" + subject))
+	return mac.Sum(nil)
+}
+
+// factorBudget refuses a second-factor check once the account has used its
+// failure budget for the current window. It only reads, inside the caller's
+// transaction, so it neither takes a second pool connection nor counts attempts.
+func (s *Service) factorBudget(ctx context.Context, tx pgx.Tx, user string) error {
+	// Lock the second factor first. Concurrent checks for this account then read
+	// the budget only after the previous check committed its failure count.
+	// Only an enabled credential is locked, like verifyFactor: a pending
+	// enrollment keeps its own lock order with session revocation.
+	locked, err := tx.Exec(ctx, "SELECT 1 FROM core.totp_credentials WHERE user_id=$1 AND enabled_at IS NOT NULL FOR UPDATE", user)
+	if err != nil {
+		return fmt.Errorf("lock second factor: %w", err)
+	}
+	// Without an enabled second factor there is nothing to guess, and failures
+	// counted before a factor reset must not refuse a correct password.
+	if locked.RowsAffected() == 0 {
+		return nil
+	}
+	var count int
+	err = tx.QueryRow(ctx, `SELECT coalesce(max(attempt_count),0) FROM core.rate_limit_buckets
+	 WHERE scope='totp-failure' AND subject_hash=$1 AND window_start=to_timestamp(floor(extract(epoch FROM clock_timestamp())/$2)*$2)`,
+		s.limitSubject("totp-failure", user), factorFailureWindow.Seconds()).Scan(&count)
+	if err != nil {
+		return fmt.Errorf("read second-factor budget: %w", err)
+	}
+	if count >= factorFailureLimit {
+		return ErrLimited
+	}
+	return nil
+}
+
+// failFactor counts one wrong second-factor code inside tx and commits it, so
+// the count is durable before the second-factor lock from factorBudget is
+// released. tx must hold no other writes: verifyFactor writes nothing when it
+// rejects a code. Only when counting in tx fails, so the transaction certainly
+// did not commit, is the failure counted on the pool instead. A failed commit
+// has an unknown outcome and is never counted a second time.
+func (s *Service) failFactor(ctx context.Context, tx pgx.Tx, user string) {
+	// It outlives a disconnected request, but never holds authentication
+	// capacity (the caller's bcrypt slot) indefinitely.
+	durable, cancel := context.WithTimeout(context.WithoutCancel(ctx), factorAccountingTimeout)
+	defer cancel()
+	err := s.limit(durable, tx, "totp-failure", user, factorFailureLimit, factorFailureWindow)
+	if err == nil || errors.Is(err, ErrLimited) {
+		if err = tx.Commit(durable); err != nil {
+			slog.Default().Error("commit second-factor failure", "error", err)
+		}
+		return
+	}
+	// The write failed inside the transaction, so nothing was committed. Roll
+	// back and count on the pool within a fresh, short recovery budget: the
+	// first attempt may have used up the whole accounting timeout.
+	recovery, cancelRecovery := context.WithTimeout(context.WithoutCancel(ctx), factorRecoveryTimeout)
+	defer cancelRecovery()
+	_ = tx.Rollback(recovery)
+	if err = s.limit(recovery, s.pool, "totp-failure", user, factorFailureLimit, factorFailureWindow); err != nil && !errors.Is(err, ErrLimited) {
+		slog.Default().Error("record second-factor failure", "error", err)
+	}
+}
+
+// rowQuerier is satisfied by both the pool and a transaction.
+type rowQuerier interface {
+	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
+}
+
 func (s *Service) Limit(ctx context.Context, scope, subject string, limit int, window time.Duration) error {
+	return s.limit(ctx, s.pool, scope, subject, limit, window)
+}
+
+func (s *Service) limit(ctx context.Context, q rowQuerier, scope, subject string, limit int, window time.Duration) error {
 	mac := hmac.New(sha256.New, []byte(s.cfg.RateSecret))
 	mac.Write([]byte(scope + "\x00" + subject))
 	var count int
-	err := s.pool.QueryRow(ctx, `WITH w AS (SELECT to_timestamp(floor(extract(epoch FROM clock_timestamp())/$3)*$3) AS start_at)
+	err := q.QueryRow(ctx, `WITH w AS (SELECT to_timestamp(floor(extract(epoch FROM clock_timestamp())/$3)*$3) AS start_at)
 	 INSERT INTO core.rate_limit_buckets(scope,subject_hash,window_start,window_end) SELECT $1,$2,start_at,start_at+make_interval(secs=>$3) FROM w
 	 ON CONFLICT(scope,subject_hash,window_start) DO UPDATE SET attempt_count=core.rate_limit_buckets.attempt_count+1,updated_at=now()
 	 RETURNING attempt_count`, scope, mac.Sum(nil), window.Seconds()).Scan(&count)
@@ -162,6 +248,12 @@ func (s *Service) Limit(ctx context.Context, scope, subject string, limit int, w
 
 func (s *Service) Login(ctx context.Context, username, password, code, ip, ua string) (token string, result Identity, loginErr error) {
 	if err := s.Limit(ctx, "login-network", ip, 100, 15*time.Minute); err != nil {
+		return "", Identity{}, err
+	}
+	// The exact-address budget alone is free to evade by rotating addresses inside
+	// one IPv6 /56 (or IPv4 /24), and unknown account names always start a fresh
+	// account budget, so the client network as a whole is bounded as well.
+	if err := s.Limit(ctx, "login-network-prefix", networkPrefix(ip), 300, 15*time.Minute); err != nil {
 		return "", Identity{}, err
 	}
 	// The tight budget is per account and client network, so one network cannot
@@ -224,7 +316,13 @@ func (s *Service) Login(ctx context.Context, username, password, code, ip, ua st
 	if !hmac.Equal([]byte(hash), []byte(currentHash)) {
 		return "", Identity{}, ErrCredentials
 	}
+	if err = s.factorBudget(ctx, tx, uid); err != nil {
+		return "", Identity{}, err
+	}
 	if err = s.verifyFactor(ctx, tx, uid, code); err != nil {
+		if errors.Is(err, ErrCredentials) {
+			s.failFactor(ctx, tx, uid)
+		}
 		return "", Identity{}, err
 	}
 	raw, err := s.createSession(ctx, tx, uid, ip, ua)

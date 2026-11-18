@@ -2,7 +2,7 @@
 
 ## Accounts and sessions
 
-Passwords use bcrypt cost 12, at least 14 Unicode characters and at most 72 bytes. Login uses a dummy bcrypt comparison for unknown accounts. Expensive hashing is bounded and credential changes have persistent per-user limits. Network/account limits are HMAC-subject PostgreSQL buckets and survive application restarts. Login admits 100 attempts per client address per 15 minutes, 20 per account from one client network (IPv4 /24, IPv6 /56) per hour, and 500 per account across all networks per hour. Exhausting one network's budget therefore cannot lock the account holder out from another network, while the account-wide cap bounds distributed guessing.
+Passwords use bcrypt cost 12, at least 14 Unicode characters and at most 72 bytes. Login uses a dummy bcrypt comparison for unknown accounts. Expensive hashing is bounded and credential changes have persistent per-user limits. Network/account limits are HMAC-subject PostgreSQL buckets and survive application restarts. Login admits 100 attempts per client address per 15 minutes, 20 per account from one client network (IPv4 /24, IPv6 /56) per hour, and 500 per account across all networks per hour. Exhausting one network's budget therefore cannot lock the account holder out from another network, while the account-wide cap bounds distributed guessing. A further budget of 300 attempts per 15 minutes applies to each client network prefix (IPv4 /24, IPv6 /64), so rotating addresses inside one prefix cannot multiply pre-authentication bcrypt work. Second factors have their own limit: after 10 wrong TOTP or recovery codes for an account within 15 minutes, login and re-authentication refuse the factor before checking it until the window passes.
 
 Session tokens contain 256 random bits. Only SHA-256 hashes are stored. Idle expiry slides up to 24 hours on interactive authenticated page access, capped by 30-day absolute expiry; API polling does not keep sessions alive. Cookies are HttpOnly, SameSite=Lax and Secure in production, with the `__Host-` prefix. Explicit local HTTP development uses a separate cookie name.
 
@@ -32,11 +32,17 @@ JPEG/PNG inputs are decoded with pixel/concurrency limits and re-encoded without
 
 OCR runs a fixed local Tesseract executable with argument separation, bounded output and a 20-second timeout. Source text is untrusted data, escaped for display, and cannot supply executable instructions. Capture confirmation validates every field and commits once; a changed replay conflicts. No external inference or automatic record creation occurs.
 
+## Shared resources and background work
+
+One household shares a single application process, database pool and serial background worker, so member-triggered work is bounded where it enters. Calendar feeds are rate limited per client before they touch the module gate, never wait for that gate and run with a five-second database budget. Attachment downloads read and authorize outside any transaction before taking their row lock, so they never hold one pool connection while waiting for another. CSV exports have a 16 MiB budget for every module and at most two concurrent exports. Each uploader may have at most 20 pending preview/OCR jobs; document processing refuses a duplicate extraction of the same version and caps 10 outstanding requests per member. The upload quota counts every stored byte, including orphaned and purged attachments that still occupy storage.
+
+The worker claims at most ten jobs per tick, at most five of one kind, within a 25-second budget, and a failing job no longer ends the tick. Jobs whose source attachment disappeared retire instead of retrying. Automatic finance recurrences run one bounded batch per scheduled job and never re-queue themselves; automatic consent is refused while the first missing occurrence is more than 31 days old, so a far-past anchor must be caught up manually. The recurrence scheduler skips consents already scheduled today or holding a live job and rotates its bounded selection. Superseded shopping change events (same actor, lists and kind) are acknowledged in one statement before staging. Meter and energy input instants must lie within the last 30 years and inside a margin of the 1900–2200 range the projection worker accepts.
+
 ## Database and audit
 
 The runtime role has scoped DML privileges; it cannot migrate, truncate, alter schema, insert/update/delete audit history directly, update/delete stock movements, or mark backups verified. Migration/maintenance uses a separate non-superuser owner role. SQL values are parameters; dynamic identifiers come only from compiled descriptors/catalog allowlists. Financial triggers and the append-only rejection trigger run as invoker. Core5 audit capture functions use narrowly granted `SECURITY DEFINER`, a pinned `pg_catalog` search path and qualified objects; the owner-only installer and policy table cannot be invoked or changed by the runtime.
 
-Audit retains actor/resource identifiers, server-generated request IDs, actions, outcomes and field changes. Explicitly permitted domain names, dates, quantities and amounts remain visible; credentials, document titles, OCR/import content and private free text are masked before insertion. User text in permitted names can still contain personal information. Unknown fields default to masked values. Runtime history is append-only; the database owner remains trusted and can alter it. No automatic audit deletion is enabled. Establish an operator retention policy before collecting long-lived history; module purge retains its audit trail and encrypted backups. See [audit-trail.md](audit-trail.md). External security reporting contacts are not invented; until a repository/contact is configured, report sensitive findings directly to your installation operator.
+Audit retains actor/resource identifiers, server-generated request IDs, actions, outcomes and field changes. Explicitly permitted domain names, dates, quantities and amounts remain visible; credentials, document titles, OCR/import content and private free text are masked before insertion. User text in permitted names can still contain personal information. Unknown fields default to masked values. Audit rows of Fuel integration bindings, Meters bills and expense-editor operations that name an Expenses entry follow that entry's Finance visibility, so administrators excluded from a selected entry do not learn its identity from those rows. Runtime history is append-only; the database owner remains trusted and can alter it. No automatic audit deletion is enabled. Establish an operator retention policy before collecting long-lived history; module purge retains its audit trail and encrypted backups. See [audit-trail.md](audit-trail.md). External security reporting contacts are not invented; until a repository/contact is configured, report sensitive findings directly to your installation operator.
 
 ## Personal security events and notification privacy
 
@@ -50,19 +56,17 @@ Bounded reconciliation removes terminal delivery intents after 30 days and inbox
 
 ## Operator account recovery
 
-Stop the app, set a fresh password in `.local/secrets/bootstrap_password`, and run the owner-credential migration service as a one-off:
-
-Use the **same complete Compose file set and environment** as the running installation for every command. The base-only example below applies only to the default configuration. For a keyring installation add `-f compose.yaml -f compose.keyring.yaml` to every invocation; retain configured Web Push/Documents/Meters overlays too. If backup overlays are present, keep `compose.backup-keyring.yaml` after `compose.backup.yaml`. Dropping these can restart an app with the wrong encryption parser or lose configured integration settings. See [the overlay examples](operations.md#encryption-keys-and-rotation).
+Set a fresh password in `HOUSEHOLD_ADMIN_PASSWORD` in `.env`, stop the app and run the recovery through the owner-credential `backup` service:
 
 ```sh
 docker compose stop app
-docker compose run --rm --no-deps migrate recover admin
+docker compose run --rm --no-deps backup recover admin
 docker compose up -d app
 ```
 
 This forces a password change and revokes all sessions. Existing MFA remains required. If the authenticator and recovery codes are both lost, explicitly add `--reset-mfa` to the recovery command. That action removes the factor/codes and records an audit event. Recovery refuses runtime-role credentials.
 
-Keep secrets outside Git and back up the restic repository password independently. Preserve every required encryption reader, including the explicit legacy key while legacy records remain. Restoring an encrypted snapshot provides its security-key bundle; perform any key migration as controlled maintenance, never by simply replacing the encryption key file. Preserve the optional VAPID private key separately in encrypted storage: the automatic backup escrow does not include it.
+Keep `.env` outside Git and back it up independently; it holds the restic repository password. Preserve every required encryption reader, including the explicit legacy key while legacy records remain. Restoring an encrypted snapshot provides its security-key bundle; perform any key migration as controlled maintenance, never by simply replacing the encryption key in `.env`. The automatic backup escrow does not include the VAPID private key; preserving `.env` does.
 
 ## Verification interpretation
 

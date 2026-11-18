@@ -172,10 +172,16 @@ func TestValidateRestoreTarget(t *testing.T) {
 		{"same source", "postgres://owner@db:5432/household_restore", "postgres://owner@db:5432/household_restore", false},
 		{"source host alias", "postgres://owner@localhost:5432/household_restore", "postgres://owner@127.0.0.1:5432/household_restore", false},
 		{"source override", "postgres://owner@db:5432/household?database=household_restore", "postgres://owner@restore-db:5432/household_restore", false},
+		// Regression: a configured target must not carry an automatic run name,
+		// which another automatic check's leftover cleanup could drop.
+		{"explicit target with an automatic name", "postgres://owner@db:5432/household", "postgres://owner@db:5432/household_restore_auto_1795000000_0123456789abcdef", false},
+		{"malformed automatic name", "postgres://owner@db:5432/household", "postgres://owner@db:5432/household_restore_auto_x", false},
+		{"source on an automatic database", "postgres://owner@db:5432/household_restore_auto_1795000000_0123456789abcdef", "postgres://owner@db:5432/household_restore", false},
+		{"source with a similar name", "postgres://owner@db:5432/household_restored", "postgres://owner@db:5432/household_restore", true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			if err := validateRestoreTarget(tc.source, tc.target); (err == nil) != tc.valid {
+			if err := ValidateRestoreTarget(tc.source, tc.target); (err == nil) != tc.valid {
 				t.Fatalf("valid=%t err=%v", tc.valid, err)
 			}
 		})
@@ -213,5 +219,23 @@ func TestRestoreUploadPath(t *testing.T) {
 				t.Fatalf("path=%q err=%v", got, err)
 			}
 		})
+	}
+}
+
+func TestValidateAutomaticRestoreTarget(t *testing.T) {
+	t.Parallel()
+	const source = "postgres://owner@db:5432/household"
+	if err := ValidateAutomaticRestoreTarget(source, "postgres://owner@db:5432/household_restore_auto_1795000000_0123456789abcdef"); err != nil {
+		t.Fatal("an automatic run database must be accepted on the automatic path", err)
+	}
+	for _, target := range []string{"postgres://owner@db:5432/household_restore", "postgres://owner@db:5432/household_restore_auto_x"} {
+		if ValidateAutomaticRestoreTarget(source, target) == nil {
+			t.Fatal("the automatic path accepted a non-automatic target", target)
+		}
+	}
+	for _, target := range []string{"postgres://owner@db:5432/household_restore", "postgres://owner@db:5432/household_restore_auto_1795000000_0123456789abcdef"} {
+		if validAnyRestoreTarget(source, target) != nil {
+			t.Fatal("VerifyRestore must accept both disposable kinds", target)
+		}
 	}
 }

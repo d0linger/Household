@@ -107,7 +107,9 @@ func (w *Worker) capture(ctx context.Context, job, lease string) error {
 		}
 		if captureID != "" {
 			if err = store.CheckFinanceArtifactJob(ctx, tx, job, lease); err != nil {
-				return err
+				// Release this transaction's locks before retiring on another connection.
+				_ = tx.Rollback(ctx)
+				return w.retireObsoleteSourceJob(ctx, job, lease, err)
 			}
 			operation, prepareErr := store.PrepareFinanceArtifactJob(ctx, tx, job, lease, "capture", captureID)
 			if prepareErr != nil {
@@ -144,7 +146,7 @@ func (w *Worker) capture(ctx context.Context, job, lease string) error {
 		return errors.New("invalid capture job")
 	}
 	if err = w.financeArtifactPreflight(ctx, job, lease); err != nil {
-		return err
+		return w.retireObsoleteSourceJob(ctx, job, lease, err)
 	}
 	root, err := os.OpenRoot(w.Cfg.UploadDir)
 	if err != nil {
@@ -194,7 +196,9 @@ func (w *Worker) capture(ctx context.Context, job, lease string) error {
 		return err
 	}
 	if err = store.CheckFinanceArtifactJob(ctx, tx, job, lease); err != nil {
-		return err
+		// Release the job row lock before retiring on another connection.
+		_ = tx.Rollback(ctx)
+		return w.retireObsoleteSourceJob(ctx, job, lease, err)
 	}
 	operation, err := store.PrepareFinanceArtifactJob(ctx, tx, job, lease, "capture", capture)
 	if err != nil {

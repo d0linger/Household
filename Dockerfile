@@ -7,12 +7,15 @@ COPY internal ./internal
 RUN GOMAXPROCS=2 GOMEMLIMIT=2GiB CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/household ./cmd/household
 
 FROM alpine:3.24@sha256:f59abe656b692d901e184be3445e084786602108599d2a51d229c0f5a48c71bf AS runtime
-RUN apk add --no-cache ca-certificates tzdata poppler-utils font-liberation && addgroup -S -g 10001 household && adduser -S -D -H -u 10001 -G household household && mkdir -p /data/uploads && chown -R 10001:10001 /data
+# restic and the PostgreSQL 18 client let the same image run scheduled backups.
+RUN apk add --no-cache ca-certificates tzdata poppler-utils font-liberation restic postgresql18-client && addgroup -S -g 10001 household && adduser -S -D -H -u 10001 -G household household && mkdir -p /data/uploads /data/backups /work && chown -R 10001:10001 /data /work
 COPY --from=build /out/household /usr/local/bin/household
+ENV HOUSEHOLD_SECRETS_DIR=/run/secrets HOUSEHOLD_UPLOAD_DIR=/data/uploads RESTIC_REPOSITORY=/data/backups RESTIC_CACHE_DIR=/tmp/restic-cache
 USER 10001:10001
 WORKDIR /data
 EXPOSE 8080
-HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 CMD ["household","healthcheck"]
+# The first start sets up and migrates the database, which can take minutes.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10m --start-interval=5s --retries=3 CMD ["household","healthcheck"]
 ENTRYPOINT ["household"]
 CMD ["serve"]
 

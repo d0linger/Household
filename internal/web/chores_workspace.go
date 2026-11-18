@@ -2,6 +2,7 @@ package web
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -12,7 +13,10 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
+	"household/internal/auth"
+	"household/internal/i18n"
 	"household/internal/ical"
 	"household/internal/store"
 )
@@ -257,19 +261,67 @@ func (s *Server) choreWorkspaceAPI(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, out)
 }
 
+// gatedLookup runs lookup with the feed budget while the caller's read gate is
+// held, and releases the gate when lookup returns or panics, before the caller
+// renders or writes anything.
+func gatedLookup[T any](ctx context.Context, gate interface{ RUnlock() }, lookup func(context.Context) (T, error)) (T, error) {
+	defer gate.RUnlock()
+	gated, release := context.WithTimeout(ctx, feedGateBudget)
+	defer release()
+	return lookup(gated)
+}
+
+// feedFailure answers a public capability feed request in plain text. It never
+// renders the HTML error page, whose language form would echo the capability
+// URL, and logs no token-bearing detail.
+func (s *Server) feedFailure(w http.ResponseWriter, r *http.Request, err error) {
+	locale := requestLocale(r)
+	var invalid store.Invalid
+	switch {
+	case errors.Is(err, store.ErrNotFound) || errors.Is(err, store.ErrForbidden):
+		http.Error(w, i18n.Text(locale, "Nicht gefunden"), http.StatusNotFound)
+	case errors.Is(err, auth.ErrLimited):
+		w.Header().Set("Retry-After", "60")
+		http.Error(w, i18n.Text(locale, "Kalenderabruf später erneut versuchen"), http.StatusTooManyRequests)
+	case errors.As(err, &invalid):
+		// A fixed instruction (such as the event cap): retrying cannot help.
+		http.Error(w, i18n.Text(locale, invalid.Message), http.StatusUnprocessableEntity)
+	default:
+		if !errors.Is(err, store.ErrBusy) {
+			s.Log.Error("calendar feed unavailable", "request_id", trace(r))
+		}
+		w.Header().Set("Retry-After", "5")
+		http.Error(w, i18n.Text(locale, "Kalender vorübergehend nicht verfügbar"), http.StatusServiceUnavailable)
+	}
+}
+
 func (s *Server) choreCalendarFeed(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "private, no-store")
 	w.Header().Set("Referrer-Policy", "no-referrer")
-	s.Store.Gate.RLock()
-	defer s.Store.Gate.RUnlock()
 	token := r.PathValue("token")
-	if !strings.HasSuffix(token, ".ics") || r.URL.RawQuery != "" {
-		s.fail(w, r, store.ErrNotFound)
+	// Cheap in-memory checks, then the per-client limit, all before the module
+	// gate: a request without a session must not occupy the gate while it waits.
+	if _, enabled := s.Store.State("chores"); !enabled || !strings.HasSuffix(token, ".ics") || r.URL.RawQuery != "" || len(strings.TrimSuffix(token, ".ics")) != 43 {
+		s.feedFailure(w, r, store.ErrNotFound)
 		return
 	}
-	events, err := s.Store.ChoreCalendarFeed(r.Context(), strings.TrimSuffix(token, ".ics"))
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+	if err := s.Auth.Limit(ctx, "chores-calendar-feed", s.clientIP(r), 120, time.Minute); err != nil {
+		s.feedFailure(w, r, err)
+		return
+	}
+	if !s.Store.TryReadGate() {
+		s.feedFailure(w, r, store.ErrBusy)
+		return
+	}
+	// Bound the gated section well inside the module change's gate wait, and
+	// release the gate before rendering: a slow client must not hold it.
+	events, err := gatedLookup(ctx, &s.Store.Gate, func(gated context.Context) ([]ical.TimedEvent, error) {
+		return s.Store.ChoreCalendarFeed(gated, strings.TrimSuffix(token, ".ics"))
+	})
 	if err != nil {
-		s.fail(w, r, err)
+		s.feedFailure(w, r, err)
 		return
 	}
 	s.writeChoreCalendar(w, r, events, false)

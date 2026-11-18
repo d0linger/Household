@@ -131,6 +131,10 @@ func (s *Server) writePlanningCalendar(w http.ResponseWriter, r *http.Request, c
 	s.writeBytes(w, r, raw)
 }
 
+// feedGateBudget bounds how long a capability feed may hold the module gate;
+// it stays well below the module change's ten-second gate wait.
+const feedGateBudget = 5 * time.Second
+
 func (s *Server) planningCalendarFeed(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "private, no-store")
 	w.Header().Set("Referrer-Policy", "no-referrer")
@@ -140,10 +144,14 @@ func (s *Server) planningCalendarFeed(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, i18n.Text(requestLocale(r), "Nicht gefunden"), http.StatusNotFound)
 		return
 	}
-	s.Store.Gate.RLock()
-	defer s.Store.Gate.RUnlock()
+	if _, enabled := s.Store.State("mealplan"); !enabled {
+		http.Error(w, i18n.Text(requestLocale(r), "Nicht gefunden"), http.StatusNotFound)
+		return
+	}
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
+	// The per-client limit and the non-blocking gate run in this order so a
+	// request without a session never holds the module gate while it waits.
 	if err := s.Auth.Limit(ctx, "mealplan-calendar-feed", s.clientIP(r), 120, time.Minute); err != nil {
 		if errors.Is(err, auth.ErrLimited) {
 			w.Header().Set("Retry-After", "60")
@@ -153,7 +161,15 @@ func (s *Server) planningCalendarFeed(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	calendar, err := s.Store.PlanningCalendarFeed(ctx, strings.TrimSuffix(token, ".ics"))
+	if !s.Store.TryReadGate() {
+		w.Header().Set("Retry-After", "5")
+		http.Error(w, i18n.Text(requestLocale(r), "Kalender vorübergehend nicht verfügbar"), http.StatusServiceUnavailable)
+		return
+	}
+	// Release the gate before rendering: a slow client must not hold it.
+	calendar, err := gatedLookup(ctx, &s.Store.Gate, func(gated context.Context) (store.PlanningCalendar, error) {
+		return s.Store.PlanningCalendarFeed(gated, strings.TrimSuffix(token, ".ics"))
+	})
 	if errors.Is(err, store.ErrNotFound) || errors.Is(err, store.ErrForbidden) {
 		http.Error(w, i18n.Text(requestLocale(r), "Nicht gefunden"), http.StatusNotFound)
 		return

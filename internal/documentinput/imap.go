@@ -166,16 +166,31 @@ func IMAP(ctx context.Context, c Config, cursor Cursor) ([]Candidate, Cursor, er
 		if len(literal) != 1 || match == nil || match[1] != strconv.FormatUint(uid, 10) {
 			return nil, cursor, errors.New("IMAP message body or requested UID missing")
 		}
+		messageKey := strconv.FormatUint(validity, 10) + "/" + strconv.FormatUint(uid, 10)
 		attachments, e := messageAttachments(literal[0])
 		if e != nil {
-			return nil, cursor, e
+			// A malformed message can never import; record it and move on.
+			out = append(out, Candidate{Key: messageKey + "/0", Rejected: e.Error()})
+			next.LastUID = uid
+			continue
 		}
+		size := 0
+		for _, a := range attachments {
+			size += len(a.Bytes)
+		}
+		if len(attachments) > 10 || size > 30<<20 {
+			// Over the batch caps on its own: reject this one message only.
+			out = append(out, Candidate{Key: messageKey + "/0", Rejected: "IMAP message exceeds attachment limits"})
+			next.LastUID = uid
+			continue
+		}
+		if len(out)+len(attachments) > 10 || total+size > 30<<20 {
+			// End the window at the message boundary; the next poll continues here.
+			break
+		}
+		total += size
 		for i, a := range attachments {
-			total += len(a.Bytes)
-			if len(out) >= 10 || total > 30<<20 {
-				return nil, cursor, errors.New("IMAP attachment batch limit reached")
-			}
-			a.Key = strconv.FormatUint(validity, 10) + "/" + strconv.FormatUint(uid, 10) + "/" + strconv.Itoa(i+1)
+			a.Key = messageKey + "/" + strconv.Itoa(i+1)
 			out = append(out, a)
 		}
 		next.LastUID = uid

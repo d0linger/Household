@@ -20,6 +20,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -60,6 +61,7 @@ type Server struct {
 	templatesEN   *template.Template
 	assets        map[string]string
 	shutting      atomic.Bool
+	readiness     readinessCache
 	imageSlots    chan struct{}
 	recipeFetcher *recipeimport.Fetcher
 }
@@ -160,6 +162,9 @@ func New(ctx context.Context, pool *pgxpool.Pool, cfg config.Config, mods []modu
 		}
 		if m.ID == "documents" {
 			return "/m/documents/workspace/inbox"
+		}
+		if m.ID == "meters" {
+			return "/m/meters/workspace/overview"
 		}
 		return "/m/" + m.ID + "/" + m.Entities[0].ID
 	}, "dict": dict, "icon": func(asset map[string]string, name string) string { return asset["icons.svg"] + "#" + name }}).Funcs(localizedTemplateFuncs("de")).ParseFS(files, "templates/*.html")
@@ -403,10 +408,61 @@ func (s *Server) Handler() http.Handler {
 }
 
 func (s *Server) Stop() { s.shutting.Store(true) }
-func (s *Server) ready(w http.ResponseWriter, r *http.Request) {
-	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+
+// readinessTTL bounds how often the unauthenticated readiness route may run the
+// full database contract inspection, whatever the probe rate.
+const readinessTTL = 5 * time.Second
+
+// readinessCache lets at most one readiness inspection run at a time and shares
+// its result for readinessTTL, so unauthenticated probes cannot multiply
+// catalog queries on the shared application pool.
+type readinessCache struct {
+	once    sync.Once
+	slot    chan struct{} // a one-slot lock a waiting probe can abandon
+	checked time.Time
+	ready   bool
+}
+
+// readinessHook lets tests observe a probe about to wait for ("waiting") and
+// holding ("acquired") the readiness slot; it is nil in production.
+var readinessHook func(stage string)
+
+func (s *Server) databaseReady(ctx context.Context) bool {
+	s.readiness.once.Do(func() { s.readiness.slot = make(chan struct{}, 1) })
+	// A probe that disconnects stops waiting; the running inspection, which does
+	// not depend on any one probe, still completes and fills the cache.
+	if readinessHook != nil {
+		readinessHook("waiting")
+	}
+	select {
+	case s.readiness.slot <- struct{}{}:
+	case <-ctx.Done():
+		return false
+	}
+	defer func() { <-s.readiness.slot }()
+	if readinessHook != nil {
+		readinessHook("acquired")
+	}
+	// select may pick the free slot although the probe was already canceled.
+	if ctx.Err() != nil {
+		return false
+	}
+	if !s.readiness.checked.IsZero() && time.Since(s.readiness.checked) < readinessTTL {
+		return s.readiness.ready
+	}
+	// The shared result must not depend on one probe's connection lifetime.
+	check, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Second)
 	defer cancel()
-	if s.shutting.Load() || database.Ready(ctx, s.Pool) != nil {
+	s.readiness.ready = database.Ready(check, s.Pool) == nil
+	s.readiness.checked = time.Now()
+	// The shared result stays cached for other probes; a probe that went away
+	// during the inspection is not reported ready.
+	return s.readiness.ready && ctx.Err() == nil
+}
+
+func (s *Server) ready(w http.ResponseWriter, r *http.Request) {
+	// Shutdown can begin while the database inspection runs: check it again.
+	if s.shutting.Load() || !s.databaseReady(r.Context()) || s.shutting.Load() {
 		writeJSON(w, 503, map[string]string{"status": "unavailable"})
 		return
 	}
@@ -714,7 +770,10 @@ func (s *Server) fail(w http.ResponseWriter, r *http.Request, err error) {
 		w.Header().Set("Retry-After", "5")
 	case errors.Is(err, auth.ErrLimited):
 		status, message = 429, auth.ErrLimited.Error()
-		w.Header().Set("Retry-After", "900")
+		// Keep a shorter interval a caller already chose (for example uploads).
+		if w.Header().Get("Retry-After") == "" {
+			w.Header().Set("Retry-After", "900")
+		}
 	case errors.Is(err, auth.ErrCredentials):
 		status, message = 401, auth.ErrCredentials.Error()
 	case errors.As(err, &pgerr) && (pgerr.Code == "23503" || pgerr.Code == "23505" || pgerr.Code == "23514" || pgerr.Code == "23502" || pgerr.Code == "22003" || pgerr.Code == "22P02"):

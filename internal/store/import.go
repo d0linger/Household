@@ -84,16 +84,21 @@ func (s *Store) ConfirmImport(ctx context.Context, id auth.Identity, m module.De
 		if err != nil {
 			return Invalid{err.Error()}
 		}
-		if err = s.validateDomain(ctx, tx, id, m.ID, e.ID, "", data, data); err != nil {
-			return err
-		}
 		rid := value.UUID()
 		var rowOperation string
 		var rowScope financialScope
+		// Authorize the finance parent before any domain read: validateDomain locks
+		// and inspects the parent entry, which would otherwise reveal whether a
+		// hidden entry exists and is posted. Store.Write uses the same order.
 		if financialEntity(m.ID, e.ID) {
 			if err = financialWriteScope(ctx, tx, id, e.ID, rid, data, true); err != nil {
 				return err
 			}
+		}
+		if err = s.validateDomain(ctx, tx, id, m.ID, e.ID, "", data, data); err != nil {
+			return err
+		}
+		if financialEntity(m.ID, e.ID) {
 			rowOperation, rowScope, err = prepareLegacyFinanceMutation(withFinanceOrigin(ctx, "import",
 				[]FinanceResourceRef{{Kind: "import_row", ID: batchID, RowNumber: int64(x.number)}}), tx, id, e.ID, rid, data)
 			if err != nil {

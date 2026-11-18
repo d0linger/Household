@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 // Watch consumes only producer-renamed *.ready.pdf/jpg/png files. It never moves or deletes input files.
@@ -38,7 +39,11 @@ func Watch(ctx context.Context, dir string, cursor Cursor) ([]Candidate, Cursor,
 				return nil, cursor, errors.New("watch folder inventory exceeds 20000 entries")
 			}
 			ext := strings.ToLower(filepath.Ext(name))
-			if name <= cursor.After || entry.Type()&os.ModeSymlink != 0 || entry.IsDir() || !strings.HasSuffix(strings.TrimSuffix(strings.ToLower(name), ext), ".ready") || !slices.Contains([]string{".pdf", ".jpg", ".jpeg", ".png"}, ext) {
+			// Known non-regular entries (FIFOs, sockets, devices, links) never fill
+			// the ten-file batch; openWatchCandidate still checks later swaps.
+			// Names that are not valid UTF-8 cannot be stored losslessly in the
+			// JSON cursor or as a document name, so they are ignored entirely.
+			if name <= cursor.After || !utf8.ValidString(name) || !entry.Type().IsRegular() || !strings.HasSuffix(strings.TrimSuffix(strings.ToLower(name), ext), ".ready") || !slices.Contains([]string{".pdf", ".jpg", ".jpeg", ".png"}, ext) {
 				continue
 			}
 			chosen = append(chosen, name)
@@ -64,17 +69,44 @@ func Watch(ctx context.Context, dir string, cursor Cursor) ([]Candidate, Cursor,
 		if e != nil {
 			return nil, cursor, e
 		}
-		if !info.Mode().IsRegular() || info.Size() < 1 || info.Size() > 10<<20 || time.Since(info.ModTime()) < 2*time.Second {
+		if !info.Mode().IsRegular() {
 			continue
 		}
-		in, e := root.Open(name)
+		// A file that may still be written stops this batch, so the cursor never
+		// passes it; a later poll picks it up.
+		identity := ""
+		if time.Since(info.ModTime()) < watchSettleTime {
+			identity = watchFileIdentity(root, name, info)
+		}
+		if !watchSettled(cursor, name, info, identity, time.Now()) {
+			if !sameSettlingObservation(cursor, name, info, identity) {
+				next.SettlingSince = time.Now()
+			}
+			next.Settling, next.SettlingSize, next.SettlingMod, next.SettlingFile = name, info.Size(), info.ModTime(), identity
+			break
+		}
+		if next.Settling == name {
+			next.Settling, next.SettlingSize, next.SettlingMod, next.SettlingSince, next.SettlingFile = "", 0, time.Time{}, time.Time{}, ""
+		}
+		in, before, e := openWatchCandidate(root, name)
+		if errors.Is(e, errWatchNotRegular) {
+			continue
+		}
 		if e != nil {
 			return nil, cursor, e
 		}
-		before, e := in.Stat()
-		if e != nil {
+		// Decide on the opened file: a replacement after Lstat is retried later.
+		if !os.SameFile(info, before) || before.Size() != info.Size() || !before.ModTime().Equal(info.ModTime()) {
 			_ = in.Close()
-			return nil, cursor, e
+			break
+		}
+		// An empty or oversized file can never be imported: report it and move
+		// the cursor past it, so it cannot hold back the files behind it.
+		if before.Size() < 1 || before.Size() > 10<<20 {
+			_ = in.Close()
+			out = append(out, Candidate{Key: name, Name: name, Rejected: "watch input is empty or larger than 10 MiB"})
+			next.After = name
+			continue
 		}
 		raw, e := io.ReadAll(io.LimitReader(in, (10<<20)+1))
 		after, statErr := in.Stat()
@@ -92,4 +124,45 @@ func Watch(ctx context.Context, dir string, cursor Cursor) ([]Candidate, Cursor,
 		next.After = ""
 	}
 	return out, next, nil
+}
+
+var errWatchNotRegular = errors.New("watch input is not a regular file")
+
+// watchSettleTime is how long a file must stay unchanged before it is read.
+const watchSettleTime = 2 * time.Second
+
+// watchSettled reports whether name may be read: its modification time is at
+// least watchSettleTime in the past, or the worker first saw it unchanged at
+// least that long ago (a producer clock running ahead).
+func watchSettled(cursor Cursor, name string, info os.FileInfo, identity string, now time.Time) bool {
+	if age := now.Sub(info.ModTime()); age >= watchSettleTime {
+		return true
+	}
+	return sameSettlingObservation(cursor, name, info, identity) && !cursor.SettlingSince.IsZero() && now.Sub(cursor.SettlingSince) >= watchSettleTime
+}
+
+// sameSettlingObservation reports whether info is the file the cursor last
+// observed settling: same name, size, time and file identity.
+func sameSettlingObservation(cursor Cursor, name string, info os.FileInfo, identity string) bool {
+	return cursor.Settling == name && cursor.SettlingSize == info.Size() && cursor.SettlingMod.Equal(info.ModTime()) &&
+		cursor.SettlingFile == identity
+}
+
+// openWatchCandidate opens name below root without blocking and checks the
+// opened descriptor itself: the earlier Lstat only saw a replaceable pathname.
+func openWatchCandidate(root *os.Root, name string) (*os.File, os.FileInfo, error) {
+	in, err := root.OpenFile(name, os.O_RDONLY|watchOpenFlags, 0)
+	if err != nil {
+		return nil, nil, err
+	}
+	info, err := in.Stat()
+	if err != nil {
+		_ = in.Close()
+		return nil, nil, err
+	}
+	if !info.Mode().IsRegular() {
+		_ = in.Close()
+		return nil, nil, errWatchNotRegular
+	}
+	return in, info, nil
 }

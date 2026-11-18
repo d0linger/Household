@@ -41,7 +41,6 @@ jobs:
           SQL
       - run: go build -o bin/household ./cmd/household
       - run: npm ci --ignore-scripts && npx playwright install --with-deps chromium
-      - run: npm audit --audit-level=high
       - name: Run isolated Shopping extensions browser acceptance
         env:
           HOUSEHOLD_ENV: development

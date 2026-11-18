@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"reflect"
 	"slices"
 	"strconv"
@@ -68,6 +69,73 @@ func TestFuelModuleImportProfilesRequireTruthfulMapping(t *testing.T) {
 				t.Fatalf("explicit mapping failed: %+v", row)
 			}
 		})
+	}
+}
+
+func TestFuelModuleImportFlagMapsAreDecodedOnceAndBounded(t *testing.T) {
+	raw := map[string]any{"ja": true, "nein": false}
+	options := Record{"full_tank_values": raw, "missing_values": nil, "profile": "household"}
+	decoded, err := fuelModuleImportFlagMaps(options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if choices, ok := decoded["full_tank_values"].(map[string]bool); !ok || len(choices) != 2 || !choices["ja"] || choices["nein"] {
+		t.Fatalf("flag map was not decoded once: %#v", decoded["full_tank_values"])
+	}
+	if _, ok := options["full_tank_values"].(map[string]any); !ok {
+		t.Fatal("the caller's options must stay unchanged for staging")
+	}
+	large := map[string]bool{}
+	for index := range fuelImportMaxFlagValues + 1 {
+		large[fmt.Sprintf("v%d", index)] = true
+	}
+	if _, err = fuelModuleImportFlagMaps(Record{"missing_values": large}); err == nil {
+		t.Fatal("an oversized flag mapping must be refused before any row is parsed")
+	}
+	// Both sides of the limit, isolated from other validation: 32 choices that
+	// include the fixture's value normalize, one more unused choice is refused.
+	bounded := map[string]bool{"true": true}
+	for index := 1; len(bounded) < fuelImportMaxFlagValues; index++ {
+		bounded[fmt.Sprintf("unused%d", index)] = false
+	}
+	options = fuelUnitImportOptions()
+	options["full_tank_values"] = bounded
+	parsed, _, err := fuelModuleImportParse(t.Context(), "household", fuelUnitCSVHeader+fuelUnitCSVRow, options)
+	if err != nil {
+		t.Fatal("a 32-choice mapping must be accepted", err)
+	}
+	if row := fuelUnitImportRows(t, parsed)[0]; len(row["errors"].([]string)) != 0 || row["values"].(Record)["full_tank"] != true {
+		t.Fatalf("the fixture row did not normalize with a 32-choice mapping: %+v", row)
+	}
+	bounded["unused-extra"] = false
+	options = fuelUnitImportOptions()
+	options["full_tank_values"] = bounded
+	if _, _, err = fuelModuleImportParse(t.Context(), "household", fuelUnitCSVHeader+fuelUnitCSVRow, options); err == nil {
+		t.Fatal("parse accepted a 33-choice flag mapping")
+	}
+	// A malformed mapping fails only rows that consult it. In one import, a
+	// blank missing-fill field (complete history) normalizes, and a row with an
+	// explicit value reports exactly the mapping error.
+	options = fuelUnitImportOptions()
+	options["missing_values"], options["history_complete"] = map[string]any{"ja": "yes"}, true
+	blank := strings.Replace(fuelUnitCSVRow, ",false,", ",,", 1)
+	explicit := strings.Replace(strings.Replace(fuelUnitCSVRow, "2026-10-01,1000,", "2026-10-08,1400,", 1), "Original", "Second", 1)
+	if blank == fuelUnitCSVRow || explicit == fuelUnitCSVRow {
+		t.Fatal("fixture rows could not be derived")
+	}
+	parsed, _, err = fuelModuleImportParse(t.Context(), "household", fuelUnitCSVHeader+blank+explicit, options)
+	if err != nil {
+		t.Fatal("a malformed mapping must not refuse the whole import", err)
+	}
+	rows := fuelUnitImportRows(t, parsed)
+	if len(rows) != 2 {
+		t.Fatalf("want two rows, got %d", len(rows))
+	}
+	if errs := rows[0]["errors"].([]string); len(errs) != 0 || rows[0]["values"].(Record)["previous_fill_missing"] != false {
+		t.Fatalf("the row not consulting the malformed mapping did not normalize: %+v", rows[0])
+	}
+	if errs := rows[1]["errors"].([]string); len(errs) != 1 || errs[0] != "CSV-Zuordnung oder Entscheidungen sind ungültig" {
+		t.Fatalf("the row consulting the malformed mapping must report exactly the mapping error: %+v", rows[1])
 	}
 }
 

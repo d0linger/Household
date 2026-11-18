@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestFinanceClosedJSONRejectsAmbiguousAndIncompleteDocuments(t *testing.T) {
@@ -177,5 +178,110 @@ func TestFinanceSelectionAndInitialAccessRemainClosedAndCopied(t *testing.T) {
 	second := financeInitialAccessFor(ctx, "accounts", "bound")
 	if *second.ResponsibleMembershipID != "original" || second.Grants[0].Permission != "edit" || financeInitialAccessFor(ctx, "entries", "bound") != nil {
 		t.Fatal("returned authority escaped its exact target/value boundary")
+	}
+}
+
+func TestFinanceCatchupBehindStopsAtTemplateEnd(t *testing.T) {
+	today := time.Date(2026, 11, 18, 12, 0, 0, 0, time.UTC)
+	cases := []struct {
+		name, last, endsOn string
+		want               bool
+	}{
+		{"ended template with every occurrence materialized", "2026-09-01", "2026-09-01", false},
+		{"ended template with an old gap before its end", "2026-08-01", "2026-09-01", true},
+		{"open template keeps the old backlog check", "2026-09-01", "", true},
+		{"open template inside the automatic window", "2026-11-01", "", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := financeCatchupBehind("2026-01-01", tc.last, tc.endsOn, today, "day", 1, "clamp")
+			if err != nil || got != tc.want {
+				t.Fatalf("financeCatchupBehind = %v, %v; want %v", got, err, tc.want)
+			}
+		})
+	}
+}
+
+// financeNextRecurrenceFromAnchor is the previous search from index zero; the
+// skip-ahead search must return exactly the same occurrences.
+func financeNextRecurrenceFromAnchor(anchor, after, through, unit string, interval int, policy string) string {
+	start, _ := time.Parse(time.DateOnly, anchor)
+	for index := 0; index < 120000; index++ {
+		var date time.Time
+		switch unit {
+		case "day":
+			date = start.AddDate(0, 0, index*interval)
+		case "week":
+			date = start.AddDate(0, 0, index*interval*7)
+		default:
+			months := index * interval
+			if unit == "year" {
+				months *= 12
+			}
+			first := time.Date(start.Year(), start.Month()+time.Month(months), 1, 0, 0, 0, 0, time.UTC)
+			day, last := start.Day(), first.AddDate(0, 1, -1).Day()
+			if day > last {
+				if policy == "skip" {
+					if first.Format(time.DateOnly) > through {
+						return ""
+					}
+					continue
+				}
+				day = last
+			}
+			date = first.AddDate(0, 0, day-1)
+		}
+		if date.Year() > 2200 || date.Format(time.DateOnly) > through {
+			return ""
+		}
+		if civil := date.Format(time.DateOnly); after == "" || civil > after {
+			return civil
+		}
+	}
+	return ""
+}
+
+func TestFinanceNextRecurrenceSkipsAheadWithIdenticalResults(t *testing.T) {
+	anchors := []string{"1996-01-31", "2000-02-29", "2024-03-30", "2026-11-18"}
+	afters := []string{"", "1995-06-01", "1996-01-31", "2001-02-28", "2024-02-29", "2026-11-17", "2030-12-31", "2199-12-30"}
+	for _, anchor := range anchors {
+		for _, after := range afters {
+			for _, unit := range []string{"day", "week", "month", "year"} {
+				for _, interval := range []int{1, 2, 3, 7} {
+					for _, policy := range []string{"clamp", "skip"} {
+						want := financeNextRecurrenceFromAnchor(anchor, after, "2200-12-31", unit, interval, policy)
+						got, err := financeNextRecurrence(anchor, after, "2200-12-31", unit, interval, policy)
+						if err != nil || got != want {
+							t.Fatalf("%s after %s every %d %s (%s): got %q %v, want %q", anchor, after, interval, unit, policy, got, err, want)
+						}
+					}
+				}
+			}
+		}
+	}
+	// A projection over a far-past daily anchor stays cheap: each lookup starts
+	// next to its predecessor instead of at the anchor.
+	last, count := "2026-01-01", 0
+	for last != "" && count < 400 {
+		next, err := financeNextRecurrence("1996-11-18", last, "2027-01-01", "day", 1, "clamp")
+		if err != nil {
+			t.Fatal(err)
+		}
+		last = next
+		count++
+	}
+	if count != 366 {
+		t.Fatalf("daily projection produced %d lookups, want 366", count)
+	}
+}
+
+// BenchmarkFinanceNextRecurrenceFarPastDailyAnchor measures one projection
+// lookup over a 30-year-old daily anchor. A regression to scanning from the
+// anchor shows up as roughly 11,000 steps per lookup instead of a few.
+func BenchmarkFinanceNextRecurrenceFarPastDailyAnchor(b *testing.B) {
+	for b.Loop() {
+		if _, err := financeNextRecurrence("1996-11-18", "2026-06-30", "2027-01-01", "day", 1, "clamp"); err != nil {
+			b.Fatal(err)
+		}
 	}
 }

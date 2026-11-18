@@ -19,7 +19,23 @@ func csvSafe(s string) string {
 	}
 	return s
 }
+
+// exportSlots bounds concurrent generic CSV exports: each one buffers up to
+// exportBudget bytes in the single application process.
+var exportSlots = make(chan struct{}, 2)
+
+// exportBudget is the largest generic CSV export served in one response.
+const exportBudget = 16 << 20
+
 func (s *Server) exportCSV(w http.ResponseWriter, r *http.Request) {
+	select {
+	case exportSlots <- struct{}{}:
+		defer func() { <-exportSlots }()
+	default:
+		w.Header().Set("Retry-After", "5")
+		s.fail(w, r, store.ErrBusy)
+		return
+	}
 	s.Store.Gate.RLock()
 	defer s.Store.Gate.RUnlock()
 	m, e, err := s.resolve(r)
@@ -78,7 +94,9 @@ func (s *Server) exportCSV(w http.ResponseWriter, r *http.Request) {
 		if err := writer.Error(); err != nil {
 			return err
 		}
-		if (m.ID == "expenses" || withPantrySources) && buf.Len() > 16<<20 {
+		// Every module shares the budget; only Expenses and Pantry sources were
+		// bounded before, so maximal longtext records could exhaust memory.
+		if buf.Len() > exportBudget {
 			return store.Invalid{Message: "Export überschreitet die unterstützte Ausgabegröße; Betreiber-Sicherung verwenden"}
 		}
 		return nil
@@ -232,7 +250,12 @@ func (s *Server) importCSV(w http.ResponseWriter, r *http.Request) {
 		for _, item := range items {
 			var fields map[string]json.RawMessage
 			var parent string
-			if json.Unmarshal(item.raw, &fields) == nil && json.Unmarshal(fields["entry_id"], &parent) == nil && value.ValidUUID(parent) {
+			// Bind the same parent identity that normalization stores, so a padded
+			// or differently cased ID cannot skip source authorization at staging.
+			if json.Unmarshal(item.raw, &fields) == nil && json.Unmarshal(fields["entry_id"], &parent) == nil {
+				parent = strings.ToLower(strings.TrimSpace(parent))
+			}
+			if value.ValidUUID(parent) {
 				financeSources = append(financeSources, store.FinanceResourceRef{Kind: "entries", ID: parent})
 			}
 		}

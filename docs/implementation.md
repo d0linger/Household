@@ -1573,3 +1573,420 @@ PR18 head 3ad876c passed all69 hosted checks and all11 workflows; the exact dev-
 PR19 first head 2f7cc2c failed the hosted Browser baseline while scanning the Settings tray: the browser test accepted rejected `animation.finished` promises from `Promise.allSettled`, then immediately required opacity1 and every current animation to be finished. The application, CSS and browser assertions were unchanged from PR18's passing head. The test now waits up to5 seconds for that same final visual condition before running Axe; it retains the exact opacity/animation assertion and fails if the state never settles. Corrected-head browser and full hosted acceptance remain pending.
 
 Focused local verification on the isolated `household-tests` PostgreSQL fixture (127.0.0.1:55434) and review server (127.0.0.1:8101): `browser-check.cjs` passed115 checks with11 screenshots, zero page errors and zero external requests; `browser-a11y-check.cjs` passed38 checks and three dialog scans. An initial standalone A11y invocation failed before reaching the dialog because the fixture still had its bootstrap password; running the registered baseline first established the expected synthetic account state. The verified 8101 Household process and tmpfs test container/network were removed after testing. No local runtime or live data was changed.
+
+### Security audit remediation and CI de-duplication — 16 November 2026
+
+The deep security audit (28 confirmed findings: 3 medium, 25 low; 6 needing validation; 2 rejected) was revalidated against `9f3c439` before fixing. Every finding touched files that changed after the audit snapshot. The Core 42P08 chores outbox defect was already fixed on `HEAD`. Of the rerun harnesses, 31 runs still reproduced their findings on `9f3c439`. The energy-catchup harness again accepted a 1900 device start. The shopping fan-out harness failed during fixture setup because it predates Core40's push-encryption column, so it is inconclusive. The 1900-meter-backfill harness was killed by the sandbox memory limit (exit 137) and is also inconclusive.
+
+Fixes on `dev`:
+- Medium: attachment downloads read and authorize before taking their row lock, without a nested pool acquisition. `/health/ready` runs one cached (5 s) and bounded (2 s) inspection at a time. The chores scheduler gained the live-job guard.
+- Worker: it claims at most 10 jobs and 5 per kind per tick, within 25 s. A failed job no longer ends the tick. Thumbnail and OCR jobs whose source is gone retire as `obsolete_source`. The archived-vehicle fuel capture expires instead of pinning the queue head.
+- Producer bounds: 20 pending preview/OCR jobs per uploader. Document processing refuses duplicates and allows at most 10 outstanding per member. Superseded shopping change events are coalesced before staging. An automatic finance recurrence runs one batch per job, never re-queues and refuses automatic consent beyond 31 days of backlog. The 500 active chore series quota also covers generic and conversion paths.
+- Abuse limits: a login budget per network prefix (IPv4 /24, IPv6 /64), and 10 failed second-factor attempts per account per 15 minutes for login and re-authentication. Calendar feeds are rate limited before the gate, never wait for the gate and have a 5 s budget. CSV exports have a 16 MiB budget for every module and two concurrent slots. The upload quota counts every stored byte.
+- Disclosure: CSV import confirmation checks Finance write scope before validation. Goal contributions deny hidden claims before the capacity comparison. Fuel binding, Meters bill and expense-editor audit rows follow the named entry's Finance visibility.
+- Inputs: one malformed IMAP, watch-folder or Paperless item is logged and skipped instead of halting its input. Meter devices, energy commands, CSV and feed instants use one UTC bound with a 1900-01-03 to 2200-12-29 margin and a 30-year history window. Document reactivation reminders are idempotent.
+- Database: Core41 (`000041_security_hardening`) scopes access-change consent revocation to the target template. It rotates the recurrence scheduler's bounded selection and skips consents already scheduled or holding a live job. It gates the three audit row kinds and re-pins `finance_ready` plus Fuel's Core-version and authority-hash pins. After migrating, the owner revokes runtime writes on every `schema_migrations` ledger; readiness fails if one is writable. Purge requires the exact Pantry ledger version and the owner-owned scrub function. Core41 rewrites no data.
+
+Not changed: digest keys stay per recipient, list and minute; the per-kind claim cap bounds their share instead. The 30-year meter history still allows about 263k hourly aggregates for one early register. Needs-validation leads (definer `search_path` with `pg_temp`, ZIP export memory, recipe import decoding, image decode budget) remain open.
+
+CI de-duplication: `go vet -tags=integration,testtools ./...` now runs once in `GOLint` instead of in all 16 test shards. `npm audit --audit-level=high` runs once in `WorkflowAndSecrets` instead of in the browser baseline, the 6-way notification matrix and Shopping extensions. The weekly security-maintenance audit is unchanged. The shard regression test asserts the new placement.
+
+Core41 also freezes the seven Core40 function definitions it replaces in the owner-only `core.security_hardening_predecessor_catalog()`. The Core39 upgrade fixtures first reconstruct exact Core40 from it, instead of bypassing guards.
+
+Local evidence: Go unit tests for all packages, `gofmt`, integration-tagged `go vet`, 524/524 Node tests, the localization build, workflow policy and 120 migration checksums passed.
+
+Targeted integration campaign on the isolated 55434 fixture:
+- Store: 31 mains passed (2450 s), including the far-past consent refusal.
+- Database and document inputs passed.
+- Web: 50 of 52 mains passed in the first run (6337 s). The two Documents upgrade mains then failed with `unexpected crypto predecessor source 41` because their helper only knew Core40. After the predecessor snapshot was added, those two plus the five other Core39-reconstruction mains passed (650 s).
+- Maintenance: all five mains passed when run one at a time from a clean schema. Their 20-second fixture reset is close to this Windows host's measured 17.9 s full-schema drop. Two runs started while the audit sandboxes were still active timed out inside migration and passed on rerun.
+
+Not run: the pinned golangci-lint v2.15.0 was not available offline, and the older global binary cannot read Go 1.27 export data. Actionlint was not installed. The full native campaign, browser acceptance and hosted CI were not run and remain pending.
+
+Local stack refresh (authorized in `AGENTS.md`):
+- `household:local` was tagged `household:rollback-pre-core41` and the app was stopped.
+- A one-off encrypted backup used `household-backup:pre-core41`, built from committed Core40 `9f3c439`, and produced snapshot `259f7e22`. Its isolated `restore-check` exited 0 and the run is recorded `complete` and verified.
+- The rebuilt image then migrated core to 41 (not dirty). `household_app` has no UPDATE on `core.schema_migrations`.
+- The app came back healthy: `/health/ready` and `/health/live` returned 200, `/login` returned 200 on the canonical host, and the new translations are embedded in the running binary.
+- Named volumes and secrets were unchanged. The task-owned restore and test databases were removed. No push, publication or remote deployment occurred.
+
+## Simpler secrets and setup (2026-11-17)
+
+Changes:
+- Secrets folder: both images set `HOUSEHOLD_SECRETS_DIR=/run/secrets`. A secret setting `HOUSEHOLD_<NAME>` without a value or `_FILE` is read from `/run/secrets/<name>`; explicit settings win, empty files count as unset, and a non-regular entry is an error. The encryption key and keyring are discovered this way only when neither has an explicit source, and both present in the folder are refused. Web Push and the meters CA use the same lookup.
+- Database URLs: without `HOUSEHOLD_DATABASE_URL`, the app builds `postgres://USER:PASSWORD@HOST/NAME?sslmode=disable` from `HOUSEHOLD_DATABASE_PASSWORD` (percent-encoded), `HOUSEHOLD_DATABASE_USER` (default `household_app`), `HOUSEHOLD_DATABASE_HOST` (default `db:5432`) and `HOUSEHOLD_DATABASE_NAME` (default `household`). URL and password together are refused. Restore checks default to `household_restore` on `restore-db:5432` with the same credentials. The `app_database_url`, `owner_database_url` and `restore_database_url` secret files are no longer generated or mounted; existing files are simply unused.
+- `household init [--development] [--env-template FILE]` creates every secret (including the Web Push key pair and empty integration placeholders) exclusively, rolls back on failure, never prints values, and starts `.env`. `scripts/initialize.sh`/`.ps1` now run it with Go, or inside the image without Go; the PowerShell wrapper still restricts the folder ACL.
+- Compose: no `*_FILE` wiring; services list secrets, and per-service names use absolute targets such as `/run/secrets/database_password`. The keyring overlays now use the absolute target `/run/secrets/encryption_key`; the committed relative target did not replace the legacy mount in `docker compose config` (Compose 5.7.0 showed both), so the ordering note about `!reset` is gone. `compose.all.yaml` is 99 lines with 14 secrets.
+
+Evidence:
+- `gofmt`, `go vet ./...`, integration-tagged vet of `cmd`, `config` and `maintenance`, all Go unit tests, and 524/524 Node tests passed. New tests cover folder lookup, precedence, empty placeholders, the encryption conflict, URL building and encoding, restore defaults and `init`.
+- Rendered `docker compose config` for the base, Web Push + keyring, backup + both keyring overlays, Documents/Meters overlays and `compose.all.yaml`: each service mounts one `encryption_key` and the intended secrets.
+- Local stack: `household:local` was tagged `household:rollback-pre-secrets-dir`, rebuilt and recreated (no migration change, so no pre-upgrade backup was required). `migrate` exited 0 and `app` became healthy with no `*_FILE` variables; `/health/ready` returned 200. A backup through `compose.backup.yaml` produced snapshot `bd7078b7`, and `restore-check` on the disposable `restore-db` exited 0 using the derived restore URL; `restore-db` was removed afterwards.
+- `household init --development` inside the rebuilt image created all 15 files in an empty scratch folder and refused a second run.
+
+Not run: `compose.all.yaml` was not started (it shares the project name with the running dev stack and needs real integration endpoints), the integration test campaigns and browser suites were not rerun, and the shell wrapper was not executed on Linux.
+
+## Single-file installation for non-experts (2026-11-17)
+
+Changes:
+- Image: the `runtime` stage adds `restic` and `postgresql18-client`, creates `/data/backups` and `/work` for uid 10001, and defaults `HOUSEHOLD_UPLOAD_DIR=/data/uploads`. The container workflow now builds and publishes the `ocr` target, so the published image includes Tesseract and the backup tools.
+- `household start` reads `POSTGRES_PASSWORD`, `HOUSEHOLD_OWNER_PASSWORD` and `HOUSEHOLD_APP_PASSWORD`. As the superuser it runs `database.Bootstrap`, which mirrors `deploy/postgres/init.sh` idempotently: it creates the roles or updates their passwords, gives the database to the owner, limits CONNECT and revokes public-schema CREATE. It then migrates as the owner, validates the serve configuration, and `exec`s `household serve` as `household_app` with the setup credentials removed from the environment.
+- `household init` prints a complete commented German `.env` (all generated secrets, the Web Push key, optional integrations commented out) and refuses to print to a terminal. `--files` keeps the secrets-folder behaviour, which the initialize scripts now pass.
+- Features: OCR defaults to on when `/usr/bin/tesseract` exists. A Web Push private key turns Web Push on unless `HOUSEHOLD_WEB_PUSH_ENABLED` is set. The VAPID contact defaults to the HTTPS origin. Backups accept `RESTIC_PASSWORD` as well as `RESTIC_PASSWORD_FILE`.
+- `deploy/simple/compose.yaml` (db, app with `start`, backup) and the German guide `docs/installation.md`.
+
+Evidence:
+- `gofmt`, `go vet ./...`, Linux `go vet` of `cmd`, all Go unit tests (including new start, init, auto-enable and default tests) and 524/524 Node tests passed. The workflow policy check passed.
+- The image built locally. In it, `pg_dump` 18.7, `restic` 0.18.1 and `/usr/bin/tesseract` are present, and `/work` and `/data/backups` are owned by uid 10001.
+- End to end in a scratch folder, as project `household-simpletest` on port 8109, with no repository files:
+  - `init --development > .env` was followed by `docker compose up -d --wait` on a fresh database. Role setup and migration took about 80 s. The first run exposed that the image health check marked the app unhealthy during that time; the compose file now gives it a 10-minute start period, and the backup service's inherited health check is disabled.
+  - After the fix: `/health/ready` and `/login` returned 200, and the first `backup-loop` run created snapshot `86726b4f`.
+  - A restart (the `ALTER ROLE` path) came back healthy, and PID 1 (`household serve`) had no `POSTGRES_PASSWORD`, owner or app password variables.
+  - The test project, its volumes and its image were removed afterwards.
+- The dev stack was rebuilt (runtime target) and is healthy on 8100. No migration changed.
+
+Not run: the CI Trivy gate for the larger `ocr` image (adds Tesseract and restic) has not run yet, and a fixable HIGH/CRITICAL finding there would block publication. The published `:production` image does not contain these changes until the release pipeline runs. Restore verification through the simple compose and a real HTTPS reverse proxy were not tested.
+
+## One compose file as the only setup (2026-11-17)
+
+Changes:
+- `compose.yaml` (45 lines) is now the only deployment file. Removed:
+  - `compose.all.yaml`, `.env.all.example` and `.env.example`;
+  - every overlay (`backup`, `keyring`, `backup-keyring`, `webpush`, `documents*`, `meters-*`, `ocr`);
+  - `deploy/simple/` and `deploy/backup/Dockerfile`.
+- `compose.yaml` contents:
+  - `db` runs as uid 70.
+  - `app` (`start`) and `backup` share one hardening anchor: read-only, size-limited `/tmp`, `cap_drop: ALL`, `no-new-privileges`, `env_file: .env`, a 20 s stop grace period and bounded logs.
+  - It defines no custom networks and no cgroup limits, so it runs under rootless Docker.
+- The image's `HEALTHCHECK` now has a 10-minute start period and a 5 s start interval. Its environment defaults `RESTIC_REPOSITORY=/data/backups` and `RESTIC_CACHE_DIR`.
+- `household setup` creates the roles and migrates without serving.
+- `restore-check` with `POSTGRES_PASSWORD` and no explicit restore URL works on a temporary database, so the separate `restore-db` service is gone. Steps:
+  1. Create `household_restore` on the application's server, replacing any leftover copy.
+  2. Prepare the roles in it.
+  3. Verify the snapshot.
+  4. Always drop the copy (`DROP DATABASE ... WITH (FORCE)`), also after a failure.
+- `household init --files` now only creates the test-database secrets, without `.env`, Web Push or placeholder files. The initialize scripts describe it that way.
+- `scripts/test-recovery.ps1` uses its own in-memory container `household-recovery-test-db` on `household_default`, prepared with `backup setup`.
+- CI (`fuel-ocr-recovery`) passes the runtime image as the toolbox, and the scripts use `/data/backups`. The Dependabot entry for `deploy/backup` is gone.
+- Docs now describe `.env` and the `backup` maintenance service: README, installation (with a rootless section), operations, security, the meters contract and the Fuel browser notes.
+- OCR runs locally in the container: Tesseract (`deu+eng` from Alpine's `tesseract-ocr` packages) for images and scanned PDF pages, and poppler (`pdftotext`, `pdftoppm`) for PDF text and page rendering.
+
+Evidence:
+- Local stack migration:
+  - A pre-switch backup `292c207a` was taken with the committed setup and the old backup image; its `restore-check` on the old `restore-db` exited 0.
+  - `.env` was generated from the existing `.local/secrets` values, keeping the encryption, CSRF, rate, role and restic secrets. The previous `.env` is kept at `.local/env.pre-single-compose`; `household:local` from before is tagged `household:rollback-pre-single-compose`.
+  - The stack runs from `compose.yaml` with `HOUSEHOLD_IMAGE=household:local`. Data is intact: 2 users, core version 41, not dirty. `db` runs as uid 70, `app` as uid 10001, and `serve` has no superuser or owner password in its environment.
+  - New backups `d9b538d0` and `98e9361e` were created. `restore-check 98e9361e` exited 0, and `household_restore` was dropped afterwards.
+  - The old `household_backup_repository` and `household_backup_work` volumes are kept. The stale `household_database` and `household_web` networks were removed.
+- Fresh installation from the 45-line file (scratch project, port 8109, removed afterwards): `init --development` was followed by `up -d --wait` (healthy). `/health/ready` and `/login` returned 200, the first backup `d7cc19d1` was created, its `restore-check` exited 0, and a restart came back healthy.
+- `gofmt`, `go vet` (Windows and Linux), all Go unit tests, 524/524 Node tests and the workflow policy check passed.
+- `scripts/test-recovery.ps1` now passes (`"passed": true`) on its own in-memory container, leaving no container or volume behind. Two pre-existing fixture defects were fixed:
+  - Since Core30, owner maintenance inserts skip the finance producer (`core.finance_real_maintenance()`), so the live entry's policy and three subjects are now explicit fixture rows.
+  - Since Core29, the duplicate-key probe on `core.expense_edit_operations` needs the audit actor context: it now sets `household.audit_*` inside a rolled-back transaction, so the `ON CONFLICT DO NOTHING` result is reached.
+- `scripts/verify.ps1` passed: formatting, vet, shuffled unit tests and coverage, module verification, 120 migration checksums, workflow policy, local-artifact and quality-tool tests.
+- Integration tests (`-tags=integration,testtools`) on the isolated 55434 database passed for `cmd/household`, `internal/config`, `internal/database` and `internal/maintenance` (411 s). The store and web integration suites were not rerun; this change does not touch them.
+
+- Docs gained a migration guide from the `.local/secrets` setup to `.env` (installation, linked from operations), and testing, Shopping and meters references were updated.
+
+Not run:
+- Rootless Docker (Windows Docker Desktop here).
+- The CI Fuel browser recovery workflow and the Trivy scan of the `ocr` image.
+- A real HTTPS reverse proxy.
+
+## Critique and polish of all pages (2026-11-17)
+
+Critique (`/impeccable critique`, dual agent on the synthetic review server :8101) scored 21/40, with 3 P1 and 2 P2 issues. The snapshot is `.impeccable/critique/2026-11-17T21-30-17Z__localhost.md`.
+
+- **CLI detector:** 65 findings. All are false positives: the Go-template stylesheet hrefs cannot be resolved, so the detector measured unstyled markup, and the receipt image it flagged is hidden and filled by JavaScript.
+- **In-page overlay:** could not run, because the app's CSP (no `wasm-unsafe-eval`) blocks the WebAssembly detector core.
+
+Polish (refinement within Ocean/Ruhe; no visual-world change):
+- Fuel no longer shows the "Antwort nicht bestätigt" recovery lock after a server-confirmed operation. `accepted()` marks the stored locator as accepted, and a reload forgets it. A lost response still requires the explicit status check, as the browser test expects.
+- Fuel previews and receipts show labelled fields first. Unlabelled technical keys (IDs, raw keys) move into a collapsed "Technische Details" section. The capture pane opens the fill-up form by default, and the pane summary formats today's date by language.
+- Recipe servings and quantities drop trailing zeros ("2.000000" → "2", "1.250000" → "1.25"). The values stay exact.
+- Search shows the module's localized name instead of its key.
+- Finance tables format civil dates (`*_on`, `next_due`) by language without shifting the day.
+- Routine workspace status lines (Chores, Documents, Meters, Finance, Fuel) are quiet secondary text instead of accent notices.
+- Chores Today shows only "Aufgaben für" in front; the other six filters sit under "Weitere Filter · N aktiv", following the Documents pattern.
+- The Meters module link opens its workspace instead of the legacy entity list. Manage pages are titled "Verwalten · <Modul>".
+- Reference selectors announce result counts only after a search. With no search term they say nothing, or "Noch keine Einträge zur Auswahl." when the list is empty.
+- Touch targets and labels:
+  - Workspace context links and the Manage link are 44px high at every width; back links are 44px; checkboxes and radios are at least 24px.
+  - Today's "Aktualisieren" no longer breaks mid-word.
+  - The tray button's accessible name is now "Einstellungen und Konto öffnen".
+
+Evidence:
+- `go vet`, all Go unit tests, the localization catalog check and the localization message audit passed.
+- Correction (2026-11-18): the 524/524 Node result was taken before the substitution fix. CI on PR 20 then failed `recipe-expansion.test.cjs`, because the test loads `unchangedSubstitutionSource` in isolation without the new `fieldText` helper. The test now loads the production `decimalKeys`/`fieldText` lines and also asserts that `100.000000` from the server matches a displayed `100`. After that fix, 524/524 Node tests passed locally.
+- The same CI job scans the full history with gitleaks. It flagged README prose in `95812ab` (line 78, the sentence listing which settings are mounted as secret files) as `generic-api-key`. The line holds no credential and the pushed commit cannot be rewritten, so `.gitleaksignore` lists exactly that fingerprint with the reason. A local full-history scan then found no leaks; design-preview, workflow, task-list, artifact and actionlint checks passed locally.
+- CodeRabbit skipped PR 20 because 110 changed files exceed its limit of 100. `.coderabbit.yaml` now leaves out `docs/**`, the generated translation catalog, the migration checksum manifest and the ten Compose overlays this PR deletes, so code, templates, workflows, scripts and Compose remain in the review.
+- Full browser regression (`npm run test:browser`, 34 components):
+  - The first two runs exposed two regressions from the recipe decimal change, both fixed:
+    - The history preview must keep the exact `125.000001` notation, so the comma localization was dropped.
+    - The substitution handoff compared the normalized quantity with the raw server value; it now uses the same normalization.
+  - The third run passed 33 of 34 components. `browser-documents-workspace-check` stopped at "Actual local PDF processing failed". The review server runs natively on Windows without Tesseract, while earlier passing Documents runs used the container image with Poppler/Tesseract. This change only renamed the Documents status class. The component was not rerun in a container, so Documents remains unverified for this change.
+- Re-inspected on the review server:
+  - Mobile: Today, Chores Today and Fuel capture.
+  - Desktop: Finance entries, the Fuel Manage page and search.
+
+Not changed (recorded for later):
+- H1 placement across modules.
+- Module naming drift.
+- Over-applied Fuel previews for low-stakes writes.
+- Finance filter panels.
+- Plural forms such as "1 Einträge".
+- Hidden decorative eyebrow markup.
+- Forced-password-change confirmation field.
+- Notification timestamps.
+- The service-worker registration error seen only in the embedded browser pane.
+
+## CodeRabbit review of PR 20 (2026-11-18)
+
+CodeRabbit reviewed `9fccf69` with 20 inline findings and one outside the diff. Each finding was checked against the code before any change.
+
+Fixed:
+- **Restore check:**
+  - `restore-check` now rejects a source database named `household_restore` before anything is created or dropped (`maintenance.ValidateRestoreTarget` runs first).
+  - A restore URL from the secrets folder now counts as an explicit target (`config.Configured`), so no temporary database is prepared next to it.
+  - `database.WithRestoreDatabase` holds one session advisory lock on a dedicated maintenance connection from the first drop to the final drop. A concurrent check fails fast with "another restore check is running" instead of dropping the other check's database.
+- **Second-factor budget:**
+  - `factorBudget` now locks the account's TOTP row before reading the failure count.
+  - A wrong code is counted inside the same transaction and committed before that lock is released.
+  - `Login` and `Reauthenticate` can therefore no longer check an eleventh code concurrently. `core.rate_limit_buckets` is not audited, and `verifyFactor` writes nothing when it rejects a code.
+- **Documents:** a retry of a cancelled or failed processing request passes the same admission checks as a new request: the per-person limit, and no duplicate extraction of a version that is already queued. Its own row is excluded from the counts.
+- **Finance:** the automatic catch-up check caps its search at `ends_on`, so an ended template whose occurrences all exist no longer reports `catchup_required`.
+- **Meters:**
+  - The generic `meters/readings` path applies the same instant bound as `reading.save`.
+  - Device updates check only installation and removal dates that change, so an unchanged old date never fails the moving 30-year floor.
+- **Uploads:**
+  - The outstanding-job limit applies only to uploads that queue a thumbnail or OCR job; a PDF without capture is bounded by the storage quota alone.
+  - `fail` keeps a `Retry-After` the caller already set (30 s for uploads) and uses 900 s only as the default.
+- **Calendar feeds:** the chores and meal-plan feeds release the module gate right after the store lookup, before rendering or writing the response.
+- **Chores Today:** the "Weitere Filter · N aktiv" summary is recounted after every submission.
+- **Web Push:** an HTTPS origin with a port other than 443 now yields the host-only contact (`https://host`). Previously no contact was derived, and the push status stayed `not_configured`.
+- **`init --files`:** the database passwords (`postgres_password`, `owner_password`, `app_password`) are mode 0644 inside the 0700 secrets folder, so the PostgreSQL container's own user can read them on Linux. Every other secret stays 0600.
+- **`.env` permissions:** the `.env` generation examples in `compose.yaml`, the README and the installation guide run under `umask 077`.
+- **`scripts/test-recovery.ps1`:**
+  - strips one pair of matching quotes like Compose;
+  - percent-encodes the owner password;
+  - waits for TCP readiness;
+  - runs `setup` with `$BackupImage`;
+  - removes only the container it created.
+- **`.coderabbit.yaml`:** sets `auto_review.enabled: false` explicitly.
+
+Changed less than suggested:
+- **Web Push:** Household does not fail at start-up when Web Push is enabled without a contact. `init` always generates a VAPID key, and the code deliberately reports an enabled but unconfigured push as `not_configured` (covered by `TestWebPushConfigurationBoundaries`). A start-up error would stop every HTTP or LAN installation.
+- **Documents retry:** the per-person limit is counted for the member who retries; `requested_by` of the original request is unchanged.
+
+New tests:
+- `TestSecondFactorBudgetHoldsUnderConcurrentWrongCodes` (web integration): nine failures, then five concurrent wrong codes; exactly one is checked.
+- A retry regression in `TestDocumentsNativeOriginalVersionScanJobCancelRetryAndSearch`.
+- A far-future reading regression in the web server integration test.
+- `TestFinanceCatchupBehindStopsAtTemplateEnd`.
+- `TestOriginWebPushContactDropsUnsupportedPorts`.
+- Retry-After cases in `TestFail`.
+- Mode checks in the `init` test.
+- `TestRestoreDatabaseLifecycleIsSerialized`. It needs `HOUSEHOLD_TEST_SUPERUSER_URL` and skips without it. CI does not set it, so it runs only locally.
+
+No new automated test covers the device-date change (the floor moves with the clock) or the gate release in the feeds (a slow client).
+
+## Security scan findings (2026-11-18)
+
+Seven findings from a security scan were checked against the code. Five are fixed here; two need an energy-projection design change and are recorded below.
+
+Fixed:
+- **Fuel CSV import (CWE-400, medium):** `fuelModuleImportParse` decodes `full_tank_values` and `missing_values` once, before any row is read, and refuses more than 32 entries per map. Previously every row lookup re-encoded and re-decoded the whole map. `TestFuelModuleImportFlagMapsAreDecodedOnceAndBounded`.
+- **Finance recurrence (CWE-407, medium):** `financeNextRecurrence` starts at the last index not after `after` instead of index 0. Dates still derive from the original anchor, so clamping is unchanged. A cashflow projection over an old daily anchor now costs a few steps per occurrence. `TestFinanceNextRecurrenceSkipsAheadWithIdenticalResults` compares the result with the previous full scan for 1,024 combinations of anchor, unit, interval and policy, plus a 366-day projection.
+- **Document watch inbox (CWE-367, low):** candidates are opened with `O_NONBLOCK` on Unix, and the opened descriptor must be a regular file. A FIFO swapped in after the `Lstat` check is skipped instead of blocking the shared worker. `TestOpenWatchCandidateRefusesFIFOWithoutBlocking` (Unix; it passed in a local Linux Go container).
+- **Shopping copies on the mandatory password page (CWE-863, low):** `/change-password` now calls `HouseholdShoppingDevice.suspend()`. That synchronously denies retained copies and sets `authorized_until=0`, so only a complete current fetch makes them readable again. The common-startup test asserts the call.
+- **Recipe offline reader (CWE-863, low):**
+  - Library buttons keep only the recipe id. Each open re-reads the copy through `local()`, which re-checks the owner, the grant and expiry, and drops expired copies.
+  - An open reader locks itself and releases its image URLs when the copy expires.
+  - No automated test covers the reader timer; the existing Node harness has no reader DOM.
+
+Open, needs a design change (not fixed):
+- **Meters dirty-range merge (`meters.invalidate`, CWE-400, low):** a late sample merges into the accumulated range and restarts aggregate work for the whole range. A fix needs separate tracking of new ranges or an aggregate cursor, which means a new migration and worker changes.
+- **Hourly aggregate materialization (`energy_aggregates.go`, CWE-400, low):** the finding's 1900 example cannot occur, because `EnergyInstantAccepted` limits inputs to the last 30 years. A 30-year span is still about 263,000 hourly buckets per register, and continuations have no durable work budget. A bucket budget or sparse storage is a projection design change.
+
+## Second CodeRabbit review of PR 20 (2026-11-18)
+
+The second review of `bb045a2` reported 34 findings:
+- 2 inline,
+- 8 outside the diff,
+- 20 minor (14 in the summary and 6 in a follow-up comment),
+- 4 nitpicks.
+
+Most concern code the first fixes touched, or neighbouring code the first review never printed: it posts at most about 20 comments and puts major findings first. Each finding was checked against the code. All 34 are addressed.
+
+- **Database sources:**
+  - Explicit `HOUSEHOLD_DATABASE_URL`/`_PASSWORD` settings now disable folder discovery for the other one, like the encryption key sources. A mounted `database_url` therefore no longer conflicts with the app-role handoff of `start`.
+  - `TestDatabaseSourceExplicitBeatsFolder`.
+- **Restore check:**
+  - The provisioning decision uses the resolved restore URL, so an empty URL file means "derive".
+  - All restore locks are taken in the `postgres` maintenance database; others are refused before DDL, because advisory locks are per database.
+  - The lock session sets `idle_session_timeout=0`.
+  - An explicit target that is the managed `household_restore` on the same server runs under the same lock (`database.WithRestoreLock`).
+  - The lifecycle test now:
+    - requires the disposable test server and refuses to run if `household_restore` already exists;
+    - asserts `ErrRestoreSelfTarget`;
+    - covers a non-canonical maintenance database and an explicit check holding the lock.
+- **Second factor:**
+  - Only enabled TOTP credentials are locked, the same lock order as `verifyFactor`.
+  - A failed commit is logged instead of being counted again on the pool.
+  - The concurrency test:
+    - waits for a safe 15-minute window;
+    - holds the TOTP row until at least two logins wait on locks;
+    - checks the exhausted budget with an unused recovery code.
+- **Uploads:**
+  - The job limit counts only jobs the worker can still claim (enabled module at the job's generation).
+  - It also counts the jobs the upload adds, so 19 + 2 is refused.
+  - `TestUploadJobsAddedCountsEveryQueuedJob`.
+- **Feeds:** a deferred `gatedLookup` releases the module gate even if the lookup panics. `TestGatedLookupReleasesTheGateOnPanic`.
+- **Readiness:**
+  - A probe waits on a one-slot channel it can abandon on cancellation.
+  - `shutting` is read again after the inspection.
+  - `TestReadinessProbeStopsWaitingWhenCanceled`.
+- **Documents:**
+  - A no-op archive request returns the document without touching its version.
+  - Unarchiving skips deadlines that already have a pending reminder.
+  - A cancellation may keep a stored due date outside 1900–2200, but a changed date is still validated.
+  - `TestDocumentsNativeArchiveNoOpRemindersAndLegacyDeadlineCancel` (it skips the legacy-date part if the schema itself refuses such dates).
+- **Watch inbox:**
+  - Non-regular entries are skipped before the ten-file batch fills.
+  - The FIFO tests exclude Solaris/illumos, whose `syscall` lacks `Mkfifo`.
+  - `TestWatchSkipsNonRegularEntriesBeforeTheBatchLimit` passed in a local Linux Go container.
+- **Meters:**
+  - A reading update re-checks the 30-year floor only when its instant changes.
+  - The integration test asserts the application message, not only the status.
+- **Fuel import:**
+  - A malformed flag mapping fails only the rows that consult it.
+  - The 32-choice limit is tested on both sides.
+- **Finance:** `BenchmarkFinanceNextRecurrenceFarPastDailyAnchor` makes a skip-ahead regression visible (about 5 µs per lookup locally).
+- **Frontend:**
+  - The Chores filter badge updates only after the tasks load.
+  - A Recipe copy's expiry is checked again right before rendering.
+- **Setup:**
+  - The quick start downloads `compose.yaml`.
+  - `.env` is created with `umask 077` and `set -C`, so an existing `.env` is never overwritten.
+- **`test-recovery.ps1`:**
+  - It joins the running Compose project's network.
+  - It publishes the report only after the rehearsal container is removed.
+  - A failed removal is reported without hiding an earlier error.
+- **Tests:** the `init` test owns its own list of the three 0644 files.
+
+## Third CodeRabbit review of PR 20 (2026-11-18)
+
+The third review of `671aafd` reported 36 findings:
+- 6 inline,
+- 10 outside the diff,
+- 18 minor,
+- 2 nitpicks.
+
+About 25 concerned code added by the previous fix rounds, most of it the explicit-target restore lock. All 36 are addressed, several by simplifying rather than adding code:
+- **Restore check redesign:**
+  - Each automatic `restore-check` now creates its own database (`household_restore_auto_<unix>_<random>`) on the server of the selected source connection and drops only that database. A later check drops leftovers older than six hours.
+  - This replaces the advisory lock, the canonical maintenance database, `idle_session_timeout`, the alias-sensitive explicit-target lock and the derived fallback host. Concurrent checks, aliases of one server and explicit `household_restore` targets can no longer drop each other's database, and a lost maintenance session cannot either.
+  - `config.RestoreTarget` resolves target and mode in one read, derived from the selected source URL (never an ignored password file or default host).
+  - `ValidateRestoreTarget` accepts `household_restore` or a well-formed automatic name and refuses any source starting with `household_restore`.
+  - `TestAutomaticRestoreDatabasesAreIndependent`:
+    - checks every pgx fallback endpoint;
+    - covers concurrent checks and stale/young leftovers;
+    - covers a failed check;
+    - checks that maintenance through a restore database is refused before the callback.
+- **Configuration:**
+  - An explicit but empty `_FILE` counts as unset for the database URL/password conflict.
+  - `TestRestoreTargetFollowsTheSelectedSource`.
+- **Documentation:**
+  - The upgrade path generates `.env.new`, takes over settings and only then replaces `.env`.
+  - The README now states which commands honour `HOUSEHOLD_DATABASE_URL` and documents `RESTIC_PASSWORD_FILE`.
+  - It describes the meter CA mount and limits the read-only claim to `app` and `backup`.
+  - The operations guide describes the per-run restore database and the rehearsal.
+- **`test-recovery.ps1`:**
+  - Every run has its own container name, directory (restricted before any credential is written), uploads, volumes and generated database passwords. It no longer reads `.env` passwords.
+  - It runs `setup` with `docker run` of the tested image and accepts `-ProjectName`.
+  - It removes everything with exception-safe checks.
+  - It writes `report-<run>.json` with the image only after a clean cleanup.
+- **Watch inbox:**
+  - Empty or oversized files are reported as rejected and passed by the cursor.
+  - A file still being written stops the batch instead of being passed.
+  - `TestWatchPassesOversizedFilesWithTheCursor`.
+- **Second factor:**
+  - Without an enabled credential the failure budget is not consulted, so a factor reset is not blocked by earlier failures.
+  - `TestSecondFactorAdmissionWaitsOnTheTOTPLockAndResetClearsTheBudget` proves through `pg_locks` that `Reauthenticate` waits on the held TOTP row and reads the budget after it.
+- **Documents:**
+  - An archived document gets no new deadline reminder.
+  - The legacy-date test checks the refused changed date before the allowed cancellation, and skips only for a schema constraint.
+- **Feeds:** the Chores feed answers failures in plain text without echoing the capability URL. `TestFeedFailureNeverEchoesTheCapabilityURL`.
+- **Uploads:**
+  - The job count matches what the handler queues: OCR only when enabled, PDFs none.
+  - A running job counts on its final attempt.
+  - A handler-level boundary test in `TestApplicationContract`: 19 + 1 is admitted, the next upload gets 429 with `Retry-After: 30`.
+- **Readiness:**
+  - A probe canceled before it gets the slot never uses the cache.
+  - The test cancels a probe after it started waiting.
+- **Meters:** a failed stored-timestamp lookup returns the database error.
+- **Chores:** the combined paused/archived filter counts and checks either parameter.
+- **Fuel:** the mapping test separates a row that does not consult the malformed mapping from one that does.
+
+Follow-up from CodeRabbit's replies on `839ff22`:
+- An explicit target could still carry an automatic name (`household_restore_auto_…`), and another check's cleanup of interrupted runs could drop it.
+- `ValidateRestoreTarget` (explicit and derived targets) now accepts only `household_restore`, and `ValidateAutomaticRestoreTarget` (the automatic path) only automatic names. `VerifyRestore` keeps accepting both.
+- `TestValidateRestoreTarget` and `TestValidateAutomaticRestoreTarget`.
+
+## Fourth CodeRabbit review of PR 20 (2026-11-18)
+
+The fourth review of `839ff22` reported 24 findings: 20 inline, 2 outside the diff and 2 nitpicks. All are addressed.
+
+- **Restore check:**
+  - Bug from the per-run design: `pg_restore` restored into a hard-coded `--dbname=household_restore`, not into the validated per-run database. It now uses the target's own database name.
+  - The rehearsal now also runs `restore-check` without an explicit target (setup credentials only) and checks that no `household_restore_auto_*` database remains. That proves the automatic path end to end.
+  - `Bootstrap` tolerates a concurrent creation of the cluster-wide roles.
+  - The final drop reconnects if the server ended the idle maintenance session.
+  - Only `household_restore` and automatic names are reserved as sources, so `household_restored` stays valid.
+  - The lifecycle test uses random fixture suffixes and registers each fixture's cleanup as soon as it exists.
+- **Database credentials:**
+  - Explicit values and secrets-folder files are now read once each, in two tiers.
+  - The URL is built from exactly the value that was selected.
+  - An empty explicit file falls back to the folder.
+  - `TestEmptyExplicitURLFileFallsBackToTheFolder`.
+- **Watch inbox:**
+  - A file whose timestamp is recent or in the future settles from the worker's first observation (stored in the cursor), so a producer clock running ahead cannot hold the inbox.
+  - Size rejections are decided on the opened descriptor; a file replaced after `Lstat` is retried.
+  - The tests assert ten named, byte-less rejections and the future-timestamp case.
+- **Uploads:**
+  - Intake thumbnails carry `origin=document_input` and are not charged to the approving administrator's manual budget.
+  - The handler boundary test uses its own documented limit of 20.
+- **Chores:**
+  - The feed answers the event cap with a localized 422, not a retryable 503.
+  - The filter disclosure opens when a required filter inside it is invalid.
+- **Readiness:** a probe canceled during the inspection is not reported ready. The test cancels at the "waiting" and "acquired" points through a bounded hook.
+- **Second factor:**
+  - Detached failure accounting is bounded to 10 seconds.
+  - The test checks every seeded failure.
+- **Docs:**
+  - The README states when restore cleanup can be skipped, and that explicit targets are never dropped.
+  - It explains how to mount the restic password file for UID 10001.
+- **Fuel:** the mapping test checks both rows in one import, with the exact error text.
+
+## Fifth CodeRabbit review of PR 20 (2026-11-18)
+
+The fifth review of `2f19230` reported 13 findings: 10 inline and 3 outside the diff. All are addressed.
+
+- **Restore check:**
+  - It no longer rotates passwords. `database.PrepareRestoreDatabase` creates missing cluster-wide roles, accepts a concurrent creation and never changes an existing role, so it neither changes the running app's credentials nor races on `ALTER ROLE`. Setup and `start` still set the passwords through `Bootstrap`.
+  - A failed final drop is now reported together with a failed verification, including the database name.
+  - The lifecycle test's teardown is bounded and reports failures.
+- **Recovery rehearsal:**
+  - The automatic invocation omits the target mount and clears both explicit restore settings.
+  - It then proves that `household_restore` still holds the post-restore edit, so the automatic check restored into its own database.
+- **Second factor:** after a failed in-transaction write, the rollback and pool retry get a fresh 5-second recovery budget.
+- **Configuration:** direct `HOUSEHOLD_DATABASE_URL`/`_PASSWORD` values keep the 32 KiB bound.
+- **Watch inbox:**
+  - Names that are not valid UTF-8 are ignored, so the JSON cursor only ever stores lossless names. The intake worker also skips such keys before any lookup or write.
+  - Settling also compares the file identity (device and inode on Unix), so a replacement restarts the period.
+  - `TestWatchRestartsSettlingForAReplacementAndIgnoresInvalidNames` (Linux).
+- **Uploads:** the handler boundary test parks other jobs and seeds exactly 19 known jobs, including a claimable capture OCR job.
+- **Readiness:** the test holds the probe at the hook on a release channel and cancels it before releasing it.
+- **Upgrade guide:** if `owner_password` and `app_password` were identical, keep the newly generated app password; `start` sets it.
+- **CI after `2f19230`:** shard 13 failed because the shard runner treats a skipped test as a failure, and `TestAutomaticRestoreDatabasesAreIndependent` skipped without a superuser URL. The CI `Tests` job now provides `HOUSEHOLD_TEST_SUPERUSER_URL` for its disposable PostgreSQL service. The shard runner requires it and scrubs it for discovery. `scripts/test-integration.ps1` and `scripts/test-race.ps1` set it as well. The test now fails rather than skips when integration is required and the URL is missing, and it also accepts the race container's `db:5432`.
+- **Follow-up on `e5faf7e`:** on Windows, the watch inbox now uses the file ID (volume serial number and file index from `GetFileInformationByHandle`) as its identity, so a replacement restarts settling even with the same name, size, write time and creation time (`TestWatchRestartsSettlingForAReplacementOnWindows` sets matching timestamps). Other non-Unix platforms keep no identity; the watch inbox is not supported there.
