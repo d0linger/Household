@@ -378,7 +378,7 @@ func lockRepository(ctx context.Context, pool *pgxpool.Pool) (func(), error) {
 
 func VerifyRestore(ctx context.Context, pool *pgxpool.Pool, cfg config.Config, snapshot, targetURL string) error {
 	ctx = audit.WithRequest(audit.WithSystem(ctx, "operator"), value.UUID())
-	if err := ValidateRestoreTarget(cfg.DatabaseURL, targetURL); err != nil {
+	if err := validAnyRestoreTarget(cfg.DatabaseURL, targetURL); err != nil {
 		return err
 	}
 	unlock, err := lockRepository(ctx, pool)
@@ -530,23 +530,43 @@ func VerifyRestore(ctx context.Context, pool *pgxpool.Pool, cfg config.Config, s
 	return err
 }
 
-// ValidateRestoreTarget requires the disposable household_restore target and
-// rejects a source that uses that reserved name. restore-check runs it before
-// it creates or drops anything.
+// ValidateRestoreTarget accepts only household_restore, the name of explicit
+// and derived targets. Automatic per-run names are refused here: a configured
+// target with such a name could be dropped by another automatic check's cleanup
+// of interrupted runs. It also rejects a source with a reserved name.
+// restore-check runs it before it creates or drops anything.
 func ValidateRestoreTarget(sourceURL, targetURL string) error {
+	return validateRestoreTarget(sourceURL, targetURL, func(name string) bool { return name == "household_restore" })
+}
+
+// ValidateAutomaticRestoreTarget accepts only an automatic check's own
+// per-run database name.
+func ValidateAutomaticRestoreTarget(sourceURL, targetURL string) error {
+	return validateRestoreTarget(sourceURL, targetURL, database.IsAutomaticRestoreDatabase)
+}
+
+// validAnyRestoreTarget is VerifyRestore's own guard: either kind of
+// disposable target, chosen and checked by its caller.
+func validAnyRestoreTarget(sourceURL, targetURL string) error {
+	return validateRestoreTarget(sourceURL, targetURL, func(name string) bool {
+		return name == "household_restore" || database.IsAutomaticRestoreDatabase(name)
+	})
+}
+
+func validateRestoreTarget(sourceURL, targetURL string, allowed func(string) bool) error {
 	target, err := maintenanceURL(targetURL)
 	if err != nil {
 		return err
 	}
-	if name := strings.TrimPrefix(target.Path, "/"); name != "household_restore" && !database.IsAutomaticRestoreDatabase(name) {
+	if !allowed(strings.TrimPrefix(target.Path, "/")) {
 		return errors.New("restore verification requires a separate database named household_restore")
 	}
 	source, err := maintenanceURL(sourceURL)
 	if err != nil {
 		return err
 	}
-	// The disposable name is reserved regardless of host spelling, aliases or
-	// query parameters; it can never be the installation being verified.
+	// The disposable names are reserved regardless of host spelling, aliases or
+	// query parameters; they can never be the installation being verified.
 	if strings.HasPrefix(source.Path, "/household_restore") {
 		return errors.New("restore source cannot use the reserved household_restore database")
 	}

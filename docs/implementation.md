@@ -1927,3 +1927,8 @@ About 25 concerned code added by the previous fix rounds, most of it the explici
 - **Meters:** a failed stored-timestamp lookup returns the database error.
 - **Chores:** the combined paused/archived filter counts and checks either parameter.
 - **Fuel:** the mapping test separates a row that does not consult the malformed mapping from one that does.
+
+Follow-up from CodeRabbit's replies on `839ff22`:
+- An explicit target could still carry an automatic name (`household_restore_auto_…`), and another check's cleanup of interrupted runs could drop it.
+- `ValidateRestoreTarget` (explicit and derived targets) now accepts only `household_restore`, and `ValidateAutomaticRestoreTarget` (the automatic path) only automatic names. `VerifyRestore` keeps accepting both.
+- `TestValidateRestoreTarget` and `TestValidateAutomaticRestoreTarget`.

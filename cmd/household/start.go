@@ -157,7 +157,7 @@ func withRestoreTarget(ctx context.Context, source, target, superuser string, ve
 		if err != nil {
 			return err
 		}
-		if err = maintenance.ValidateRestoreTarget(source, runTarget); err != nil {
+		if err = maintenance.ValidateAutomaticRestoreTarget(source, runTarget); err != nil {
 			return err
 		}
 		setupCtx, cancel := context.WithTimeout(ctx, time.Minute)
