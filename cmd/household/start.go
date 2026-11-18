@@ -11,6 +11,8 @@ import (
 
 	"household/internal/config"
 	"household/internal/database"
+
+	"github.com/jackc/pgx/v5"
 )
 
 // startOnlyVariables carry setup credentials that `serve` must never inherit.
@@ -96,6 +98,26 @@ func runStart() error {
 	cancel()
 	stop()
 	return execServe(environment)
+}
+
+// withExplicitRestoreLock runs verify under the restore lifecycle lock when the
+// explicit target is the household_restore that automatic checks manage on the
+// same server, so neither drops the database while the other uses it. Any
+// other target is never touched by automatic checks and needs no lock.
+func withExplicitRestoreLock(ctx context.Context, superuser, target string, verify func() error) error {
+	maintenanceURL, managedURL, err := config.RestoreSuperuserURLs(superuser)
+	if err != nil {
+		return err
+	}
+	managed, managedErr := pgx.ParseConfig(managedURL)
+	explicit, explicitErr := pgx.ParseConfig(target)
+	if managedErr != nil || explicitErr != nil {
+		return errors.New("parse restore target configuration")
+	}
+	if explicit.Database != database.RestoreDatabase || !strings.EqualFold(explicit.Host, managed.Host) || explicit.Port != managed.Port {
+		return verify()
+	}
+	return database.WithRestoreLock(ctx, maintenanceURL, verify)
 }
 
 // serveEnvironment drops every setup credential and connects serve as the app role.

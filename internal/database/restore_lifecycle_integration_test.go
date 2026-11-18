@@ -22,8 +22,12 @@ func TestRestoreDatabaseLifecycleIsSerialized(t *testing.T) {
 		t.Skip("HOUSEHOLD_TEST_SUPERUSER_URL is not set")
 	}
 	cfg, err := pgx.ParseConfig(maintenanceURL)
-	if err != nil || cfg.Database != "postgres" || cfg.User != "postgres" {
-		t.Fatal("refusing restore lifecycle outside the isolated postgres maintenance database")
+	// Only the disposable test server (compose.test.yaml on loopback 55434, or
+	// the CI service) qualifies: the test creates and drops household_restore.
+	loopback := cfg != nil && (cfg.Host == "127.0.0.1" || cfg.Host == "localhost" || cfg.Host == "::1")
+	disposablePort := cfg != nil && (cfg.Port == 55434 || cfg.Port == 5432 && os.Getenv("CI") == "true")
+	if err != nil || cfg.Database != "postgres" || cfg.User != "postgres" || !loopback || !disposablePort {
+		t.Fatal("refusing restore lifecycle outside the disposable test server's postgres database")
 	}
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
 	defer cancel()
@@ -39,6 +43,9 @@ func TestRestoreDatabaseLifecycleIsSerialized(t *testing.T) {
 			t.Fatal(err)
 		}
 		return found
+	}
+	if exists() {
+		t.Fatal("refusing to run: household_restore already exists on this server")
 	}
 	err = WithRestoreDatabase(ctx, maintenanceURL, func() error {
 		if !exists() {
@@ -68,8 +75,22 @@ func TestRestoreDatabaseLifecycleIsSerialized(t *testing.T) {
 		t.Fatal(err)
 	}
 	restoreURL.Path = "/" + RestoreDatabase
-	if err = WithRestoreDatabase(ctx, restoreURL.String(), func() error { return nil }); err == nil {
-		t.Fatal("maintenance through household_restore itself was accepted")
+	if err = WithRestoreDatabase(ctx, restoreURL.String(), func() error { return nil }); !errors.Is(err, ErrRestoreSelfTarget) {
+		t.Fatal("maintenance through household_restore itself was not refused by its guard", err)
+	}
+	// Advisory locks are per database: a second maintenance database would not
+	// exclude a concurrent check, so it is refused before any DDL.
+	restoreURL.Path = "/template1"
+	if err = WithRestoreDatabase(ctx, restoreURL.String(), func() error { return errors.New("ran through another maintenance database") }); err == nil || exists() {
+		t.Fatal("a non-canonical maintenance database was accepted", err)
+	}
+	if err = WithRestoreLock(ctx, maintenanceURL, func() error {
+		if err := WithRestoreDatabase(ctx, maintenanceURL, func() error { return errors.New("ran under an explicit check's lock") }); !errors.Is(err, ErrRestoreBusy) {
+			return errors.New("automatic check was not refused during an explicit check: " + errString(err))
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
 	}
 }
 

@@ -297,8 +297,8 @@ func TestApplicationContract(t *testing.T) {
 		t.Fatal("earlier meter reading exceeded later history")
 	}
 	// Regression: the generic readings path applies reading.save's instant bound.
-	if call("POST", "/api/v1/m/meters/readings", mutation("meters", store.Record{"device_id": device["id"], "measured_at": "2300-01-01T12:00:00Z", "value": "900"}, 0), value.UUID()).status != 422 {
-		t.Fatal("meter reading after 2200 was accepted")
+	if rejected := call("POST", "/api/v1/m/meters/readings", mutation("meters", store.Record{"device_id": device["id"], "measured_at": "2300-01-01T12:00:00Z", "value": "900"}, 0), value.UUID()); rejected.status != 422 || !bytes.Contains(rejected.body, []byte("29. Dezember 2200")) {
+		t.Fatal("meter reading after 2200 was not refused by the application instant bound", rejected.status)
 	}
 	otherLocation := create("pantry", "locations", store.Record{"name": "Other " + prefix})
 	if call("PATCH", "/api/v1/m/pantry/lots/"+store.String(lot["id"]), mutation("pantry", store.Record{"location_id": otherLocation["id"]}, 1), value.UUID()).status != 422 {

@@ -2,6 +2,7 @@ package web
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"household/internal/auth"
 	"household/internal/config"
@@ -13,6 +14,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestHandlerRoutesAndHeaders(t *testing.T) {
@@ -96,5 +98,75 @@ func TestReadJSON(t *testing.T) {
 				t.Fatalf("got %v", err)
 			}
 		})
+	}
+}
+
+func TestUploadJobsAddedCountsEveryQueuedJob(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		kind    string
+		capture bool
+		want    int
+	}{
+		{"application/pdf", false, 0},
+		{"application/pdf", true, 1},
+		{"image/png", false, 1},
+		{"image/jpeg", true, 2},
+	} {
+		if got := uploadJobsAdded(tc.kind, tc.capture); got != tc.want {
+			t.Errorf("uploadJobsAdded(%s, %v) = %d, want %d", tc.kind, tc.capture, got, tc.want)
+		}
+	}
+	// 19 outstanding plus one job is still admitted; plus two is not.
+	if 19+uploadJobsAdded("image/png", false) > maxOutstandingUploadJobs || 19+uploadJobsAdded("image/png", true) <= maxOutstandingUploadJobs {
+		t.Fatal("admission must count the jobs this upload adds")
+	}
+}
+
+type unlockCounter struct{ unlocked int }
+
+func (u *unlockCounter) RUnlock() { u.unlocked++ }
+
+func TestGatedLookupReleasesTheGateOnPanic(t *testing.T) {
+	t.Parallel()
+	gate := &unlockCounter{}
+	func() {
+		defer func() { _ = recover() }()
+		_, _ = gatedLookup(context.Background(), gate, func(context.Context) (int, error) { panic("lookup failed") })
+	}()
+	if gate.unlocked != 1 {
+		t.Fatal("a panicking feed lookup must release the module gate", gate.unlocked)
+	}
+	if got, err := gatedLookup(context.Background(), gate, func(ctx context.Context) (int, error) {
+		if _, ok := ctx.Deadline(); !ok {
+			t.Error("lookup must run with the feed budget")
+		}
+		return 7, nil
+	}); got != 7 || err != nil || gate.unlocked != 2 {
+		t.Fatal("lookup result or release", got, err, gate.unlocked)
+	}
+}
+
+func TestReadinessProbeStopsWaitingWhenCanceled(t *testing.T) {
+	t.Parallel()
+	s := &Server{}
+	s.readiness.once.Do(func() { s.readiness.slot = make(chan struct{}, 1) })
+	s.readiness.slot <- struct{}{} // another probe's inspection is running
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	done := make(chan bool, 1)
+	go func() { done <- s.databaseReady(ctx) }()
+	select {
+	case ready := <-done:
+		if ready {
+			t.Fatal("a canceled probe must not report ready")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("a canceled probe kept waiting for the running inspection")
+	}
+	<-s.readiness.slot
+	s.readiness.checked, s.readiness.ready = time.Now(), true
+	if !s.databaseReady(context.Background()) {
+		t.Fatal("a fresh cached result must be shared")
 	}
 }

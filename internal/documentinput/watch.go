@@ -38,7 +38,9 @@ func Watch(ctx context.Context, dir string, cursor Cursor) ([]Candidate, Cursor,
 				return nil, cursor, errors.New("watch folder inventory exceeds 20000 entries")
 			}
 			ext := strings.ToLower(filepath.Ext(name))
-			if name <= cursor.After || entry.Type()&os.ModeSymlink != 0 || entry.IsDir() || !strings.HasSuffix(strings.TrimSuffix(strings.ToLower(name), ext), ".ready") || !slices.Contains([]string{".pdf", ".jpg", ".jpeg", ".png"}, ext) {
+			// Known non-regular entries (FIFOs, sockets, devices, links) never fill
+			// the ten-file batch; openWatchCandidate still checks later swaps.
+			if name <= cursor.After || !entry.Type().IsRegular() || !strings.HasSuffix(strings.TrimSuffix(strings.ToLower(name), ext), ".ready") || !slices.Contains([]string{".pdf", ".jpg", ".jpeg", ".png"}, ext) {
 				continue
 			}
 			chosen = append(chosen, name)

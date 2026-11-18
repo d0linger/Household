@@ -163,7 +163,9 @@ func (s *Service) limitSubject(scope, subject string) []byte {
 func (s *Service) factorBudget(ctx context.Context, tx pgx.Tx, user string) error {
 	// Lock the second factor first. Concurrent checks for this account then read
 	// the budget only after the previous check committed its failure count.
-	if _, err := tx.Exec(ctx, "SELECT 1 FROM core.totp_credentials WHERE user_id=$1 FOR UPDATE", user); err != nil {
+	// Only an enabled credential is locked, like verifyFactor: a pending
+	// enrollment keeps its own lock order with session revocation.
+	if _, err := tx.Exec(ctx, "SELECT 1 FROM core.totp_credentials WHERE user_id=$1 AND enabled_at IS NOT NULL FOR UPDATE", user); err != nil {
 		return fmt.Errorf("lock second factor: %w", err)
 	}
 	var count int
@@ -182,14 +184,17 @@ func (s *Service) factorBudget(ctx context.Context, tx pgx.Tx, user string) erro
 // failFactor counts one wrong second-factor code inside tx and commits it, so
 // the count is durable before the second-factor lock from factorBudget is
 // released. tx must hold no other writes: verifyFactor writes nothing when it
-// rejects a code. If counting in tx fails, the failure is counted on the pool.
+// rejects a code. Only when counting in tx fails, so the transaction certainly
+// did not commit, is the failure counted on the pool instead. A failed commit
+// has an unknown outcome and is never counted a second time.
 func (s *Service) failFactor(ctx context.Context, tx pgx.Tx, user string) {
 	durable := context.WithoutCancel(ctx)
 	err := s.limit(durable, tx, "totp-failure", user, factorFailureLimit, factorFailureWindow)
 	if err == nil || errors.Is(err, ErrLimited) {
-		if err = tx.Commit(durable); err == nil {
-			return
+		if err = tx.Commit(durable); err != nil {
+			slog.Default().Error("commit second-factor failure", "error", err)
 		}
+		return
 	}
 	_ = tx.Rollback(durable)
 	if err = s.limit(durable, s.pool, "totp-failure", user, factorFailureLimit, factorFailureWindow); err != nil && !errors.Is(err, ErrLimited) {

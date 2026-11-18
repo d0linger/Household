@@ -259,6 +259,16 @@ func (s *Server) choreWorkspaceAPI(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, out)
 }
 
+// gatedLookup runs lookup with the feed budget while the caller's read gate is
+// held, and releases the gate when lookup returns or panics, before the caller
+// renders or writes anything.
+func gatedLookup[T any](ctx context.Context, gate interface{ RUnlock() }, lookup func(context.Context) (T, error)) (T, error) {
+	defer gate.RUnlock()
+	gated, release := context.WithTimeout(ctx, feedGateBudget)
+	defer release()
+	return lookup(gated)
+}
+
 func (s *Server) choreCalendarFeed(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "private, no-store")
 	w.Header().Set("Referrer-Policy", "no-referrer")
@@ -282,10 +292,9 @@ func (s *Server) choreCalendarFeed(w http.ResponseWriter, r *http.Request) {
 	}
 	// Bound the gated section well inside the module change's gate wait, and
 	// release the gate before rendering: a slow client must not hold it.
-	gated, release := context.WithTimeout(ctx, feedGateBudget)
-	events, err := s.Store.ChoreCalendarFeed(gated, strings.TrimSuffix(token, ".ics"))
-	release()
-	s.Store.Gate.RUnlock()
+	events, err := gatedLookup(ctx, &s.Store.Gate, func(gated context.Context) ([]ical.TimedEvent, error) {
+		return s.Store.ChoreCalendarFeed(gated, strings.TrimSuffix(token, ".ics"))
+	})
 	if err != nil {
 		s.fail(w, r, err)
 		return

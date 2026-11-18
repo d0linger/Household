@@ -214,13 +214,13 @@ func (s *Server) upload(w http.ResponseWriter, r *http.Request) {
 	// Bound what one member may have outstanding so uploads cannot hold back other
 	// members' and the system's background jobs. A PDF without capture queues no
 	// job, so only the storage quota above applies to it.
-	if kind != "application/pdf" || r.FormValue("capture") == "true" {
+	if added := uploadJobsAdded(kind, r.FormValue("capture") == "true"); added > 0 {
 		var outstanding int
 		if err = tx.QueryRow(r.Context(), uploadJobsOutstandingQuery, identity(r).HouseholdID, identity(r).UserID).Scan(&outstanding); err != nil {
 			s.fail(w, r, err)
 			return
 		}
-		if outstanding >= maxOutstandingUploadJobs {
+		if outstanding+added > maxOutstandingUploadJobs {
 			w.Header().Set("Retry-After", "30")
 			s.fail(w, r, auth.ErrLimited)
 			return
@@ -400,12 +400,29 @@ func (s *Server) download(w http.ResponseWriter, r *http.Request) {
 }
 
 // maxOutstandingUploadJobs bounds pending or running thumbnail and capture jobs
-// created by one member's uploads.
+// created by one member's uploads. Jobs of a disabled module or an old module
+// generation are not counted: the worker cannot claim them, so they would
+// otherwise block uploads to enabled modules indefinitely.
 const maxOutstandingUploadJobs = 20
+
+// uploadJobsAdded counts the jobs an upload queues: a thumbnail for every
+// image and an OCR job when capture is requested.
+func uploadJobsAdded(kind string, capture bool) int {
+	added := 0
+	if kind != "application/pdf" {
+		added++
+	}
+	if capture {
+		added++
+	}
+	return added
+}
 
 const uploadJobsOutstandingQuery = `SELECT count(*) FROM core.jobs j JOIN core.attachments a ON a.household_id=j.household_id
  AND a.id::text=coalesce(j.payload->>'attachment_id',(SELECT c.source_attachment_id::text FROM core.capture_jobs c WHERE c.id::text=j.payload->>'capture_id'))
- WHERE j.household_id=$1 AND j.kind IN('thumbnail','capture_ocr') AND j.state IN('pending','running') AND j.attempts<j.max_attempts AND a.uploaded_by=$2`
+ WHERE j.household_id=$1 AND j.kind IN('thumbnail','capture_ocr') AND j.state IN('pending','running') AND j.attempts<j.max_attempts AND a.uploaded_by=$2
+ AND EXISTS(SELECT 1 FROM core.module_states m WHERE m.household_id=j.household_id AND m.module_id=j.module_id
+  AND m.state='enabled' AND m.data_generation=j.module_generation)`
 
 // downloadAttachmentQuery returns the visible, ready attachment of an enabled
 // module generation together with its owning record.

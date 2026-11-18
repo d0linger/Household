@@ -1,9 +1,10 @@
-//go:build unix
+//go:build unix && !solaris && !illumos
 
 package documentinput
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"syscall"
@@ -47,4 +48,27 @@ func TestOpenWatchCandidateRefusesFIFOWithoutBlocking(t *testing.T) {
 		t.Fatal("regular candidate refused:", err)
 	}
 	_ = in.Close()
+}
+
+// Regression: FIFOs that sort first never fill the ten-file batch and starve a
+// valid inbox file behind them.
+func TestWatchSkipsNonRegularEntriesBeforeTheBatchLimit(t *testing.T) {
+	dir := t.TempDir()
+	for index := range 12 {
+		if err := syscall.Mkfifo(filepath.Join(dir, fmt.Sprintf("a%02d.ready.pdf", index)), 0o600); err != nil {
+			t.Skip("FIFOs are unavailable here:", err)
+		}
+	}
+	name := filepath.Join(dir, "z.ready.pdf")
+	if err := os.WriteFile(name, []byte("%PDF-1.4"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	old := time.Now().Add(-time.Minute)
+	if err := os.Chtimes(name, old, old); err != nil {
+		t.Fatal(err)
+	}
+	candidates, _, err := Watch(t.Context(), dir, Cursor{})
+	if err != nil || len(candidates) != 1 || candidates[0].Name != "z.ready.pdf" {
+		t.Fatal("the valid inbox file was starved by non-regular entries", candidates, err)
+	}
 }

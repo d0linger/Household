@@ -92,8 +92,32 @@ func TestFuelModuleImportFlagMapsAreDecodedOnceAndBounded(t *testing.T) {
 	if _, err = fuelModuleImportFlagMaps(Record{"missing_values": large}); err == nil {
 		t.Fatal("an oversized flag mapping must be refused before any row is parsed")
 	}
-	if _, _, err = fuelModuleImportParse(t.Context(), "household", fuelUnitCSVHeader+fuelUnitCSVRow, Record{"full_tank_values": large}); err == nil {
-		t.Fatal("parse accepted an oversized flag mapping")
+	// Both sides of the limit, isolated from other validation: 32 choices that
+	// include the fixture's value normalize, one more unused choice is refused.
+	bounded := map[string]bool{"true": true}
+	for index := 1; len(bounded) < fuelImportMaxFlagValues; index++ {
+		bounded[fmt.Sprintf("unused%d", index)] = false
+	}
+	options = fuelUnitImportOptions()
+	options["full_tank_values"] = bounded
+	parsed, _, err := fuelModuleImportParse(t.Context(), "household", fuelUnitCSVHeader+fuelUnitCSVRow, options)
+	if err != nil {
+		t.Fatal("a 32-choice mapping must be accepted", err)
+	}
+	if row := fuelUnitImportRows(t, parsed)[0]; len(row["errors"].([]string)) != 0 || row["values"].(Record)["full_tank"] != true {
+		t.Fatalf("the fixture row did not normalize with a 32-choice mapping: %+v", row)
+	}
+	bounded["unused-extra"] = false
+	options = fuelUnitImportOptions()
+	options["full_tank_values"] = bounded
+	if _, _, err = fuelModuleImportParse(t.Context(), "household", fuelUnitCSVHeader+fuelUnitCSVRow, options); err == nil {
+		t.Fatal("parse accepted a 33-choice flag mapping")
+	}
+	// A malformed mapping fails only rows that consult it.
+	options = fuelUnitImportOptions()
+	options["missing_values"] = map[string]any{"ja": "yes"}
+	if _, _, err = fuelModuleImportParse(t.Context(), "household", fuelUnitCSVHeader+fuelUnitCSVRow, options); err != nil {
+		t.Fatal("a malformed, unused mapping must not refuse the whole import", err)
 	}
 }
 

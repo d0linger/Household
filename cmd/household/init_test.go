@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -21,17 +22,19 @@ func TestInitCreatesSecretsOnceWithoutPrintingThem(t *testing.T) {
 			t.Fatalf("%s missing, malformed or printed", name)
 		}
 		if runtime.GOOS != "windows" {
-			if info, _ := os.Stat(filepath.Join(".local", "secrets", name)); info.Mode().Perm() != secretMode(name) {
-				t.Fatalf("%s has mode %v, want %v", name, info.Mode().Perm(), secretMode(name))
+			// The test owns the policy: only these three may be container-readable.
+			want := os.FileMode(0o600)
+			if slices.Contains([]string{"postgres_password", "owner_password", "app_password"}, name) {
+				want = 0o644
+			}
+			if info, _ := os.Stat(filepath.Join(".local", "secrets", name)); info.Mode().Perm() != want {
+				t.Fatalf("%s has mode %v, want %v", name, info.Mode().Perm(), want)
 			}
 		}
 	}
 	if runtime.GOOS != "windows" {
 		if info, _ := os.Stat(filepath.Join(".local", "secrets")); info.Mode().Perm() != 0o700 {
 			t.Fatal("the secrets folder must stay owner-only")
-		}
-		if secretMode("csrf_secret") != 0o600 || secretMode("app_password") != 0o644 {
-			t.Fatal("only the database passwords may be readable by the PostgreSQL container")
 		}
 	}
 	if _, err := os.Stat(".env"); !os.IsNotExist(err) {

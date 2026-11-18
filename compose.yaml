@@ -1,5 +1,5 @@
 # Household – Anleitung: docs/installation.md
-#   (umask 077; docker run --rm ghcr.io/d0linger/household:production init > .env)
+#   (umask 077; set -C; docker run --rm ghcr.io/d0linger/household:production init > .env)
 #   HOUSEHOLD_ORIGIN in .env eintragen, dann: docker compose up -d
 x-household: &household
   image: ${HOUSEHOLD_IMAGE:-ghcr.io/d0linger/household:production}

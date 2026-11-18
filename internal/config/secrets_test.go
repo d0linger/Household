@@ -139,3 +139,28 @@ func TestFeaturesTurnOnWhenConfigured(t *testing.T) {
 		t.Fatal("Web Push must stay off without a key", err)
 	}
 }
+
+// Regression: `start` hands `serve` an explicit app-role password; a mounted
+// database_url in the secrets folder must not conflict with it.
+func TestDatabaseSourceExplicitBeatsFolder(t *testing.T) {
+	setValidEnvironment(t)
+	dir := t.TempDir()
+	t.Setenv(SecretsDirVariable, dir)
+	t.Setenv("HOUSEHOLD_DATABASE_URL", "")
+	writeSecretFile(t, dir, "database_url", "postgres://folder@db:5432/household?sslmode=disable")
+	t.Setenv("HOUSEHOLD_DATABASE_USER", "household_app")
+	t.Setenv("HOUSEHOLD_DATABASE_PASSWORD", "explicit-app")
+	cfg, err := Load()
+	if err != nil || !strings.Contains(cfg.DatabaseURL, "household_app:explicit-app@") {
+		t.Fatal("an explicit password must win over a folder URL", err)
+	}
+	t.Setenv("HOUSEHOLD_DATABASE_PASSWORD", "")
+	writeSecretFile(t, dir, "database_password", "folder-password")
+	if _, err = Load(); err == nil || !strings.Contains(err.Error(), "mutually exclusive") {
+		t.Fatal("URL and password both only in the folder must be refused", err)
+	}
+	t.Setenv("HOUSEHOLD_DATABASE_URL", "postgres://explicit@db:5432/household?sslmode=disable")
+	if cfg, err = Load(); err != nil || cfg.DatabaseURL != "postgres://explicit@db:5432/household?sslmode=disable" {
+		t.Fatal("an explicit URL must win over a folder password", err)
+	}
+}

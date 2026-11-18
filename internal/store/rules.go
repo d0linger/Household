@@ -251,8 +251,18 @@ func (s *Store) validateDomain(ctx context.Context, tx pgx.Tx, id auth.Identity,
 			return bad("Ungültiger Ablesezeitpunkt")
 		}
 		// The same instant bound as reading.save, so the projection accepts it.
+		// An update re-checks only a changed instant: the 30-year floor moves,
+		// and a value-only edit of an aged reading must stay possible.
 		if !EnergyInstantAccepted(measured, time.Now()) {
-			return bad("Zeitpunkt innerhalb der letzten 30 Jahre und vor dem 29. Dezember 2200 (UTC) angeben")
+			unchanged := false
+			if rid != "" {
+				var stored time.Time
+				err := tx.QueryRow(ctx, "SELECT measured_at FROM meters.readings WHERE household_id=$1 AND id=$2", id.HouseholdID, rid).Scan(&stored)
+				unchanged = err == nil && stored.Equal(measured)
+			}
+			if !unchanged {
+				return bad("Zeitpunkt innerhalb der letzten 30 Jahre und vor dem 29. Dezember 2200 (UTC) angeben")
+			}
 		}
 		if measured.Before(installed) || removed != nil && measured.After(removed.Add(24*time.Hour)) {
 			return bad("Ablesung liegt außerhalb der Gerätelaufzeit")

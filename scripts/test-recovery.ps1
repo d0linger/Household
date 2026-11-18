@@ -20,7 +20,12 @@ try {
     $taskDatabase='household-recovery-test-db'
     $taskDatabaseEnv=Join-Path $taskSecrets 'postgres.env'
     [IO.File]::WriteAllLines($taskDatabaseEnv,@('POSTGRES_DB=household_restore',"POSTGRES_PASSWORD=$(Read-HouseholdSetting 'POSTGRES_PASSWORD')"))
-    $taskContainer=docker run -d --rm --name $taskDatabase --network household_default --user 70:70 --env-file $taskDatabaseEnv `
+    # Join the network of the running Compose project, whatever its project name.
+    $taskStackDatabase=docker compose ps -q db
+    if($LASTEXITCODE -ne 0 -or !$taskStackDatabase){throw 'The local compose.yaml stack is not running'}
+    $taskNetwork=docker inspect $taskStackDatabase --format '{{range $name, $_ := .NetworkSettings.Networks}}{{$name}}{{println}}{{end}}' | Where-Object {$_} | Select-Object -First 1
+    if($LASTEXITCODE -ne 0 -or !$taskNetwork){throw 'Could not resolve the local stack network'}
+    $taskContainer=docker run -d --rm --name $taskDatabase --network $taskNetwork --user 70:70 --env-file $taskDatabaseEnv `
       --tmpfs '/var/lib/postgresql:rw,size=512m,uid=70,gid=70' postgres:18-alpine@sha256:b6972e1115a4ff8eba5d7f7d19184926d1e16d7d1136ae1e1a7ebf286da0f015
     if($LASTEXITCODE -ne 0 -or !$taskContainer){$taskContainer=$null;throw 'Recovery database container could not start (is the local compose.yaml stack running, or is another rehearsal using it?)'}
     $taskReady=$false
@@ -49,7 +54,7 @@ try {
     $taskSuffix=[guid]::NewGuid().ToString('N').Substring(0,12)
     $taskRepoVolume="household-recovery-test-repository-$taskSuffix"
     $taskWorkVolume="household-recovery-test-work-$taskSuffix"
-    $taskDockerArguments=@('run','--rm','--network','household_default','--env-file',$taskEnvironment)
+    $taskDockerArguments=@('run','--rm','--network',$taskNetwork,'--env-file',$taskEnvironment)
     foreach($taskSecretName in @('source_url','target_url','csrf','encryption','rate','restic')){
       $taskDockerArguments+=@('--mount',"type=bind,source=$(Join-Path $taskSecrets $taskSecretName),target=/run/secrets/$taskSecretName,readonly")
     }
@@ -355,13 +360,28 @@ SELECT (SELECT count(*) FROM core.financial_requirement_sets WHERE household_id=
       if($LASTEXITCODE -ne 0 -or $taskExpenseBefore -cne $taskExpenseAfter){throw 'Financial logical snapshot differs after restore or duplicate attempt'}
       $taskRestoreTimer.Stop()
       $taskRehearsalTimer.Stop()
-      [ordered]@{passed=$true;source='disposable household_fixture';target='disposable household_restore';snapshot=$taskSnapshot;domainValue=$taskRestored;stockProjection=$taskStock;pantryTarget=$taskTarget;pantryDaily=$taskPantryDaily;stockDuplicateInserted=$taskStockDuplicate;pantryBatch=$taskPantryBatch;pantryPrivateDraft=$taskPantryDraft;pantryBatchUniqueConstraint=$taskPantryBatchDuplicate;durableCompletion=$taskCheckout;recipeVersionsAfterEdit=$taskRecipeAfter;cookingTimers=$taskCookingBefore;cookingRecord=$taskCookingResult;cookingDuplicateInserted=$taskCookingDuplicate;cookingStockPosting=$taskCookingPostingResult;cookingStockDuplicateInserted=$taskCookingPostingDuplicate;planningComponents=$taskPlanning;planningDuplicateInserted=$taskPlanningDuplicate;planningParticipants=$taskParticipants;planningParticipantIdentities=$taskParticipantIdentities;mealReservation=$taskReservationResult;planningIngredientBinding=$taskPlanningBindingResult;planningPurchaseScope=$taskPurchaseResult;planningPurchaseProof=$taskPurchaseProof;planningPurchaseDetailValidation=$taskPurchaseDetailValidation;planningPurchaseDuplicateInserted=$taskPurchaseDuplicate;expensePosted=$taskExpenseResult;expenseMinimalProof=$taskExpenseProof;expenseDuplicateInserted=$taskExpenseDuplicate;expenseLogicalSnapshotEqual=($taskExpenseBefore -ceq $taskExpenseAfter);financialBindings=$taskFinancialBindings;financialRequirements=$taskFinancialRequirements;hashedFiles=2;includesOriginalAndPreview=$true;backupSeconds=[Math]::Round($taskBackupTimer.Elapsed.TotalSeconds,2);restoreAndVerifySeconds=[Math]::Round($taskRestoreTimer.Elapsed.TotalSeconds,2);rehearsalSeconds=[Math]::Round($taskRehearsalTimer.Elapsed.TotalSeconds,2);scope='Small synthetic local fixture; not acceptance of a production RTO/RPO or authenticated restored-service replay';verifiedAt=[DateTime]::UtcNow.ToString('o')} | ConvertTo-Json | Set-Content outputs/recovery-review/report.json
-      Get-Content outputs/recovery-review/report.json
+      # Published only after the rehearsal container is removed.
+      $taskReport=[ordered]@{passed=$true;source='disposable household_fixture';target='disposable household_restore';snapshot=$taskSnapshot;domainValue=$taskRestored;stockProjection=$taskStock;pantryTarget=$taskTarget;pantryDaily=$taskPantryDaily;stockDuplicateInserted=$taskStockDuplicate;pantryBatch=$taskPantryBatch;pantryPrivateDraft=$taskPantryDraft;pantryBatchUniqueConstraint=$taskPantryBatchDuplicate;durableCompletion=$taskCheckout;recipeVersionsAfterEdit=$taskRecipeAfter;cookingTimers=$taskCookingBefore;cookingRecord=$taskCookingResult;cookingDuplicateInserted=$taskCookingDuplicate;cookingStockPosting=$taskCookingPostingResult;cookingStockDuplicateInserted=$taskCookingPostingDuplicate;planningComponents=$taskPlanning;planningDuplicateInserted=$taskPlanningDuplicate;planningParticipants=$taskParticipants;planningParticipantIdentities=$taskParticipantIdentities;mealReservation=$taskReservationResult;planningIngredientBinding=$taskPlanningBindingResult;planningPurchaseScope=$taskPurchaseResult;planningPurchaseProof=$taskPurchaseProof;planningPurchaseDetailValidation=$taskPurchaseDetailValidation;planningPurchaseDuplicateInserted=$taskPurchaseDuplicate;expensePosted=$taskExpenseResult;expenseMinimalProof=$taskExpenseProof;expenseDuplicateInserted=$taskExpenseDuplicate;expenseLogicalSnapshotEqual=($taskExpenseBefore -ceq $taskExpenseAfter);financialBindings=$taskFinancialBindings;financialRequirements=$taskFinancialRequirements;hashedFiles=2;includesOriginalAndPreview=$true;backupSeconds=[Math]::Round($taskBackupTimer.Elapsed.TotalSeconds,2);restoreAndVerifySeconds=[Math]::Round($taskRestoreTimer.Elapsed.TotalSeconds,2);rehearsalSeconds=[Math]::Round($taskRehearsalTimer.Elapsed.TotalSeconds,2);scope='Small synthetic local fixture; not acceptance of a production RTO/RPO or authenticated restored-service replay';verifiedAt=[DateTime]::UtcNow.ToString('o')} | ConvertTo-Json
     } finally {
       docker volume rm $taskRepoVolume $taskWorkVolume | Out-Null
     }
+} catch {
+    $taskFailure=$_
+    throw
 } finally {
     # Remove only the container this run created, never another rehearsal's.
-    if($taskContainer){docker rm -f $taskContainer 2>$null | Out-Null}
+    if($taskContainer){
+      docker rm -f $taskContainer 2>&1 | Out-Null
+      if($LASTEXITCODE -ne 0){
+        # Keep a rehearsal failure as the reported error; otherwise fail here.
+        if($taskFailure){Write-Warning "Recovery database container $taskContainer could not be removed"}
+        else{Pop-Location;throw "Recovery database container $taskContainer could not be removed; the rehearsal is not reported as passed"}
+      }
+    }
     Pop-Location
+}
+if($taskReport){
+  $taskReportPath=Join-Path $taskRoot 'outputs/recovery-review/report.json'
+  $taskReport | Set-Content $taskReportPath
+  Get-Content $taskReportPath
 }

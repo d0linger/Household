@@ -83,34 +83,75 @@ const restoreLockKey int64 = 0x686f7573656872 // "househr"
 // ErrRestoreBusy reports that another restore check holds household_restore.
 var ErrRestoreBusy = errors.New("another restore check is running on this database server")
 
+// ErrRestoreSelfTarget refuses restore maintenance through household_restore itself.
+var ErrRestoreSelfTarget = errors.New("restore maintenance must not connect to the restore database")
+
+// RestoreMaintenanceDatabase is the one maintenance database every restore lock
+// is taken in. Advisory locks are scoped to the connected database, so two
+// checks through different maintenance databases would not exclude each other.
+const RestoreMaintenanceDatabase = "postgres"
+
+// restoreLock connects to maintenanceURL and takes the restore lifecycle lock.
+// The caller closes the connection, which also releases the lock.
+func restoreLock(ctx context.Context, maintenanceURL string) (*pgx.Conn, error) {
+	cfg, err := pgx.ParseConfig(maintenanceURL)
+	if err != nil {
+		return nil, errors.New("parse restore maintenance configuration")
+	}
+	if cfg.Database == RestoreDatabase {
+		return nil, ErrRestoreSelfTarget
+	}
+	if cfg.Database != RestoreMaintenanceDatabase {
+		return nil, errors.New("restore maintenance must connect to the postgres maintenance database")
+	}
+	cfg.ConnectTimeout = 5 * time.Second
+	// The session holds the lock while it runs no queries during a long
+	// verification; a server-wide idle_session_timeout must not end it.
+	cfg.RuntimeParams["idle_session_timeout"] = "0"
+	conn, err := pgx.ConnectConfig(ctx, cfg)
+	if err != nil {
+		return nil, fmt.Errorf("connect for restore maintenance: %w", err)
+	}
+	var locked bool
+	if err = conn.QueryRow(ctx, "SELECT pg_try_advisory_lock($1)", restoreLockKey).Scan(&locked); err != nil {
+		_ = conn.Close(context.Background())
+		return nil, fmt.Errorf("lock restore database: %w", err)
+	}
+	if !locked {
+		_ = conn.Close(context.Background())
+		return nil, ErrRestoreBusy
+	}
+	return conn, nil
+}
+
+// WithRestoreLock runs use while holding the restore lifecycle lock of the
+// server behind maintenanceURL, without creating or dropping anything. An
+// explicit restore target on that server uses it, so an automatic check
+// cannot drop the database while the explicit check restores into it.
+func WithRestoreLock(ctx context.Context, maintenanceURL string, use func() error) error {
+	lockCtx, cancel := context.WithTimeout(ctx, time.Minute)
+	defer cancel()
+	conn, err := restoreLock(lockCtx, maintenanceURL)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = conn.Close(context.Background()) }() // also releases the lock
+	return use()
+}
+
 // WithRestoreDatabase creates an empty household_restore on the server behind
-// maintenanceURL (a superuser connection to its maintenance database), runs use
+// maintenanceURL (a superuser connection to its postgres database), runs use
 // and drops the database again. One session advisory lock, held on a dedicated
 // maintenance connection from before the first drop until after the final
 // drop, keeps concurrent restore checks from dropping each other's database.
 func WithRestoreDatabase(ctx context.Context, maintenanceURL string, use func() error) (err error) {
-	cfg, err := pgx.ParseConfig(maintenanceURL)
-	if err != nil {
-		return errors.New("parse restore maintenance configuration")
-	}
-	if cfg.Database == RestoreDatabase {
-		return errors.New("restore maintenance must not connect to the restore database")
-	}
-	cfg.ConnectTimeout = 5 * time.Second
 	prepareCtx, cancel := context.WithTimeout(ctx, time.Minute)
 	defer cancel()
-	conn, err := pgx.ConnectConfig(prepareCtx, cfg)
+	conn, err := restoreLock(prepareCtx, maintenanceURL)
 	if err != nil {
-		return fmt.Errorf("connect for restore maintenance: %w", err)
+		return err
 	}
 	defer func() { _ = conn.Close(context.Background()) }() // also releases the session lock
-	var locked bool
-	if err = conn.QueryRow(prepareCtx, "SELECT pg_try_advisory_lock($1)", restoreLockKey).Scan(&locked); err != nil {
-		return fmt.Errorf("lock restore database: %w", err)
-	}
-	if !locked {
-		return ErrRestoreBusy
-	}
 	drop := "DROP DATABASE IF EXISTS " + pgx.Identifier{RestoreDatabase}.Sanitize() + " WITH (FORCE)"
 	// A leftover copy can only come from an interrupted check: the lock is ours.
 	if _, err = conn.Exec(prepareCtx, drop); err != nil {

@@ -417,14 +417,22 @@ const readinessTTL = 5 * time.Second
 // its result for readinessTTL, so unauthenticated probes cannot multiply
 // catalog queries on the shared application pool.
 type readinessCache struct {
-	mu      sync.Mutex
+	once    sync.Once
+	slot    chan struct{} // a one-slot lock a waiting probe can abandon
 	checked time.Time
 	ready   bool
 }
 
 func (s *Server) databaseReady(ctx context.Context) bool {
-	s.readiness.mu.Lock()
-	defer s.readiness.mu.Unlock()
+	s.readiness.once.Do(func() { s.readiness.slot = make(chan struct{}, 1) })
+	// A probe that disconnects stops waiting; the running inspection, which does
+	// not depend on any one probe, still completes and fills the cache.
+	select {
+	case s.readiness.slot <- struct{}{}:
+	case <-ctx.Done():
+		return false
+	}
+	defer func() { <-s.readiness.slot }()
 	if !s.readiness.checked.IsZero() && time.Since(s.readiness.checked) < readinessTTL {
 		return s.readiness.ready
 	}
@@ -437,7 +445,8 @@ func (s *Server) databaseReady(ctx context.Context) bool {
 }
 
 func (s *Server) ready(w http.ResponseWriter, r *http.Request) {
-	if s.shutting.Load() || !s.databaseReady(r.Context()) {
+	// Shutdown can begin while the database inspection runs: check it again.
+	if s.shutting.Load() || !s.databaseReady(r.Context()) || s.shutting.Load() {
 		writeJSON(w, 503, map[string]string{"status": "unavailable"})
 		return
 	}

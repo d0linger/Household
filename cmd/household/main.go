@@ -175,14 +175,18 @@ func run(log *slog.Logger) error {
 		if err != nil {
 			return err
 		}
-		explicitTarget, err := config.Configured("HOUSEHOLD_RESTORE_DATABASE_URL")
+		// The resolved value decides: an empty URL file still means "derive".
+		explicitTarget, err := config.Secret("HOUSEHOLD_RESTORE_DATABASE_URL")
 		if err != nil {
 			return err
 		}
-		if superuser != "" && !explicitTarget {
+		if superuser == "" {
+			return verify()
+		}
+		if explicitTarget == "" {
 			return withRestoreTarget(verifyCtx, superuser, verify)
 		}
-		return verify()
+		return withExplicitRestoreLock(verifyCtx, superuser, target, verify)
 	case "purge":
 		if len(os.Args) != 3 {
 			return errors.New("usage: household purge REQUEST_UUID")

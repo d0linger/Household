@@ -62,7 +62,9 @@ func fuelModuleImportFlagMaps(options Record) (Record, error) {
 		}
 		choices := map[string]bool{}
 		if err := fuelModuleImportObject(options[name], &choices); err != nil {
-			return nil, err
+			// A malformed mapping fails only the rows that consult it, as before.
+			decoded[name] = err
+			continue
 		}
 		if len(choices) > fuelImportMaxFlagValues {
 			return nil, Invalid{"CSV-Zuordnung oder Entscheidungen sind ungültig"}
@@ -513,10 +515,15 @@ func fuelModuleImportValues(fields map[string]string, options Record) (Record, [
 		if options[configuration] != nil {
 			// fuelModuleImportParse decodes the mappings once; direct callers may
 			// still pass the raw request value.
-			choices, decoded := options[configuration].(map[string]bool)
-			if !decoded {
+			var choices map[string]bool
+			switch mapping := options[configuration].(type) {
+			case map[string]bool:
+				choices = mapping
+			case error:
+				return false, mapping
+			default:
 				choices = map[string]bool{}
-				if err := fuelModuleImportObject(options[configuration], &choices); err != nil {
+				if err := fuelModuleImportObject(mapping, &choices); err != nil {
 					return false, err
 				}
 			}

@@ -274,3 +274,14 @@ func TestFinanceNextRecurrenceSkipsAheadWithIdenticalResults(t *testing.T) {
 		t.Fatalf("daily projection produced %d lookups, want 366", count)
 	}
 }
+
+// BenchmarkFinanceNextRecurrenceFarPastDailyAnchor measures one projection
+// lookup over a 30-year-old daily anchor. A regression to scanning from the
+// anchor shows up as roughly 11,000 steps per lookup instead of a few.
+func BenchmarkFinanceNextRecurrenceFarPastDailyAnchor(b *testing.B) {
+	for b.Loop() {
+		if _, err := financeNextRecurrence("1996-11-18", "2026-06-30", "2027-01-01", "day", 1, "clamp"); err != nil {
+			b.Fatal(err)
+		}
+	}
+}

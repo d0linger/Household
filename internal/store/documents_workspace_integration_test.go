@@ -9,6 +9,7 @@ import (
 	"errors"
 	"sync"
 	"testing"
+	"time"
 
 	"household/internal/audit"
 	"household/internal/database"
@@ -266,5 +267,45 @@ func TestDocumentsNativeOriginalVersionScanJobCancelRetryAndSearch(t *testing.T)
 	}
 	if err = f.owner.QueryRow(f.ctx, `SELECT state FROM documents.processing WHERE id=$1`, first).Scan(&state); err != nil || state != "cancelled" {
 		t.Fatal("refused retry changed the request", state, err)
+	}
+}
+
+// Regression: a no-op archive request keeps the version, unarchiving never adds
+// a second pending reminder for a deadline edited while archived, and a
+// cancellation keeps a stored due date that predates the range check.
+func TestDocumentsNativeArchiveNoOpRemindersAndLegacyDeadlineCancel(t *testing.T) {
+	f := newRecipeExpansionFixture(t)
+	d := documentNativeWrite(t, f, "save", "", 0, documentNativeMetadata("Archive invoice"))
+	rid := String(d["id"])
+	version := func() int64 {
+		detail, err := f.store.DocumentDetail(f.ctx, f.identity, rid)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return Int(detail["version"])
+	}
+	before := version()
+	documentNativeWrite(t, f, "archive", rid, before, Record{"archived": false})
+	if after := version(); after != before {
+		t.Fatal("a no-op archive request changed the document version", before, after)
+	}
+	due := time.Now().UTC().AddDate(0, 2, 0).Format(time.DateOnly)
+	deadline := documentNativeWrite(t, f, "deadline", rid, version(), Record{"deadline_id": "", "deadline_version": 0, "kind": "return", "due_on": due, "label": "Return item", "remind_days": 7, "source": "Printed receipt", "confirmed": true, "cancelled": false})
+	deadlineID := String(deadline["deadline_id"])
+	documentNativeWrite(t, f, "archive", rid, version(), Record{"archived": true})
+	documentNativeWrite(t, f, "deadline", rid, version(), Record{"deadline_id": deadlineID, "deadline_version": 1, "kind": "return", "due_on": due, "label": "Return item edited", "remind_days": 7, "source": "Printed receipt", "confirmed": true, "cancelled": false})
+	documentNativeWrite(t, f, "archive", rid, version(), Record{"archived": false})
+	var pending int
+	if err := f.owner.QueryRow(f.ctx, `SELECT count(*) FROM core.reminders WHERE module_id='documents' AND state='pending' AND dedupe_key LIKE $1`, "document-deadline/"+deadlineID+"/%").Scan(&pending); err != nil || pending != 1 {
+		t.Fatal("unarchiving must not add a second pending reminder", pending, err)
+	}
+	if _, err := f.owner.Exec(f.ctx, `UPDATE documents.deadlines SET due_on='2201-01-01' WHERE id=$1`, deadlineID); err != nil {
+		t.Skip("the schema itself refuses dates after 2200:", err)
+	}
+	cancel := Record{"deadline_id": deadlineID, "deadline_version": 2, "kind": "return", "due_on": "2201-01-01", "label": "Return item edited", "remind_days": 7, "source": "Printed receipt", "confirmed": true, "cancelled": true}
+	documentNativeWrite(t, f, "deadline", rid, version(), cancel)
+	cancel["due_on"], cancel["deadline_version"], cancel["cancelled"] = "2202-01-01", 3, true
+	if _, err := f.store.DocumentWrite(f.ctx, f.identity, value.UUID(), value.UUID(), documentNativeCommand(t, f, "deadline", rid, version(), cancel)); err == nil {
+		t.Fatal("a cancellation must not store a changed, unvalidated date")
 	}
 }

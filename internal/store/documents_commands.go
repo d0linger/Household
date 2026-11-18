@@ -171,8 +171,17 @@ func (s *Store) documentApply(ctx context.Context, tx pgx.Tx, id auth.Identity, 
 		// active document used to add one reminder per deadline every time.
 		var tag pgconn.CommandTag
 		tag, err = tx.Exec(ctx, `UPDATE documents.documents SET archived_at=CASE WHEN $3 THEN clock_timestamp() END WHERE household_id=$1 AND id=$2 AND (archived_at IS NOT NULL)<>$3`, id.HouseholdID, in.ID, v.Archived)
-		if err != nil || tag.RowsAffected() == 0 {
+		if err != nil {
 			break
+		}
+		if tag.RowsAffected() == 0 {
+			// Already in the requested state: no touch, no reindex, no version change.
+			current, err := documentRecord(ctx, tx, id.HouseholdID, in.ID)
+			if err != nil {
+				return nil, err
+			}
+			out["document"] = current
+			return out, nil
 		}
 		if v.Archived {
 			_, err = tx.Exec(ctx, `DELETE FROM core.search_documents WHERE household_id=$1 AND module_id='documents' AND resource_id=$2`, id.HouseholdID, in.ID)
@@ -189,6 +198,8 @@ func (s *Store) documentApply(ctx context.Context, tx pgx.Tx, id auth.Identity, 
  'document-deadline/'||x.id::text||'/'||x.due_on::text||'/reactivated/'||x.remind_days::text
  FROM documents.deadlines x JOIN core.households h ON h.id=x.household_id WHERE x.household_id=$1 AND x.document_id=$2 AND x.cancelled_at IS NULL
  AND (x.due_on::timestamp+interval '9 hours'-make_interval(days=>x.remind_days)) AT TIME ZONE h.timezone>clock_timestamp()
+ AND NOT EXISTS(SELECT 1 FROM core.reminders r WHERE r.household_id=x.household_id AND r.module_id='documents' AND r.state='pending'
+  AND r.dedupe_key LIKE 'document-deadline/'||x.id::text||'/%')
  ON CONFLICT(dedupe_key) DO UPDATE SET state='pending',cancelled_at=NULL,scheduled_at=excluded.scheduled_at WHERE core.reminders.state='cancelled'`, id.HouseholdID, in.ID, in.Generation)
 		}
 	case "current":
@@ -291,6 +302,18 @@ func (s *Store) documentBatch(ctx context.Context, tx pgx.Tx, id auth.Identity, 
 	return Record{"items": out, "applied": in.Action == "batch_apply"}, nil
 }
 
+// documentDeadlineUnchangedCancel lets a cancellation keep a stored due date
+// that predates the 1900-2200 range check; any changed date is validated.
+func documentDeadlineUnchangedCancel(ctx context.Context, tx pgx.Tx, id auth.Identity, documentID, deadlineID, dueOn string, cancelled bool) bool {
+	if !cancelled || !value.ValidUUID(deadlineID) {
+		return false
+	}
+	var stored string
+	err := tx.QueryRow(ctx, `SELECT due_on::text FROM documents.deadlines WHERE household_id=$1 AND document_id=$2 AND id=$3`,
+		id.HouseholdID, documentID, deadlineID).Scan(&stored)
+	return err == nil && stored == dueOn
+}
+
 func (s *Store) documentDeadline(ctx context.Context, tx pgx.Tx, id auth.Identity, in DocumentCommand) (Record, error) {
 	var v struct {
 		ID         string `json:"deadline_id"`
@@ -309,7 +332,7 @@ func (s *Store) documentDeadline(ctx context.Context, tx pgx.Tx, id auth.Identit
 	if !v.Confirmed || !slices.Contains(document.DeadlineKinds, v.Kind) || strings.TrimSpace(v.Label) == "" || len(v.Label) > 200 || strings.TrimSpace(v.Source) == "" || len(v.Source) > 200 || v.RemindDays < 0 || v.RemindDays > 366 {
 		return nil, Invalid{"Fristart, Quelle und Datum ausdrücklich bestätigen"}
 	}
-	if !value.Date(v.DueOn) {
+	if !value.Date(v.DueOn) && !documentDeadlineUnchangedCancel(ctx, tx, id, in.ID, v.ID, v.DueOn, v.Cancelled) {
 		return nil, Invalid{"Fristdatum prüfen"}
 	}
 	rid := v.ID

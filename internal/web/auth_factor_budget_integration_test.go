@@ -3,6 +3,7 @@
 package web
 
 import (
+	"context"
 	"errors"
 	"testing"
 	"time"
@@ -25,8 +26,18 @@ func TestSecondFactorBudgetHoldsUnderConcurrentWrongCodes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = f.app.Auth.EnableTOTP(f.ctx, f.identity, code); err != nil {
+	recovery, err := f.app.Auth.EnableTOTP(f.ctx, f.identity, code)
+	if err != nil || len(recovery) < 2 {
+		t.Fatal("enable second factor", err)
+	}
+	// The budget is a 15-minute database window. Start well inside one, so
+	// the nine failures and the concurrent attempts share it.
+	var into float64
+	if err = f.owner.QueryRow(f.ctx, `SELECT extract(epoch FROM clock_timestamp())::numeric%900`).Scan(&into); err != nil {
 		t.Fatal(err)
+	}
+	if left := time.Duration((900 - into) * float64(time.Second)); left < 2*time.Minute {
+		time.Sleep(left + time.Second)
 	}
 	const ip = "198.51.100.7"
 	login := func(factor string) error {
@@ -38,15 +49,44 @@ func TestSecondFactorBudgetHoldsUnderConcurrentWrongCodes(t *testing.T) {
 			t.Fatal("wrong code", attempt, err)
 		}
 	}
-	const concurrent = 5
-	start, results := make(chan struct{}), make(chan error, concurrent)
-	for range concurrent {
-		go func() {
-			<-start
-			results <- login("not-a-code")
-		}()
+	// Hold the second factor so the concurrent requests demonstrably queue at
+	// factor admission before any of them is decided.
+	hold, err := f.owner.Begin(f.ctx)
+	if err != nil {
+		t.Fatal(err)
 	}
-	close(start)
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+		_ = hold.Rollback(ctx)
+	}()
+	if _, err = hold.Exec(f.ctx, `SELECT 1 FROM core.totp_credentials WHERE user_id=$1 AND enabled_at IS NOT NULL FOR UPDATE`, f.identity.UserID); err != nil {
+		t.Fatal(err)
+	}
+	const concurrent = 5
+	results := make(chan error, concurrent)
+	for range concurrent {
+		go func() { results <- login("not-a-code") }()
+	}
+	deadline := time.Now().Add(20 * time.Second)
+	for {
+		// pg_locks is visible to every role (pg_stat_activity hides other roles' waits);
+		// row-lock waits carry no database OID, and this test server is disposable.
+		var waiting int
+		if err = f.owner.QueryRow(f.ctx, `SELECT count(DISTINCT pid) FROM pg_locks WHERE NOT granted`).Scan(&waiting); err != nil {
+			t.Fatal(err)
+		}
+		if waiting >= 2 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("concurrent logins never contended at factor admission", waiting)
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	if err = hold.Commit(f.ctx); err != nil {
+		t.Fatal(err)
+	}
 	checked, limited := 0, 0
 	for range concurrent {
 		switch err := <-results; {
@@ -61,10 +101,9 @@ func TestSecondFactorBudgetHoldsUnderConcurrentWrongCodes(t *testing.T) {
 	if checked != 1 || limited != concurrent-1 {
 		t.Fatalf("checked %d and limited %d wrong codes after nine failures; want 1 and %d", checked, limited, concurrent-1)
 	}
-	if code, err = totp.GenerateCode(secret, time.Now()); err != nil {
-		t.Fatal(err)
-	}
-	if err = login(code); !errors.Is(err, auth.ErrLimited) {
-		t.Fatal("a correct code must wait for the exhausted budget", err)
+	// An unused recovery code would otherwise succeed; the exhausted budget
+	// must refuse it before verification.
+	if err = login(recovery[1]); !errors.Is(err, auth.ErrLimited) {
+		t.Fatal("a valid factor must wait for the exhausted budget", err)
 	}
 }

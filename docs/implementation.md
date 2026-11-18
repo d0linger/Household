@@ -1807,3 +1807,69 @@ Fixed:
 Open, needs a design change (not fixed):
 - **Meters dirty-range merge (`meters.invalidate`, CWE-400, low):** a late sample merges into the accumulated range and restarts aggregate work for the whole range. A fix needs separate tracking of new ranges or an aggregate cursor, which means a new migration and worker changes.
 - **Hourly aggregate materialization (`energy_aggregates.go`, CWE-400, low):** the finding's 1900 example cannot occur, because `EnergyInstantAccepted` limits inputs to the last 30 years. A 30-year span is still about 263,000 hourly buckets per register, and continuations have no durable work budget. A bucket budget or sparse storage is a projection design change.
+
+## Second CodeRabbit review of PR 20 (2026-11-18)
+
+The second review of `bb045a2` reported 34 findings:
+- 2 inline,
+- 8 outside the diff,
+- 20 minor (14 in the summary and 6 in a follow-up comment),
+- 4 nitpicks.
+
+Most concern code the first fixes touched, or neighbouring code the first review never printed: it posts at most about 20 comments and puts major findings first. Each finding was checked against the code. All 34 are addressed.
+
+- **Database sources:**
+  - Explicit `HOUSEHOLD_DATABASE_URL`/`_PASSWORD` settings now disable folder discovery for the other one, like the encryption key sources. A mounted `database_url` therefore no longer conflicts with the app-role handoff of `start`.
+  - `TestDatabaseSourceExplicitBeatsFolder`.
+- **Restore check:**
+  - The provisioning decision uses the resolved restore URL, so an empty URL file means "derive".
+  - All restore locks are taken in the `postgres` maintenance database; others are refused before DDL, because advisory locks are per database.
+  - The lock session sets `idle_session_timeout=0`.
+  - An explicit target that is the managed `household_restore` on the same server runs under the same lock (`database.WithRestoreLock`).
+  - The lifecycle test now:
+    - requires the disposable test server and refuses to run if `household_restore` already exists;
+    - asserts `ErrRestoreSelfTarget`;
+    - covers a non-canonical maintenance database and an explicit check holding the lock.
+- **Second factor:**
+  - Only enabled TOTP credentials are locked, the same lock order as `verifyFactor`.
+  - A failed commit is logged instead of being counted again on the pool.
+  - The concurrency test:
+    - waits for a safe 15-minute window;
+    - holds the TOTP row until at least two logins wait on locks;
+    - checks the exhausted budget with an unused recovery code.
+- **Uploads:**
+  - The job limit counts only jobs the worker can still claim (enabled module at the job's generation).
+  - It also counts the jobs the upload adds, so 19 + 2 is refused.
+  - `TestUploadJobsAddedCountsEveryQueuedJob`.
+- **Feeds:** a deferred `gatedLookup` releases the module gate even if the lookup panics. `TestGatedLookupReleasesTheGateOnPanic`.
+- **Readiness:**
+  - A probe waits on a one-slot channel it can abandon on cancellation.
+  - `shutting` is read again after the inspection.
+  - `TestReadinessProbeStopsWaitingWhenCanceled`.
+- **Documents:**
+  - A no-op archive request returns the document without touching its version.
+  - Unarchiving skips deadlines that already have a pending reminder.
+  - A cancellation may keep a stored due date outside 1900–2200, but a changed date is still validated.
+  - `TestDocumentsNativeArchiveNoOpRemindersAndLegacyDeadlineCancel` (it skips the legacy-date part if the schema itself refuses such dates).
+- **Watch inbox:**
+  - Non-regular entries are skipped before the ten-file batch fills.
+  - The FIFO tests exclude Solaris/illumos, whose `syscall` lacks `Mkfifo`.
+  - `TestWatchSkipsNonRegularEntriesBeforeTheBatchLimit` passed in a local Linux Go container.
+- **Meters:**
+  - A reading update re-checks the 30-year floor only when its instant changes.
+  - The integration test asserts the application message, not only the status.
+- **Fuel import:**
+  - A malformed flag mapping fails only the rows that consult it.
+  - The 32-choice limit is tested on both sides.
+- **Finance:** `BenchmarkFinanceNextRecurrenceFarPastDailyAnchor` makes a skip-ahead regression visible (about 5 µs per lookup locally).
+- **Frontend:**
+  - The Chores filter badge updates only after the tasks load.
+  - A Recipe copy's expiry is checked again right before rendering.
+- **Setup:**
+  - The quick start downloads `compose.yaml`.
+  - `.env` is created with `umask 077` and `set -C`, so an existing `.env` is never overwritten.
+- **`test-recovery.ps1`:**
+  - It joins the running Compose project's network.
+  - It publishes the report only after the rehearsal container is removed.
+  - A failed removal is reported without hiding an earlier error.
+- **Tests:** the `init` test owns its own list of the three 0644 files.

@@ -94,20 +94,31 @@ func databaseURL(hostVariable, defaultHost, databaseName string) (string, error)
 }
 
 func loadDatabaseURL(c *Config) error {
-	var err error
-	if c.DatabaseURL, err = secret("HOUSEHOLD_DATABASE_URL"); err != nil {
-		return err
-	}
-	passwordConfigured, err := configured("HOUSEHOLD_DATABASE_PASSWORD")
-	if err != nil {
-		return err
-	}
-	if c.DatabaseURL != "" && passwordConfigured {
+	urlConfigured := explicitlyConfigured("HOUSEHOLD_DATABASE_URL")
+	passwordConfigured := explicitlyConfigured("HOUSEHOLD_DATABASE_PASSWORD")
+	if urlConfigured && passwordConfigured {
 		return errors.New("database URL and database password are mutually exclusive")
 	}
-	if c.DatabaseURL == "" {
-		c.DatabaseURL, err = databaseURL("HOUSEHOLD_DATABASE_HOST", "db:5432", env("HOUSEHOLD_DATABASE_NAME", "household"))
+	var err error
+	if !urlConfigured && !passwordConfigured {
+		// Only the secrets folder names a source: refuse both rather than guess.
+		// An explicit source (such as the app-role handoff of `start`) disables
+		// folder discovery for the other one, like the encryption key sources.
+		if urlConfigured, err = configured("HOUSEHOLD_DATABASE_URL"); err != nil {
+			return err
+		}
+		if passwordConfigured, err = configured("HOUSEHOLD_DATABASE_PASSWORD"); err != nil {
+			return err
+		}
+		if urlConfigured && passwordConfigured {
+			return errors.New("database URL and database password are mutually exclusive")
+		}
 	}
+	if urlConfigured {
+		c.DatabaseURL, err = secret("HOUSEHOLD_DATABASE_URL")
+		return err
+	}
+	c.DatabaseURL, err = databaseURL("HOUSEHOLD_DATABASE_HOST", "db:5432", env("HOUSEHOLD_DATABASE_NAME", "household"))
 	return err
 }
 
