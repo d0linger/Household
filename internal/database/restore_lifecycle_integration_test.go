@@ -16,12 +16,16 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// HOUSEHOLD_TEST_SUPERUSER_URL is optional: a postgres superuser connection to
-// the maintenance database of the disposable test server. The test creates and
-// drops household_restore_auto_* databases there.
+// HOUSEHOLD_TEST_SUPERUSER_URL is a postgres superuser connection to the
+// maintenance database of the disposable test server; required integration runs
+// must provide it. The test creates and drops household_restore_auto_*
+// databases there.
 func TestAutomaticRestoreDatabasesAreIndependent(t *testing.T) {
 	maintenanceURL := os.Getenv("HOUSEHOLD_TEST_SUPERUSER_URL")
 	if maintenanceURL == "" {
+		if os.Getenv("HOUSEHOLD_REQUIRE_INTEGRATION") == "1" {
+			t.Fatal("HOUSEHOLD_TEST_SUPERUSER_URL is required for the restore lifecycle test")
+		}
 		t.Skip("HOUSEHOLD_TEST_SUPERUSER_URL is not set")
 	}
 	cfg, err := pgx.ParseConfig(maintenanceURL)
@@ -32,7 +36,8 @@ func TestAutomaticRestoreDatabasesAreIndependent(t *testing.T) {
 	// the CI service) qualifies, including every fallback pgx might try.
 	approved := func(host string, port uint16) bool {
 		loopback := host == "127.0.0.1" || host == "localhost" || host == "::1"
-		return loopback && (port == 55434 || port == 5432 && os.Getenv("CI") == "true")
+		return loopback && (port == 55434 || port == 5432 && os.Getenv("CI") == "true") ||
+			host == "db" && port == 5432 && os.Getenv("HOUSEHOLD_REQUIRE_INTEGRATION") == "1"
 	}
 	if cfg.Database != "postgres" || cfg.User != "postgres" || !approved(cfg.Host, cfg.Port) {
 		t.Fatal("refusing restore lifecycle outside the disposable test server's postgres database")

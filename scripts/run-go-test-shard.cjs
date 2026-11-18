@@ -108,7 +108,7 @@ function exactPattern(inventory, shard) {
 }
 
 function discoveryEnvironment(env) {
-  return {...env, HOUSEHOLD_REQUIRE_INTEGRATION: '0', HOUSEHOLD_TEST_OWNER_URL: '', HOUSEHOLD_TEST_APP_URL: '', HOUSEHOLD_DATABASE_URL: ''};
+  return {...env, HOUSEHOLD_REQUIRE_INTEGRATION: '0', HOUSEHOLD_TEST_OWNER_URL: '', HOUSEHOLD_TEST_APP_URL: '', HOUSEHOLD_TEST_SUPERUSER_URL: '', HOUSEHOLD_DATABASE_URL: ''};
 }
 
 function discoveryArguments() {
@@ -222,7 +222,7 @@ async function main(args) {
   if (args.length < 3 || args.length > 4 || !/^(?:[0-9]|1[0-5])$/.test(rawShard) || rawCount !== String(SHARDS) || !rawOutput) throw Error('Usage: run-go-test-shard.cjs INDEX 16 OUTPUT [EXPECTED_COMMIT]');
   const root = process.cwd(), output = path.resolve(rawOutput), allowed = path.join(root, 'outputs') + path.sep;
   if (!output.startsWith(allowed)) throw Error('Shard output must be inside workspace outputs');
-  if (process.env.HOUSEHOLD_REQUIRE_INTEGRATION !== '1' || !process.env.HOUSEHOLD_TEST_OWNER_URL || !process.env.HOUSEHOLD_TEST_APP_URL) throw Error('Required isolated integration authority is missing');
+  if (process.env.HOUSEHOLD_REQUIRE_INTEGRATION !== '1' || !process.env.HOUSEHOLD_TEST_OWNER_URL || !process.env.HOUSEHOLD_TEST_APP_URL || !process.env.HOUSEHOLD_TEST_SUPERUSER_URL) throw Error('Required isolated integration authority is missing');
   fs.mkdirSync(output, {recursive: true});
   const source = sourceSnapshot(root, expectedCommit);
   const envValues = execFileSync('go', ['env', 'GOVERSION', 'GOOS', 'GOARCH', 'CGO_ENABLED'], {encoding: 'utf8'}).trim().split(/\r?\n/);

@@ -117,6 +117,7 @@ jobs:
       HOUSEHOLD_REQUIRE_INTEGRATION: '1'
       HOUSEHOLD_TEST_OWNER_URL: postgres://household_owner:ci-owner-only@localhost:5432/household_test?sslmode=disable
       HOUSEHOLD_TEST_APP_URL: postgres://household_app:ci-app-only@localhost:5432/household_test?sslmode=disable
+      HOUSEHOLD_TEST_SUPERUSER_URL: postgres://postgres:ci-database-only@localhost:5432/postgres?sslmode=disable
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: {persist-credentials: false}
