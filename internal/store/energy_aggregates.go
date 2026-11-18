@@ -9,20 +9,27 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-func energyRebuildAggregates(ctx context.Context, tx pgx.Tx, household string, dirty Record) error {
+// energyAggregateBatchHours bounds the hour buckets one job rebuilds.
+const energyAggregateBatchHours = 48
+
+// energyRebuildAggregates rebuilds up to energyAggregateBatchHours hour buckets
+// and then each touched day and month once, not once per hour. It returns the
+// span that remains after this batch, so the worker can pace long rebuilds.
+func energyRebuildAggregates(ctx context.Context, tx pgx.Tx, household string, dirty Record) (time.Duration, error) {
 	register, zone := String(dirty["register_id"]), String(dirty["timezone"])
 	cursor, err := energyTime(String(dirty["cursor_at"]))
 	if err != nil {
-		return err
+		return 0, err
 	}
 	through, err := energyTime(String(dirty["through_at"]))
 	if err != nil {
-		return err
+		return 0, err
 	}
-	for count := 0; count < 48 && cursor.Before(through); count++ {
+	var hours []time.Time
+	for count := 0; count < energyAggregateBatchHours && cursor.Before(through); count++ {
 		from, end, err := energy.BucketSpan(cursor, zone, "hour")
 		if err != nil {
-			return err
+			return 0, err
 		}
 		hour, err := energyObject(ctx, tx, `WITH portions AS(
  SELECT i.quantity,i.quality,i.from_at,i.through_at,greatest(i.from_at,$3::timestamptz) a,least(i.through_at,$4::timestamptz) b
@@ -37,20 +44,32 @@ func energyRebuildAggregates(ctx context.Context, tx pgx.Tx, household string, d
  RETURNING jsonb_build_object('covered',x.covered_seconds,'estimated',x.estimated_seconds)`,
 			household, register, from, end, Int(dirty["source_revision"]), dirty["created_by"])
 		if err != nil {
-			return err
+			return 0, err
 		}
 		if Int(hour["covered"]) > int64(end.Sub(from)/time.Second) || Int(hour["estimated"]) > Int(hour["covered"]) {
-			return Invalid{"Überlappende Messintervalle verhindern eine eindeutige Zeitaggregation"}
+			return 0, Invalid{"Überlappende Messintervalle verhindern eine eindeutige Zeitaggregation"}
 		}
-		for _, kind := range []string{"day", "month"} {
+		hours = append(hours, from)
+		cursor = end
+	}
+	// Days sum their hours and months sum their days, so every touched day is
+	// rebuilt before its month, and each only once per batch instead of once per
+	// hour. A batch touches at most three days and two months.
+	for _, kind := range []string{"day", "month"} {
+		inputKind := "hour"
+		if kind == "month" {
+			inputKind = "day"
+		}
+		done := map[time.Time]bool{}
+		for _, from := range hours {
 			start, finish, err := energy.BucketSpan(from, zone, kind)
 			if err != nil {
-				return err
+				return 0, err
 			}
-			inputKind := "hour"
-			if kind == "month" {
-				inputKind = "day"
+			if done[start] {
+				continue
 			}
+			done[start] = true
 			_, err = tx.Exec(ctx, `INSERT INTO meters.aggregates(household_id,register_id,bucket_kind,from_at,through_at,quantity,
  covered_seconds,estimated_seconds,source_revision,created_by)
  SELECT $1,$2,$3,$4,$5,sum(quantity),coalesce(sum(covered_seconds),0),coalesce(sum(estimated_seconds),0),$6,$7
@@ -59,16 +78,15 @@ func energyRebuildAggregates(ctx context.Context, tx pgx.Tx, household string, d
  covered_seconds=EXCLUDED.covered_seconds,estimated_seconds=EXCLUDED.estimated_seconds,source_revision=EXCLUDED.source_revision`,
 				household, register, kind, start, finish, Int(dirty["source_revision"]), dirty["created_by"], inputKind)
 			if err != nil {
-				return err
+				return 0, err
 			}
 		}
-		cursor = end
 	}
 	if !cursor.Before(through) {
 		_, err = tx.Exec(ctx, `DELETE FROM meters.dirty_ranges WHERE household_id=$1 AND register_id=$2`, household, register)
-		return err
+		return 0, err
 	}
 	_, err = tx.Exec(ctx, `UPDATE meters.dirty_ranges SET cursor_at=$3,cursor_id='',updated_at=clock_timestamp()
  WHERE household_id=$1 AND register_id=$2 AND phase='aggregates'`, household, register, cursor)
-	return err
+	return through.Sub(cursor), err
 }
