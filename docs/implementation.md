@@ -1967,3 +1967,24 @@ The fourth review of `839ff22` reported 24 findings: 20 inline, 2 outside the di
   - The README states when restore cleanup can be skipped, and that explicit targets are never dropped.
   - It explains how to mount the restic password file for UID 10001.
 - **Fuel:** the mapping test checks both rows in one import, with the exact error text.
+
+## Fifth CodeRabbit review of PR 20 (2026-11-18)
+
+The fifth review of `2f19230` reported 13 findings: 10 inline and 3 outside the diff. All are addressed.
+
+- **Restore check:**
+  - It no longer rotates passwords. `database.PrepareRestoreDatabase` creates missing cluster-wide roles, accepts a concurrent creation and never changes an existing role, so it neither changes the running app's credentials nor races on `ALTER ROLE`. Setup and `start` still set the passwords through `Bootstrap`.
+  - A failed final drop is now reported together with a failed verification, including the database name.
+  - The lifecycle test's teardown is bounded and reports failures.
+- **Recovery rehearsal:**
+  - The automatic invocation omits the target mount and clears both explicit restore settings.
+  - It then proves that `household_restore` still holds the post-restore edit, so the automatic check restored into its own database.
+- **Second factor:** after a failed in-transaction write, the rollback and pool retry get a fresh 5-second recovery budget.
+- **Configuration:** direct `HOUSEHOLD_DATABASE_URL`/`_PASSWORD` values keep the 32 KiB bound.
+- **Watch inbox:**
+  - Names that are not valid UTF-8 are ignored, so the JSON cursor only ever stores lossless names. The intake worker also skips such keys before any lookup or write.
+  - Settling also compares the file identity (device and inode on Unix), so a replacement restarts the period.
+  - `TestWatchRestartsSettlingForAReplacementAndIgnoresInvalidNames` (Linux).
+- **Uploads:** the handler boundary test parks other jobs and seeds exactly 19 known jobs, including a claimable capture OCR job.
+- **Readiness:** the test holds the probe at the hook on a release channel and cancels it before releasing it.
+- **Upgrade guide:** if `owner_password` and `app_password` were identical, keep the newly generated app password; `start` sets it.

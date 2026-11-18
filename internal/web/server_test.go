@@ -148,15 +148,15 @@ func TestGatedLookupReleasesTheGateOnPanic(t *testing.T) {
 func TestReadinessProbeStopsWaitingWhenCanceled(t *testing.T) {
 	// Not parallel: it sets the package-level readiness hook.
 	t.Cleanup(func() { readinessHook = nil })
-	run := func(t *testing.T, s *Server, stage string, action func()) bool {
+	// run holds the probe at stage, cancels it there, then lets it continue.
+	run := func(t *testing.T, s *Server, stage string) bool {
 		t.Helper()
-		reached := make(chan struct{})
+		reached, release := make(chan struct{}), make(chan struct{})
 		var once sync.Once
 		readinessHook = func(at string) {
 			if at == stage {
 				once.Do(func() { close(reached) })
-				// Let the test act at exactly this point before the probe goes on.
-				<-time.After(50 * time.Millisecond)
+				<-release
 			}
 		}
 		ctx, cancel := context.WithCancel(context.Background())
@@ -166,11 +166,12 @@ func TestReadinessProbeStopsWaitingWhenCanceled(t *testing.T) {
 		case <-reached:
 		case <-time.After(2 * time.Second):
 			cancel()
+			close(release)
 			<-done
 			t.Fatal("the probe never reached", stage)
 		}
-		action()
 		cancel()
+		close(release)
 		select {
 		case ready := <-done:
 			readinessHook = nil
@@ -184,13 +185,13 @@ func TestReadinessProbeStopsWaitingWhenCanceled(t *testing.T) {
 	s.readiness.once.Do(func() { s.readiness.slot = make(chan struct{}, 1) })
 	// Canceled while waiting for a slot another probe holds.
 	s.readiness.slot <- struct{}{}
-	if run(t, s, "waiting", func() {}) {
+	if run(t, s, "waiting") {
 		t.Fatal("a probe canceled while waiting must not report ready")
 	}
 	<-s.readiness.slot
 	// Canceled right after acquiring the slot, with a fresh ready cache.
 	s.readiness.checked, s.readiness.ready = time.Now(), true
-	if run(t, s, "acquired", func() {}) {
+	if run(t, s, "acquired") {
 		t.Fatal("a probe canceled after acquiring the slot must not report the cached result")
 	}
 	if !s.databaseReady(context.Background()) {

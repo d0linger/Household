@@ -81,10 +81,16 @@ func TestAutomaticRestoreDatabasesAreIndependent(t *testing.T) {
 			t.Fatal("create leftover fixture", err)
 		}
 		t.Cleanup(func() {
-			conn, err := pgx.ConnectConfig(context.Background(), cfg.Copy())
-			if err == nil {
-				_, _ = conn.Exec(context.Background(), "DROP DATABASE IF EXISTS "+pgx.Identifier{name}.Sanitize()+" WITH (FORCE)")
-				_ = conn.Close(context.Background())
+			cleanup, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			conn, err := pgx.ConnectConfig(cleanup, cfg.Copy())
+			if err != nil {
+				t.Errorf("connect to drop fixture %s: %v", name, err)
+				return
+			}
+			defer func() { _ = conn.Close(context.Background()) }()
+			if _, err = conn.Exec(cleanup, "DROP DATABASE IF EXISTS "+pgx.Identifier{name}.Sanitize()+" WITH (FORCE)"); err != nil {
+				t.Errorf("drop fixture %s: %v", name, err)
 			}
 		})
 	}

@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 // Watch consumes only producer-renamed *.ready.pdf/jpg/png files. It never moves or deletes input files.
@@ -40,7 +41,9 @@ func Watch(ctx context.Context, dir string, cursor Cursor) ([]Candidate, Cursor,
 			ext := strings.ToLower(filepath.Ext(name))
 			// Known non-regular entries (FIFOs, sockets, devices, links) never fill
 			// the ten-file batch; openWatchCandidate still checks later swaps.
-			if name <= cursor.After || !entry.Type().IsRegular() || !strings.HasSuffix(strings.TrimSuffix(strings.ToLower(name), ext), ".ready") || !slices.Contains([]string{".pdf", ".jpg", ".jpeg", ".png"}, ext) {
+			// Names that are not valid UTF-8 cannot be stored losslessly in the
+			// JSON cursor or as a document name, so they are ignored entirely.
+			if name <= cursor.After || !utf8.ValidString(name) || !entry.Type().IsRegular() || !strings.HasSuffix(strings.TrimSuffix(strings.ToLower(name), ext), ".ready") || !slices.Contains([]string{".pdf", ".jpg", ".jpeg", ".png"}, ext) {
 				continue
 			}
 			chosen = append(chosen, name)
@@ -72,14 +75,14 @@ func Watch(ctx context.Context, dir string, cursor Cursor) ([]Candidate, Cursor,
 		// A file that may still be written stops this batch, so the cursor never
 		// passes it; a later poll picks it up.
 		if !watchSettled(cursor, name, info, time.Now()) {
-			next.Settling, next.SettlingSize, next.SettlingMod = name, info.Size(), info.ModTime()
-			if cursor.Settling != name || cursor.SettlingSize != info.Size() || !cursor.SettlingMod.Equal(info.ModTime()) {
+			if !sameSettlingObservation(cursor, name, info) {
 				next.SettlingSince = time.Now()
 			}
+			next.Settling, next.SettlingSize, next.SettlingMod, next.SettlingFile = name, info.Size(), info.ModTime(), watchFileIdentity(info)
 			break
 		}
 		if next.Settling == name {
-			next.Settling, next.SettlingSize, next.SettlingMod, next.SettlingSince = "", 0, time.Time{}, time.Time{}
+			next.Settling, next.SettlingSize, next.SettlingMod, next.SettlingSince, next.SettlingFile = "", 0, time.Time{}, time.Time{}, ""
 		}
 		in, before, e := openWatchCandidate(root, name)
 		if errors.Is(e, errWatchNotRegular) {
@@ -131,8 +134,14 @@ func watchSettled(cursor Cursor, name string, info os.FileInfo, now time.Time) b
 	if age := now.Sub(info.ModTime()); age >= watchSettleTime {
 		return true
 	}
+	return sameSettlingObservation(cursor, name, info) && !cursor.SettlingSince.IsZero() && now.Sub(cursor.SettlingSince) >= watchSettleTime
+}
+
+// sameSettlingObservation reports whether info is the file the cursor last
+// observed settling: same name, size, time and (where available) identity.
+func sameSettlingObservation(cursor Cursor, name string, info os.FileInfo) bool {
 	return cursor.Settling == name && cursor.SettlingSize == info.Size() && cursor.SettlingMod.Equal(info.ModTime()) &&
-		!cursor.SettlingSince.IsZero() && now.Sub(cursor.SettlingSince) >= watchSettleTime
+		cursor.SettlingFile == watchFileIdentity(info)
 }
 
 // openWatchCandidate opens name below root without blocking and checks the

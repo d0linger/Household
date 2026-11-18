@@ -88,4 +88,7 @@ type Cursor struct {
 	SettlingSize  int64     `json:"settling_size,omitempty"`
 	SettlingMod   time.Time `json:"settling_mod,omitzero"`
 	SettlingSince time.Time `json:"settling_since,omitzero"`
+	// SettlingFile identifies the observed file where the platform allows it,
+	// so a replacement with the same name, size and time settles anew.
+	SettlingFile string `json:"settling_file,omitempty"`
 }

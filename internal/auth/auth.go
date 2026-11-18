@@ -151,6 +151,8 @@ const (
 	factorFailureWindow = 15 * time.Minute
 	// factorAccountingTimeout bounds counting one wrong code after the request.
 	factorAccountingTimeout = 10 * time.Second
+	// factorRecoveryTimeout bounds the rollback and pool retry after a failed write.
+	factorRecoveryTimeout = 5 * time.Second
 )
 
 func (s *Service) limitSubject(scope, subject string) []byte {
@@ -207,8 +209,13 @@ func (s *Service) failFactor(ctx context.Context, tx pgx.Tx, user string) {
 		}
 		return
 	}
-	_ = tx.Rollback(durable)
-	if err = s.limit(durable, s.pool, "totp-failure", user, factorFailureLimit, factorFailureWindow); err != nil && !errors.Is(err, ErrLimited) {
+	// The write failed inside the transaction, so nothing was committed. Roll
+	// back and count on the pool within a fresh, short recovery budget: the
+	// first attempt may have used up the whole accounting timeout.
+	recovery, cancelRecovery := context.WithTimeout(context.WithoutCancel(ctx), factorRecoveryTimeout)
+	defer cancelRecovery()
+	_ = tx.Rollback(recovery)
+	if err = s.limit(recovery, s.pool, "totp-failure", user, factorFailureLimit, factorFailureWindow); err != nil && !errors.Is(err, ErrLimited) {
 		slog.Default().Error("record second-factor failure", "error", err)
 	}
 }

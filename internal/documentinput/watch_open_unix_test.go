@@ -131,3 +131,56 @@ func TestWatchSettlesFutureTimestampsFromFirstObservation(t *testing.T) {
 		t.Fatal("a file unchanged since its first observation must be read", second, cursor, err)
 	}
 }
+
+// Regression: a replacement under the same name, size and time settles anew;
+// names that are not valid UTF-8 are ignored instead of blocking the inbox.
+func TestWatchRestartsSettlingForAReplacementAndIgnoresInvalidNames(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "a.ready.pdf")
+	future := time.Now().Add(time.Hour)
+	write := func(target string) {
+		if err := os.WriteFile(target, []byte("%PDF-1.4"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chtimes(target, future, future); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write(path)
+	_, cursor, err := Watch(t.Context(), dir, Cursor{})
+	if err != nil || cursor.Settling != "a.ready.pdf" || cursor.SettlingFile == "" {
+		t.Fatal("first observation", cursor, err)
+	}
+	// Replace atomically: the new file exists before the old one goes away, so
+	// it cannot reuse the old inode.
+	write(filepath.Join(dir, "replacement.tmp"))
+	if err = os.Rename(filepath.Join(dir, "replacement.tmp"), path); err != nil {
+		t.Fatal(err)
+	}
+	cursor.SettlingSince = cursor.SettlingSince.Add(-watchSettleTime)
+	got, next, err := Watch(t.Context(), dir, cursor)
+	if err != nil || len(got) != 0 || next.Settling != "a.ready.pdf" || !next.SettlingSince.After(cursor.SettlingSince) {
+		t.Fatal("a replacement must restart its settling period", got, next, err)
+	}
+	if err = os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	invalid := filepath.Join(dir, "a\xff.ready.pdf")
+	if err = os.WriteFile(invalid, []byte("%PDF-1.4"), 0o600); err != nil {
+		t.Skip("this filesystem refuses non-UTF-8 names:", err)
+	}
+	valid := filepath.Join(dir, "z.ready.pdf")
+	if err = os.WriteFile(valid, []byte("%PDF-1.4"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	old := time.Now().Add(-time.Minute)
+	for _, name := range []string{invalid, valid} {
+		if err = os.Chtimes(name, old, old); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got, next, err = Watch(t.Context(), dir, Cursor{})
+	if err != nil || len(got) != 1 || got[0].Name != "z.ready.pdf" || next.After != "z.ready.pdf" {
+		t.Fatal("an invalid name must be ignored, not block or enter the cursor", got, next, err)
+	}
+}

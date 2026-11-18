@@ -21,6 +21,19 @@ import (
 // owner and limits CONNECT and public-schema CREATE. Every step is idempotent,
 // so it runs safely on every start. Passwords never appear in errors.
 func Bootstrap(ctx context.Context, superuserURL, ownerPassword, appPassword string) error {
+	return bootstrap(ctx, superuserURL, ownerPassword, appPassword, true)
+}
+
+// PrepareRestoreDatabase prepares a restore check's own database like Bootstrap,
+// but never changes an existing role: roles are cluster-wide, and a restore
+// check must not rotate the passwords the running app uses. Missing roles are
+// created; a concurrent check creating the same role first is accepted. If an
+// existing role has another password, the restore itself fails to authenticate.
+func PrepareRestoreDatabase(ctx context.Context, superuserURL, ownerPassword, appPassword string) error {
+	return bootstrap(ctx, superuserURL, ownerPassword, appPassword, false)
+}
+
+func bootstrap(ctx context.Context, superuserURL, ownerPassword, appPassword string, rotate bool) error {
 	if ownerPassword == "" || appPassword == "" || ownerPassword == appPassword {
 		return errors.New("database setup needs two different role passwords")
 	}
@@ -41,16 +54,22 @@ func Bootstrap(ctx context.Context, superuserURL, ownerPassword, appPassword str
 		if err = conn.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM pg_roles WHERE rolname=$1)", role.name).Scan(&exists); err != nil {
 			return fmt.Errorf("inspect role %s: %w", role.name, err)
 		}
+		if exists && !rotate {
+			continue
+		}
 		template := "CREATE ROLE %I LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT PASSWORD %L"
 		if exists {
 			template = "ALTER ROLE %I PASSWORD %L"
 		}
 		err = execFormatted(ctx, conn, template, role.name, role.password)
-		// Roles are cluster-wide: a concurrent setup (two restore checks on one
-		// fresh server) may create the role first. Then set the password instead.
+		// Roles are cluster-wide: a concurrent setup may create the role first.
+		// Setup then sets its password; a restore check leaves it unchanged.
 		var pgErr *pgconn.PgError
 		if !exists && errors.As(err, &pgErr) && (pgErr.Code == "42710" || pgErr.Code == "23505") {
-			err = execFormatted(ctx, conn, "ALTER ROLE %I PASSWORD %L", role.name, role.password)
+			err = nil
+			if rotate {
+				err = execFormatted(ctx, conn, "ALTER ROLE %I PASSWORD %L", role.name, role.password)
+			}
 		}
 		if err != nil {
 			return fmt.Errorf("set up role %s", role.name)
@@ -140,8 +159,10 @@ func WithAutomaticRestoreDatabase(ctx context.Context, maintenanceURL string, us
 	defer func() {
 		cleanupCtx, cancelCleanup := context.WithTimeout(context.WithoutCancel(ctx), time.Minute)
 		defer cancelCleanup()
-		if dropErr := dropRestoreDatabase(cleanupCtx, conn, cfg, name); dropErr != nil && err == nil {
-			err = fmt.Errorf("drop restore database: %w", dropErr)
+		if dropErr := dropRestoreDatabase(cleanupCtx, conn, cfg, name); dropErr != nil {
+			// Report it even after a failed verification: the restored copy may
+			// still be on disk until a later check removes the leftover.
+			err = errors.Join(err, fmt.Errorf("drop restore database %s: %w", name, dropErr))
 		}
 	}()
 	return use(name)

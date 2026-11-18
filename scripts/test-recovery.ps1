@@ -354,11 +354,21 @@ SELECT (SELECT count(*) FROM core.financial_requirement_sets WHERE household_id=
       [IO.File]::WriteAllLines($taskAutoEnvironment,@((Get-Content -LiteralPath $taskEnvironment) | Where-Object {$_ -notlike 'HOUSEHOLD_RESTORE_DATABASE_URL_FILE=*'}))
       $taskAutoSecrets=Join-Path $taskSecrets 'automatic.env'
       [IO.File]::WriteAllLines($taskAutoSecrets,@("POSTGRES_PASSWORD=$taskPostgresPassword","HOUSEHOLD_OWNER_PASSWORD=$taskOwnerPassword","HOUSEHOLD_APP_PASSWORD=$taskAppPassword"))
-      $taskAutoArguments=@($taskDockerArguments[0..($taskDockerArguments.Count-2)])
+      # Build the arguments without the target_url mount, and clear both explicit restore
+      # settings so no image default can select household_restore again.
+      $taskAutoArguments=[Collections.Generic.List[string]]::new()
+      for($taskIndex=0;$taskIndex -lt $taskDockerArguments.Count-1;$taskIndex++){
+        if($taskDockerArguments[$taskIndex] -eq '--mount' -and $taskDockerArguments[$taskIndex+1] -like '*target=/run/secrets/target_url*'){$taskIndex++;continue}
+        $taskAutoArguments.Add($taskDockerArguments[$taskIndex])
+      }
       $taskAutoArguments[5]=$taskAutoEnvironment
-      $taskAutoArguments+=@('--env-file',$taskAutoSecrets,$BackupImage)
+      $taskAutoArguments.AddRange([string[]]@('--env-file',$taskAutoSecrets,'-e','HOUSEHOLD_RESTORE_DATABASE_URL=','-e','HOUSEHOLD_RESTORE_DATABASE_URL_FILE=',$BackupImage))
       & docker @taskAutoArguments restore-check $taskSnapshot
       if($LASTEXITCODE -ne 0){throw 'Automatic restore-check without an explicit target failed'}
+      # The fixed target still holds the edit made after the explicit restore: the
+      # automatic check restored into its own database, not into household_restore.
+      $taskFixedTarget=docker exec -i $taskDatabase psql -U postgres -d household_restore -Atc "SELECT title FROM recipes.recipes WHERE id='$taskRecipe'"
+      if($LASTEXITCODE -ne 0 -or $taskFixedTarget -ne 'After restore'){throw 'Automatic restore-check wrote into the fixed household_restore target'}
       $taskAutoLeftovers=docker exec -i $taskDatabase psql -U postgres -d household_restore -Atc "SELECT count(*) FROM pg_database WHERE datname LIKE 'household\_restore\_auto\_%'"
       if($LASTEXITCODE -ne 0 -or $taskAutoLeftovers -ne '0'){throw 'Automatic restore-check left its temporary database behind'}
       $taskRestoreTimer.Stop()

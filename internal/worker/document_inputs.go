@@ -142,6 +142,11 @@ func (w *Worker) documentInput(ctx context.Context, job, lease string) (jobErr e
 			if reason == "" && (len(candidate.Key) == 0 || len(candidate.Key) > 300) {
 				reason = "document input identity exceeds limit"
 			}
+			// Checked before any receipt lookup or file write, so an invalid name
+			// is skipped instead of rolling back the whole batch.
+			if reason == "" && (!utf8.ValidString(candidate.Key) || !utf8.ValidString(candidate.Name)) {
+				reason = "document input name is not valid UTF-8"
+			}
 			if reason != "" {
 				if w.Log != nil {
 					w.Log.Warn("document input item rejected", "source_id", source, "reason", reason)

@@ -162,7 +162,7 @@ func withRestoreTarget(ctx context.Context, source, target, superuser string, ve
 		}
 		setupCtx, cancel := context.WithTimeout(ctx, time.Minute)
 		defer cancel()
-		if err = database.Bootstrap(setupCtx, restoreURL, owner, app); err != nil {
+		if err = database.PrepareRestoreDatabase(setupCtx, restoreURL, owner, app); err != nil {
 			return err
 		}
 		return verify(runTarget)

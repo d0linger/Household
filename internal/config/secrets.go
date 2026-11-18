@@ -93,6 +93,9 @@ func explicitValue(name string) (string, error) {
 	if path != "" {
 		return readSecretFile(name, path, 32<<10)
 	}
+	if len(value) > 32<<10 {
+		return "", fmt.Errorf("%s secret exceeds its bounded format", name)
+	}
 	return value, nil
 }
 

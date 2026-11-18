@@ -129,7 +129,7 @@ Bis November 2026 bestand die Installation aus mehreren Compose-Dateien mit Pass
 
 1. Mit dem alten Setup ein Backup machen und mit `restore-check` prüfen.
 2. Die alte Installation stoppen, **ohne** `-v`: `docker compose down`.
-3. Eine **neue** Datei erzeugen, ohne eine vorhandene `.env` anzutasten: `(umask 077; set -C; docker run --rm ghcr.io/d0linger/household:production init > .env.new)`. Darin diese Werte durch den Inhalt der alten Dateien ersetzen und Einstellungen wie `HOUSEHOLD_ORIGIN` und `HOUSEHOLD_TRUSTED_PROXIES` aus einer alten `.env` übernehmen. Erst danach eine alte `.env` sichern (zum Beispiel `mv .env .env.old`) und die neue aktivieren: `mv .env.new .env`.
+3. Eine **neue** Datei erzeugen, ohne eine vorhandene `.env` anzutasten: `(umask 077; set -C; docker run --rm ghcr.io/d0linger/household:production init > .env.new)`. Darin diese Werte durch den Inhalt der alten Dateien ersetzen und Einstellungen wie `HOUSEHOLD_ORIGIN` und `HOUSEHOLD_TRUSTED_PROXIES` aus einer alten `.env` übernehmen. Erst danach eine alte `.env` sichern (zum Beispiel `mv .env .env.old`) und die neue aktivieren: `mv .env.new .env`. Waren `owner_password` und `app_password` bisher identisch, übernimm nur `owner_password` und behalte für `HOUSEHOLD_APP_PASSWORD` den neu erzeugten Wert: Die beiden Passwörter müssen sich unterscheiden, und `start` setzt das neue App-Passwort beim ersten Start selbst.
 
    | Einstellung in `.env` | alte Datei in `.local/secrets` |
    | --- | --- |
