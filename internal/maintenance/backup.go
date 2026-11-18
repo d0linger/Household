@@ -378,7 +378,7 @@ func lockRepository(ctx context.Context, pool *pgxpool.Pool) (func(), error) {
 
 func VerifyRestore(ctx context.Context, pool *pgxpool.Pool, cfg config.Config, snapshot, targetURL string) error {
 	ctx = audit.WithRequest(audit.WithSystem(ctx, "operator"), value.UUID())
-	if err := validateRestoreTarget(cfg.DatabaseURL, targetURL); err != nil {
+	if err := ValidateRestoreTarget(cfg.DatabaseURL, targetURL); err != nil {
 		return err
 	}
 	unlock, err := lockRepository(ctx, pool)
@@ -530,7 +530,10 @@ func VerifyRestore(ctx context.Context, pool *pgxpool.Pool, cfg config.Config, s
 	return err
 }
 
-func validateRestoreTarget(sourceURL, targetURL string) error {
+// ValidateRestoreTarget requires the disposable household_restore target and
+// rejects a source that uses that reserved name. restore-check runs it before
+// it creates or drops anything.
+func ValidateRestoreTarget(sourceURL, targetURL string) error {
 	target, err := maintenanceURL(targetURL)
 	if err != nil {
 		return err

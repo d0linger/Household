@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"household/internal/webpush"
@@ -16,6 +17,19 @@ import (
 
 // generatedSecrets are random values every installation needs.
 var generatedSecrets = []string{"postgres_password", "owner_password", "app_password", "csrf_secret", "encryption_key", "rate_secret", "bootstrap_password", "restic_password"}
+
+// databaseSecrets are mounted into the test PostgreSQL container, whose postgres
+// user differs from the host user. They are readable inside the private 0700
+// folder, so other host users still cannot reach them; every other secret stays
+// owner-only.
+var databaseSecrets = []string{"postgres_password", "owner_password", "app_password"}
+
+func secretMode(name string) os.FileMode {
+	if slices.Contains(databaseSecrets, name) {
+		return 0o644
+	}
+	return 0o600
+}
 
 // runInit prints a complete .env with fresh secrets to standard output, or
 // with --files creates the .local/secrets folder that the isolated test
@@ -62,7 +76,7 @@ func runInit(args []string, out io.Writer) error {
 		if err != nil {
 			return err
 		}
-		if err = writeNewFile(filepath.Join(dir, name), value); err != nil {
+		if err = writeNewFile(filepath.Join(dir, name), value, secretMode(name)); err != nil {
 			return err
 		}
 	}
@@ -79,12 +93,19 @@ func randomSecret() (string, error) {
 	return base64.RawURLEncoding.EncodeToString(raw), nil
 }
 
-func writeNewFile(name, content string) error {
+func writeNewFile(name, content string, mode os.FileMode) error {
 	// security: fixed names below the folder this run created; O_EXCL never follows
 	// or replaces an existing file.
 	file, err := os.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600) // #nosec G304 G703 -- fixed init output path, exclusive creation
 	if err != nil {
 		return fmt.Errorf("could not create %s", filepath.Base(name))
+	}
+	// Set the mode explicitly: scripts/initialize.sh runs with umask 077.
+	if mode != 0o600 {
+		if err = file.Chmod(mode); err != nil { // #nosec G302 -- database secrets only, inside the private 0700 folder
+			_ = file.Close()
+			return fmt.Errorf("could not set permissions of %s", filepath.Base(name))
+		}
 	}
 	if _, err = io.WriteString(file, content); err != nil {
 		_ = file.Close()

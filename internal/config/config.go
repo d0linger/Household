@@ -157,9 +157,9 @@ func Load() (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
-	// Push services need a contact; the HTTPS origin is a valid default.
-	if c.WebPushContact == "" && strings.HasPrefix(c.Origin, "https://") && validWebPushContact(c.Origin) {
-		c.WebPushContact = c.Origin
+	// Push services need a contact; the HTTPS origin's host is a valid default.
+	if c.WebPushContact == "" {
+		c.WebPushContact = originWebPushContact(c.Origin)
 	}
 	if c.DatabaseURL == "" {
 		return Config{}, errors.New("database URL or database password is required")

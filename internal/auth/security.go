@@ -70,8 +70,7 @@ func (s *Service) Reauthenticate(ctx context.Context, id Identity, password, cod
 	}
 	if err = s.verifyFactor(ctx, tx, id.UserID, code); err != nil {
 		if errors.Is(err, ErrCredentials) {
-			_ = tx.Rollback(ctx)
-			s.recordFactorFailure(ctx, id.UserID)
+			s.failFactor(ctx, tx, id.UserID)
 		}
 		return err
 	}

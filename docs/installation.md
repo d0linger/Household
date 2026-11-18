@@ -9,10 +9,10 @@ Lege einen leeren Ordner an, zum Beispiel `household`, und speichere darin [`com
 ## 2. Einstellungen und Passwörter erzeugen
 
 ```bash
-docker run --rm ghcr.io/d0linger/household:production init > .env
+(umask 077; docker run --rm ghcr.io/d0linger/household:production init > .env)
 ```
 
-Der Befehl erzeugt eine `.env` mit frischen, zufälligen Passwörtern und Schlüsseln. Auf den Bildschirm schreibt er sie absichtlich nicht.
+Der Befehl erzeugt eine `.env` mit frischen, zufälligen Passwörtern und Schlüsseln. Auf den Bildschirm schreibt er sie absichtlich nicht. `umask 077` sorgt dafür, dass nur dein Benutzer die Datei lesen kann; prüfe das bei einer vorhandenen Datei mit `ls -l .env` (erwartet: `-rw-------`) und korrigiere es sonst mit `chmod 600 .env`.
 
 **Die `.env` ist der Schlüssel zu deinen Daten.** Bewahre eine Kopie sicher getrennt vom Server auf, zum Beispiel in einem Passwortmanager. Ohne sie lassen sich verschlüsselte Daten und Backups nicht mehr lesen. Gib sie niemandem weiter.
 
@@ -125,7 +125,7 @@ Bis November 2026 bestand die Installation aus mehreren Compose-Dateien mit Pass
 
 1. Mit dem alten Setup ein Backup machen und mit `restore-check` prüfen.
 2. Die alte Installation stoppen, **ohne** `-v`: `docker compose down`.
-3. Eine `.env` mit `household init > .env` erzeugen und darin diese Werte durch den Inhalt der alten Dateien ersetzen:
+3. Eine `.env` wie in Schritt 2 mit `(umask 077; docker run --rm ghcr.io/d0linger/household:production init > .env)` erzeugen und darin diese Werte durch den Inhalt der alten Dateien ersetzen:
 
    | Einstellung in `.env` | alte Datei in `.local/secrets` |
    | --- | --- |

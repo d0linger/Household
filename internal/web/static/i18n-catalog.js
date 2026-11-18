@@ -2606,6 +2606,7 @@ globalThis.HouseholdEnglish = Object.freeze({
   "Diese Quelle ist derzeit nicht verfügbar": "This source is currently unavailable",
   "Diese Reservierung freigeben": "Release this reservation",
   "Diese Rezeptdaten ausdrücklich auf diesem Gerät speichern": "Explicitly save this recipe data on this device",
+  "Diese Rezeptkopie ist abgelaufen oder wurde gelöscht.": "This recipe copy has expired or was deleted.",
   "Diese Rezeptkopie löschen?": "Delete this recipe copy?",
   "Diese Rezeptversion enthält keine Zutaten.": "This recipe version contains no ingredients.",
   "Diese Seite ist derzeit nicht verarbeitet. Es werden keine weiteren Seiten vorgetäuscht.": "This page is not currently processed. No additional pages are implied.",

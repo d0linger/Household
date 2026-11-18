@@ -67,13 +67,11 @@ func Watch(ctx context.Context, dir string, cursor Cursor) ([]Candidate, Cursor,
 		if !info.Mode().IsRegular() || info.Size() < 1 || info.Size() > 10<<20 || time.Since(info.ModTime()) < 2*time.Second {
 			continue
 		}
-		in, e := root.Open(name)
-		if e != nil {
-			return nil, cursor, e
+		in, before, e := openWatchCandidate(root, name)
+		if errors.Is(e, errWatchNotRegular) {
+			continue
 		}
-		before, e := in.Stat()
 		if e != nil {
-			_ = in.Close()
 			return nil, cursor, e
 		}
 		raw, e := io.ReadAll(io.LimitReader(in, (10<<20)+1))
@@ -92,4 +90,25 @@ func Watch(ctx context.Context, dir string, cursor Cursor) ([]Candidate, Cursor,
 		next.After = ""
 	}
 	return out, next, nil
+}
+
+var errWatchNotRegular = errors.New("watch input is not a regular file")
+
+// openWatchCandidate opens name below root without blocking and checks the
+// opened descriptor itself: the earlier Lstat only saw a replaceable pathname.
+func openWatchCandidate(root *os.Root, name string) (*os.File, os.FileInfo, error) {
+	in, err := root.OpenFile(name, os.O_RDONLY|watchOpenFlags, 0)
+	if err != nil {
+		return nil, nil, err
+	}
+	info, err := in.Stat()
+	if err != nil {
+		_ = in.Close()
+		return nil, nil, err
+	}
+	if !info.Mode().IsRegular() {
+		_ = in.Close()
+		return nil, nil, errWatchNotRegular
+	}
+	return in, info, nil
 }

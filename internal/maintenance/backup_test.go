@@ -175,7 +175,7 @@ func TestValidateRestoreTarget(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			if err := validateRestoreTarget(tc.source, tc.target); (err == nil) != tc.valid {
+			if err := ValidateRestoreTarget(tc.source, tc.target); (err == nil) != tc.valid {
 				t.Fatalf("valid=%t err=%v", tc.valid, err)
 			}
 		})

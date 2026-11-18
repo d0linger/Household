@@ -86,7 +86,11 @@ func (s *Store) financeRecurrenceCommand(ctx context.Context, tx pgx.Tx, id auth
 		return nil, Invalid{"Für automatische Entwürfe zuerst ausdrücklich eine verantwortliche schreibfähige Person zuordnen"}
 	}
 	if in.Automatic && in.Active {
-		behind, catchErr := financeAutomaticCatchupPending(ctx, tx, scope, c.ID, in.AnchorOn, in.RepeatUnit, in.RepeatInterval, in.MonthdayPolicy)
+		endsOn := ""
+		if in.EndsOn != nil {
+			endsOn = *in.EndsOn
+		}
+		behind, catchErr := financeAutomaticCatchupPending(ctx, tx, scope, c.ID, in.AnchorOn, endsOn, in.RepeatUnit, in.RepeatInterval, in.MonthdayPolicy)
 		if catchErr != nil {
 			return nil, catchErr
 		}
@@ -169,6 +173,35 @@ func financeValidateRecurrenceTemplate(ctx context.Context, tx pgx.Tx, id auth.I
 	return refs, nil
 }
 
+// financeRecurrenceStartIndex returns a recurrence index whose occurrence is
+// not after `after`, or 0. Occurrences grow with their index, so starting the
+// search there finds the same next occurrence as starting at the anchor.
+func financeRecurrenceStartIndex(start time.Time, after, unit string, interval int) int {
+	if after == "" {
+		return 0
+	}
+	limit, err := time.Parse(time.DateOnly, after)
+	if err != nil || !limit.After(start) {
+		return 0
+	}
+	var steps int
+	switch unit {
+	case "day":
+		steps = int(limit.Sub(start).Hours()/24) / interval
+	case "week":
+		steps = int(limit.Sub(start).Hours()/24) / (interval * 7)
+	case "month", "year":
+		months := (limit.Year()-start.Year())*12 + int(limit.Month()) - int(start.Month())
+		step := interval
+		if unit == "year" {
+			step *= 12
+		}
+		// One step earlier: a month's clamped or skipped day can lie before `after`.
+		steps = months/step - 1
+	}
+	return max(steps, 0)
+}
+
 // financeNextRecurrence always derives from the original anchor, so clamping
 // 31January to February never turns March's schedule into the28th.
 func financeNextRecurrence(anchor, after, through, unit string, interval int, policy string) (string, error) {
@@ -177,7 +210,11 @@ func financeNextRecurrence(anchor, after, through, unit string, interval int, po
 		!slices.Contains([]string{"day", "week", "month", "year"}, unit) || !slices.Contains([]string{"clamp", "skip"}, policy) {
 		return "", Invalid{"Gespeicherte Kalenderregel ist ungültig"}
 	}
-	for index := 0; index < 120000; index++ {
+	// Start just before the first occurrence after `after` instead of at the
+	// anchor: each lookup stays a few steps even for an old daily anchor, and
+	// the dates still derive from the original anchor (index 0).
+	first := financeRecurrenceStartIndex(start, after, unit, interval)
+	for index := first; index < first+120000; index++ {
 		var date time.Time
 		switch unit {
 		case "day":
@@ -221,20 +258,30 @@ const financeAutomaticCatchupDays = 31
 
 // financeAutomaticCatchupPending reports whether the template's first
 // unmaterialized occurrence lies further back than the automatic catch-up window.
-func financeAutomaticCatchupPending(ctx context.Context, tx pgx.Tx, scope financialScope, template, anchor, unit string, interval int, policy string) (bool, error) {
+// Like financeGenerateRecurrence, it never looks past endsOn (empty: no end).
+func financeAutomaticCatchupPending(ctx context.Context, tx pgx.Tx, scope financialScope, template, anchor, endsOn, unit string, interval int, policy string) (bool, error) {
 	zone, err := time.LoadLocation(scope.timezone)
 	if err != nil {
 		return false, err
 	}
-	today := scope.readAt.In(zone)
-	cutoff := today.AddDate(0, 0, -financeAutomaticCatchupDays).Format(time.DateOnly)
 	last := ""
 	if template != "" {
 		if last, err = financeRecurrenceState(ctx, tx, scope.householdID, template); err != nil {
 			return false, err
 		}
 	}
-	next, err := financeNextRecurrence(anchor, last, today.Format(time.DateOnly), unit, interval, policy)
+	return financeCatchupBehind(anchor, last, endsOn, scope.readAt.In(zone), unit, interval, policy)
+}
+
+// financeCatchupBehind is the pure part of financeAutomaticCatchupPending: the
+// first occurrence after last, up to today or endsOn, older than the window.
+func financeCatchupBehind(anchor, last, endsOn string, today time.Time, unit string, interval int, policy string) (bool, error) {
+	cutoff := today.AddDate(0, 0, -financeAutomaticCatchupDays).Format(time.DateOnly)
+	through := today.Format(time.DateOnly)
+	if endsOn != "" && endsOn < through {
+		through = endsOn
+	}
+	next, err := financeNextRecurrence(anchor, last, through, unit, interval, policy)
 	if err != nil {
 		return false, err
 	}
@@ -435,7 +482,11 @@ func (s *Store) CompleteFinanceRecurrenceJob(ctx context.Context, job, lease str
 		return err
 	}
 	through := scope.readAt.In(zone).Format(time.DateOnly)
-	behind, err := financeAutomaticCatchupPending(ctx, tx, scope, template, String(row["anchor_on"]), String(row["repeat_unit"]), int(Int(row["repeat_interval"])), String(row["monthday_policy"]))
+	endsOn := ""
+	if row["ends_on"] != nil {
+		endsOn = String(row["ends_on"])
+	}
+	behind, err := financeAutomaticCatchupPending(ctx, tx, scope, template, String(row["anchor_on"]), endsOn, String(row["repeat_unit"]), int(Int(row["repeat_interval"])), String(row["monthday_policy"]))
 	if err != nil {
 		return err
 	}

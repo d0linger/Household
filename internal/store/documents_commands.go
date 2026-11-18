@@ -485,6 +485,27 @@ func (s *Store) documentScan(ctx context.Context, tx pgx.Tx, id auth.Identity, i
 // document processing requests.
 const maxOutstandingDocumentProcessing = 10
 
+// documentAdmission guards every request that (re)enters the single shared
+// worker queue: it refuses a repeated extraction of a version that is already
+// queued and bounds what one member may have outstanding, so document commands
+// cannot hold back other members' and the system's background jobs. A retry
+// passes its own processing id, which the counts exclude.
+func documentAdmission(ctx context.Context, tx pgx.Tx, id auth.Identity, documentID, versionID, operation, retried string) error {
+	var same, mine int
+	if err := tx.QueryRow(ctx, `SELECT count(*) FILTER (WHERE $5='extract' AND operation='extract' AND document_id=$2 AND version_id IS NOT DISTINCT FROM nullif($3,'')::uuid),
+ count(*) FILTER (WHERE requested_by=$4)
+ FROM documents.processing WHERE household_id=$1 AND state IN('pending','running') AND id IS DISTINCT FROM nullif($6,'')::uuid`, id.HouseholdID, documentID, versionID, id.UserID, operation, retried).Scan(&same, &mine); err != nil {
+		return err
+	}
+	if same > 0 {
+		return Invalid{"Diese Dateiversion wird bereits verarbeitet"}
+	}
+	if mine >= maxOutstandingDocumentProcessing {
+		return Invalid{"Höchstens 10 offene Dokumentverarbeitungen je Person; bitte warten"}
+	}
+	return nil
+}
+
 func documentQueue(ctx context.Context, tx pgx.Tx, id auth.Identity, in DocumentCommand, versionID, operation string, input []byte) (Record, error) {
 	if versionID != "" {
 		if !value.ValidUUID(versionID) {
@@ -497,21 +518,8 @@ func documentQueue(ctx context.Context, tx pgx.Tx, id auth.Identity, in Document
 	} else if operation != "scan" {
 		return nil, Invalid{"Dateiversion auswählen"}
 	}
-	// Every processing request becomes a job in the single shared worker queue.
-	// Refuse a repeated extraction of a version that is already queued, and bound
-	// what one member may have outstanding, so document commands cannot hold back
-	// other members' and the system's background jobs.
-	var same, mine int
-	if err := tx.QueryRow(ctx, `SELECT count(*) FILTER (WHERE $5='extract' AND operation='extract' AND document_id=$2 AND version_id IS NOT DISTINCT FROM nullif($3,'')::uuid),
- count(*) FILTER (WHERE requested_by=$4)
- FROM documents.processing WHERE household_id=$1 AND state IN('pending','running')`, id.HouseholdID, in.ID, versionID, id.UserID, operation).Scan(&same, &mine); err != nil {
+	if err := documentAdmission(ctx, tx, id, in.ID, versionID, operation, ""); err != nil {
 		return nil, err
-	}
-	if same > 0 {
-		return nil, Invalid{"Diese Dateiversion wird bereits verarbeitet"}
-	}
-	if mine >= maxOutstandingDocumentProcessing {
-		return nil, Invalid{"Höchstens 10 offene Dokumentverarbeitungen je Person; bitte warten"}
 	}
 	pid, jid := value.UUID(), value.UUID()
 	payload, _ := json.Marshal(Record{"processing_id": pid})
@@ -532,8 +540,8 @@ func documentControlJob(ctx context.Context, tx pgx.Tx, id auth.Identity, in Doc
 	if !value.ValidUUID(v.ProcessingID) {
 		return nil, Invalid{"Verarbeitung auswählen"}
 	}
-	var jid, state string
-	err := tx.QueryRow(ctx, `SELECT job_id,state FROM documents.processing WHERE household_id=$1 AND document_id=$2 AND id=$3 AND module_generation=$4 FOR UPDATE`, id.HouseholdID, in.ID, v.ProcessingID, in.Generation).Scan(&jid, &state)
+	var jid, state, versionID, operation string
+	err := tx.QueryRow(ctx, `SELECT job_id,state,coalesce(version_id::text,''),operation FROM documents.processing WHERE household_id=$1 AND document_id=$2 AND id=$3 AND module_generation=$4 FOR UPDATE`, id.HouseholdID, in.ID, v.ProcessingID, in.Generation).Scan(&jid, &state, &versionID, &operation)
 	if err != nil {
 		return nil, energyError(err)
 	}
@@ -542,6 +550,10 @@ func documentControlJob(ctx context.Context, tx pgx.Tx, id auth.Identity, in Doc
 	if in.Action == "retry" {
 		if !slices.Contains([]string{"failed", "cancelled"}, state) {
 			return nil, ErrConflict
+		}
+		// A retry re-enters the queue like a new request and passes its limits.
+		if err = documentAdmission(ctx, tx, id, in.ID, versionID, operation, v.ProcessingID); err != nil {
+			return nil, err
 		}
 		next, code, jobState = "pending", "queued", "pending"
 	} else if !slices.Contains([]string{"pending", "running"}, state) {

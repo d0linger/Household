@@ -280,11 +280,12 @@ func (s *Server) choreCalendarFeed(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, store.ErrBusy)
 		return
 	}
-	defer s.Store.Gate.RUnlock()
-	// Bound the gated section well inside the module change's gate wait.
+	// Bound the gated section well inside the module change's gate wait, and
+	// release the gate before rendering: a slow client must not hold it.
 	gated, release := context.WithTimeout(ctx, feedGateBudget)
-	defer release()
 	events, err := s.Store.ChoreCalendarFeed(gated, strings.TrimSuffix(token, ".ics"))
+	release()
+	s.Store.Gate.RUnlock()
 	if err != nil {
 		s.fail(w, r, err)
 		return

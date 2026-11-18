@@ -250,6 +250,10 @@ func (s *Store) validateDomain(ctx context.Context, tx pgx.Tx, id auth.Identity,
 		if err != nil {
 			return bad("Ungültiger Ablesezeitpunkt")
 		}
+		// The same instant bound as reading.save, so the projection accepts it.
+		if !EnergyInstantAccepted(measured, time.Now()) {
+			return bad("Zeitpunkt innerhalb der letzten 30 Jahre und vor dem 29. Dezember 2200 (UTC) angeben")
+		}
 		if measured.Before(installed) || removed != nil && measured.After(removed.Add(24*time.Hour)) {
 			return bad("Ablesung liegt außerhalb der Gerätelaufzeit")
 		}
@@ -294,9 +298,19 @@ func (s *Store) validateDomain(ctx context.Context, tx pgx.Tx, id auth.Identity,
 		// bound them with the workspace's window so no derived instant falls
 		// outside what the projection worker accepts.
 		now := time.Now()
+		// Updates pass merged data: only dates that change are checked against the
+		// moving 30-year floor, so an unchanged old date never blocks a later edit.
+		stored := map[string]string{}
+		if rid != "" {
+			var installedOn, removedOn string
+			if err := tx.QueryRow(ctx, "SELECT installed_on::text,coalesce(removed_on::text,'') FROM meters.devices WHERE household_id=$1 AND id=$2", id.HouseholdID, rid).Scan(&installedOn, &removedOn); err != nil && !errors.Is(err, pgx.ErrNoRows) {
+				return err
+			}
+			stored["installed_on"], stored["removed_on"] = installedOn, removedOn
+		}
 		for _, field := range []string{"installed_on", "removed_on"} {
 			day := String(data[field])
-			if day == "" {
+			if day == "" || rid != "" && day == stored[field] {
 				continue
 			}
 			parsed, err := time.Parse(time.DateOnly, day)

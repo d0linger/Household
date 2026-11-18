@@ -3,6 +3,8 @@
 # Path filters keep large pull requests under the review file limit by leaving out
 # prose and generated files. Code, templates, workflows, scripts and Compose stay in.
 reviews:
+  auto_review:
+    enabled: false
   path_filters:
     - "!docs/**"
     - "!internal/web/static/i18n-catalog.js"

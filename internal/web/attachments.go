@@ -210,18 +210,21 @@ func (s *Server) upload(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, store.Invalid{Message: "Speicherlimit des Haushalts erreicht"})
 		return
 	}
-	// Each upload queues image work in the single shared worker queue. Bound what
-	// one member may have outstanding so uploads cannot hold back other members'
-	// and the system's background jobs.
-	var outstanding int
-	if err = tx.QueryRow(r.Context(), uploadJobsOutstandingQuery, identity(r).HouseholdID, identity(r).UserID).Scan(&outstanding); err != nil {
-		s.fail(w, r, err)
-		return
-	}
-	if outstanding >= maxOutstandingUploadJobs {
-		w.Header().Set("Retry-After", "30")
-		s.fail(w, r, auth.ErrLimited)
-		return
+	// Image uploads and OCR captures queue work in the single shared worker queue.
+	// Bound what one member may have outstanding so uploads cannot hold back other
+	// members' and the system's background jobs. A PDF without capture queues no
+	// job, so only the storage quota above applies to it.
+	if kind != "application/pdf" || r.FormValue("capture") == "true" {
+		var outstanding int
+		if err = tx.QueryRow(r.Context(), uploadJobsOutstandingQuery, identity(r).HouseholdID, identity(r).UserID).Scan(&outstanding); err != nil {
+			s.fail(w, r, err)
+			return
+		}
+		if outstanding >= maxOutstandingUploadJobs {
+			w.Header().Set("Retry-After", "30")
+			s.fail(w, r, auth.ErrLimited)
+			return
+		}
 	}
 	if err = os.MkdirAll(s.Cfg.UploadDir, 0750); err != nil {
 		s.fail(w, r, err)

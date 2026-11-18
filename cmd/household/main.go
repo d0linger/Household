@@ -167,11 +167,19 @@ func run(log *slog.Logger) error {
 		verify := func() error { return maintenance.VerifyRestore(verifyCtx, pool, cfg, os.Args[2], target) }
 		// With the superuser password (compose.yaml), verify into a temporary
 		// household_restore on the database server and drop it afterwards.
+		// Reject a source named household_restore before anything is dropped.
+		if err = maintenance.ValidateRestoreTarget(cfg.DatabaseURL, target); err != nil {
+			return err
+		}
 		superuser, err := config.Secret("POSTGRES_PASSWORD")
 		if err != nil {
 			return err
 		}
-		if superuser != "" && os.Getenv("HOUSEHOLD_RESTORE_DATABASE_URL") == "" && os.Getenv("HOUSEHOLD_RESTORE_DATABASE_URL_FILE") == "" {
+		explicitTarget, err := config.Configured("HOUSEHOLD_RESTORE_DATABASE_URL")
+		if err != nil {
+			return err
+		}
+		if superuser != "" && !explicitTarget {
 			return withRestoreTarget(verifyCtx, superuser, verify)
 		}
 		return verify()

@@ -50,12 +50,14 @@ func TestHandlerRoutesAndHeaders(t *testing.T) {
 func TestFail(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
-		name, path, message, retry string
-		err                        error
-		status                     int
+		name, path, message, retry, presetRetry string
+		err                                     error
+		status                                  int
 	}{
-		{"busy module gate", "/settings/modules/pantry", "erneut versuchen", "5", fmt.Errorf("toggle module: %w", store.ErrBusy), http.StatusServiceUnavailable},
-		{"correctable auth refusal", "/change-password", "mindestens 14 Zeichen", "", fmt.Errorf("change: %w", auth.Rejection("neues Passwort: mindestens 14 Zeichen")), http.StatusUnprocessableEntity},
+		{"busy module gate", "/settings/modules/pantry", "erneut versuchen", "5", "", fmt.Errorf("toggle module: %w", store.ErrBusy), http.StatusServiceUnavailable},
+		{"rate limit default interval", "/login", "", "900", "", auth.ErrLimited, http.StatusTooManyRequests},
+		{"rate limit keeps the caller's interval", "/api/v1/m/notes/notes/x/attachments", "", "30", "30", auth.ErrLimited, http.StatusTooManyRequests},
+		{"correctable auth refusal", "/change-password", "mindestens 14 Zeichen", "", "", fmt.Errorf("change: %w", auth.Rejection("neues Passwort: mindestens 14 Zeichen")), http.StatusUnprocessableEntity},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -64,6 +66,9 @@ func TestFail(t *testing.T) {
 			request := httptest.NewRequest(http.MethodPost, "http://localhost:8100"+tc.path, nil)
 			request.Header.Set("Accept", "application/json")
 			response := httptest.NewRecorder()
+			if tc.presetRetry != "" {
+				response.Header().Set("Retry-After", tc.presetRetry)
+			}
 			s.fail(response, request, tc.err)
 			if response.Code != tc.status || response.Header().Get("Retry-After") != tc.retry || !strings.Contains(response.Body.String(), tc.message) {
 				t.Fatalf("fail = %d %q %s", response.Code, response.Header().Get("Retry-After"), response.Body)

@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"reflect"
 	"slices"
 	"strconv"
@@ -68,6 +69,31 @@ func TestFuelModuleImportProfilesRequireTruthfulMapping(t *testing.T) {
 				t.Fatalf("explicit mapping failed: %+v", row)
 			}
 		})
+	}
+}
+
+func TestFuelModuleImportFlagMapsAreDecodedOnceAndBounded(t *testing.T) {
+	raw := map[string]any{"ja": true, "nein": false}
+	options := Record{"full_tank_values": raw, "missing_values": nil, "profile": "household"}
+	decoded, err := fuelModuleImportFlagMaps(options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if choices, ok := decoded["full_tank_values"].(map[string]bool); !ok || len(choices) != 2 || !choices["ja"] || choices["nein"] {
+		t.Fatalf("flag map was not decoded once: %#v", decoded["full_tank_values"])
+	}
+	if _, ok := options["full_tank_values"].(map[string]any); !ok {
+		t.Fatal("the caller's options must stay unchanged for staging")
+	}
+	large := map[string]bool{}
+	for index := range fuelImportMaxFlagValues + 1 {
+		large[fmt.Sprintf("v%d", index)] = true
+	}
+	if _, err = fuelModuleImportFlagMaps(Record{"missing_values": large}); err == nil {
+		t.Fatal("an oversized flag mapping must be refused before any row is parsed")
+	}
+	if _, _, err = fuelModuleImportParse(t.Context(), "household", fuelUnitCSVHeader+fuelUnitCSVRow, Record{"full_tank_values": large}); err == nil {
+		t.Fatal("parse accepted an oversized flag mapping")
 	}
 }
 

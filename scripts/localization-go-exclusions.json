@@ -480,5 +480,10 @@
   "error pattern\ninternal/database/bootstrap.go\nconnect for restore maintenance: %w": "Internal/operator diagnostic outside typed Invalid/Rejection and HTTP presentation boundaries; preserve diagnostic text.",
   "error pattern\ninternal/database/bootstrap.go\nparse restore maintenance configuration": "Internal/operator diagnostic outside typed Invalid/Rejection and HTTP presentation boundaries; preserve diagnostic text.",
   "error pattern\ninternal/database/bootstrap.go\nrestore database maintenance: %w": "Internal/operator diagnostic outside typed Invalid/Rejection and HTTP presentation boundaries; preserve diagnostic text.",
-  "error pattern\ninternal/database/bootstrap.go\nrestore maintenance must not connect to the restore database": "Internal/operator diagnostic outside typed Invalid/Rejection and HTTP presentation boundaries; preserve diagnostic text."
+  "error pattern\ninternal/database/bootstrap.go\nrestore maintenance must not connect to the restore database": "Internal/operator diagnostic outside typed Invalid/Rejection and HTTP presentation boundaries; preserve diagnostic text.",
+  "error pattern\ninternal/database/bootstrap.go\nanother restore check is running on this database server": "Operator diagnostic of the restore-check CLI when another check holds the restore lock; never an HTTP response.",
+  "error pattern\ninternal/database/bootstrap.go\ndrop restore database: %w": "Internal/operator diagnostic outside typed Invalid/Rejection and HTTP presentation boundaries; preserve diagnostic text.",
+  "error pattern\ninternal/database/bootstrap.go\nlock restore database: %w": "Internal/operator diagnostic outside typed Invalid/Rejection and HTTP presentation boundaries; preserve diagnostic text.",
+  "error pattern\ninternal/auth/auth.go\nlock second factor: %w": "Internal database failure diagnostic; the HTTP boundary returns the generic translated failure.",
+  "error pattern\ninternal/documentinput/watch.go\nwatch input is not a regular file": "Internal watch-inbox sentinel; the candidate is skipped and the message is never logged as user content or returned over HTTP."
 }

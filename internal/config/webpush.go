@@ -69,6 +69,26 @@ func loadWebPush(c *Config) error {
 	return nil
 }
 
+// originWebPushContact derives the default contact from an HTTPS origin. A push
+// contact may not carry a port other than 443, so an origin such as
+// https://household.example.org:8443 yields https://household.example.org.
+// Other origins yield no contact; the push status then stays not_configured.
+func originWebPushContact(origin string) string {
+	parsed, err := url.Parse(origin)
+	if err != nil || parsed.Scheme != "https" || parsed.Hostname() == "" {
+		return ""
+	}
+	host := parsed.Hostname()
+	if strings.Contains(host, ":") {
+		host = "[" + host + "]"
+	}
+	contact := (&url.URL{Scheme: "https", Host: host}).String()
+	if !validWebPushContact(contact) {
+		return ""
+	}
+	return contact
+}
+
 func validWebPushContact(value string) bool {
 	if len(value) > 512 {
 		return false

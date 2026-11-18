@@ -161,6 +161,11 @@ func (s *Service) limitSubject(scope, subject string) []byte {
 // failure budget for the current window. It only reads, inside the caller's
 // transaction, so it neither takes a second pool connection nor counts attempts.
 func (s *Service) factorBudget(ctx context.Context, tx pgx.Tx, user string) error {
+	// Lock the second factor first. Concurrent checks for this account then read
+	// the budget only after the previous check committed its failure count.
+	if _, err := tx.Exec(ctx, "SELECT 1 FROM core.totp_credentials WHERE user_id=$1 FOR UPDATE", user); err != nil {
+		return fmt.Errorf("lock second factor: %w", err)
+	}
 	var count int
 	err := tx.QueryRow(ctx, `SELECT coalesce(max(attempt_count),0) FROM core.rate_limit_buckets
 	 WHERE scope='totp-failure' AND subject_hash=$1 AND window_start=to_timestamp(floor(extract(epoch FROM clock_timestamp())/$2)*$2)`,
@@ -174,19 +179,38 @@ func (s *Service) factorBudget(ctx context.Context, tx pgx.Tx, user string) erro
 	return nil
 }
 
-// recordFactorFailure counts one wrong second-factor code. Callers release their
-// transaction first: the failure must survive its rollback.
-func (s *Service) recordFactorFailure(ctx context.Context, user string) {
-	if err := s.Limit(context.WithoutCancel(ctx), "totp-failure", user, factorFailureLimit, factorFailureWindow); err != nil && !errors.Is(err, ErrLimited) {
+// failFactor counts one wrong second-factor code inside tx and commits it, so
+// the count is durable before the second-factor lock from factorBudget is
+// released. tx must hold no other writes: verifyFactor writes nothing when it
+// rejects a code. If counting in tx fails, the failure is counted on the pool.
+func (s *Service) failFactor(ctx context.Context, tx pgx.Tx, user string) {
+	durable := context.WithoutCancel(ctx)
+	err := s.limit(durable, tx, "totp-failure", user, factorFailureLimit, factorFailureWindow)
+	if err == nil || errors.Is(err, ErrLimited) {
+		if err = tx.Commit(durable); err == nil {
+			return
+		}
+	}
+	_ = tx.Rollback(durable)
+	if err = s.limit(durable, s.pool, "totp-failure", user, factorFailureLimit, factorFailureWindow); err != nil && !errors.Is(err, ErrLimited) {
 		slog.Default().Error("record second-factor failure", "error", err)
 	}
 }
 
+// rowQuerier is satisfied by both the pool and a transaction.
+type rowQuerier interface {
+	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
+}
+
 func (s *Service) Limit(ctx context.Context, scope, subject string, limit int, window time.Duration) error {
+	return s.limit(ctx, s.pool, scope, subject, limit, window)
+}
+
+func (s *Service) limit(ctx context.Context, q rowQuerier, scope, subject string, limit int, window time.Duration) error {
 	mac := hmac.New(sha256.New, []byte(s.cfg.RateSecret))
 	mac.Write([]byte(scope + "\x00" + subject))
 	var count int
-	err := s.pool.QueryRow(ctx, `WITH w AS (SELECT to_timestamp(floor(extract(epoch FROM clock_timestamp())/$3)*$3) AS start_at)
+	err := q.QueryRow(ctx, `WITH w AS (SELECT to_timestamp(floor(extract(epoch FROM clock_timestamp())/$3)*$3) AS start_at)
 	 INSERT INTO core.rate_limit_buckets(scope,subject_hash,window_start,window_end) SELECT $1,$2,start_at,start_at+make_interval(secs=>$3) FROM w
 	 ON CONFLICT(scope,subject_hash,window_start) DO UPDATE SET attempt_count=core.rate_limit_buckets.attempt_count+1,updated_at=now()
 	 RETURNING attempt_count`, scope, mac.Sum(nil), window.Seconds()).Scan(&count)
@@ -274,8 +298,7 @@ func (s *Service) Login(ctx context.Context, username, password, code, ip, ua st
 	}
 	if err = s.verifyFactor(ctx, tx, uid, code); err != nil {
 		if errors.Is(err, ErrCredentials) {
-			_ = tx.Rollback(ctx)
-			s.recordFactorFailure(ctx, uid)
+			s.failFactor(ctx, tx, uid)
 		}
 		return "", Identity{}, err
 	}

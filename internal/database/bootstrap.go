@@ -72,26 +72,23 @@ func execFormatted(ctx context.Context, conn *pgx.Conn, template, name, password
 	return err
 }
 
-// RestoreDatabase is the only database CreateRestoreDatabase and
-// DropRestoreDatabase touch; restore verification refuses any other target.
+// RestoreDatabase is the only database WithRestoreDatabase creates and drops;
+// restore verification refuses any other target.
 const RestoreDatabase = "household_restore"
 
-// CreateRestoreDatabase creates an empty household_restore on the server
-// behind maintenanceURL (a superuser connection to its maintenance database),
-// replacing any leftover copy from an interrupted verification.
-func CreateRestoreDatabase(ctx context.Context, maintenanceURL string) error {
-	if err := DropRestoreDatabase(ctx, maintenanceURL); err != nil {
-		return err
-	}
-	return execMaintenance(ctx, maintenanceURL, "CREATE DATABASE "+pgx.Identifier{RestoreDatabase}.Sanitize())
-}
+// restoreLockKey is the session advisory lock that serializes the whole
+// lifecycle of household_restore on one database server.
+const restoreLockKey int64 = 0x686f7573656872 // "househr"
 
-// DropRestoreDatabase removes household_restore and its connections.
-func DropRestoreDatabase(ctx context.Context, maintenanceURL string) error {
-	return execMaintenance(ctx, maintenanceURL, "DROP DATABASE IF EXISTS "+pgx.Identifier{RestoreDatabase}.Sanitize()+" WITH (FORCE)")
-}
+// ErrRestoreBusy reports that another restore check holds household_restore.
+var ErrRestoreBusy = errors.New("another restore check is running on this database server")
 
-func execMaintenance(ctx context.Context, maintenanceURL, statement string) error {
+// WithRestoreDatabase creates an empty household_restore on the server behind
+// maintenanceURL (a superuser connection to its maintenance database), runs use
+// and drops the database again. One session advisory lock, held on a dedicated
+// maintenance connection from before the first drop until after the final
+// drop, keeps concurrent restore checks from dropping each other's database.
+func WithRestoreDatabase(ctx context.Context, maintenanceURL string, use func() error) (err error) {
 	cfg, err := pgx.ParseConfig(maintenanceURL)
 	if err != nil {
 		return errors.New("parse restore maintenance configuration")
@@ -100,13 +97,34 @@ func execMaintenance(ctx context.Context, maintenanceURL, statement string) erro
 		return errors.New("restore maintenance must not connect to the restore database")
 	}
 	cfg.ConnectTimeout = 5 * time.Second
-	conn, err := pgx.ConnectConfig(ctx, cfg)
+	prepareCtx, cancel := context.WithTimeout(ctx, time.Minute)
+	defer cancel()
+	conn, err := pgx.ConnectConfig(prepareCtx, cfg)
 	if err != nil {
 		return fmt.Errorf("connect for restore maintenance: %w", err)
 	}
-	defer func() { _ = conn.Close(context.Background()) }()
-	if _, err = conn.Exec(ctx, statement); err != nil {
+	defer func() { _ = conn.Close(context.Background()) }() // also releases the session lock
+	var locked bool
+	if err = conn.QueryRow(prepareCtx, "SELECT pg_try_advisory_lock($1)", restoreLockKey).Scan(&locked); err != nil {
+		return fmt.Errorf("lock restore database: %w", err)
+	}
+	if !locked {
+		return ErrRestoreBusy
+	}
+	drop := "DROP DATABASE IF EXISTS " + pgx.Identifier{RestoreDatabase}.Sanitize() + " WITH (FORCE)"
+	// A leftover copy can only come from an interrupted check: the lock is ours.
+	if _, err = conn.Exec(prepareCtx, drop); err != nil {
 		return fmt.Errorf("restore database maintenance: %w", err)
 	}
-	return nil
+	if _, err = conn.Exec(prepareCtx, "CREATE DATABASE "+pgx.Identifier{RestoreDatabase}.Sanitize()); err != nil {
+		return fmt.Errorf("restore database maintenance: %w", err)
+	}
+	defer func() {
+		cleanupCtx, cancelCleanup := context.WithTimeout(context.WithoutCancel(ctx), time.Minute)
+		defer cancelCleanup()
+		if _, dropErr := conn.Exec(cleanupCtx, drop); dropErr != nil && err == nil {
+			err = fmt.Errorf("drop restore database: %w", dropErr)
+		}
+	}()
+	return use()
 }

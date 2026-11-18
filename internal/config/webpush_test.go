@@ -78,3 +78,18 @@ func TestWebPushSecretFileBoundaries(t *testing.T) {
 		t.Fatal("oversized private key file must fail")
 	}
 }
+
+func TestOriginWebPushContactDropsUnsupportedPorts(t *testing.T) {
+	for origin, want := range map[string]string{
+		"https://household.example.org":      "https://household.example.org",
+		"https://household.example.org:443":  "https://household.example.org",
+		"https://household.example.org:8443": "https://household.example.org",
+		"https://[2001:db8::1]:8443":         "https://[2001:db8::1]",
+		"http://localhost:8100":              "",
+		"":                                   "",
+	} {
+		if got := originWebPushContact(origin); got != want {
+			t.Errorf("originWebPushContact(%q) = %q, want %q", origin, got, want)
+		}
+	}
+}

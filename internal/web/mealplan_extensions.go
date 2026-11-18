@@ -166,10 +166,11 @@ func (s *Server) planningCalendarFeed(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, i18n.Text(requestLocale(r), "Kalender vorübergehend nicht verfügbar"), http.StatusServiceUnavailable)
 		return
 	}
-	defer s.Store.Gate.RUnlock()
+	// Release the gate before rendering: a slow client must not hold it.
 	gated, release := context.WithTimeout(ctx, feedGateBudget)
-	defer release()
 	calendar, err := s.Store.PlanningCalendarFeed(gated, strings.TrimSuffix(token, ".ics"))
+	release()
+	s.Store.Gate.RUnlock()
 	if errors.Is(err, store.ErrNotFound) || errors.Is(err, store.ErrForbidden) {
 		http.Error(w, i18n.Text(requestLocale(r), "Nicht gefunden"), http.StatusNotFound)
 		return

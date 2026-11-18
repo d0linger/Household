@@ -30,12 +30,12 @@ The UI offers Ocean and Pink families, each with Light, Dark and System appearan
 Requirements: Docker Engine with Compose v2 (rootful or [rootless](docs/installation.md#rootless-docker)). No source code, Go or scripts are needed. [`compose.yaml`](compose.yaml) is the only deployment file. Step-by-step guide in German: [docs/installation.md](docs/installation.md).
 
 ```sh
-docker run --rm ghcr.io/d0linger/household:production init > .env
+(umask 077; docker run --rm ghcr.io/d0linger/household:production init > .env)
 # set HOUSEHOLD_ORIGIN in .env; for a local trial use "init --development" instead
 docker compose up -d
 ```
 
-`household init` writes one `.env` with every setting and freshly generated password and key, including the Web Push key. It never prints them to a terminal. **Back up `.env` separately:** without it, encrypted data and backups cannot be read.
+`umask 077` keeps `.env` readable only by your user. `household init` writes one `.env` with every setting and freshly generated password and key, including the Web Push key. It never prints them to a terminal. **Back up `.env` separately:** without it, encrypted data and backups cannot be read.
 
 `docker compose up -d` then starts three services:
 - `db`: PostgreSQL, without a published port.

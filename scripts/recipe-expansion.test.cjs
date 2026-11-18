@@ -134,7 +134,8 @@ async function runCommonDeviceObservation(f,pathname){
  const calls=[],pending=[],messages=[];
  const observe=(name,action=()=>Promise.resolve())=>({observe(...args){calls.push({name,args});const result=Promise.resolve().then(()=>action(...args));pending.push(result);return result;}});
  const recipe=observe('recipe',()=>f.device.observe());recipe.clear=()=>{calls.push({name:'recipe-clear',args:[]});const result=f.device.clear();pending.push(result);return result;};
- const sandbox={user:uuid(1),household:uuid(2),location:{pathname},localStorage:{getItem:key=>f.values.get(key)||null,removeItem:key=>f.values.delete(key)},window:{HouseholdPantryDevice:observe('pantry'),HouseholdShoppingDevice:observe('shopping'),HouseholdPushDevice:observe('push'),HouseholdRecipeDevice:recipe},clearPrivateDeviceData:()=>{throw Error('Matching owner must not be cleared by startup');},toast:message=>messages.push(message)};
+ const shopping=observe('shopping');shopping.suspend=()=>{calls.push({name:'shopping-suspend',args:[]});const result=Promise.resolve();pending.push(result);return result;};
+ const sandbox={user:uuid(1),household:uuid(2),location:{pathname},localStorage:{getItem:key=>f.values.get(key)||null,removeItem:key=>f.values.delete(key)},window:{HouseholdPantryDevice:observe('pantry'),HouseholdShoppingDevice:shopping,HouseholdPushDevice:observe('push'),HouseholdRecipeDevice:recipe},clearPrivateDeviceData:()=>{throw Error('Matching owner must not be cleared by startup');},toast:message=>messages.push(message)};
  vm.runInNewContext(app.slice(0,app.indexOf('\n'))+'\n'+app.slice(start,end),sandbox,{filename:'app.js'});
  await Promise.allSettled(pending);
  return{calls,messages};
@@ -145,8 +146,8 @@ test('Mandatory password page physically purges imaged Recipe copies and views w
  const view=await new Promise(resolve=>{const request=f.disk.open('household-recipe-views');request.onupgradeneeded=()=>request.result.createObjectStore('records');request.onsuccess=()=>resolve(request.result);});const saved=view.transaction('records','readwrite');saved.objectStore('records').put({id:'saved',views:[{name:'Private Suchansicht'}]});await new Promise(resolve=>{saved.oncomplete=resolve;});view.close();
  const initialFetches=f.fetches(),initial=f.disk.raw('household-recipe-readcopies');assert.equal(initial.copies.length,1);assert.equal(initial.copies[0].images.length,1);assert.equal(f.disk.raw('household-recipe-views').records[0].views.length,1);
  const mandatory=await runCommonDeviceObservation(f,'/change-password');
- assert.deepEqual(mandatory.calls.map(row=>row.name),['recipe-clear','pantry','shopping','push']);
- assert.ok(mandatory.calls.slice(1).every(row=>row.args[0]===uuid(1)&&row.args[1]===uuid(2)));
+ assert.deepEqual(mandatory.calls.map(row=>row.name),['recipe-clear','shopping-suspend','pantry','shopping','push'],'Mandatory page also suspends retained Shopping copies');
+ assert.ok(mandatory.calls.slice(2).every(row=>row.args[0]===uuid(1)&&row.args[1]===uuid(2)));
  assert.equal(f.fetches(),initialFetches,'Mandatory page does not fetch an API that must return 403');
  assert.equal(f.disk.raw('household-recipe-readcopies'),null,'Known password gate physically deletes copy and image bytes');
  assert.equal(f.disk.raw('household-recipe-views'),null,'Known password gate deletes private saved views');

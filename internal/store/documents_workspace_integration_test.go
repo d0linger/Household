@@ -247,4 +247,24 @@ func TestDocumentsNativeOriginalVersionScanJobCancelRetryAndSearch(t *testing.T)
 	if err = f.owner.QueryRow(f.ctx, `SELECT p.state,j.state FROM documents.processing p JOIN core.jobs j ON j.id=p.job_id WHERE p.id=$1`, pid).Scan(&state, &jobState); err != nil || state != "pending" || jobState != "pending" {
 		t.Fatal("explicit retry", state, jobState, err)
 	}
+	// Regression: a retry passes the same admission checks as a new request, so
+	// it cannot duplicate an extraction that is already queued for the version.
+	fresh := func() int64 {
+		detail, err := f.store.DocumentDetail(f.ctx, f.identity, rid)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return Int(detail["version"])
+	}
+	first := String(documentNativeWrite(t, f, "extract", rid, fresh(), Record{"version_id": vid})["processing_id"])
+	documentNativeWrite(t, f, "cancel", rid, fresh(), Record{"processing_id": first})
+	documentNativeWrite(t, f, "extract", rid, fresh(), Record{"version_id": vid})
+	_, err = f.store.DocumentWrite(f.ctx, f.identity, value.UUID(), value.UUID(), documentNativeCommand(t, f, "retry", rid, fresh(), Record{"processing_id": first}))
+	var invalid Invalid
+	if !errors.As(err, &invalid) || invalid.Message != "Diese Dateiversion wird bereits verarbeitet" {
+		t.Fatal("retry duplicated a queued extraction", err)
+	}
+	if err = f.owner.QueryRow(f.ctx, `SELECT state FROM documents.processing WHERE id=$1`, first).Scan(&state); err != nil || state != "cancelled" {
+		t.Fatal("refused retry changed the request", state, err)
+	}
 }

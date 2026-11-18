@@ -12,16 +12,19 @@ try {
     function Read-HouseholdSetting([string]$name){
       $line=Get-Content -LiteralPath (Join-Path $taskRoot '.env') | Where-Object {$_ -match "^$name="} | Select-Object -First 1
       if(!$line){throw "$name missing from .env"}
-      return $line.Substring($name.Length+1)
+      # Compose removes one pair of matching quotes around a value; do the same.
+      $value=$line.Substring($name.Length+1)
+      if($value.Length -ge 2 -and ($value[0] -eq "'" -or $value[0] -eq '"') -and $value[-1] -eq $value[0]){$value=$value.Substring(1,$value.Length-2)}
+      return $value
     }
     $taskDatabase='household-recovery-test-db'
     $taskDatabaseEnv=Join-Path $taskSecrets 'postgres.env'
     [IO.File]::WriteAllLines($taskDatabaseEnv,@('POSTGRES_DB=household_restore',"POSTGRES_PASSWORD=$(Read-HouseholdSetting 'POSTGRES_PASSWORD')"))
-    docker run -d --rm --name $taskDatabase --network household_default --user 70:70 --env-file $taskDatabaseEnv `
-      --tmpfs '/var/lib/postgresql:rw,size=512m,uid=70,gid=70' postgres:18-alpine@sha256:b6972e1115a4ff8eba5d7f7d19184926d1e16d7d1136ae1e1a7ebf286da0f015 | Out-Null
-    if($LASTEXITCODE -ne 0){throw 'Recovery database container could not start (is the local compose.yaml stack running?)'}
+    $taskContainer=docker run -d --rm --name $taskDatabase --network household_default --user 70:70 --env-file $taskDatabaseEnv `
+      --tmpfs '/var/lib/postgresql:rw,size=512m,uid=70,gid=70' postgres:18-alpine@sha256:b6972e1115a4ff8eba5d7f7d19184926d1e16d7d1136ae1e1a7ebf286da0f015
+    if($LASTEXITCODE -ne 0 -or !$taskContainer){$taskContainer=$null;throw 'Recovery database container could not start (is the local compose.yaml stack running, or is another rehearsal using it?)'}
     $taskReady=$false
-    for($taskAttempt=0;$taskAttempt -lt 60;$taskAttempt++){docker exec $taskDatabase pg_isready -U postgres -d household_restore | Out-Null;if($LASTEXITCODE -eq 0){$taskReady=$true;break};Start-Sleep -Seconds 1}
+    for($taskAttempt=0;$taskAttempt -lt 60;$taskAttempt++){docker exec $taskDatabase pg_isready -h 127.0.0.1 -U postgres -d household_restore | Out-Null;if($LASTEXITCODE -eq 0){$taskReady=$true;break};Start-Sleep -Seconds 1}
     if(!$taskReady){throw 'Recovery database did not become ready'}
     $taskActor=[Security.Principal.WindowsIdentity]::GetCurrent().Name
     & icacls $taskSecrets /inheritance:r /grant:r "${taskActor}:(OI)(CI)F" 'SYSTEM:(OI)(CI)F' /Q | Out-Null
@@ -31,7 +34,7 @@ try {
       if($LASTEXITCODE -ne 0){throw 'Could not set fixture secret permissions'}
     }
     # The installation's .env (household init) holds the owner password; never print it.
-    $taskOwner=Read-HouseholdSetting 'HOUSEHOLD_OWNER_PASSWORD'
+    $taskOwner=[uri]::EscapeDataString((Read-HouseholdSetting 'HOUSEHOLD_OWNER_PASSWORD'))
     $taskRandom={ [Convert]::ToHexString([Security.Cryptography.RandomNumberGenerator]::GetBytes(32)) }
     [IO.File]::WriteAllText((Join-Path $taskSecrets 'source_url'),"postgres://household_owner:${taskOwner}@${taskDatabase}:5432/household_fixture?sslmode=disable")
     [IO.File]::WriteAllText((Join-Path $taskSecrets 'target_url'),"postgres://household_owner:${taskOwner}@${taskDatabase}:5432/household_restore?sslmode=disable")
@@ -56,9 +59,16 @@ try {
     docker exec -i $taskDatabase createdb -U postgres household_fixture
     if($LASTEXITCODE -ne 0){throw 'Fixture database already exists or could not be created; refusing to overwrite it'}
     try {
-      # Create the Household roles in the disposable cluster and hand the fixture to the owner.
-      docker compose run --rm --no-deps -e HOUSEHOLD_DATABASE_HOST=${taskDatabase}:5432 -e HOUSEHOLD_DATABASE_NAME=household_fixture backup setup
-      if($LASTEXITCODE -ne 0){throw 'Fixture database setup failed'}
+      # Create the Household roles in the disposable cluster and hand the fixture to the owner,
+      # with the image under test; the shell value overrides HOUSEHOLD_IMAGE from .env.
+      $taskPreviousImage=$env:HOUSEHOLD_IMAGE
+      $env:HOUSEHOLD_IMAGE=$BackupImage
+      try {
+        docker compose run --rm --no-deps -e HOUSEHOLD_DATABASE_HOST=${taskDatabase}:5432 -e HOUSEHOLD_DATABASE_NAME=household_fixture backup setup
+        if($LASTEXITCODE -ne 0){throw 'Fixture database setup failed'}
+      } finally {
+        $env:HOUSEHOLD_IMAGE=$taskPreviousImage
+      }
       docker exec $taskDatabase psql -U postgres -v ON_ERROR_STOP=1 -c 'ALTER DATABASE household_restore OWNER TO household_owner' -c 'REVOKE ALL ON DATABASE household_restore FROM PUBLIC' -c 'GRANT CONNECT ON DATABASE household_restore TO household_app,household_owner' | Out-Null
       if($LASTEXITCODE -ne 0){throw 'Restore target preparation failed'}
       $taskRehearsalTimer=[Diagnostics.Stopwatch]::StartNew()
@@ -351,6 +361,7 @@ SELECT (SELECT count(*) FROM core.financial_requirement_sets WHERE household_id=
       docker volume rm $taskRepoVolume $taskWorkVolume | Out-Null
     }
 } finally {
-    docker rm -f household-recovery-test-db 2>$null | Out-Null
+    # Remove only the container this run created, never another rehearsal's.
+    if($taskContainer){docker rm -f $taskContainer 2>$null | Out-Null}
     Pop-Location
 }

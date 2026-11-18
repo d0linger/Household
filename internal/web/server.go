@@ -745,7 +745,10 @@ func (s *Server) fail(w http.ResponseWriter, r *http.Request, err error) {
 		w.Header().Set("Retry-After", "5")
 	case errors.Is(err, auth.ErrLimited):
 		status, message = 429, auth.ErrLimited.Error()
-		w.Header().Set("Retry-After", "900")
+		// Keep a shorter interval a caller already chose (for example uploads).
+		if w.Header().Get("Retry-After") == "" {
+			w.Header().Set("Retry-After", "900")
+		}
 	case errors.Is(err, auth.ErrCredentials):
 		status, message = 401, auth.ErrCredentials.Error()
 	case errors.As(err, &pgerr) && (pgerr.Code == "23503" || pgerr.Code == "23505" || pgerr.Code == "23514" || pgerr.Code == "23502" || pgerr.Code == "22003" || pgerr.Code == "22P02"):

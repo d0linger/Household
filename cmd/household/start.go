@@ -147,18 +147,12 @@ func withRestoreTarget(ctx context.Context, superuser string, verify func() erro
 	if err != nil {
 		return err
 	}
-	setupCtx, cancel := context.WithTimeout(ctx, time.Minute)
-	defer cancel()
-	if err = database.CreateRestoreDatabase(setupCtx, maintenanceURL); err != nil {
-		return err
-	}
-	defer func() {
-		dropCtx, cancelDrop := context.WithTimeout(context.Background(), time.Minute)
-		defer cancelDrop()
-		_ = database.DropRestoreDatabase(dropCtx, maintenanceURL)
-	}()
-	if err = database.Bootstrap(setupCtx, restoreURL, owner, app); err != nil {
-		return err
-	}
-	return verify()
+	return database.WithRestoreDatabase(ctx, maintenanceURL, func() error {
+		setupCtx, cancel := context.WithTimeout(ctx, time.Minute)
+		defer cancel()
+		if err := database.Bootstrap(setupCtx, restoreURL, owner, app); err != nil {
+			return err
+		}
+		return verify()
+	})
 }

@@ -49,6 +49,10 @@ func explicitlyConfigured(name string) bool {
 	return os.Getenv(name) != "" || os.Getenv(name+"_FILE") != ""
 }
 
+// Configured reports whether a secret setting has a value, a _FILE path or a
+// file in the secrets folder, with the same precedence Secret uses.
+func Configured(name string) (bool, error) { return configured(name) }
+
 // configured reports whether name has an explicit or conventional source.
 func configured(name string) (bool, error) {
 	if explicitlyConfigured(name) {

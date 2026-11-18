@@ -1739,3 +1739,71 @@ Not changed (recorded for later):
 - Forced-password-change confirmation field.
 - Notification timestamps.
 - The service-worker registration error seen only in the embedded browser pane.
+
+## CodeRabbit review of PR 20 (2026-11-18)
+
+CodeRabbit reviewed `9fccf69` with 20 inline findings and one outside the diff. Each finding was checked against the code before any change.
+
+Fixed:
+- **Restore check:**
+  - `restore-check` now rejects a source database named `household_restore` before anything is created or dropped (`maintenance.ValidateRestoreTarget` runs first).
+  - A restore URL from the secrets folder now counts as an explicit target (`config.Configured`), so no temporary database is prepared next to it.
+  - `database.WithRestoreDatabase` holds one session advisory lock on a dedicated maintenance connection from the first drop to the final drop. A concurrent check fails fast with "another restore check is running" instead of dropping the other check's database.
+- **Second-factor budget:**
+  - `factorBudget` now locks the account's TOTP row before reading the failure count.
+  - A wrong code is counted inside the same transaction and committed before that lock is released.
+  - `Login` and `Reauthenticate` can therefore no longer check an eleventh code concurrently. `core.rate_limit_buckets` is not audited, and `verifyFactor` writes nothing when it rejects a code.
+- **Documents:** a retry of a cancelled or failed processing request passes the same admission checks as a new request: the per-person limit, and no duplicate extraction of a version that is already queued. Its own row is excluded from the counts.
+- **Finance:** the automatic catch-up check caps its search at `ends_on`, so an ended template whose occurrences all exist no longer reports `catchup_required`.
+- **Meters:**
+  - The generic `meters/readings` path applies the same instant bound as `reading.save`.
+  - Device updates check only installation and removal dates that change, so an unchanged old date never fails the moving 30-year floor.
+- **Uploads:**
+  - The outstanding-job limit applies only to uploads that queue a thumbnail or OCR job; a PDF without capture is bounded by the storage quota alone.
+  - `fail` keeps a `Retry-After` the caller already set (30 s for uploads) and uses 900 s only as the default.
+- **Calendar feeds:** the chores and meal-plan feeds release the module gate right after the store lookup, before rendering or writing the response.
+- **Chores Today:** the "Weitere Filter · N aktiv" summary is recounted after every submission.
+- **Web Push:** an HTTPS origin with a port other than 443 now yields the host-only contact (`https://host`). Previously no contact was derived, and the push status stayed `not_configured`.
+- **`init --files`:** the database passwords (`postgres_password`, `owner_password`, `app_password`) are mode 0644 inside the 0700 secrets folder, so the PostgreSQL container's own user can read them on Linux. Every other secret stays 0600.
+- **`.env` permissions:** the `.env` generation examples in `compose.yaml`, the README and the installation guide run under `umask 077`.
+- **`scripts/test-recovery.ps1`:**
+  - strips one pair of matching quotes like Compose;
+  - percent-encodes the owner password;
+  - waits for TCP readiness;
+  - runs `setup` with `$BackupImage`;
+  - removes only the container it created.
+- **`.coderabbit.yaml`:** sets `auto_review.enabled: false` explicitly.
+
+Changed less than suggested:
+- **Web Push:** Household does not fail at start-up when Web Push is enabled without a contact. `init` always generates a VAPID key, and the code deliberately reports an enabled but unconfigured push as `not_configured` (covered by `TestWebPushConfigurationBoundaries`). A start-up error would stop every HTTP or LAN installation.
+- **Documents retry:** the per-person limit is counted for the member who retries; `requested_by` of the original request is unchanged.
+
+New tests:
+- `TestSecondFactorBudgetHoldsUnderConcurrentWrongCodes` (web integration): nine failures, then five concurrent wrong codes; exactly one is checked.
+- A retry regression in `TestDocumentsNativeOriginalVersionScanJobCancelRetryAndSearch`.
+- A far-future reading regression in the web server integration test.
+- `TestFinanceCatchupBehindStopsAtTemplateEnd`.
+- `TestOriginWebPushContactDropsUnsupportedPorts`.
+- Retry-After cases in `TestFail`.
+- Mode checks in the `init` test.
+- `TestRestoreDatabaseLifecycleIsSerialized`. It needs `HOUSEHOLD_TEST_SUPERUSER_URL` and skips without it. CI does not set it, so it runs only locally.
+
+No new automated test covers the device-date change (the floor moves with the clock) or the gate release in the feeds (a slow client).
+
+## Security scan findings (2026-11-18)
+
+Seven findings from a security scan were checked against the code. Five are fixed here; two need an energy-projection design change and are recorded below.
+
+Fixed:
+- **Fuel CSV import (CWE-400, medium):** `fuelModuleImportParse` decodes `full_tank_values` and `missing_values` once, before any row is read, and refuses more than 32 entries per map. Previously every row lookup re-encoded and re-decoded the whole map. `TestFuelModuleImportFlagMapsAreDecodedOnceAndBounded`.
+- **Finance recurrence (CWE-407, medium):** `financeNextRecurrence` starts at the last index not after `after` instead of index 0. Dates still derive from the original anchor, so clamping is unchanged. A cashflow projection over an old daily anchor now costs a few steps per occurrence. `TestFinanceNextRecurrenceSkipsAheadWithIdenticalResults` compares the result with the previous full scan for 1,024 combinations of anchor, unit, interval and policy, plus a 366-day projection.
+- **Document watch inbox (CWE-367, low):** candidates are opened with `O_NONBLOCK` on Unix, and the opened descriptor must be a regular file. A FIFO swapped in after the `Lstat` check is skipped instead of blocking the shared worker. `TestOpenWatchCandidateRefusesFIFOWithoutBlocking` (Unix; it passed in a local Linux Go container).
+- **Shopping copies on the mandatory password page (CWE-863, low):** `/change-password` now calls `HouseholdShoppingDevice.suspend()`. That synchronously denies retained copies and sets `authorized_until=0`, so only a complete current fetch makes them readable again. The common-startup test asserts the call.
+- **Recipe offline reader (CWE-863, low):**
+  - Library buttons keep only the recipe id. Each open re-reads the copy through `local()`, which re-checks the owner, the grant and expiry, and drops expired copies.
+  - An open reader locks itself and releases its image URLs when the copy expires.
+  - No automated test covers the reader timer; the existing Node harness has no reader DOM.
+
+Open, needs a design change (not fixed):
+- **Meters dirty-range merge (`meters.invalidate`, CWE-400, low):** a late sample merges into the accumulated range and restarts aggregate work for the whole range. A fix needs separate tracking of new ranges or an aggregate cursor, which means a new migration and worker changes.
+- **Hourly aggregate materialization (`energy_aggregates.go`, CWE-400, low):** the finding's 1900 example cannot occur, because `EnergyInstantAccepted` limits inputs to the last 30 years. A 30-year span is still about 263,000 hourly buckets per register, and continuations have no durable work budget. A bucket budget or sparse storage is a projection design change.
