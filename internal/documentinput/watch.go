@@ -74,11 +74,15 @@ func Watch(ctx context.Context, dir string, cursor Cursor) ([]Candidate, Cursor,
 		}
 		// A file that may still be written stops this batch, so the cursor never
 		// passes it; a later poll picks it up.
-		if !watchSettled(cursor, name, info, time.Now()) {
-			if !sameSettlingObservation(cursor, name, info) {
+		identity := ""
+		if time.Since(info.ModTime()) < watchSettleTime {
+			identity = watchFileIdentity(root, name, info)
+		}
+		if !watchSettled(cursor, name, info, identity, time.Now()) {
+			if !sameSettlingObservation(cursor, name, info, identity) {
 				next.SettlingSince = time.Now()
 			}
-			next.Settling, next.SettlingSize, next.SettlingMod, next.SettlingFile = name, info.Size(), info.ModTime(), watchFileIdentity(info)
+			next.Settling, next.SettlingSize, next.SettlingMod, next.SettlingFile = name, info.Size(), info.ModTime(), identity
 			break
 		}
 		if next.Settling == name {
@@ -130,18 +134,18 @@ const watchSettleTime = 2 * time.Second
 // watchSettled reports whether name may be read: its modification time is at
 // least watchSettleTime in the past, or the worker first saw it unchanged at
 // least that long ago (a producer clock running ahead).
-func watchSettled(cursor Cursor, name string, info os.FileInfo, now time.Time) bool {
+func watchSettled(cursor Cursor, name string, info os.FileInfo, identity string, now time.Time) bool {
 	if age := now.Sub(info.ModTime()); age >= watchSettleTime {
 		return true
 	}
-	return sameSettlingObservation(cursor, name, info) && !cursor.SettlingSince.IsZero() && now.Sub(cursor.SettlingSince) >= watchSettleTime
+	return sameSettlingObservation(cursor, name, info, identity) && !cursor.SettlingSince.IsZero() && now.Sub(cursor.SettlingSince) >= watchSettleTime
 }
 
 // sameSettlingObservation reports whether info is the file the cursor last
-// observed settling: same name, size, time and (where available) identity.
-func sameSettlingObservation(cursor Cursor, name string, info os.FileInfo) bool {
+// observed settling: same name, size, time and file identity.
+func sameSettlingObservation(cursor Cursor, name string, info os.FileInfo, identity string) bool {
 	return cursor.Settling == name && cursor.SettlingSize == info.Size() && cursor.SettlingMod.Equal(info.ModTime()) &&
-		cursor.SettlingFile == watchFileIdentity(info)
+		cursor.SettlingFile == identity
 }
 
 // openWatchCandidate opens name below root without blocking and checks the

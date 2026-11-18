@@ -9,9 +9,9 @@ import (
 )
 
 // watchFileIdentity names the file behind info (device and inode; the field
-// types differ across Unix targets, hence the conversions), so a
-// replacement under the same name is recognized.
-func watchFileIdentity(info os.FileInfo) string {
+// types differ across Unix targets, hence the conversions), so a replacement
+// under the same name is recognized.
+func watchFileIdentity(_ *os.Root, _ string, info os.FileInfo) string {
 	stat, ok := info.Sys().(*syscall.Stat_t)
 	if !ok {
 		return ""

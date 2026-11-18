@@ -8,12 +8,19 @@ import (
 	"syscall"
 )
 
-// watchFileIdentity uses the creation time on Windows: a replacement file is
-// created anew, even when it later takes the old name, size and time.
-func watchFileIdentity(info os.FileInfo) string {
-	data, ok := info.Sys().(*syscall.Win32FileAttributeData)
-	if !ok {
+// watchFileIdentity names the file behind name by its NTFS/ReFS file ID
+// (volume serial number and file index), so a replacement under the same name
+// is recognized even when it carries the same timestamps. Opening a regular
+// file cannot block here; on any error there is no identity.
+func watchFileIdentity(root *os.Root, name string, _ os.FileInfo) string {
+	file, err := root.Open(name)
+	if err != nil {
 		return ""
 	}
-	return fmt.Sprintf("created:%d", data.CreationTime.Nanoseconds())
+	defer func() { _ = file.Close() }()
+	var data syscall.ByHandleFileInformation
+	if err = syscall.GetFileInformationByHandle(syscall.Handle(file.Fd()), &data); err != nil {
+		return ""
+	}
+	return fmt.Sprintf("%d:%d:%d", data.VolumeSerialNumber, data.FileIndexHigh, data.FileIndexLow)
 }
