@@ -73,7 +73,7 @@ Migrationen laufen beim Start automatisch. Lies vorher die Versionshinweise. Beh
 - **Was du brauchst:** Zum Wiederherstellen brauchst du das Backup **und** die `.env`.
 - **Wiederherstellung üben:** Wie das geht, steht unter [Wiederherstellung prüfen](operations.md#restore-verification).
 
-Backup prüfen: Der Befehl stellt das Backup in eine vorübergehende Datenbank `household_restore` auf demselben Datenbankserver wieder her, prüft alles und löscht die Kopie danach wieder.
+Backup prüfen: Der Befehl stellt das Backup in eine eigene vorübergehende Datenbank (`household_restore_auto_…`) auf demselben Datenbankserver wieder her, prüft alles und löscht sie danach wieder, auch nach einem Fehler.
 
 ```bash
 docker compose run --rm --no-deps backup restore-check SNAPSHOT_ID
@@ -129,7 +129,7 @@ Bis November 2026 bestand die Installation aus mehreren Compose-Dateien mit Pass
 
 1. Mit dem alten Setup ein Backup machen und mit `restore-check` prüfen.
 2. Die alte Installation stoppen, **ohne** `-v`: `docker compose down`.
-3. Eine `.env` wie in Schritt 2 mit `(umask 077; set -C; docker run --rm ghcr.io/d0linger/household:production init > .env)` erzeugen und darin diese Werte durch den Inhalt der alten Dateien ersetzen:
+3. Eine **neue** Datei erzeugen, ohne eine vorhandene `.env` anzutasten: `(umask 077; set -C; docker run --rm ghcr.io/d0linger/household:production init > .env.new)`. Darin diese Werte durch den Inhalt der alten Dateien ersetzen und Einstellungen wie `HOUSEHOLD_ORIGIN` und `HOUSEHOLD_TRUSTED_PROXIES` aus einer alten `.env` übernehmen. Erst danach eine alte `.env` sichern (zum Beispiel `mv .env .env.old`) und die neue aktivieren: `mv .env.new .env`.
 
    | Einstellung in `.env` | alte Datei in `.local/secrets` |
    | --- | --- |

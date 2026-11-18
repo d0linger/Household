@@ -165,11 +165,17 @@ func (s *Service) factorBudget(ctx context.Context, tx pgx.Tx, user string) erro
 	// the budget only after the previous check committed its failure count.
 	// Only an enabled credential is locked, like verifyFactor: a pending
 	// enrollment keeps its own lock order with session revocation.
-	if _, err := tx.Exec(ctx, "SELECT 1 FROM core.totp_credentials WHERE user_id=$1 AND enabled_at IS NOT NULL FOR UPDATE", user); err != nil {
+	locked, err := tx.Exec(ctx, "SELECT 1 FROM core.totp_credentials WHERE user_id=$1 AND enabled_at IS NOT NULL FOR UPDATE", user)
+	if err != nil {
 		return fmt.Errorf("lock second factor: %w", err)
 	}
+	// Without an enabled second factor there is nothing to guess, and failures
+	// counted before a factor reset must not refuse a correct password.
+	if locked.RowsAffected() == 0 {
+		return nil
+	}
 	var count int
-	err := tx.QueryRow(ctx, `SELECT coalesce(max(attempt_count),0) FROM core.rate_limit_buckets
+	err = tx.QueryRow(ctx, `SELECT coalesce(max(attempt_count),0) FROM core.rate_limit_buckets
 	 WHERE scope='totp-failure' AND subject_hash=$1 AND window_start=to_timestamp(floor(extract(epoch FROM clock_timestamp())/$2)*$2)`,
 		s.limitSubject("totp-failure", user), factorFailureWindow.Seconds()).Scan(&count)
 	if err != nil {

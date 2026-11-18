@@ -72,3 +72,40 @@ func TestWatchSkipsNonRegularEntriesBeforeTheBatchLimit(t *testing.T) {
 		t.Fatal("the valid inbox file was starved by non-regular entries", candidates, err)
 	}
 }
+
+// Regression: oversized ready files are reported and passed, so they never
+// hold back a valid file behind them.
+func TestWatchPassesOversizedFilesWithTheCursor(t *testing.T) {
+	dir := t.TempDir()
+	old := time.Now().Add(-time.Minute)
+	write := func(name string, size int) {
+		path := filepath.Join(dir, name)
+		if err := os.WriteFile(path, make([]byte, size), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chtimes(path, old, old); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for index := range 10 {
+		write(fmt.Sprintf("a%02d.ready.pdf", index), (10<<20)+1)
+	}
+	write("z.ready.pdf", 8)
+	cursor := Cursor{}
+	var imported []string
+	for range 3 {
+		candidates, next, err := Watch(t.Context(), dir, cursor)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, candidate := range candidates {
+			if candidate.Rejected == "" {
+				imported = append(imported, candidate.Name)
+			}
+		}
+		cursor = next
+	}
+	if len(imported) != 1 || imported[0] != "z.ready.pdf" {
+		t.Fatal("the valid file behind ten oversized files was not imported", imported)
+	}
+}

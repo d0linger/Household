@@ -66,7 +66,19 @@ func Watch(ctx context.Context, dir string, cursor Cursor) ([]Candidate, Cursor,
 		if e != nil {
 			return nil, cursor, e
 		}
-		if !info.Mode().IsRegular() || info.Size() < 1 || info.Size() > 10<<20 || time.Since(info.ModTime()) < 2*time.Second {
+		if !info.Mode().IsRegular() {
+			continue
+		}
+		// A file that may still be written stops this batch, so the cursor never
+		// passes it; it is picked up by a later poll.
+		if time.Since(info.ModTime()) < 2*time.Second {
+			break
+		}
+		// An empty or oversized file can never be imported: report it and move
+		// the cursor past it, so it cannot hold back the files behind it.
+		if info.Size() < 1 || info.Size() > 10<<20 {
+			out = append(out, Candidate{Key: name, Name: name, Rejected: "watch input is empty or larger than 10 MiB"})
+			next.After = name
 			continue
 		}
 		in, before, e := openWatchCandidate(root, name)

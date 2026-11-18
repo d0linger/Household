@@ -158,35 +158,27 @@ func run(log *slog.Logger) error {
 		if len(os.Args) != 3 {
 			return errors.New("usage: household restore-check SNAPSHOT")
 		}
-		target, err := config.RestoreDatabaseURL()
+		// One read decides both the target and whether it is explicit.
+		target, explicit, err := config.RestoreTarget(cfg.DatabaseURL)
 		if err != nil {
+			return err
+		}
+		if err = maintenance.ValidateRestoreTarget(cfg.DatabaseURL, target); err != nil {
 			return err
 		}
 		verifyCtx, cancel := context.WithTimeout(ctx, 30*time.Minute)
 		defer cancel()
-		verify := func() error { return maintenance.VerifyRestore(verifyCtx, pool, cfg, os.Args[2], target) }
-		// With the superuser password (compose.yaml), verify into a temporary
-		// household_restore on the database server and drop it afterwards.
-		// Reject a source named household_restore before anything is dropped.
-		if err = maintenance.ValidateRestoreTarget(cfg.DatabaseURL, target); err != nil {
-			return err
-		}
+		verify := func(target string) error { return maintenance.VerifyRestore(verifyCtx, pool, cfg, os.Args[2], target) }
 		superuser, err := config.Secret("POSTGRES_PASSWORD")
 		if err != nil {
 			return err
 		}
-		// The resolved value decides: an empty URL file still means "derive".
-		explicitTarget, err := config.Secret("HOUSEHOLD_RESTORE_DATABASE_URL")
-		if err != nil {
-			return err
+		// An explicit target, or no superuser to create one, is used as it is.
+		// Otherwise each check gets its own database on the source's server.
+		if explicit || superuser == "" {
+			return verify(target)
 		}
-		if superuser == "" {
-			return verify()
-		}
-		if explicitTarget == "" {
-			return withRestoreTarget(verifyCtx, superuser, verify)
-		}
-		return withExplicitRestoreLock(verifyCtx, superuser, target, verify)
+		return withRestoreTarget(verifyCtx, cfg.DatabaseURL, target, superuser, verify)
 	case "purge":
 		if len(os.Args) != 3 {
 			return errors.New("usage: household purge REQUEST_UUID")

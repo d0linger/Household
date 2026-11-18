@@ -11,8 +11,7 @@ import (
 
 	"household/internal/config"
 	"household/internal/database"
-
-	"github.com/jackc/pgx/v5"
+	"household/internal/maintenance"
 )
 
 // startOnlyVariables carry setup credentials that `serve` must never inherit.
@@ -100,26 +99,6 @@ func runStart() error {
 	return execServe(environment)
 }
 
-// withExplicitRestoreLock runs verify under the restore lifecycle lock when the
-// explicit target is the household_restore that automatic checks manage on the
-// same server, so neither drops the database while the other uses it. Any
-// other target is never touched by automatic checks and needs no lock.
-func withExplicitRestoreLock(ctx context.Context, superuser, target string, verify func() error) error {
-	maintenanceURL, managedURL, err := config.RestoreSuperuserURLs(superuser)
-	if err != nil {
-		return err
-	}
-	managed, managedErr := pgx.ParseConfig(managedURL)
-	explicit, explicitErr := pgx.ParseConfig(target)
-	if managedErr != nil || explicitErr != nil {
-		return errors.New("parse restore target configuration")
-	}
-	if explicit.Database != database.RestoreDatabase || !strings.EqualFold(explicit.Host, managed.Host) || explicit.Port != managed.Port {
-		return verify()
-	}
-	return database.WithRestoreLock(ctx, maintenanceURL, verify)
-}
-
 // serveEnvironment drops every setup credential and connects serve as the app role.
 func serveEnvironment(current []string, appPassword string) []string {
 	result := make([]string, 0, len(current)+2)
@@ -153,10 +132,10 @@ func replaceEnvironment(environment []string) error {
 	return nil
 }
 
-// withRestoreTarget creates a fresh household_restore on the restore server
-// (by default the application's database server), prepares the Household
-// roles in it, runs verify, and always drops the copy again.
-func withRestoreTarget(ctx context.Context, superuser string, verify func() error) error {
+// withRestoreTarget creates a fresh, uniquely named restore database on the
+// server of the source connection, prepares the Household roles in it, runs
+// verify against it with the target's credentials, and always drops it again.
+func withRestoreTarget(ctx context.Context, source, target, superuser string, verify func(target string) error) error {
 	owner, err := config.Secret("HOUSEHOLD_OWNER_PASSWORD")
 	if err != nil {
 		return err
@@ -165,16 +144,27 @@ func withRestoreTarget(ctx context.Context, superuser string, verify func() erro
 	if err != nil || owner == "" || app == "" {
 		return errors.New("restore preparation needs HOUSEHOLD_OWNER_PASSWORD and HOUSEHOLD_APP_PASSWORD")
 	}
-	maintenanceURL, restoreURL, err := config.RestoreSuperuserURLs(superuser)
+	maintenanceURL, err := config.RestoreMaintenanceURL(source, superuser)
 	if err != nil {
 		return err
 	}
-	return database.WithRestoreDatabase(ctx, maintenanceURL, func() error {
-		setupCtx, cancel := context.WithTimeout(ctx, time.Minute)
-		defer cancel()
-		if err := database.Bootstrap(setupCtx, restoreURL, owner, app); err != nil {
+	return database.WithAutomaticRestoreDatabase(ctx, maintenanceURL, func(name string) error {
+		restoreURL, err := config.WithDatabase(maintenanceURL, name)
+		if err != nil {
 			return err
 		}
-		return verify()
+		runTarget, err := config.WithDatabase(target, name)
+		if err != nil {
+			return err
+		}
+		if err = maintenance.ValidateRestoreTarget(source, runTarget); err != nil {
+			return err
+		}
+		setupCtx, cancel := context.WithTimeout(ctx, time.Minute)
+		defer cancel()
+		if err = database.Bootstrap(setupCtx, restoreURL, owner, app); err != nil {
+			return err
+		}
+		return verify(runTarget)
 	})
 }

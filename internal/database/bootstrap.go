@@ -2,8 +2,13 @@ package database
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
+	"regexp"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -72,100 +77,89 @@ func execFormatted(ctx context.Context, conn *pgx.Conn, template, name, password
 	return err
 }
 
-// RestoreDatabase is the only database WithRestoreDatabase creates and drops;
-// restore verification refuses any other target.
-const RestoreDatabase = "household_restore"
+// AutomaticRestorePrefix starts the name of every database an automatic
+// restore check creates. Each run gets its own database
+// (household_restore_auto_<unix seconds>_<random>) and drops only that one, so
+// concurrent checks, aliases of the same server and explicit targets named
+// household_restore can never drop each other's database.
+const AutomaticRestorePrefix = "household_restore_auto_"
 
-// restoreLockKey is the session advisory lock that serializes the whole
-// lifecycle of household_restore on one database server.
-const restoreLockKey int64 = 0x686f7573656872 // "househr"
+var automaticRestoreName = regexp.MustCompile(`^household_restore_auto_([0-9]{10})_[0-9a-f]{16}$`)
 
-// ErrRestoreBusy reports that another restore check holds household_restore.
-var ErrRestoreBusy = errors.New("another restore check is running on this database server")
+// automaticRestoreStale bounds how long an automatic check may run before a
+// later check treats its database as the leftover of an interrupted run. The
+// verification itself is bounded to 30 minutes.
+const automaticRestoreStale = 6 * time.Hour
 
-// ErrRestoreSelfTarget refuses restore maintenance through household_restore itself.
-var ErrRestoreSelfTarget = errors.New("restore maintenance must not connect to the restore database")
+// ErrRestoreSelfTarget refuses restore maintenance through a restore database.
+var ErrRestoreSelfTarget = errors.New("restore maintenance must not connect to a restore database")
 
-// RestoreMaintenanceDatabase is the one maintenance database every restore lock
-// is taken in. Advisory locks are scoped to the connected database, so two
-// checks through different maintenance databases would not exclude each other.
-const RestoreMaintenanceDatabase = "postgres"
+// IsAutomaticRestoreDatabase reports whether name is an automatic check's database.
+func IsAutomaticRestoreDatabase(name string) bool { return automaticRestoreName.MatchString(name) }
 
-// restoreLock connects to maintenanceURL and takes the restore lifecycle lock.
-// The caller closes the connection, which also releases the lock.
-func restoreLock(ctx context.Context, maintenanceURL string) (*pgx.Conn, error) {
+// WithAutomaticRestoreDatabase creates a new, uniquely named restore database
+// on the server behind maintenanceURL (a superuser connection to a maintenance
+// database), runs use with its name and always drops it again. Before that, it
+// drops leftovers of interrupted automatic checks older than six hours.
+func WithAutomaticRestoreDatabase(ctx context.Context, maintenanceURL string, use func(name string) error) (err error) {
 	cfg, err := pgx.ParseConfig(maintenanceURL)
 	if err != nil {
-		return nil, errors.New("parse restore maintenance configuration")
+		return errors.New("parse restore maintenance configuration")
 	}
-	if cfg.Database == RestoreDatabase {
-		return nil, ErrRestoreSelfTarget
+	if strings.HasPrefix(cfg.Database, "household_restore") {
+		return ErrRestoreSelfTarget
 	}
-	if cfg.Database != RestoreMaintenanceDatabase {
-		return nil, errors.New("restore maintenance must connect to the postgres maintenance database")
+	random := make([]byte, 8)
+	if _, err = rand.Read(random); err != nil {
+		return errors.New("restore database name generation failed")
 	}
+	now := time.Now()
+	name := fmt.Sprintf("%s%d_%s", AutomaticRestorePrefix, now.Unix(), hex.EncodeToString(random))
 	cfg.ConnectTimeout = 5 * time.Second
-	// The session holds the lock while it runs no queries during a long
-	// verification; a server-wide idle_session_timeout must not end it.
-	cfg.RuntimeParams["idle_session_timeout"] = "0"
-	conn, err := pgx.ConnectConfig(ctx, cfg)
-	if err != nil {
-		return nil, fmt.Errorf("connect for restore maintenance: %w", err)
-	}
-	var locked bool
-	if err = conn.QueryRow(ctx, "SELECT pg_try_advisory_lock($1)", restoreLockKey).Scan(&locked); err != nil {
-		_ = conn.Close(context.Background())
-		return nil, fmt.Errorf("lock restore database: %w", err)
-	}
-	if !locked {
-		_ = conn.Close(context.Background())
-		return nil, ErrRestoreBusy
-	}
-	return conn, nil
-}
-
-// WithRestoreLock runs use while holding the restore lifecycle lock of the
-// server behind maintenanceURL, without creating or dropping anything. An
-// explicit restore target on that server uses it, so an automatic check
-// cannot drop the database while the explicit check restores into it.
-func WithRestoreLock(ctx context.Context, maintenanceURL string, use func() error) error {
-	lockCtx, cancel := context.WithTimeout(ctx, time.Minute)
-	defer cancel()
-	conn, err := restoreLock(lockCtx, maintenanceURL)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = conn.Close(context.Background()) }() // also releases the lock
-	return use()
-}
-
-// WithRestoreDatabase creates an empty household_restore on the server behind
-// maintenanceURL (a superuser connection to its postgres database), runs use
-// and drops the database again. One session advisory lock, held on a dedicated
-// maintenance connection from before the first drop until after the final
-// drop, keeps concurrent restore checks from dropping each other's database.
-func WithRestoreDatabase(ctx context.Context, maintenanceURL string, use func() error) (err error) {
 	prepareCtx, cancel := context.WithTimeout(ctx, time.Minute)
 	defer cancel()
-	conn, err := restoreLock(prepareCtx, maintenanceURL)
+	conn, err := pgx.ConnectConfig(prepareCtx, cfg)
 	if err != nil {
+		return fmt.Errorf("connect for restore maintenance: %w", err)
+	}
+	defer func() { _ = conn.Close(context.Background()) }()
+	if err = dropStaleAutomaticRestores(prepareCtx, conn, now); err != nil {
 		return err
 	}
-	defer func() { _ = conn.Close(context.Background()) }() // also releases the session lock
-	drop := "DROP DATABASE IF EXISTS " + pgx.Identifier{RestoreDatabase}.Sanitize() + " WITH (FORCE)"
-	// A leftover copy can only come from an interrupted check: the lock is ours.
-	if _, err = conn.Exec(prepareCtx, drop); err != nil {
-		return fmt.Errorf("restore database maintenance: %w", err)
-	}
-	if _, err = conn.Exec(prepareCtx, "CREATE DATABASE "+pgx.Identifier{RestoreDatabase}.Sanitize()); err != nil {
+	if _, err = conn.Exec(prepareCtx, "CREATE DATABASE "+pgx.Identifier{name}.Sanitize()); err != nil {
 		return fmt.Errorf("restore database maintenance: %w", err)
 	}
 	defer func() {
 		cleanupCtx, cancelCleanup := context.WithTimeout(context.WithoutCancel(ctx), time.Minute)
 		defer cancelCleanup()
-		if _, dropErr := conn.Exec(cleanupCtx, drop); dropErr != nil && err == nil {
+		if _, dropErr := conn.Exec(cleanupCtx, "DROP DATABASE IF EXISTS "+pgx.Identifier{name}.Sanitize()+" WITH (FORCE)"); dropErr != nil && err == nil {
 			err = fmt.Errorf("drop restore database: %w", dropErr)
 		}
 	}()
-	return use()
+	return use(name)
+}
+
+func dropStaleAutomaticRestores(ctx context.Context, conn *pgx.Conn, now time.Time) error {
+	rows, err := conn.Query(ctx, "SELECT datname FROM pg_database WHERE starts_with(datname,$1) ORDER BY datname LIMIT 100", AutomaticRestorePrefix)
+	if err != nil {
+		return fmt.Errorf("list restore databases: %w", err)
+	}
+	names, err := pgx.CollectRows(rows, pgx.RowTo[string])
+	if err != nil {
+		return fmt.Errorf("list restore databases: %w", err)
+	}
+	for _, name := range names {
+		match := automaticRestoreName.FindStringSubmatch(name)
+		if match == nil {
+			continue
+		}
+		created, parseErr := strconv.ParseInt(match[1], 10, 64)
+		if parseErr != nil || now.Sub(time.Unix(created, 0)) < automaticRestoreStale {
+			continue
+		}
+		if _, err = conn.Exec(ctx, "DROP DATABASE IF EXISTS "+pgx.Identifier{name}.Sanitize()+" WITH (FORCE)"); err != nil {
+			return fmt.Errorf("drop stale restore database: %w", err)
+		}
+	}
+	return nil
 }

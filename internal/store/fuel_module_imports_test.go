@@ -113,11 +113,28 @@ func TestFuelModuleImportFlagMapsAreDecodedOnceAndBounded(t *testing.T) {
 	if _, _, err = fuelModuleImportParse(t.Context(), "household", fuelUnitCSVHeader+fuelUnitCSVRow, options); err == nil {
 		t.Fatal("parse accepted a 33-choice flag mapping")
 	}
-	// A malformed mapping fails only rows that consult it.
+	// A malformed mapping fails only rows that consult it: a blank missing-fill
+	// field with complete history does not consult missing_values.
 	options = fuelUnitImportOptions()
-	options["missing_values"] = map[string]any{"ja": "yes"}
-	if _, _, err = fuelModuleImportParse(t.Context(), "household", fuelUnitCSVHeader+fuelUnitCSVRow, options); err != nil {
+	options["missing_values"], options["history_complete"] = map[string]any{"ja": "yes"}, true
+	blank := strings.Replace(fuelUnitCSVRow, ",false,", ",,", 1)
+	if blank == fuelUnitCSVRow {
+		t.Fatal("fixture row has no previous_fill_missing value to blank")
+	}
+	parsed, _, err = fuelModuleImportParse(t.Context(), "household", fuelUnitCSVHeader+blank, options)
+	if err != nil {
 		t.Fatal("a malformed, unused mapping must not refuse the whole import", err)
+	}
+	if row := fuelUnitImportRows(t, parsed)[0]; len(row["errors"].([]string)) != 0 || row["values"].(Record)["previous_fill_missing"] != false {
+		t.Fatalf("the row not consulting the malformed mapping did not normalize: %+v", row)
+	}
+	// A row that does consult it reports the mapping error on that row.
+	parsed, _, err = fuelModuleImportParse(t.Context(), "household", fuelUnitCSVHeader+fuelUnitCSVRow, options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if row := fuelUnitImportRows(t, parsed)[0]; len(row["errors"].([]string)) == 0 {
+		t.Fatalf("a row consulting the malformed mapping must report it: %+v", row)
 	}
 }
 

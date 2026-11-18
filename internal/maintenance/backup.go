@@ -538,7 +538,7 @@ func ValidateRestoreTarget(sourceURL, targetURL string) error {
 	if err != nil {
 		return err
 	}
-	if target.Path != "/household_restore" {
+	if name := strings.TrimPrefix(target.Path, "/"); name != "household_restore" && !database.IsAutomaticRestoreDatabase(name) {
 		return errors.New("restore verification requires a separate database named household_restore")
 	}
 	source, err := maintenanceURL(sourceURL)
@@ -547,7 +547,7 @@ func ValidateRestoreTarget(sourceURL, targetURL string) error {
 	}
 	// The disposable name is reserved regardless of host spelling, aliases or
 	// query parameters; it can never be the installation being verified.
-	if source.Path == "/household_restore" {
+	if strings.HasPrefix(source.Path, "/household_restore") {
 		return errors.New("restore source cannot use the reserved household_restore database")
 	}
 	return nil

@@ -15,6 +15,8 @@ import (
 	"strings"
 	"time"
 
+	"household/internal/auth"
+	"household/internal/i18n"
 	"household/internal/ical"
 	"household/internal/store"
 )
@@ -269,6 +271,26 @@ func gatedLookup[T any](ctx context.Context, gate interface{ RUnlock() }, lookup
 	return lookup(gated)
 }
 
+// feedFailure answers a public capability feed request in plain text. It never
+// renders the HTML error page, whose language form would echo the capability
+// URL, and logs no token-bearing detail.
+func (s *Server) feedFailure(w http.ResponseWriter, r *http.Request, err error) {
+	locale := requestLocale(r)
+	switch {
+	case errors.Is(err, store.ErrNotFound) || errors.Is(err, store.ErrForbidden):
+		http.Error(w, i18n.Text(locale, "Nicht gefunden"), http.StatusNotFound)
+	case errors.Is(err, auth.ErrLimited):
+		w.Header().Set("Retry-After", "60")
+		http.Error(w, i18n.Text(locale, "Kalenderabruf später erneut versuchen"), http.StatusTooManyRequests)
+	default:
+		if !errors.Is(err, store.ErrBusy) {
+			s.Log.Error("calendar feed unavailable", "request_id", trace(r))
+		}
+		w.Header().Set("Retry-After", "5")
+		http.Error(w, i18n.Text(locale, "Kalender vorübergehend nicht verfügbar"), http.StatusServiceUnavailable)
+	}
+}
+
 func (s *Server) choreCalendarFeed(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "private, no-store")
 	w.Header().Set("Referrer-Policy", "no-referrer")
@@ -276,18 +298,17 @@ func (s *Server) choreCalendarFeed(w http.ResponseWriter, r *http.Request) {
 	// Cheap in-memory checks, then the per-client limit, all before the module
 	// gate: a request without a session must not occupy the gate while it waits.
 	if _, enabled := s.Store.State("chores"); !enabled || !strings.HasSuffix(token, ".ics") || r.URL.RawQuery != "" || len(strings.TrimSuffix(token, ".ics")) != 43 {
-		s.fail(w, r, store.ErrNotFound)
+		s.feedFailure(w, r, store.ErrNotFound)
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 	if err := s.Auth.Limit(ctx, "chores-calendar-feed", s.clientIP(r), 120, time.Minute); err != nil {
-		s.fail(w, r, err)
+		s.feedFailure(w, r, err)
 		return
 	}
 	if !s.Store.TryReadGate() {
-		w.Header().Set("Retry-After", "5")
-		s.fail(w, r, store.ErrBusy)
+		s.feedFailure(w, r, store.ErrBusy)
 		return
 	}
 	// Bound the gated section well inside the module change's gate wait, and
@@ -296,7 +317,7 @@ func (s *Server) choreCalendarFeed(w http.ResponseWriter, r *http.Request) {
 		return s.Store.ChoreCalendarFeed(gated, strings.TrimSuffix(token, ".ics"))
 	})
 	if err != nil {
-		s.fail(w, r, err)
+		s.feedFailure(w, r, err)
 		return
 	}
 	s.writeChoreCalendar(w, r, events, false)

@@ -1,49 +1,46 @@
-param([string]$BackupImage='household:local')
+param([string]$BackupImage='household:local',[string]$ProjectName='')
 $ErrorActionPreference='Stop'
 $taskRoot=Split-Path -Parent $PSScriptRoot
+# Every name, directory, password and report belongs to this run only.
+$taskRun=[guid]::NewGuid().ToString('N').Substring(0,12)
+$taskCleanupErrors=[Collections.Generic.List[string]]::new()
 Push-Location $taskRoot
 try {
-    # A task-owned in-memory PostgreSQL container on the local stack's network is the only
-    # source and target; the live Household database is never touched.
-    $taskDirectory=Join-Path $taskRoot '.local/recovery-test'
+  try {
+    # A run-owned in-memory PostgreSQL container on the local stack's network is the only
+    # source and target; the live Household database and its passwords are never used.
+    $taskDirectory=Join-Path $taskRoot ".local/recovery-test/$taskRun"
     $taskSecrets=Join-Path $taskDirectory 'secrets'
     $taskUploads=Join-Path $taskDirectory 'uploads'
     New-Item -ItemType Directory -Force $taskSecrets,$taskUploads,'outputs/recovery-review' | Out-Null
-    function Read-HouseholdSetting([string]$name){
-      $line=Get-Content -LiteralPath (Join-Path $taskRoot '.env') | Where-Object {$_ -match "^$name="} | Select-Object -First 1
-      if(!$line){throw "$name missing from .env"}
-      # Compose removes one pair of matching quotes around a value; do the same.
-      $value=$line.Substring($name.Length+1)
-      if($value.Length -ge 2 -and ($value[0] -eq "'" -or $value[0] -eq '"') -and $value[-1] -eq $value[0]){$value=$value.Substring(1,$value.Length-2)}
-      return $value
-    }
-    $taskDatabase='household-recovery-test-db'
+    # Restrict the secret directory before any credential is written; new files inherit it.
+    $taskActor=[Security.Principal.WindowsIdentity]::GetCurrent().Name
+    & icacls $taskSecrets /inheritance:r /grant:r "${taskActor}:(OI)(CI)F" 'SYSTEM:(OI)(CI)F' /Q | Out-Null
+    if($LASTEXITCODE -ne 0){throw 'Could not restrict fixture secret directory'}
+    $taskRandom={ [Convert]::ToHexString([Security.Cryptography.RandomNumberGenerator]::GetBytes(32)) }
+    $taskPostgresPassword=& $taskRandom;$taskOwnerPassword=& $taskRandom;$taskAppPassword=& $taskRandom
+    $taskDatabase="household-recovery-test-db-$taskRun"
     $taskDatabaseEnv=Join-Path $taskSecrets 'postgres.env'
-    [IO.File]::WriteAllLines($taskDatabaseEnv,@('POSTGRES_DB=household_restore',"POSTGRES_PASSWORD=$(Read-HouseholdSetting 'POSTGRES_PASSWORD')"))
-    # Join the network of the running Compose project, whatever its project name.
-    $taskStackDatabase=docker compose ps -q db
-    if($LASTEXITCODE -ne 0 -or !$taskStackDatabase){throw 'The local compose.yaml stack is not running'}
+    [IO.File]::WriteAllLines($taskDatabaseEnv,@('POSTGRES_DB=household_restore',"POSTGRES_PASSWORD=$taskPostgresPassword"))
+    # Join the network of the running Compose project; -ProjectName selects a non-default one.
+    $taskCompose=@('compose');if($ProjectName){$taskCompose+=@('-p',$ProjectName)}
+    $taskStackDatabase=& docker @taskCompose ps -q db
+    if($LASTEXITCODE -ne 0 -or !$taskStackDatabase){throw 'The local compose.yaml stack is not running (pass -ProjectName for a non-default project)'}
     $taskNetwork=docker inspect $taskStackDatabase --format '{{range $name, $_ := .NetworkSettings.Networks}}{{$name}}{{println}}{{end}}' | Where-Object {$_} | Select-Object -First 1
     if($LASTEXITCODE -ne 0 -or !$taskNetwork){throw 'Could not resolve the local stack network'}
     $taskContainer=docker run -d --rm --name $taskDatabase --network $taskNetwork --user 70:70 --env-file $taskDatabaseEnv `
       --tmpfs '/var/lib/postgresql:rw,size=512m,uid=70,gid=70' postgres:18-alpine@sha256:b6972e1115a4ff8eba5d7f7d19184926d1e16d7d1136ae1e1a7ebf286da0f015
-    if($LASTEXITCODE -ne 0 -or !$taskContainer){$taskContainer=$null;throw 'Recovery database container could not start (is the local compose.yaml stack running, or is another rehearsal using it?)'}
+    if($LASTEXITCODE -ne 0 -or !$taskContainer){$taskContainer=$null;throw 'Recovery database container could not start'}
     $taskReady=$false
-    for($taskAttempt=0;$taskAttempt -lt 60;$taskAttempt++){docker exec $taskDatabase pg_isready -h 127.0.0.1 -U postgres -d household_restore | Out-Null;if($LASTEXITCODE -eq 0){$taskReady=$true;break};Start-Sleep -Seconds 1}
+    for($taskAttempt=0;$taskAttempt -lt 60;$taskAttempt++){docker exec $taskContainer pg_isready -h 127.0.0.1 -U postgres -d household_restore | Out-Null;if($LASTEXITCODE -eq 0){$taskReady=$true;break};Start-Sleep -Seconds 1}
     if(!$taskReady){throw 'Recovery database did not become ready'}
-    $taskActor=[Security.Principal.WindowsIdentity]::GetCurrent().Name
-    & icacls $taskSecrets /inheritance:r /grant:r "${taskActor}:(OI)(CI)F" 'SYSTEM:(OI)(CI)F' /Q | Out-Null
-    if($LASTEXITCODE -ne 0){throw 'Could not restrict fixture secret directory'}
-    foreach($taskExistingSecret in (Get-ChildItem -LiteralPath $taskSecrets -File)){
-      & icacls $taskExistingSecret.FullName /inheritance:e /grant:r "${taskActor}:F" 'SYSTEM:F' /Q | Out-Null
-      if($LASTEXITCODE -ne 0){throw 'Could not set fixture secret permissions'}
-    }
-    # The installation's .env (household init) holds the owner password; never print it.
-    $taskOwner=[uri]::EscapeDataString((Read-HouseholdSetting 'HOUSEHOLD_OWNER_PASSWORD'))
-    $taskRandom={ [Convert]::ToHexString([Security.Cryptography.RandomNumberGenerator]::GetBytes(32)) }
+    $taskOwner=[uri]::EscapeDataString($taskOwnerPassword)
     [IO.File]::WriteAllText((Join-Path $taskSecrets 'source_url'),"postgres://household_owner:${taskOwner}@${taskDatabase}:5432/household_fixture?sslmode=disable")
     [IO.File]::WriteAllText((Join-Path $taskSecrets 'target_url'),"postgres://household_owner:${taskOwner}@${taskDatabase}:5432/household_restore?sslmode=disable")
     foreach($taskSecretName in @('csrf','encryption','rate','restic')){[IO.File]::WriteAllText((Join-Path $taskSecrets $taskSecretName),(& $taskRandom))}
+    $taskSetupEnv=Join-Path $taskSecrets 'setup.env'
+    [IO.File]::WriteAllLines($taskSetupEnv,@("POSTGRES_PASSWORD=$taskPostgresPassword","HOUSEHOLD_OWNER_PASSWORD=$taskOwnerPassword","HOUSEHOLD_APP_PASSWORD=$taskAppPassword",
+      "HOUSEHOLD_DATABASE_HOST=${taskDatabase}:5432",'HOUSEHOLD_DATABASE_NAME=household_fixture'))
     $taskEnvironment=Join-Path $taskDirectory 'fixture.env'
     [IO.File]::WriteAllLines($taskEnvironment,@(
       'HOUSEHOLD_ENV=development','HOUSEHOLD_ORIGIN=http://localhost:8102',
@@ -51,9 +48,8 @@ try {
       'HOUSEHOLD_CSRF_SECRET_FILE=/run/secrets/csrf','HOUSEHOLD_ENCRYPTION_KEY_FILE=/run/secrets/encryption',
       'HOUSEHOLD_RATE_SECRET_FILE=/run/secrets/rate','HOUSEHOLD_UPLOAD_DIR=/data/uploads',
       'HOUSEHOLD_BACKUP_WORK=/work','RESTIC_REPOSITORY=/data/backups','RESTIC_PASSWORD_FILE=/run/secrets/restic','RESTIC_CACHE_DIR=/tmp/restic-cache'))
-    $taskSuffix=[guid]::NewGuid().ToString('N').Substring(0,12)
-    $taskRepoVolume="household-recovery-test-repository-$taskSuffix"
-    $taskWorkVolume="household-recovery-test-work-$taskSuffix"
+    $taskRepoVolume="household-recovery-test-repository-$taskRun"
+    $taskWorkVolume="household-recovery-test-work-$taskRun"
     $taskDockerArguments=@('run','--rm','--network',$taskNetwork,'--env-file',$taskEnvironment)
     foreach($taskSecretName in @('source_url','target_url','csrf','encryption','rate','restic')){
       $taskDockerArguments+=@('--mount',"type=bind,source=$(Join-Path $taskSecrets $taskSecretName),target=/run/secrets/$taskSecretName,readonly")
@@ -64,16 +60,10 @@ try {
     docker exec -i $taskDatabase createdb -U postgres household_fixture
     if($LASTEXITCODE -ne 0){throw 'Fixture database already exists or could not be created; refusing to overwrite it'}
     try {
-      # Create the Household roles in the disposable cluster and hand the fixture to the owner,
-      # with the image under test; the shell value overrides HOUSEHOLD_IMAGE from .env.
-      $taskPreviousImage=$env:HOUSEHOLD_IMAGE
-      $env:HOUSEHOLD_IMAGE=$BackupImage
-      try {
-        docker compose run --rm --no-deps -e HOUSEHOLD_DATABASE_HOST=${taskDatabase}:5432 -e HOUSEHOLD_DATABASE_NAME=household_fixture backup setup
-        if($LASTEXITCODE -ne 0){throw 'Fixture database setup failed'}
-      } finally {
-        $env:HOUSEHOLD_IMAGE=$taskPreviousImage
-      }
+      # Create the Household roles in the disposable cluster with the image under test and
+      # this run's own passwords, then hand the fixture to the owner.
+      docker run --rm --network $taskNetwork --env-file $taskSetupEnv $BackupImage setup
+      if($LASTEXITCODE -ne 0){throw 'Fixture database setup failed'}
       docker exec $taskDatabase psql -U postgres -v ON_ERROR_STOP=1 -c 'ALTER DATABASE household_restore OWNER TO household_owner' -c 'REVOKE ALL ON DATABASE household_restore FROM PUBLIC' -c 'GRANT CONNECT ON DATABASE household_restore TO household_app,household_owner' | Out-Null
       if($LASTEXITCODE -ne 0){throw 'Restore target preparation failed'}
       $taskRehearsalTimer=[Diagnostics.Stopwatch]::StartNew()
@@ -360,28 +350,36 @@ SELECT (SELECT count(*) FROM core.financial_requirement_sets WHERE household_id=
       if($LASTEXITCODE -ne 0 -or $taskExpenseBefore -cne $taskExpenseAfter){throw 'Financial logical snapshot differs after restore or duplicate attempt'}
       $taskRestoreTimer.Stop()
       $taskRehearsalTimer.Stop()
-      # Published only after the rehearsal container is removed.
-      $taskReport=[ordered]@{passed=$true;source='disposable household_fixture';target='disposable household_restore';snapshot=$taskSnapshot;domainValue=$taskRestored;stockProjection=$taskStock;pantryTarget=$taskTarget;pantryDaily=$taskPantryDaily;stockDuplicateInserted=$taskStockDuplicate;pantryBatch=$taskPantryBatch;pantryPrivateDraft=$taskPantryDraft;pantryBatchUniqueConstraint=$taskPantryBatchDuplicate;durableCompletion=$taskCheckout;recipeVersionsAfterEdit=$taskRecipeAfter;cookingTimers=$taskCookingBefore;cookingRecord=$taskCookingResult;cookingDuplicateInserted=$taskCookingDuplicate;cookingStockPosting=$taskCookingPostingResult;cookingStockDuplicateInserted=$taskCookingPostingDuplicate;planningComponents=$taskPlanning;planningDuplicateInserted=$taskPlanningDuplicate;planningParticipants=$taskParticipants;planningParticipantIdentities=$taskParticipantIdentities;mealReservation=$taskReservationResult;planningIngredientBinding=$taskPlanningBindingResult;planningPurchaseScope=$taskPurchaseResult;planningPurchaseProof=$taskPurchaseProof;planningPurchaseDetailValidation=$taskPurchaseDetailValidation;planningPurchaseDuplicateInserted=$taskPurchaseDuplicate;expensePosted=$taskExpenseResult;expenseMinimalProof=$taskExpenseProof;expenseDuplicateInserted=$taskExpenseDuplicate;expenseLogicalSnapshotEqual=($taskExpenseBefore -ceq $taskExpenseAfter);financialBindings=$taskFinancialBindings;financialRequirements=$taskFinancialRequirements;hashedFiles=2;includesOriginalAndPreview=$true;backupSeconds=[Math]::Round($taskBackupTimer.Elapsed.TotalSeconds,2);restoreAndVerifySeconds=[Math]::Round($taskRestoreTimer.Elapsed.TotalSeconds,2);rehearsalSeconds=[Math]::Round($taskRehearsalTimer.Elapsed.TotalSeconds,2);scope='Small synthetic local fixture; not acceptance of a production RTO/RPO or authenticated restored-service replay';verifiedAt=[DateTime]::UtcNow.ToString('o')} | ConvertTo-Json
+      # Published only after every run-owned resource is removed.
+      $taskReport=[ordered]@{passed=$true;run=$taskRun;image=$BackupImage;source='disposable household_fixture';target='disposable household_restore';snapshot=$taskSnapshot;domainValue=$taskRestored;stockProjection=$taskStock;pantryTarget=$taskTarget;pantryDaily=$taskPantryDaily;stockDuplicateInserted=$taskStockDuplicate;pantryBatch=$taskPantryBatch;pantryPrivateDraft=$taskPantryDraft;pantryBatchUniqueConstraint=$taskPantryBatchDuplicate;durableCompletion=$taskCheckout;recipeVersionsAfterEdit=$taskRecipeAfter;cookingTimers=$taskCookingBefore;cookingRecord=$taskCookingResult;cookingDuplicateInserted=$taskCookingDuplicate;cookingStockPosting=$taskCookingPostingResult;cookingStockDuplicateInserted=$taskCookingPostingDuplicate;planningComponents=$taskPlanning;planningDuplicateInserted=$taskPlanningDuplicate;planningParticipants=$taskParticipants;planningParticipantIdentities=$taskParticipantIdentities;mealReservation=$taskReservationResult;planningIngredientBinding=$taskPlanningBindingResult;planningPurchaseScope=$taskPurchaseResult;planningPurchaseProof=$taskPurchaseProof;planningPurchaseDetailValidation=$taskPurchaseDetailValidation;planningPurchaseDuplicateInserted=$taskPurchaseDuplicate;expensePosted=$taskExpenseResult;expenseMinimalProof=$taskExpenseProof;expenseDuplicateInserted=$taskExpenseDuplicate;expenseLogicalSnapshotEqual=($taskExpenseBefore -ceq $taskExpenseAfter);financialBindings=$taskFinancialBindings;financialRequirements=$taskFinancialRequirements;hashedFiles=2;includesOriginalAndPreview=$true;backupSeconds=[Math]::Round($taskBackupTimer.Elapsed.TotalSeconds,2);restoreAndVerifySeconds=[Math]::Round($taskRestoreTimer.Elapsed.TotalSeconds,2);rehearsalSeconds=[Math]::Round($taskRehearsalTimer.Elapsed.TotalSeconds,2);scope='Small synthetic local fixture; not acceptance of a production RTO/RPO or authenticated restored-service replay';verifiedAt=[DateTime]::UtcNow.ToString('o')} | ConvertTo-Json
     } finally {
-      docker volume rm $taskRepoVolume $taskWorkVolume | Out-Null
-    }
-} catch {
-    $taskFailure=$_
-    throw
-} finally {
-    # Remove only the container this run created, never another rehearsal's.
-    if($taskContainer){
-      docker rm -f $taskContainer 2>&1 | Out-Null
-      if($LASTEXITCODE -ne 0){
-        # Keep a rehearsal failure as the reported error; otherwise fail here.
-        if($taskFailure){Write-Warning "Recovery database container $taskContainer could not be removed"}
-        else{Pop-Location;throw "Recovery database container $taskContainer could not be removed; the rehearsal is not reported as passed"}
+      foreach($taskVolume in @($taskRepoVolume,$taskWorkVolume)){
+        try{docker volume rm $taskVolume 2>&1 | Out-Null;if($LASTEXITCODE -ne 0){$taskCleanupErrors.Add("volume $taskVolume")}}catch{$taskCleanupErrors.Add("volume $taskVolume")}
       }
     }
-    Pop-Location
+  } catch {
+    $taskFailure=$_
+    throw
+  } finally {
+    # Remove only what this run created: its container, its directory and fixture uploads.
+    if($taskContainer){
+      try{docker rm -f $taskContainer 2>&1 | Out-Null;if($LASTEXITCODE -ne 0){$taskCleanupErrors.Add("container $taskDatabase")}}catch{$taskCleanupErrors.Add("container $taskDatabase")}
+    }
+    if($taskDirectory -and (Test-Path -LiteralPath $taskDirectory)){
+      try{Remove-Item -LiteralPath $taskDirectory -Recurse -Force}catch{$taskCleanupErrors.Add("directory $taskDirectory")}
+    }
+    if($taskCleanupErrors.Count){
+      $taskCleanupMessage='Recovery rehearsal could not remove: '+($taskCleanupErrors -join ', ')
+      # Keep a rehearsal failure as the reported error; otherwise cleanup alone fails the run.
+      if($taskFailure){Write-Warning $taskCleanupMessage}else{throw "$taskCleanupMessage; the rehearsal is not reported as passed"}
+    }
+  }
+} finally {
+  Pop-Location
 }
 if($taskReport){
-  $taskReportPath=Join-Path $taskRoot 'outputs/recovery-review/report.json'
+  # A run-specific report: an earlier pass can never stand in for this run.
+  $taskReportPath=Join-Path $taskRoot "outputs/recovery-review/report-$taskRun.json"
   $taskReport | Set-Content $taskReportPath
   Get-Content $taskReportPath
 }

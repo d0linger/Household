@@ -423,16 +423,27 @@ type readinessCache struct {
 	ready   bool
 }
 
+// readinessWaitHook lets tests observe a probe that is about to wait for the
+// readiness slot; it is nil in production.
+var readinessWaitHook func()
+
 func (s *Server) databaseReady(ctx context.Context) bool {
 	s.readiness.once.Do(func() { s.readiness.slot = make(chan struct{}, 1) })
 	// A probe that disconnects stops waiting; the running inspection, which does
 	// not depend on any one probe, still completes and fills the cache.
+	if readinessWaitHook != nil {
+		readinessWaitHook()
+	}
 	select {
 	case s.readiness.slot <- struct{}{}:
 	case <-ctx.Done():
 		return false
 	}
 	defer func() { <-s.readiness.slot }()
+	// select may pick the free slot although the probe was already canceled.
+	if ctx.Err() != nil {
+		return false
+	}
 	if !s.readiness.checked.IsZero() && time.Since(s.readiness.checked) < readinessTTL {
 		return s.readiness.ready
 	}

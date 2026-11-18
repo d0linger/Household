@@ -365,10 +365,14 @@ func (s *Store) documentDeadline(ctx context.Context, tx pgx.Tx, id auth.Identit
 	if _, err = tx.Exec(ctx, `UPDATE core.reminders SET state='cancelled',cancelled_at=clock_timestamp() WHERE household_id=$1 AND module_id='documents' AND dedupe_key LIKE $2 AND state='pending'`, id.HouseholdID, "document-deadline/"+rid+"/%"); err != nil {
 		return nil, err
 	}
+	// An archived document gets no reminder now; unarchiving restores it if it
+	// is still in the future.
 	if !v.Cancelled {
 		_, err = tx.Exec(ctx, `INSERT INTO core.reminders(household_id,module_id,module_generation,resource_type,resource_id,kind,scheduled_at,timezone,dedupe_key)
  SELECT id,'documents',$2,'documents',$3,'document_expiry',($4::date::timestamp+interval '9 hours'-make_interval(days=>$5)) AT TIME ZONE timezone,timezone,$6
- FROM core.households WHERE id=$1 ON CONFLICT(dedupe_key) DO UPDATE SET state='pending',cancelled_at=NULL,scheduled_at=excluded.scheduled_at`, id.HouseholdID, in.Generation, in.ID, v.DueOn, v.RemindDays, "document-deadline/"+rid+"/"+v.DueOn+"/"+value.UUID())
+ FROM core.households WHERE id=$1
+ AND EXISTS(SELECT 1 FROM documents.documents d WHERE d.household_id=$1 AND d.id=$3 AND d.archived_at IS NULL)
+ ON CONFLICT(dedupe_key) DO UPDATE SET state='pending',cancelled_at=NULL,scheduled_at=excluded.scheduled_at`, id.HouseholdID, in.Generation, in.ID, v.DueOn, v.RemindDays, "document-deadline/"+rid+"/"+v.DueOn+"/"+value.UUID())
 	}
 	return Record{"id": in.ID, "deadline_id": rid}, err
 }

@@ -480,11 +480,14 @@
   "error pattern\ninternal/database/bootstrap.go\nconnect for restore maintenance: %w": "Internal/operator diagnostic outside typed Invalid/Rejection and HTTP presentation boundaries; preserve diagnostic text.",
   "error pattern\ninternal/database/bootstrap.go\nparse restore maintenance configuration": "Internal/operator diagnostic outside typed Invalid/Rejection and HTTP presentation boundaries; preserve diagnostic text.",
   "error pattern\ninternal/database/bootstrap.go\nrestore database maintenance: %w": "Internal/operator diagnostic outside typed Invalid/Rejection and HTTP presentation boundaries; preserve diagnostic text.",
-  "error pattern\ninternal/database/bootstrap.go\nrestore maintenance must not connect to the restore database": "Internal/operator diagnostic outside typed Invalid/Rejection and HTTP presentation boundaries; preserve diagnostic text.",
-  "error pattern\ninternal/database/bootstrap.go\nanother restore check is running on this database server": "Operator diagnostic of the restore-check CLI when another check holds the restore lock; never an HTTP response.",
   "error pattern\ninternal/database/bootstrap.go\ndrop restore database: %w": "Internal/operator diagnostic outside typed Invalid/Rejection and HTTP presentation boundaries; preserve diagnostic text.",
-  "error pattern\ninternal/database/bootstrap.go\nlock restore database: %w": "Internal/operator diagnostic outside typed Invalid/Rejection and HTTP presentation boundaries; preserve diagnostic text.",
   "error pattern\ninternal/auth/auth.go\nlock second factor: %w": "Internal database failure diagnostic; the HTTP boundary returns the generic translated failure.",
   "error pattern\ninternal/documentinput/watch.go\nwatch input is not a regular file": "Internal watch-inbox sentinel; the candidate is skipped and the message is never logged as user content or returned over HTTP.",
-  "error pattern\ninternal/database/bootstrap.go\nrestore maintenance must connect to the postgres maintenance database": "Internal/operator diagnostic outside typed Invalid/Rejection and HTTP presentation boundaries; preserve diagnostic text."
+  "error pattern\ninternal/config/secrets.go\nHOUSEHOLD_RESTORE_DATABASE_HOST must be host:port": "Internal/operator diagnostic outside typed Invalid/Rejection and HTTP presentation boundaries; preserve diagnostic text.",
+  "error pattern\ninternal/config/secrets.go\nrestore checks need postgres:// URLs; set HOUSEHOLD_RESTORE_DATABASE_URL": "Internal/operator diagnostic outside typed Invalid/Rejection and HTTP presentation boundaries; preserve diagnostic text.",
+  "error pattern\ninternal/config/secrets.go\nthe restore target cannot be derived from this database URL; set HOUSEHOLD_RESTORE_DATABASE_URL": "Internal/operator diagnostic outside typed Invalid/Rejection and HTTP presentation boundaries; preserve diagnostic text.",
+  "error pattern\ninternal/database/bootstrap.go\ndrop stale restore database: %w": "Internal/operator diagnostic outside typed Invalid/Rejection and HTTP presentation boundaries; preserve diagnostic text.",
+  "error pattern\ninternal/database/bootstrap.go\nlist restore databases: %w": "Internal/operator diagnostic outside typed Invalid/Rejection and HTTP presentation boundaries; preserve diagnostic text.",
+  "error pattern\ninternal/database/bootstrap.go\nrestore database name generation failed": "Internal/operator diagnostic outside typed Invalid/Rejection and HTTP presentation boundaries; preserve diagnostic text.",
+  "error pattern\ninternal/database/bootstrap.go\nrestore maintenance must not connect to a restore database": "Internal/operator diagnostic outside typed Invalid/Rejection and HTTP presentation boundaries; preserve diagnostic text."
 }

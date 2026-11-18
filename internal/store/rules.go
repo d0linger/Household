@@ -257,8 +257,10 @@ func (s *Store) validateDomain(ctx context.Context, tx pgx.Tx, id auth.Identity,
 			unchanged := false
 			if rid != "" {
 				var stored time.Time
-				err := tx.QueryRow(ctx, "SELECT measured_at FROM meters.readings WHERE household_id=$1 AND id=$2", id.HouseholdID, rid).Scan(&stored)
-				unchanged = err == nil && stored.Equal(measured)
+				if err := tx.QueryRow(ctx, "SELECT measured_at FROM meters.readings WHERE household_id=$1 AND id=$2", id.HouseholdID, rid).Scan(&stored); err != nil {
+					return err
+				}
+				unchanged = stored.Equal(measured)
 			}
 			if !unchanged {
 				return bad("Zeitpunkt innerhalb der letzten 30 Jahre und vor dem 29. Dezember 2200 (UTC) angeben")

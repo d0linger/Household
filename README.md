@@ -43,9 +43,9 @@ docker compose up -d
 - `app`: its `start` command creates the database roles as the PostgreSQL superuser, migrates as the owner and serves as the restricted app role on `127.0.0.1:8100`.
 - `backup`: daily encrypted restic snapshots. It is also the owner-credential maintenance service, e.g. `docker compose run --rm --no-deps backup recover admin`.
 
-Every container runs without root and read-only. Sign in as `admin` with `HOUSEHOLD_ADMIN_PASSWORD` and change it at first sign-in.
+Every container runs without root; `app` and `backup` also run with a read-only root filesystem (`db` keeps PostgreSQL's writable root). Sign in as `admin` with `HOUSEHOLD_ADMIN_PASSWORD` and change it at first sign-in.
 
-For production, put an HTTPS reverse proxy in front, set the exact `HOUSEHOLD_ORIGIN` and `HOUSEHOLD_TRUSTED_PROXIES`, and verify an encrypted backup with `docker compose run --rm --no-deps backup restore-check SNAPSHOT_ID`, which restores into a temporary `household_restore` database on the same server and drops it afterwards. See [deployment, upgrades and recovery](docs/operations.md). The app supports one instance per household and one application replica.
+For production, put an HTTPS reverse proxy in front, set the exact `HOUSEHOLD_ORIGIN` and `HOUSEHOLD_TRUSTED_PROXIES`, and verify an encrypted backup with `docker compose run --rm --no-deps backup restore-check SNAPSHOT_ID`, which restores into a temporary database of its own (`household_restore_auto_…`) on the same server and always drops it afterwards. See [deployment, upgrades and recovery](docs/operations.md). The app supports one instance per household and one application replica.
 
 The published image is `ghcr.io/d0linger/household:production` (also `:latest`). It is built from the `ocr` target and includes Tesseract, `restic` and the PostgreSQL 18 client. Pin a deployment to a verified digest rather than a mutable tag. To run a local build instead, use `docker build --target ocr -t household:local .` and set `HOUSEHOLD_IMAGE=household:local` in `.env`. No workflow deploys to a server.
 
@@ -53,7 +53,7 @@ The published image is `ghcr.io/d0linger/household:production` (also `:latest`).
 
 - **OCR:** Local Tesseract with German/English data. It is on whenever the image contains it, unless `HOUSEHOLD_OCR_ENABLED=false`. Existing PDF text is preferred; extracted values remain subject to review.
 - **Web Push:** On when `HOUSEHOLD_WEB_PUSH_VAPID_PRIVATE_KEY` is set (`init` generates it), unless `HOUSEHOLD_WEB_PUSH_ENABLED=false`. The contact defaults to the HTTPS origin. Device delivery needs a reachable HTTPS origin and explicit user consent; see [Web Push operations](docs/operations.md#device-notifications).
-- **Documents inputs and meter adapters:** Fill in their lines in section 4 of `.env` (IMAP, Paperless, Home Assistant, MQTT), then approve them in the app. A scanner folder or a private meter CA is enabled by uncommenting its line under `app.volumes` in `compose.yaml`. All nine modules run inside the single `app` service; administrators enable optional modules in the app.
+- **Documents inputs and meter adapters:** Fill in their lines in section 4 of `.env` (IMAP, Paperless, Home Assistant, MQTT), then approve them in the app. A scanner folder is enabled by uncommenting its line under `app.volumes` in `compose.yaml`. For a private meter CA, add `- ./meters-ca.pem:/config/meters-ca.pem:ro` under `app.volumes` and set `HOUSEHOLD_METERS_CA_FILE=/config/meters-ca.pem` in `.env`. All nine modules run inside the single `app` service; administrators enable optional modules in the app.
 
 ## Configuration
 
@@ -69,7 +69,7 @@ The published image is `ghcr.io/d0linger/household:production` (also `:latest`).
 | `HOUSEHOLD_IMAGE` | Image to run, default `ghcr.io/d0linger/household:production`. |
 | `HOUSEHOLD_OFF_ENABLED` | Optional product suggestions, off by default. |
 
-Generated values (`POSTGRES_PASSWORD`, `HOUSEHOLD_OWNER_PASSWORD`, `HOUSEHOLD_APP_PASSWORD`, CSRF/rate/encryption keys, the VAPID key and `RESTIC_PASSWORD`) must not be changed casually. The app builds its database URL from `HOUSEHOLD_DATABASE_USER`/`HOUSEHOLD_DATABASE_PASSWORD` (host `db:5432`, database `household`) unless `HOUSEHOLD_DATABASE_URL` is set. Every secret setting also accepts `HOUSEHOLD_<NAME>_FILE` or a file `/run/secrets/<name>`, for operators who mount secrets as files. Never commit `.env`, `.local/secrets`, uploads or backup repositories. See [operations](docs/operations.md) for key rotation, restore and full configuration.
+Generated values (`POSTGRES_PASSWORD`, `HOUSEHOLD_OWNER_PASSWORD`, `HOUSEHOLD_APP_PASSWORD`, CSRF/rate/encryption keys, the VAPID key and `RESTIC_PASSWORD`) must not be changed casually. With `compose.yaml`, `app` and `backup` connect to `db:5432/household` with the role passwords from `.env`; do not set `HOUSEHOLD_DATABASE_URL` there. `HOUSEHOLD_DATABASE_URL` is for running `household serve` or maintenance commands outside this Compose file, and then without `HOUSEHOLD_DATABASE_PASSWORD` (an explicit setting wins over a file in `/run/secrets`, two explicit sources are refused). Every `HOUSEHOLD_<NAME>` secret also accepts `HOUSEHOLD_<NAME>_FILE` or a file `/run/secrets/<name>`, for operators who mount secrets as files. `RESTIC_PASSWORD` belongs to restic and does not use that folder: to mount it as a file, set `RESTIC_PASSWORD_FILE=/run/secrets/restic_password` on `backup`. Never commit `.env`, `.local/secrets`, uploads or backup repositories. See [operations](docs/operations.md) for key rotation, restore and full configuration.
 
 Passkeys need the configured HTTPS hostname, or `localhost` in development. Numeric IP origins cannot enroll passkeys. Password, TOTP and recovery codes remain available. Ocean/Pink and DE/EN require no external assets or translation service.
 

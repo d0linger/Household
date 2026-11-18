@@ -62,14 +62,15 @@ func TestDatabaseURLSources(t *testing.T) {
 	if err != nil || cfg.DatabaseURL != "postgres://household_owner:synthetic-owner@127.0.0.1:55434/household_test?sslmode=disable" {
 		t.Fatal("database URL settings not honored", err)
 	}
-	restore, err := RestoreDatabaseURL()
-	if err != nil || restore != "postgres://household_owner:synthetic-owner@127.0.0.1:55434/household_restore?sslmode=disable" {
+	restore, explicit, err := RestoreTarget(cfg.DatabaseURL)
+	if err != nil || explicit || restore != "postgres://household_owner:synthetic-owner@127.0.0.1:55434/household_restore?sslmode=disable" {
 		t.Fatal("restore URL not derived from the source credentials", err)
 	}
 	t.Setenv("HOUSEHOLD_RESTORE_DATABASE_URL", "postgres://explicit@restore/household_restore")
-	if restore, err = RestoreDatabaseURL(); err != nil || restore != "postgres://explicit@restore/household_restore" {
+	if restore, explicit, err = RestoreTarget(cfg.DatabaseURL); err != nil || !explicit || restore != "postgres://explicit@restore/household_restore" {
 		t.Fatal("explicit restore URL must win", err)
 	}
+	t.Setenv("HOUSEHOLD_RESTORE_DATABASE_URL", "")
 	t.Setenv("HOUSEHOLD_DATABASE_HOST", "db")
 	if _, err = Load(); err == nil {
 		t.Fatal("host without port must fail")
@@ -162,5 +163,46 @@ func TestDatabaseSourceExplicitBeatsFolder(t *testing.T) {
 	t.Setenv("HOUSEHOLD_DATABASE_URL", "postgres://explicit@db:5432/household?sslmode=disable")
 	if cfg, err = Load(); err != nil || cfg.DatabaseURL != "postgres://explicit@db:5432/household?sslmode=disable" {
 		t.Fatal("an explicit URL must win over a folder password", err)
+	}
+}
+
+// Regression: the restore target and its maintenance endpoint follow the
+// selected source connection, never an ignored password file or default host.
+func TestRestoreTargetFollowsTheSelectedSource(t *testing.T) {
+	setValidEnvironment(t)
+	dir := t.TempDir()
+	t.Setenv(SecretsDirVariable, dir)
+	writeSecretFile(t, dir, "database_password", "ignored-folder-password")
+	source := "postgres://household_app:explicit@primary.example:5432/household?sslmode=require"
+	t.Setenv("HOUSEHOLD_DATABASE_URL", source)
+	cfg, err := Load()
+	if err != nil || cfg.DatabaseURL != source {
+		t.Fatal("explicit source not selected", err)
+	}
+	target, explicit, err := RestoreTarget(cfg.DatabaseURL)
+	if err != nil || explicit || target != "postgres://household_app:explicit@primary.example:5432/household_restore?sslmode=require" {
+		t.Fatal("restore target must follow the selected source", target, err)
+	}
+	maintenance, err := RestoreMaintenanceURL(cfg.DatabaseURL, "super")
+	if err != nil || maintenance != "postgres://postgres:super@primary.example:5432/postgres?sslmode=require" {
+		t.Fatal("maintenance endpoint must follow the selected source", maintenance, err)
+	}
+	t.Setenv("HOUSEHOLD_RESTORE_DATABASE_HOST", "restore.example:6543")
+	if target, _, err = RestoreTarget(cfg.DatabaseURL); err != nil || target != "postgres://household_app:explicit@restore.example:6543/household_restore?sslmode=require" {
+		t.Fatal("restore host override", target, err)
+	}
+	if _, _, err = RestoreTarget("host=db user=app dbname=household"); err == nil {
+		t.Fatal("a non-URL source must require an explicit restore URL")
+	}
+	// An explicit but empty URL file counts as unset.
+	empty := filepath.Join(dir, "empty_url")
+	if err = os.WriteFile(empty, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HOUSEHOLD_DATABASE_URL", "")
+	t.Setenv("HOUSEHOLD_DATABASE_URL_FILE", empty)
+	t.Setenv("HOUSEHOLD_DATABASE_PASSWORD", "explicit-password")
+	if cfg, err = Load(); err != nil || !strings.Contains(cfg.DatabaseURL, ":explicit-password@") {
+		t.Fatal("an empty explicit URL file must not conflict with a password", err)
 	}
 }

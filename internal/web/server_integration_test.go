@@ -498,6 +498,56 @@ func TestApplicationContract(t *testing.T) {
 		return response.Header.Get("Location")
 	}
 	stepCapture := seedCapture("recipes", "steps", store.String(step["id"]))
+	// Regression: the upload job limit admits an upload that brings this
+	// member's claimable jobs to exactly 20 and refuses one beyond it with
+	// Retry-After 30, through the real upload handler.
+	uploadPlain := func() *integrationResponse {
+		t.Helper()
+		var body bytes.Buffer
+		form := multipart.NewWriter(&body)
+		for k, v := range map[string]string{"generation": fmt.Sprint(app.Store.States()["recipes"].Generation)} {
+			if err := form.WriteField(k, v); err != nil {
+				t.Fatal(err)
+			}
+		}
+		part, err := form.CreateFormFile("file", "limit.png")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err = part.Write(picture.Bytes()); err != nil {
+			t.Fatal(err)
+		}
+		if err = form.Close(); err != nil {
+			t.Fatal(err)
+		}
+		response, _, err := fixture.request(http.MethodPost, "/api/v1/m/recipes/steps/"+store.String(step["id"])+"/attachments", token, app.Auth.CSRF(token, "session"), form.FormDataContentType(), &body, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return response
+	}
+	var outstanding int
+	if err = fixture.owner.QueryRow(ctx, uploadJobsOutstandingQuery, fixture.identity.HouseholdID, fixture.identity.UserID).Scan(&outstanding); err != nil {
+		t.Fatal(err)
+	}
+	if outstanding < maxOutstandingUploadJobs-1 {
+		if _, err = fixture.owner.Exec(ctx, `INSERT INTO core.jobs(household_id,module_id,module_generation,kind,payload,dedupe_key,available_at)
+ SELECT a.household_id,a.module_id,a.module_generation,'thumbnail',jsonb_build_object('attachment_id',a.id,'storage_key','limit-fixture'),'limit-fixture/'||n,clock_timestamp()+interval '1 hour'
+ FROM (SELECT * FROM core.attachments WHERE household_id=$1 AND uploaded_by=$2 AND module_id='recipes' ORDER BY created_at DESC LIMIT 1) a CROSS JOIN generate_series(1,$3) n`,
+			fixture.identity.HouseholdID, fixture.identity.UserID, maxOutstandingUploadJobs-1-outstanding); err != nil {
+			t.Fatal("seed outstanding upload jobs", err)
+		}
+	}
+	if admitted := uploadPlain(); admitted.StatusCode == http.StatusTooManyRequests || admitted.StatusCode >= 400 {
+		t.Fatal("an upload reaching exactly the job limit must be admitted", admitted.StatusCode)
+	}
+	if refused := uploadPlain(); refused.StatusCode != http.StatusTooManyRequests || refused.Header.Get("Retry-After") != "30" {
+		t.Fatal("an upload beyond the job limit must be refused with Retry-After 30", refused.StatusCode, refused.Header.Get("Retry-After"))
+	}
+	if _, err = fixture.owner.Exec(ctx, `DELETE FROM core.jobs WHERE household_id=$1 AND kind='thumbnail' AND (dedupe_key LIKE 'limit-fixture/%'
+ OR payload->>'attachment_id' IN(SELECT id::text FROM core.attachments WHERE household_id=$1 AND original_name='limit.png'))`, fixture.identity.HouseholdID); err != nil {
+		t.Fatal(err)
+	}
 	stepInput := mutation("recipes", store.Record{"recipe_id": recipe["id"], "instruction": "Captured step", "timer_seconds": 0}, 0)
 	stepFirst := call("POST", stepCapture+"/confirm", stepInput, value.UUID())
 	stepReplay := call("POST", stepCapture+"/confirm", stepInput, value.UUID())

@@ -93,13 +93,28 @@ func databaseURL(hostVariable, defaultHost, databaseName string) (string, error)
 	return connectionURL(hostVariable, defaultHost, databaseName, env("HOUSEHOLD_DATABASE_USER", "household_app"), password)
 }
 
+// explicitValue reports whether name or name_FILE holds a value. An explicit
+// file that is empty counts as unset, like an empty file in the secrets folder.
+func explicitValue(name string) (bool, error) {
+	if !explicitlyConfigured(name) {
+		return false, nil
+	}
+	value, err := secret(name)
+	return value != "", err
+}
+
 func loadDatabaseURL(c *Config) error {
-	urlConfigured := explicitlyConfigured("HOUSEHOLD_DATABASE_URL")
-	passwordConfigured := explicitlyConfigured("HOUSEHOLD_DATABASE_PASSWORD")
+	urlConfigured, err := explicitValue("HOUSEHOLD_DATABASE_URL")
+	if err != nil {
+		return err
+	}
+	passwordConfigured, err := explicitValue("HOUSEHOLD_DATABASE_PASSWORD")
+	if err != nil {
+		return err
+	}
 	if urlConfigured && passwordConfigured {
 		return errors.New("database URL and database password are mutually exclusive")
 	}
-	var err error
 	if !urlConfigured && !passwordConfigured {
 		// Only the secrets folder names a source: refuse both rather than guess.
 		// An explicit source (such as the app-role handoff of `start`) disables
@@ -122,26 +137,54 @@ func loadDatabaseURL(c *Config) error {
 	return err
 }
 
-// RestoreDatabaseURL returns the disposable restore target: an explicit
-// HOUSEHOLD_RESTORE_DATABASE_URL, or household_restore on
-// HOUSEHOLD_RESTORE_DATABASE_HOST (default: the application's database
-// server) with the same database user and password as the source.
-func RestoreDatabaseURL() (string, error) {
-	target, err := secret("HOUSEHOLD_RESTORE_DATABASE_URL")
-	if err != nil || target != "" {
-		return target, err
+// RestoreDatabase is the database an explicit or derived restore check uses.
+const RestoreDatabase = "household_restore"
+
+// RestoreTarget resolves the restore target in one read: an explicit
+// HOUSEHOLD_RESTORE_DATABASE_URL (explicit=true), or household_restore on the
+// server of the selected source connection (HOUSEHOLD_RESTORE_DATABASE_HOST
+// overrides the server) with the same credentials. Deriving never reads an
+// ignored password source or a default host.
+func RestoreTarget(source string) (target string, explicit bool, err error) {
+	if target, err = secret("HOUSEHOLD_RESTORE_DATABASE_URL"); err != nil || target != "" {
+		return target, target != "", err
 	}
-	return databaseURL("HOUSEHOLD_RESTORE_DATABASE_HOST", env("HOUSEHOLD_DATABASE_HOST", "db:5432"), "household_restore")
+	target, err = restoreServer(source, "", "", RestoreDatabase)
+	return target, false, err
 }
 
-// RestoreSuperuserURLs address the restore server as postgres: its
-// maintenance database (to create and drop household_restore) and
-// household_restore itself (to prepare the roles).
-func RestoreSuperuserURLs(password string) (maintenance, restore string, err error) {
-	host := env("HOUSEHOLD_DATABASE_HOST", "db:5432")
-	if maintenance, err = connectionURL("HOUSEHOLD_RESTORE_DATABASE_HOST", host, "postgres", "postgres", password); err != nil {
-		return "", "", err
+// RestoreMaintenanceURL addresses the restore server of source as postgres
+// with the superuser password, in its postgres maintenance database.
+func RestoreMaintenanceURL(source, superuser string) (string, error) {
+	return restoreServer(source, "postgres", superuser, "postgres")
+}
+
+// WithDatabase returns raw with its database replaced by name.
+func WithDatabase(raw, name string) (string, error) {
+	u, err := url.Parse(raw)
+	if err != nil || u.Scheme != "postgres" && u.Scheme != "postgresql" || u.Host == "" {
+		return "", errors.New("restore checks need postgres:// URLs; set HOUSEHOLD_RESTORE_DATABASE_URL")
 	}
-	restore, err = connectionURL("HOUSEHOLD_RESTORE_DATABASE_HOST", host, "household_restore", "postgres", password)
-	return maintenance, restore, err
+	u.Path, u.RawPath = "/"+name, ""
+	return u.String(), nil
+}
+
+// restoreServer derives a URL on the server of source. An empty user keeps the
+// source's credentials.
+func restoreServer(source, user, password, database string) (string, error) {
+	u, err := url.Parse(source)
+	if err != nil || u.Scheme != "postgres" && u.Scheme != "postgresql" || u.Host == "" || u.User == nil {
+		return "", errors.New("the restore target cannot be derived from this database URL; set HOUSEHOLD_RESTORE_DATABASE_URL")
+	}
+	if host := os.Getenv("HOUSEHOLD_RESTORE_DATABASE_HOST"); host != "" {
+		if name, port, err := net.SplitHostPort(host); err != nil || name == "" || port == "" {
+			return "", errors.New("HOUSEHOLD_RESTORE_DATABASE_HOST must be host:port")
+		}
+		u.Host = host
+	}
+	if user != "" {
+		u.User = url.UserPassword(user, password)
+	}
+	u.Path, u.RawPath = "/"+database, ""
+	return u.String(), nil
 }

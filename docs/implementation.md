@@ -1873,3 +1873,57 @@ Most concern code the first fixes touched, or neighbouring code the first review
   - It publishes the report only after the rehearsal container is removed.
   - A failed removal is reported without hiding an earlier error.
 - **Tests:** the `init` test owns its own list of the three 0644 files.
+
+## Third CodeRabbit review of PR 20 (2026-11-18)
+
+The third review of `671aafd` reported 36 findings:
+- 6 inline,
+- 10 outside the diff,
+- 18 minor,
+- 2 nitpicks.
+
+About 25 concerned code added by the previous fix rounds, most of it the explicit-target restore lock. All 36 are addressed, several by simplifying rather than adding code:
+- **Restore check redesign:**
+  - Each automatic `restore-check` now creates its own database (`household_restore_auto_<unix>_<random>`) on the server of the selected source connection and drops only that database. A later check drops leftovers older than six hours.
+  - This replaces the advisory lock, the canonical maintenance database, `idle_session_timeout`, the alias-sensitive explicit-target lock and the derived fallback host. Concurrent checks, aliases of one server and explicit `household_restore` targets can no longer drop each other's database, and a lost maintenance session cannot either.
+  - `config.RestoreTarget` resolves target and mode in one read, derived from the selected source URL (never an ignored password file or default host).
+  - `ValidateRestoreTarget` accepts `household_restore` or a well-formed automatic name and refuses any source starting with `household_restore`.
+  - `TestAutomaticRestoreDatabasesAreIndependent`:
+    - checks every pgx fallback endpoint;
+    - covers concurrent checks and stale/young leftovers;
+    - covers a failed check;
+    - checks that maintenance through a restore database is refused before the callback.
+- **Configuration:**
+  - An explicit but empty `_FILE` counts as unset for the database URL/password conflict.
+  - `TestRestoreTargetFollowsTheSelectedSource`.
+- **Documentation:**
+  - The upgrade path generates `.env.new`, takes over settings and only then replaces `.env`.
+  - The README now states which commands honour `HOUSEHOLD_DATABASE_URL` and documents `RESTIC_PASSWORD_FILE`.
+  - It describes the meter CA mount and limits the read-only claim to `app` and `backup`.
+  - The operations guide describes the per-run restore database and the rehearsal.
+- **`test-recovery.ps1`:**
+  - Every run has its own container name, directory (restricted before any credential is written), uploads, volumes and generated database passwords. It no longer reads `.env` passwords.
+  - It runs `setup` with `docker run` of the tested image and accepts `-ProjectName`.
+  - It removes everything with exception-safe checks.
+  - It writes `report-<run>.json` with the image only after a clean cleanup.
+- **Watch inbox:**
+  - Empty or oversized files are reported as rejected and passed by the cursor.
+  - A file still being written stops the batch instead of being passed.
+  - `TestWatchPassesOversizedFilesWithTheCursor`.
+- **Second factor:**
+  - Without an enabled credential the failure budget is not consulted, so a factor reset is not blocked by earlier failures.
+  - `TestSecondFactorAdmissionWaitsOnTheTOTPLockAndResetClearsTheBudget` proves through `pg_locks` that `Reauthenticate` waits on the held TOTP row and reads the budget after it.
+- **Documents:**
+  - An archived document gets no new deadline reminder.
+  - The legacy-date test checks the refused changed date before the allowed cancellation, and skips only for a schema constraint.
+- **Feeds:** the Chores feed answers failures in plain text without echoing the capability URL. `TestFeedFailureNeverEchoesTheCapabilityURL`.
+- **Uploads:**
+  - The job count matches what the handler queues: OCR only when enabled, PDFs none.
+  - A running job counts on its final attempt.
+  - A handler-level boundary test in `TestApplicationContract`: 19 + 1 is admitted, the next upload gets 429 with `Retry-After: 30`.
+- **Readiness:**
+  - A probe canceled before it gets the slot never uses the cache.
+  - The test cancels a probe after it started waiting.
+- **Meters:** a failed stored-timestamp lookup returns the database error.
+- **Chores:** the combined paused/archived filter counts and checks either parameter.
+- **Fuel:** the mapping test separates a row that does not consult the malformed mapping from one that does.

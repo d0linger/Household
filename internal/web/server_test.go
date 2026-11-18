@@ -104,22 +104,19 @@ func TestReadJSON(t *testing.T) {
 func TestUploadJobsAddedCountsEveryQueuedJob(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
-		kind    string
-		capture bool
-		want    int
+		kind         string
+		capture, ocr bool
+		want         int
 	}{
-		{"application/pdf", false, 0},
-		{"application/pdf", true, 1},
-		{"image/png", false, 1},
-		{"image/jpeg", true, 2},
+		{"application/pdf", false, true, 0},
+		{"application/pdf", true, true, 0},
+		{"image/png", false, true, 1},
+		{"image/png", true, false, 1},
+		{"image/jpeg", true, true, 2},
 	} {
-		if got := uploadJobsAdded(tc.kind, tc.capture); got != tc.want {
-			t.Errorf("uploadJobsAdded(%s, %v) = %d, want %d", tc.kind, tc.capture, got, tc.want)
+		if got := uploadJobsAdded(tc.kind, tc.capture, tc.ocr); got != tc.want {
+			t.Errorf("uploadJobsAdded(%s, capture=%v, ocr=%v) = %d, want %d", tc.kind, tc.capture, tc.ocr, got, tc.want)
 		}
-	}
-	// 19 outstanding plus one job is still admitted; plus two is not.
-	if 19+uploadJobsAdded("image/png", false) > maxOutstandingUploadJobs || 19+uploadJobsAdded("image/png", true) <= maxOutstandingUploadJobs {
-		t.Fatal("admission must count the jobs this upload adds")
 	}
 }
 
@@ -148,25 +145,51 @@ func TestGatedLookupReleasesTheGateOnPanic(t *testing.T) {
 }
 
 func TestReadinessProbeStopsWaitingWhenCanceled(t *testing.T) {
-	t.Parallel()
+	// Not parallel: it sets the package-level wait hook.
 	s := &Server{}
 	s.readiness.once.Do(func() { s.readiness.slot = make(chan struct{}, 1) })
 	s.readiness.slot <- struct{}{} // another probe's inspection is running
+	waiting := make(chan struct{})
+	readinessWaitHook = func() { close(waiting) }
+	defer func() { readinessWaitHook = nil }()
 	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
 	done := make(chan bool, 1)
 	go func() { done <- s.databaseReady(ctx) }()
+	<-waiting // the live probe has passed its entry and waits for the slot
+	cancel()
 	select {
 	case ready := <-done:
 		if ready {
 			t.Fatal("a canceled probe must not report ready")
 		}
 	case <-time.After(2 * time.Second):
-		t.Fatal("a canceled probe kept waiting for the running inspection")
+		t.Fatal("a probe canceled while waiting kept waiting for the running inspection")
 	}
+	readinessWaitHook = nil
 	<-s.readiness.slot
+	// A probe canceled before it gets the free slot must not use the cache.
 	s.readiness.checked, s.readiness.ready = time.Now(), true
+	canceled, stop := context.WithCancel(context.Background())
+	stop()
+	if s.databaseReady(canceled) {
+		t.Fatal("a canceled probe must not report a cached ready result")
+	}
 	if !s.databaseReady(context.Background()) {
 		t.Fatal("a fresh cached result must be shared")
+	}
+}
+
+func TestFeedFailureNeverEchoesTheCapabilityURL(t *testing.T) {
+	t.Parallel()
+	s := &Server{Log: slog.New(slog.NewTextHandler(io.Discard, nil))}
+	for _, err := range []error{store.ErrBusy, store.ErrNotFound, auth.ErrLimited, fmt.Errorf("lookup: %w", io.ErrUnexpectedEOF)} {
+		const token = "SECRETcapabilitytoken0123456789abcdefghijk.ics"
+		request := httptest.NewRequest(http.MethodGet, "http://localhost:8100/calendar/chores/"+token, nil)
+		request.Header.Set("Accept", "text/html")
+		response := httptest.NewRecorder()
+		s.feedFailure(response, request, err)
+		if strings.Contains(response.Body.String(), "SECRETcapability") || !strings.HasPrefix(response.Header().Get("Content-Type"), "text/plain") {
+			t.Fatalf("%v: feed failure echoed the capability URL or rendered HTML: %q", err, response.Body.String())
+		}
 	}
 }
