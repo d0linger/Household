@@ -164,8 +164,10 @@ func TestSecondFactorAdmissionWaitsOnTheTOTPLockAndResetClearsTheBudget(t *testi
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
-	for range 10 {
-		_ = f.app.Auth.Limit(f.ctx, "totp-failure", f.identity.UserID, 10, 15*time.Minute)
+	for attempt := range 10 {
+		if err = f.app.Auth.Limit(f.ctx, "totp-failure", f.identity.UserID, 10, 15*time.Minute); err != nil {
+			t.Fatal("seed second-factor failure", attempt, err)
+		}
 	}
 	if err = hold.Commit(f.ctx); err != nil {
 		t.Fatal(err)

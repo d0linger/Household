@@ -4,6 +4,8 @@ package database
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"net/url"
@@ -61,25 +63,31 @@ func TestAutomaticRestoreDatabasesAreIndependent(t *testing.T) {
 		return found
 	}
 	// A leftover of an interrupted run older than six hours is dropped; a
-	// younger one may still be running and is kept.
-	stale := fmt.Sprintf("%s%d_%016x", AutomaticRestorePrefix, time.Now().Add(-7*time.Hour).Unix(), 1)
-	young := fmt.Sprintf("%s%d_%016x", AutomaticRestorePrefix, time.Now().Add(-time.Minute).Unix(), 2)
+	// younger one may still be running and is kept. Random suffixes keep
+	// concurrent invocations apart; each fixture is cleaned up once created.
+	suffix := func() string {
+		raw := make([]byte, 8)
+		if _, err := rand.Read(raw); err != nil {
+			t.Fatal(err)
+		}
+		return hex.EncodeToString(raw)
+	}
+	stale := fmt.Sprintf("%s%d_%s", AutomaticRestorePrefix, time.Now().Add(-7*time.Hour).Unix(), suffix())
+	young := fmt.Sprintf("%s%d_%s", AutomaticRestorePrefix, time.Now().Add(-time.Minute).Unix(), suffix())
 	setup := admin(t)
+	defer func() { _ = setup.Close(context.Background()) }()
 	for _, name := range []string{stale, young} {
 		if _, err = setup.Exec(ctx, "CREATE DATABASE "+pgx.Identifier{name}.Sanitize()); err != nil {
 			t.Fatal("create leftover fixture", err)
 		}
-	}
-	_ = setup.Close(context.Background())
-	t.Cleanup(func() {
-		conn, err := pgx.ConnectConfig(context.Background(), cfg.Copy())
-		if err == nil {
-			for _, name := range []string{stale, young} {
+		t.Cleanup(func() {
+			conn, err := pgx.ConnectConfig(context.Background(), cfg.Copy())
+			if err == nil {
 				_, _ = conn.Exec(context.Background(), "DROP DATABASE IF EXISTS "+pgx.Identifier{name}.Sanitize()+" WITH (FORCE)")
+				_ = conn.Close(context.Background())
 			}
-			_ = conn.Close(context.Background())
-		}
-	})
+		})
+	}
 	var first, second string
 	err = WithAutomaticRestoreDatabase(ctx, maintenanceURL, func(name string) error {
 		first = name

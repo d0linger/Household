@@ -423,16 +423,16 @@ type readinessCache struct {
 	ready   bool
 }
 
-// readinessWaitHook lets tests observe a probe that is about to wait for the
-// readiness slot; it is nil in production.
-var readinessWaitHook func()
+// readinessHook lets tests observe a probe about to wait for ("waiting") and
+// holding ("acquired") the readiness slot; it is nil in production.
+var readinessHook func(stage string)
 
 func (s *Server) databaseReady(ctx context.Context) bool {
 	s.readiness.once.Do(func() { s.readiness.slot = make(chan struct{}, 1) })
 	// A probe that disconnects stops waiting; the running inspection, which does
 	// not depend on any one probe, still completes and fills the cache.
-	if readinessWaitHook != nil {
-		readinessWaitHook()
+	if readinessHook != nil {
+		readinessHook("waiting")
 	}
 	select {
 	case s.readiness.slot <- struct{}{}:
@@ -440,6 +440,9 @@ func (s *Server) databaseReady(ctx context.Context) bool {
 		return false
 	}
 	defer func() { <-s.readiness.slot }()
+	if readinessHook != nil {
+		readinessHook("acquired")
+	}
 	// select may pick the free slot although the probe was already canceled.
 	if ctx.Err() != nil {
 		return false
@@ -452,7 +455,9 @@ func (s *Server) databaseReady(ctx context.Context) bool {
 	defer cancel()
 	s.readiness.ready = database.Ready(check, s.Pool) == nil
 	s.readiness.checked = time.Now()
-	return s.readiness.ready
+	// The shared result stays cached for other probes; a probe that went away
+	// during the inspection is not reported ready.
+	return s.readiness.ready && ctx.Err() == nil
 }
 
 func (s *Server) ready(w http.ResponseWriter, r *http.Request) {

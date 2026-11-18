@@ -489,5 +489,6 @@
   "error pattern\ninternal/database/bootstrap.go\ndrop stale restore database: %w": "Internal/operator diagnostic outside typed Invalid/Rejection and HTTP presentation boundaries; preserve diagnostic text.",
   "error pattern\ninternal/database/bootstrap.go\nlist restore databases: %w": "Internal/operator diagnostic outside typed Invalid/Rejection and HTTP presentation boundaries; preserve diagnostic text.",
   "error pattern\ninternal/database/bootstrap.go\nrestore database name generation failed": "Internal/operator diagnostic outside typed Invalid/Rejection and HTTP presentation boundaries; preserve diagnostic text.",
-  "error pattern\ninternal/database/bootstrap.go\nrestore maintenance must not connect to a restore database": "Internal/operator diagnostic outside typed Invalid/Rejection and HTTP presentation boundaries; preserve diagnostic text."
+  "error pattern\ninternal/database/bootstrap.go\nrestore maintenance must not connect to a restore database": "Internal/operator diagnostic outside typed Invalid/Rejection and HTTP presentation boundaries; preserve diagnostic text.",
+  "error pattern\ninternal/config/secrets.go\nboth %s and file are configured": "Internal/operator diagnostic outside typed Invalid/Rejection and HTTP presentation boundaries; preserve diagnostic text."
 }

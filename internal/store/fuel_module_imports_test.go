@@ -113,28 +113,29 @@ func TestFuelModuleImportFlagMapsAreDecodedOnceAndBounded(t *testing.T) {
 	if _, _, err = fuelModuleImportParse(t.Context(), "household", fuelUnitCSVHeader+fuelUnitCSVRow, options); err == nil {
 		t.Fatal("parse accepted a 33-choice flag mapping")
 	}
-	// A malformed mapping fails only rows that consult it: a blank missing-fill
-	// field with complete history does not consult missing_values.
+	// A malformed mapping fails only rows that consult it. In one import, a
+	// blank missing-fill field (complete history) normalizes, and a row with an
+	// explicit value reports exactly the mapping error.
 	options = fuelUnitImportOptions()
 	options["missing_values"], options["history_complete"] = map[string]any{"ja": "yes"}, true
 	blank := strings.Replace(fuelUnitCSVRow, ",false,", ",,", 1)
-	if blank == fuelUnitCSVRow {
-		t.Fatal("fixture row has no previous_fill_missing value to blank")
+	explicit := strings.Replace(strings.Replace(fuelUnitCSVRow, "2026-10-01,1000,", "2026-10-08,1400,", 1), "Original", "Second", 1)
+	if blank == fuelUnitCSVRow || explicit == fuelUnitCSVRow {
+		t.Fatal("fixture rows could not be derived")
 	}
-	parsed, _, err = fuelModuleImportParse(t.Context(), "household", fuelUnitCSVHeader+blank, options)
+	parsed, _, err = fuelModuleImportParse(t.Context(), "household", fuelUnitCSVHeader+blank+explicit, options)
 	if err != nil {
-		t.Fatal("a malformed, unused mapping must not refuse the whole import", err)
+		t.Fatal("a malformed mapping must not refuse the whole import", err)
 	}
-	if row := fuelUnitImportRows(t, parsed)[0]; len(row["errors"].([]string)) != 0 || row["values"].(Record)["previous_fill_missing"] != false {
-		t.Fatalf("the row not consulting the malformed mapping did not normalize: %+v", row)
+	rows := fuelUnitImportRows(t, parsed)
+	if len(rows) != 2 {
+		t.Fatalf("want two rows, got %d", len(rows))
 	}
-	// A row that does consult it reports the mapping error on that row.
-	parsed, _, err = fuelModuleImportParse(t.Context(), "household", fuelUnitCSVHeader+fuelUnitCSVRow, options)
-	if err != nil {
-		t.Fatal(err)
+	if errs := rows[0]["errors"].([]string); len(errs) != 0 || rows[0]["values"].(Record)["previous_fill_missing"] != false {
+		t.Fatalf("the row not consulting the malformed mapping did not normalize: %+v", rows[0])
 	}
-	if row := fuelUnitImportRows(t, parsed)[0]; len(row["errors"].([]string)) == 0 {
-		t.Fatalf("a row consulting the malformed mapping must report it: %+v", row)
+	if errs := rows[1]["errors"].([]string); len(errs) != 1 || errs[0] != "CSV-Zuordnung oder Entscheidungen sind ungültig" {
+		t.Fatalf("the row consulting the malformed mapping must report exactly the mapping error: %+v", rows[1])
 	}
 }
 

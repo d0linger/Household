@@ -197,7 +197,8 @@ func (w *Worker) documentInput(ctx context.Context, job, lease string) (jobErr e
 				return e
 			}
 			if media != "application/pdf" {
-				payload, _ := json.Marshal(store.Record{"attachment_id": aid, "storage_key": key})
+				// The origin keeps automatic intake out of the approver's manual upload budget.
+				payload, _ := json.Marshal(store.Record{"attachment_id": aid, "storage_key": key, "origin": "document_input"})
 				_, e = tx.Exec(ctx, `INSERT INTO core.jobs(household_id,module_id,module_generation,kind,payload,dedupe_key) VALUES($1,'documents',$2,'thumbnail',$3,$4)`, household, generation, payload, "thumbnail/"+aid)
 				if e != nil {
 					return e

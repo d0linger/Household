@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 // Bootstrap prepares a fresh PostgreSQL database for Household as the
@@ -44,7 +45,14 @@ func Bootstrap(ctx context.Context, superuserURL, ownerPassword, appPassword str
 		if exists {
 			template = "ALTER ROLE %I PASSWORD %L"
 		}
-		if err = execFormatted(ctx, conn, template, role.name, role.password); err != nil {
+		err = execFormatted(ctx, conn, template, role.name, role.password)
+		// Roles are cluster-wide: a concurrent setup (two restore checks on one
+		// fresh server) may create the role first. Then set the password instead.
+		var pgErr *pgconn.PgError
+		if !exists && errors.As(err, &pgErr) && (pgErr.Code == "42710" || pgErr.Code == "23505") {
+			err = execFormatted(ctx, conn, "ALTER ROLE %I PASSWORD %L", role.name, role.password)
+		}
+		if err != nil {
 			return fmt.Errorf("set up role %s", role.name)
 		}
 	}
@@ -132,11 +140,28 @@ func WithAutomaticRestoreDatabase(ctx context.Context, maintenanceURL string, us
 	defer func() {
 		cleanupCtx, cancelCleanup := context.WithTimeout(context.WithoutCancel(ctx), time.Minute)
 		defer cancelCleanup()
-		if _, dropErr := conn.Exec(cleanupCtx, "DROP DATABASE IF EXISTS "+pgx.Identifier{name}.Sanitize()+" WITH (FORCE)"); dropErr != nil && err == nil {
+		if dropErr := dropRestoreDatabase(cleanupCtx, conn, cfg, name); dropErr != nil && err == nil {
 			err = fmt.Errorf("drop restore database: %w", dropErr)
 		}
 	}()
 	return use(name)
+}
+
+// dropRestoreDatabase drops name through conn, or through a new maintenance
+// connection when the server ended the idle session during verification.
+func dropRestoreDatabase(ctx context.Context, conn *pgx.Conn, cfg *pgx.ConnConfig, name string) error {
+	drop := "DROP DATABASE IF EXISTS " + pgx.Identifier{name}.Sanitize() + " WITH (FORCE)"
+	_, err := conn.Exec(ctx, drop)
+	if err == nil || !conn.IsClosed() {
+		return err
+	}
+	fresh, connectErr := pgx.ConnectConfig(ctx, cfg.Copy())
+	if connectErr != nil {
+		return errors.Join(err, connectErr)
+	}
+	defer func() { _ = fresh.Close(context.Background()) }()
+	_, err = fresh.Exec(ctx, drop)
+	return err
 }
 
 func dropStaleAutomaticRestores(ctx context.Context, conn *pgx.Conn, now time.Time) error {

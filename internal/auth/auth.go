@@ -149,6 +149,8 @@ func (s *Service) Bootstrap(ctx context.Context, modules []string, enabled map[s
 const (
 	factorFailureLimit  = 10
 	factorFailureWindow = 15 * time.Minute
+	// factorAccountingTimeout bounds counting one wrong code after the request.
+	factorAccountingTimeout = 10 * time.Second
 )
 
 func (s *Service) limitSubject(scope, subject string) []byte {
@@ -194,7 +196,10 @@ func (s *Service) factorBudget(ctx context.Context, tx pgx.Tx, user string) erro
 // did not commit, is the failure counted on the pool instead. A failed commit
 // has an unknown outcome and is never counted a second time.
 func (s *Service) failFactor(ctx context.Context, tx pgx.Tx, user string) {
-	durable := context.WithoutCancel(ctx)
+	// It outlives a disconnected request, but never holds authentication
+	// capacity (the caller's bcrypt slot) indefinitely.
+	durable, cancel := context.WithTimeout(context.WithoutCancel(ctx), factorAccountingTimeout)
+	defer cancel()
 	err := s.limit(durable, tx, "totp-failure", user, factorFailureLimit, factorFailureWindow)
 	if err == nil || errors.Is(err, ErrLimited) {
 		if err = tx.Commit(durable); err != nil {

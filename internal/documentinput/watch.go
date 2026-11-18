@@ -70,16 +70,16 @@ func Watch(ctx context.Context, dir string, cursor Cursor) ([]Candidate, Cursor,
 			continue
 		}
 		// A file that may still be written stops this batch, so the cursor never
-		// passes it; it is picked up by a later poll.
-		if time.Since(info.ModTime()) < 2*time.Second {
+		// passes it; a later poll picks it up.
+		if !watchSettled(cursor, name, info, time.Now()) {
+			next.Settling, next.SettlingSize, next.SettlingMod = name, info.Size(), info.ModTime()
+			if cursor.Settling != name || cursor.SettlingSize != info.Size() || !cursor.SettlingMod.Equal(info.ModTime()) {
+				next.SettlingSince = time.Now()
+			}
 			break
 		}
-		// An empty or oversized file can never be imported: report it and move
-		// the cursor past it, so it cannot hold back the files behind it.
-		if info.Size() < 1 || info.Size() > 10<<20 {
-			out = append(out, Candidate{Key: name, Name: name, Rejected: "watch input is empty or larger than 10 MiB"})
-			next.After = name
-			continue
+		if next.Settling == name {
+			next.Settling, next.SettlingSize, next.SettlingMod, next.SettlingSince = "", 0, time.Time{}, time.Time{}
 		}
 		in, before, e := openWatchCandidate(root, name)
 		if errors.Is(e, errWatchNotRegular) {
@@ -87,6 +87,19 @@ func Watch(ctx context.Context, dir string, cursor Cursor) ([]Candidate, Cursor,
 		}
 		if e != nil {
 			return nil, cursor, e
+		}
+		// Decide on the opened file: a replacement after Lstat is retried later.
+		if !os.SameFile(info, before) || before.Size() != info.Size() || !before.ModTime().Equal(info.ModTime()) {
+			_ = in.Close()
+			break
+		}
+		// An empty or oversized file can never be imported: report it and move
+		// the cursor past it, so it cannot hold back the files behind it.
+		if before.Size() < 1 || before.Size() > 10<<20 {
+			_ = in.Close()
+			out = append(out, Candidate{Key: name, Name: name, Rejected: "watch input is empty or larger than 10 MiB"})
+			next.After = name
+			continue
 		}
 		raw, e := io.ReadAll(io.LimitReader(in, (10<<20)+1))
 		after, statErr := in.Stat()
@@ -107,6 +120,20 @@ func Watch(ctx context.Context, dir string, cursor Cursor) ([]Candidate, Cursor,
 }
 
 var errWatchNotRegular = errors.New("watch input is not a regular file")
+
+// watchSettleTime is how long a file must stay unchanged before it is read.
+const watchSettleTime = 2 * time.Second
+
+// watchSettled reports whether name may be read: its modification time is at
+// least watchSettleTime in the past, or the worker first saw it unchanged at
+// least that long ago (a producer clock running ahead).
+func watchSettled(cursor Cursor, name string, info os.FileInfo, now time.Time) bool {
+	if age := now.Sub(info.ModTime()); age >= watchSettleTime {
+		return true
+	}
+	return cursor.Settling == name && cursor.SettlingSize == info.Size() && cursor.SettlingMod.Equal(info.ModTime()) &&
+		!cursor.SettlingSince.IsZero() && now.Sub(cursor.SettlingSince) >= watchSettleTime
+}
 
 // openWatchCandidate opens name below root without blocking and checks the
 // opened descriptor itself: the earlier Lstat only saw a replaceable pathname.

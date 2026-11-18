@@ -91,21 +91,43 @@ func TestWatchPassesOversizedFilesWithTheCursor(t *testing.T) {
 		write(fmt.Sprintf("a%02d.ready.pdf", index), (10<<20)+1)
 	}
 	write("z.ready.pdf", 8)
-	cursor := Cursor{}
-	var imported []string
-	for range 3 {
-		candidates, next, err := Watch(t.Context(), dir, cursor)
-		if err != nil {
-			t.Fatal(err)
-		}
-		for _, candidate := range candidates {
-			if candidate.Rejected == "" {
-				imported = append(imported, candidate.Name)
-			}
-		}
-		cursor = next
+	first, cursor, err := Watch(t.Context(), dir, Cursor{})
+	if err != nil {
+		t.Fatal(err)
 	}
-	if len(imported) != 1 || imported[0] != "z.ready.pdf" {
-		t.Fatal("the valid file behind ten oversized files was not imported", imported)
+	if len(first) != 10 || cursor.After != "a09.ready.pdf" {
+		t.Fatal("the first poll must report all ten oversized files and pass them", len(first), cursor.After)
+	}
+	for index, candidate := range first {
+		if candidate.Name != fmt.Sprintf("a%02d.ready.pdf", index) || candidate.Rejected == "" || candidate.Bytes != nil {
+			t.Fatalf("oversized file %d was not reported as a byte-less rejection: %+v", index, candidate)
+		}
+	}
+	second, _, err := Watch(t.Context(), dir, cursor)
+	if err != nil || len(second) != 1 || second[0].Name != "z.ready.pdf" || second[0].Rejected != "" || len(second[0].Bytes) != 8 {
+		t.Fatal("the valid file behind ten oversized files was not imported", second, err)
+	}
+}
+
+// Regression: a producer clock that runs ahead cannot hold the inbox; the
+// settling period runs from the worker's first observation.
+func TestWatchSettlesFutureTimestampsFromFirstObservation(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "a.ready.pdf")
+	if err := os.WriteFile(path, []byte("%PDF-1.4"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	future := time.Now().Add(time.Hour)
+	if err := os.Chtimes(path, future, future); err != nil {
+		t.Fatal(err)
+	}
+	first, cursor, err := Watch(t.Context(), dir, Cursor{})
+	if err != nil || len(first) != 0 || cursor.Settling != "a.ready.pdf" || cursor.SettlingSince.IsZero() {
+		t.Fatal("a file with a future timestamp must first settle", first, cursor, err)
+	}
+	cursor.SettlingSince = cursor.SettlingSince.Add(-watchSettleTime)
+	second, cursor, err := Watch(t.Context(), dir, cursor)
+	if err != nil || len(second) != 1 || second[0].Name != "a.ready.pdf" || cursor.Settling != "" {
+		t.Fatal("a file unchanged since its first observation must be read", second, cursor, err)
 	}
 }

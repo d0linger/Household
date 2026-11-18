@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -145,34 +146,52 @@ func TestGatedLookupReleasesTheGateOnPanic(t *testing.T) {
 }
 
 func TestReadinessProbeStopsWaitingWhenCanceled(t *testing.T) {
-	// Not parallel: it sets the package-level wait hook.
+	// Not parallel: it sets the package-level readiness hook.
+	t.Cleanup(func() { readinessHook = nil })
+	run := func(t *testing.T, s *Server, stage string, action func()) bool {
+		t.Helper()
+		reached := make(chan struct{})
+		var once sync.Once
+		readinessHook = func(at string) {
+			if at == stage {
+				once.Do(func() { close(reached) })
+				// Let the test act at exactly this point before the probe goes on.
+				<-time.After(50 * time.Millisecond)
+			}
+		}
+		ctx, cancel := context.WithCancel(context.Background())
+		done := make(chan bool, 1)
+		go func() { done <- s.databaseReady(ctx) }()
+		select {
+		case <-reached:
+		case <-time.After(2 * time.Second):
+			cancel()
+			<-done
+			t.Fatal("the probe never reached", stage)
+		}
+		action()
+		cancel()
+		select {
+		case ready := <-done:
+			readinessHook = nil
+			return ready
+		case <-time.After(2 * time.Second):
+			t.Fatal("a canceled probe kept waiting")
+		}
+		return false
+	}
 	s := &Server{}
 	s.readiness.once.Do(func() { s.readiness.slot = make(chan struct{}, 1) })
-	s.readiness.slot <- struct{}{} // another probe's inspection is running
-	waiting := make(chan struct{})
-	readinessWaitHook = func() { close(waiting) }
-	defer func() { readinessWaitHook = nil }()
-	ctx, cancel := context.WithCancel(context.Background())
-	done := make(chan bool, 1)
-	go func() { done <- s.databaseReady(ctx) }()
-	<-waiting // the live probe has passed its entry and waits for the slot
-	cancel()
-	select {
-	case ready := <-done:
-		if ready {
-			t.Fatal("a canceled probe must not report ready")
-		}
-	case <-time.After(2 * time.Second):
-		t.Fatal("a probe canceled while waiting kept waiting for the running inspection")
+	// Canceled while waiting for a slot another probe holds.
+	s.readiness.slot <- struct{}{}
+	if run(t, s, "waiting", func() {}) {
+		t.Fatal("a probe canceled while waiting must not report ready")
 	}
-	readinessWaitHook = nil
 	<-s.readiness.slot
-	// A probe canceled before it gets the free slot must not use the cache.
+	// Canceled right after acquiring the slot, with a fresh ready cache.
 	s.readiness.checked, s.readiness.ready = time.Now(), true
-	canceled, stop := context.WithCancel(context.Background())
-	stop()
-	if s.databaseReady(canceled) {
-		t.Fatal("a canceled probe must not report a cached ready result")
+	if run(t, s, "acquired", func() {}) {
+		t.Fatal("a probe canceled after acquiring the slot must not report the cached result")
 	}
 	if !s.databaseReady(context.Background()) {
 		t.Fatal("a fresh cached result must be shared")
@@ -191,5 +210,16 @@ func TestFeedFailureNeverEchoesTheCapabilityURL(t *testing.T) {
 		if strings.Contains(response.Body.String(), "SECRETcapability") || !strings.HasPrefix(response.Header().Get("Content-Type"), "text/plain") {
 			t.Fatalf("%v: feed failure echoed the capability URL or rendered HTML: %q", err, response.Body.String())
 		}
+	}
+}
+
+func TestFeedFailureKeepsTheEventCapActionable(t *testing.T) {
+	t.Parallel()
+	s := &Server{Log: slog.New(slog.NewTextHandler(io.Discard, nil))}
+	request := httptest.NewRequest(http.MethodGet, "http://localhost:8100/calendar/chores/x.ics", nil)
+	response := httptest.NewRecorder()
+	s.feedFailure(response, request, store.Invalid{Message: "Höchstens 2000 Termine je Kalender; Zeitraum oder Bereich einschränken"})
+	if response.Code != http.StatusUnprocessableEntity || response.Header().Get("Retry-After") != "" || !strings.Contains(response.Body.String(), "2000") {
+		t.Fatal("the event cap must be a 422 instruction, not a retryable 503", response.Code, response.Body.String())
 	}
 }

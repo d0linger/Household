@@ -177,6 +177,7 @@ func TestValidateRestoreTarget(t *testing.T) {
 		{"explicit target with an automatic name", "postgres://owner@db:5432/household", "postgres://owner@db:5432/household_restore_auto_1795000000_0123456789abcdef", false},
 		{"malformed automatic name", "postgres://owner@db:5432/household", "postgres://owner@db:5432/household_restore_auto_x", false},
 		{"source on an automatic database", "postgres://owner@db:5432/household_restore_auto_1795000000_0123456789abcdef", "postgres://owner@db:5432/household_restore", false},
+		{"source with a similar name", "postgres://owner@db:5432/household_restored", "postgres://owner@db:5432/household_restore", true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()

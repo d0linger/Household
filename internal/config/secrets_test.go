@@ -206,3 +206,22 @@ func TestRestoreTargetFollowsTheSelectedSource(t *testing.T) {
 		t.Fatal("an empty explicit URL file must not conflict with a password", err)
 	}
 }
+
+// Regression: an empty explicit URL file does not block a folder password, and
+// the configuration is built from the value that was read.
+func TestEmptyExplicitURLFileFallsBackToTheFolder(t *testing.T) {
+	setValidEnvironment(t)
+	dir := t.TempDir()
+	t.Setenv(SecretsDirVariable, dir)
+	empty := filepath.Join(t.TempDir(), "empty_url")
+	if err := os.WriteFile(empty, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HOUSEHOLD_DATABASE_URL", "")
+	t.Setenv("HOUSEHOLD_DATABASE_URL_FILE", empty)
+	writeSecretFile(t, dir, "database_password", "folder-password")
+	cfg, err := Load()
+	if err != nil || !strings.Contains(cfg.DatabaseURL, ":folder-password@") {
+		t.Fatal("an empty explicit URL file must fall back to the folder password", err)
+	}
+}

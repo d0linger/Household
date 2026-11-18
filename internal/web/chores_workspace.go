@@ -276,12 +276,16 @@ func gatedLookup[T any](ctx context.Context, gate interface{ RUnlock() }, lookup
 // URL, and logs no token-bearing detail.
 func (s *Server) feedFailure(w http.ResponseWriter, r *http.Request, err error) {
 	locale := requestLocale(r)
+	var invalid store.Invalid
 	switch {
 	case errors.Is(err, store.ErrNotFound) || errors.Is(err, store.ErrForbidden):
 		http.Error(w, i18n.Text(locale, "Nicht gefunden"), http.StatusNotFound)
 	case errors.Is(err, auth.ErrLimited):
 		w.Header().Set("Retry-After", "60")
 		http.Error(w, i18n.Text(locale, "Kalenderabruf später erneut versuchen"), http.StatusTooManyRequests)
+	case errors.As(err, &invalid):
+		// A fixed instruction (such as the event cap): retrying cannot help.
+		http.Error(w, i18n.Text(locale, invalid.Message), http.StatusUnprocessableEntity)
 	default:
 		if !errors.Is(err, store.ErrBusy) {
 			s.Log.Error("calendar feed unavailable", "request_id", trace(r))

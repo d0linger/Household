@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 )
 
 type Config struct {
@@ -79,4 +80,12 @@ type Cursor struct {
 	LastUID     uint64 `json:"last_uid"`
 	Page        int    `json:"page"`
 	After       string `json:"after"`
+	// Settling names the watch-inbox file that stopped the last batch because
+	// it may still be written. Its settling period runs from when the worker
+	// first saw it with this size and modification time, so a producer clock
+	// that runs ahead cannot hold the inbox.
+	Settling      string    `json:"settling,omitempty"`
+	SettlingSize  int64     `json:"settling_size,omitempty"`
+	SettlingMod   time.Time `json:"settling_mod,omitzero"`
+	SettlingSince time.Time `json:"settling_since,omitzero"`
 }

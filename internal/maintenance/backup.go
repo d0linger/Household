@@ -448,7 +448,13 @@ func VerifyRestore(ctx context.Context, pool *pgxpool.Pool, cfg config.Config, s
 	if err = json.Unmarshal(raw, &manifest); err != nil {
 		return err
 	}
-	if _, err = command(ctx, "pg_restore", []string{"--clean", "--if-exists", "--no-owner", "--exit-on-error", "--dbname=household_restore", dumpPath}, targetURL); err != nil {
+	// Restore into the database this check validated (household_restore or the
+	// automatic run's own database); the connection itself comes from the URL.
+	target, err := maintenanceURL(targetURL)
+	if err != nil {
+		return err
+	}
+	if _, err = command(ctx, "pg_restore", []string{"--clean", "--if-exists", "--no-owner", "--exit-on-error", "--dbname=" + strings.TrimPrefix(target.Path, "/"), dumpPath}, targetURL); err != nil {
 		return err
 	}
 	restored, err := database.Open(ctx, targetURL, 2)
@@ -566,8 +572,9 @@ func validateRestoreTarget(sourceURL, targetURL string, allowed func(string) boo
 		return err
 	}
 	// The disposable names are reserved regardless of host spelling, aliases or
-	// query parameters; they can never be the installation being verified.
-	if strings.HasPrefix(source.Path, "/household_restore") {
+	// query parameters; they can never be the installation being verified. Other
+	// names, such as household_restored, remain valid sources.
+	if name := strings.TrimPrefix(source.Path, "/"); name == "household_restore" || database.IsAutomaticRestoreDatabase(name) {
 		return errors.New("restore source cannot use the reserved household_restore database")
 	}
 	return nil

@@ -1932,3 +1932,38 @@ Follow-up from CodeRabbit's replies on `839ff22`:
 - An explicit target could still carry an automatic name (`household_restore_auto_…`), and another check's cleanup of interrupted runs could drop it.
 - `ValidateRestoreTarget` (explicit and derived targets) now accepts only `household_restore`, and `ValidateAutomaticRestoreTarget` (the automatic path) only automatic names. `VerifyRestore` keeps accepting both.
 - `TestValidateRestoreTarget` and `TestValidateAutomaticRestoreTarget`.
+
+## Fourth CodeRabbit review of PR 20 (2026-11-18)
+
+The fourth review of `839ff22` reported 24 findings: 20 inline, 2 outside the diff and 2 nitpicks. All are addressed.
+
+- **Restore check:**
+  - Bug from the per-run design: `pg_restore` restored into a hard-coded `--dbname=household_restore`, not into the validated per-run database. It now uses the target's own database name.
+  - The rehearsal now also runs `restore-check` without an explicit target (setup credentials only) and checks that no `household_restore_auto_*` database remains. That proves the automatic path end to end.
+  - `Bootstrap` tolerates a concurrent creation of the cluster-wide roles.
+  - The final drop reconnects if the server ended the idle maintenance session.
+  - Only `household_restore` and automatic names are reserved as sources, so `household_restored` stays valid.
+  - The lifecycle test uses random fixture suffixes and registers each fixture's cleanup as soon as it exists.
+- **Database credentials:**
+  - Explicit values and secrets-folder files are now read once each, in two tiers.
+  - The URL is built from exactly the value that was selected.
+  - An empty explicit file falls back to the folder.
+  - `TestEmptyExplicitURLFileFallsBackToTheFolder`.
+- **Watch inbox:**
+  - A file whose timestamp is recent or in the future settles from the worker's first observation (stored in the cursor), so a producer clock running ahead cannot hold the inbox.
+  - Size rejections are decided on the opened descriptor; a file replaced after `Lstat` is retried.
+  - The tests assert ten named, byte-less rejections and the future-timestamp case.
+- **Uploads:**
+  - Intake thumbnails carry `origin=document_input` and are not charged to the approving administrator's manual budget.
+  - The handler boundary test uses its own documented limit of 20.
+- **Chores:**
+  - The feed answers the event cap with a localized 422, not a retryable 503.
+  - The filter disclosure opens when a required filter inside it is invalid.
+- **Readiness:** a probe canceled during the inspection is not reported ready. The test cancels at the "waiting" and "acquired" points through a bounded hook.
+- **Second factor:**
+  - Detached failure accounting is bounded to 10 seconds.
+  - The test checks every seeded failure.
+- **Docs:**
+  - The README states when restore cleanup can be skipped, and that explicit targets are never dropped.
+  - It explains how to mount the restic password file for UID 10001.
+- **Fuel:** the mapping test checks both rows in one import, with the exact error text.

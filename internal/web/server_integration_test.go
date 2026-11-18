@@ -526,15 +526,20 @@ func TestApplicationContract(t *testing.T) {
 		}
 		return response
 	}
+	// The documented limit is 20, independent of the handler's constant.
+	const documentedUploadJobLimit = 20
 	var outstanding int
 	if err = fixture.owner.QueryRow(ctx, uploadJobsOutstandingQuery, fixture.identity.HouseholdID, fixture.identity.UserID).Scan(&outstanding); err != nil {
 		t.Fatal(err)
 	}
-	if outstanding < maxOutstandingUploadJobs-1 {
+	if outstanding > documentedUploadJobLimit-1 {
+		t.Fatal("the fixture already exceeds the documented boundary", outstanding)
+	}
+	if outstanding < documentedUploadJobLimit-1 {
 		if _, err = fixture.owner.Exec(ctx, `INSERT INTO core.jobs(household_id,module_id,module_generation,kind,payload,dedupe_key,available_at)
  SELECT a.household_id,a.module_id,a.module_generation,'thumbnail',jsonb_build_object('attachment_id',a.id,'storage_key','limit-fixture'),'limit-fixture/'||n,clock_timestamp()+interval '1 hour'
  FROM (SELECT * FROM core.attachments WHERE household_id=$1 AND uploaded_by=$2 AND module_id='recipes' ORDER BY created_at DESC LIMIT 1) a CROSS JOIN generate_series(1,$3) n`,
-			fixture.identity.HouseholdID, fixture.identity.UserID, maxOutstandingUploadJobs-1-outstanding); err != nil {
+			fixture.identity.HouseholdID, fixture.identity.UserID, documentedUploadJobLimit-1-outstanding); err != nil {
 			t.Fatal("seed outstanding upload jobs", err)
 		}
 	}

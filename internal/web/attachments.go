@@ -403,7 +403,9 @@ func (s *Server) download(w http.ResponseWriter, r *http.Request) {
 // created by one member's uploads. Jobs of a disabled module or an old module
 // generation are not counted: the worker cannot claim them, so they would
 // otherwise block uploads to enabled modules indefinitely. A running job counts
-// even on its final attempt (the claim already incremented attempts).
+// even on its final attempt (the claim already incremented attempts). Jobs of
+// automatic document intake (origin document_input) belong to no member's
+// manual budget; their bytes still count against the household storage quota.
 const maxOutstandingUploadJobs = 20
 
 // uploadJobsAdded counts the jobs an upload queues, exactly as the handler
@@ -421,7 +423,7 @@ func uploadJobsAdded(kind string, capture, ocr bool) int {
 
 const uploadJobsOutstandingQuery = `SELECT count(*) FROM core.jobs j JOIN core.attachments a ON a.household_id=j.household_id
  AND a.id::text=coalesce(j.payload->>'attachment_id',(SELECT c.source_attachment_id::text FROM core.capture_jobs c WHERE c.id::text=j.payload->>'capture_id'))
- WHERE j.household_id=$1 AND j.kind IN('thumbnail','capture_ocr') AND a.uploaded_by=$2
+ WHERE j.household_id=$1 AND j.kind IN('thumbnail','capture_ocr') AND a.uploaded_by=$2 AND j.payload->>'origin' IS NULL
  AND (j.state='running' OR j.state='pending' AND j.attempts<j.max_attempts)
  AND EXISTS(SELECT 1 FROM core.module_states m WHERE m.household_id=j.household_id AND m.module_id=j.module_id
   AND m.state='enabled' AND m.data_generation=j.module_generation)`

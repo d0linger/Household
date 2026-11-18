@@ -71,26 +71,30 @@ func boundedSecret(name string, limit int) (string, error) {
 		}
 	}
 	if path != "" {
-		// security: secret-file paths come solely from deployment configuration.
-		reader, err := os.Open(path) // #nosec G304 G703 -- trusted operator secret path
-		if err != nil {
-			return "", fmt.Errorf("%s secret file could not be read", name)
-		}
-		defer func() { _ = reader.Close() }()
-		info, err := reader.Stat()
-		if err != nil || !info.Mode().IsRegular() || info.Size() > int64(limit) {
-			return "", fmt.Errorf("%s secret file exceeds its bounded format", name)
-		}
-		b, err := io.ReadAll(io.LimitReader(reader, int64(limit)+1))
-		if err != nil || len(b) > limit {
-			return "", fmt.Errorf("%s secret file exceeds its bounded format", name)
-		}
-		v = strings.TrimSpace(string(b))
+		return readSecretFile(name, path, limit)
 	}
 	if len(v) > limit {
 		return "", fmt.Errorf("%s secret exceeds its bounded format", name)
 	}
 	return v, nil
+}
+
+func readSecretFile(name, path string, limit int) (string, error) {
+	// security: secret-file paths come solely from deployment configuration.
+	reader, err := os.Open(path) // #nosec G304 G703 -- trusted operator secret path
+	if err != nil {
+		return "", fmt.Errorf("%s secret file could not be read", name)
+	}
+	defer func() { _ = reader.Close() }()
+	info, err := reader.Stat()
+	if err != nil || !info.Mode().IsRegular() || info.Size() > int64(limit) {
+		return "", fmt.Errorf("%s secret file exceeds its bounded format", name)
+	}
+	b, err := io.ReadAll(io.LimitReader(reader, int64(limit)+1))
+	if err != nil || len(b) > limit {
+		return "", fmt.Errorf("%s secret file exceeds its bounded format", name)
+	}
+	return strings.TrimSpace(string(b)), nil
 }
 
 func Load() (Config, error) {

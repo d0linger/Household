@@ -83,57 +83,57 @@ func connectionURL(hostVariable, defaultHost, databaseName, user, password strin
 	return u.String(), nil
 }
 
-// databaseURL builds the URL from HOUSEHOLD_DATABASE_PASSWORD when no complete
-// URL is configured. An empty result means unconfigured.
-func databaseURL(hostVariable, defaultHost, databaseName string) (string, error) {
-	password, err := secret("HOUSEHOLD_DATABASE_PASSWORD")
-	if err != nil || password == "" {
+// explicitValue reads name or name_FILE only. An explicit file that is empty
+// counts as unset, like an empty file in the secrets folder.
+func explicitValue(name string) (string, error) {
+	value, path := os.Getenv(name), os.Getenv(name+"_FILE")
+	if value != "" && path != "" {
+		return "", fmt.Errorf("both %s and file are configured", name)
+	}
+	if path != "" {
+		return readSecretFile(name, path, 32<<10)
+	}
+	return value, nil
+}
+
+// folderValue reads only the conventional file in the secrets folder.
+func folderValue(name string) (string, error) {
+	path, err := conventionalPath(name)
+	if err != nil || path == "" {
 		return "", err
 	}
-	return connectionURL(hostVariable, defaultHost, databaseName, env("HOUSEHOLD_DATABASE_USER", "household_app"), password)
+	return readSecretFile(name, path, 32<<10)
 }
 
-// explicitValue reports whether name or name_FILE holds a value. An explicit
-// file that is empty counts as unset, like an empty file in the secrets folder.
-func explicitValue(name string) (bool, error) {
-	if !explicitlyConfigured(name) {
-		return false, nil
-	}
-	value, err := secret(name)
-	return value != "", err
-}
-
+// loadDatabaseURL selects the database credential once and builds the URL from
+// exactly the value it read. Explicit settings (value or _FILE) form one tier
+// and the secrets folder another: a non-empty explicit value disables folder
+// discovery, and two non-empty values in the selected tier are refused.
 func loadDatabaseURL(c *Config) error {
-	urlConfigured, err := explicitValue("HOUSEHOLD_DATABASE_URL")
+	databaseURL, err := explicitValue("HOUSEHOLD_DATABASE_URL")
 	if err != nil {
 		return err
 	}
-	passwordConfigured, err := explicitValue("HOUSEHOLD_DATABASE_PASSWORD")
+	password, err := explicitValue("HOUSEHOLD_DATABASE_PASSWORD")
 	if err != nil {
 		return err
 	}
-	if urlConfigured && passwordConfigured {
+	if databaseURL == "" && password == "" {
+		if databaseURL, err = folderValue("HOUSEHOLD_DATABASE_URL"); err != nil {
+			return err
+		}
+		if password, err = folderValue("HOUSEHOLD_DATABASE_PASSWORD"); err != nil {
+			return err
+		}
+	}
+	if databaseURL != "" && password != "" {
 		return errors.New("database URL and database password are mutually exclusive")
 	}
-	if !urlConfigured && !passwordConfigured {
-		// Only the secrets folder names a source: refuse both rather than guess.
-		// An explicit source (such as the app-role handoff of `start`) disables
-		// folder discovery for the other one, like the encryption key sources.
-		if urlConfigured, err = configured("HOUSEHOLD_DATABASE_URL"); err != nil {
-			return err
-		}
-		if passwordConfigured, err = configured("HOUSEHOLD_DATABASE_PASSWORD"); err != nil {
-			return err
-		}
-		if urlConfigured && passwordConfigured {
-			return errors.New("database URL and database password are mutually exclusive")
-		}
+	if databaseURL != "" || password == "" {
+		c.DatabaseURL = databaseURL
+		return nil
 	}
-	if urlConfigured {
-		c.DatabaseURL, err = secret("HOUSEHOLD_DATABASE_URL")
-		return err
-	}
-	c.DatabaseURL, err = databaseURL("HOUSEHOLD_DATABASE_HOST", "db:5432", env("HOUSEHOLD_DATABASE_NAME", "household"))
+	c.DatabaseURL, err = connectionURL("HOUSEHOLD_DATABASE_HOST", "db:5432", env("HOUSEHOLD_DATABASE_NAME", "household"), env("HOUSEHOLD_DATABASE_USER", "household_app"), password)
 	return err
 }
 
