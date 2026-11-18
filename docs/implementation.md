@@ -1716,7 +1716,9 @@ Polish (refinement within Ocean/Ruhe; no visual-world change):
   - The tray button's accessible name is now "Einstellungen und Konto öffnen".
 
 Evidence:
-- `go vet`, all Go unit tests, 524/524 Node tests, the localization catalog check and the localization message audit passed.
+- `go vet`, all Go unit tests, the localization catalog check and the localization message audit passed.
+- Correction (2026-11-18): the 524/524 Node result was taken before the substitution fix. CI on PR 20 then failed `recipe-expansion.test.cjs`, because the test loads `unchangedSubstitutionSource` in isolation without the new `fieldText` helper. The test now loads the production `decimalKeys`/`fieldText` lines and also asserts that `100.000000` from the server matches a displayed `100`. After that fix, 524/524 Node tests passed locally.
+- The same CI job scans the full history with gitleaks. It flagged README prose in `95812ab` (line 78, the sentence listing which settings are mounted as secret files) as `generic-api-key`. The line holds no credential and the pushed commit cannot be rewritten, so `.gitleaksignore` lists exactly that fingerprint with the reason. A local full-history scan then found no leaks; design-preview, workflow, task-list, artifact and actionlint checks passed locally.
 - Full browser regression (`npm run test:browser`, 34 components):
   - The first two runs exposed two regressions from the recipe decimal change, both fixed:
     - The history preview must keep the exact `125.000001` notation, so the comma localization was dropped.

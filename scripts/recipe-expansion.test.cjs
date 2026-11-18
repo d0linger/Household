@@ -61,9 +61,14 @@ test('Substitution handoff requires current scopes and source unit before naviga
 
 test('Substitution selection rejects a locally edited source quantity before applying a ratio',()=>{
  const id=uuid(30),source={ingredients:[{id,name:'Hirse',quantity:'100',unit_code:'g',catalog_id:uuid(31)}]};
- const {unchangedSubstitutionSource}=actualFunctions('recipe-workspace.js',' function unchangedSubstitutionSource(', '\n async function consumeSubstitution(',{source,text:value=>value==null?'':String(value)},['unchangedSubstitutionSource']);
+ const text=value=>value==null?'':String(value),lines=staticFile('recipe-workspace.js').split('\n'),helpers=lines.filter(line=>/^ ?const (decimalKeys|fieldText)=/.test(line));
+ assert.equal(helpers.length,2,'Production decimal field helpers are present');
+ const {fieldText}=vm.runInNewContext('(()=>{'+helpers.join('\n')+';return{fieldText}})()',{text});
+ const {unchangedSubstitutionSource}=actualFunctions('recipe-workspace.js',' function unchangedSubstitutionSource(', '\n async function consumeSubstitution(',{source,text,fieldText},['unchangedSubstitutionSource']);
  const row={id,data:{name:'Hirse',quantity:'100',unit_code:'g',catalog_id:uuid(31)}};
  assert.equal(unchangedSubstitutionSource(row,uuid(31),'g'),true);
+ const exact={ingredients:[{...source.ingredients[0],quantity:'100.000000'}]};
+ assert.equal(actualFunctions('recipe-workspace.js',' function unchangedSubstitutionSource(', '\n async function consumeSubstitution(',{source:exact,text,fieldText},['unchangedSubstitutionSource']).unchangedSubstitutionSource(row,uuid(31),'g'),true,'Displayed decimal matches the exact server quantity');
  assert.equal(unchangedSubstitutionSource({...row,data:{...row.data,quantity:'125'}},uuid(31),'g'),false);
  assert.equal(unchangedSubstitutionSource({...row,data:{...row.data,unit_code:'kg'}},uuid(31),'g'),false);
  assert.equal(unchangedSubstitutionSource({...row,id:uuid(32)},uuid(31),'g'),false);

@@ -1,0 +1,5 @@
+# Reviewed false positives only. Each entry names one exact commit/file/rule/line.
+# 95812ab README.md:78 cols 10-41 is documentation prose (the sentence listing
+# which settings Compose mounts as secret files) that generic-api-key flags.
+# The line contains no credential; the commit is pushed and cannot be rewritten.
+95812ab86881f03d8b4abc693313f3f5364ac816:README.md:generic-api-key:78
