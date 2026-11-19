@@ -80,6 +80,12 @@ func TestHouseholdExportRequiresRecentAdminAndCarriesManifest(t *testing.T) {
 	if len(files) != len(manifest.Entries)+1 {
 		t.Fatalf("archive holds %d files for %d entries", len(files), len(manifest.Entries))
 	}
+	var events int
+	var actor string
+	if err = f.owner.QueryRow(f.ctx, `SELECT count(*),coalesce(max(actor_user_id::text),'') FROM core.audit_log WHERE action='household_exported' AND resource_type='households'`).Scan(&events, &actor); err != nil ||
+		events != 1 || actor != f.identity.UserID {
+		t.Fatalf("household export audit: %d events by %q: %v", events, actor, err)
+	}
 }
 
 func TestAuditExportChainsEveryVisibleEntry(t *testing.T) {
@@ -126,6 +132,13 @@ func TestAuditExportChainsEveryVisibleEntry(t *testing.T) {
 	}
 	if scanner.Scan() {
 		t.Fatal("audit export continues after its manifest")
+	}
+	if strings.Contains(string(body), "audit_exported") {
+		t.Fatal("audit export contains its own download event")
+	}
+	var events int
+	if err = f.owner.QueryRow(f.ctx, `SELECT count(*) FROM core.audit_log WHERE action='audit_exported' AND resource_type='audit_log' AND actor_user_id=$1`, f.identity.UserID).Scan(&events); err != nil || events != 1 {
+		t.Fatalf("audit export audit: %d events: %v", events, err)
 	}
 	_, editor := policyAccount(t, f, "audit-export-editor", "editor", "Mozilla/5.0 (Windows NT 10.0) Edg/140.0")
 	if response, _, err = f.request("GET", "/api/v1/core/audit/export.jsonl", editor, "", "", nil, nil); err != nil || response.StatusCode != 403 {

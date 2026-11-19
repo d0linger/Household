@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"household/internal/audit"
 	"household/internal/auth"
 	"household/internal/buildinfo"
 	"household/internal/store"
@@ -132,10 +133,28 @@ func (s *Server) householdExport(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, err)
 		return
 	}
+	if err = s.recordExport(r, "households", "household_exported"); err != nil {
+		s.fail(w, r, err)
+		return
+	}
 	s.Log.Info("household export", "request_id", trace(r), "entries", len(manifest.Entries), "omitted", len(manifest.Omitted))
 	w.Header().Set("Content-Type", "application/zip")
 	w.Header().Set("Content-Disposition", `attachment; filename="household-export-`+time.Now().Format("2006-01-02")+`.zip"`)
 	s.writeBytes(w, r, archive.Bytes())
+}
+
+// recordExport writes the semantic audit event for a completed export before
+// any byte is sent; without the event the copy is not handed out.
+func (s *Server) recordExport(r *http.Request, entity, action string) error {
+	tx, err := audit.Begin(r.Context(), s.Pool)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(r.Context()) }()
+	if err = audit.Event(r.Context(), tx, "core", entity, "", action, nil); err != nil {
+		return err
+	}
+	return tx.Commit(r.Context())
 }
 
 // auditChainSeed starts every export's hash chain.
@@ -212,6 +231,12 @@ func (s *Server) auditExport(w http.ResponseWriter, r *http.Request) {
 		"final_chain": chain, "truncated": truncated, "exported_at": time.Now().UTC(), "release": buildinfo.Label()}})
 	lines.Write(manifest)
 	lines.WriteByte('\n')
+	// Recorded after the chain is final, so the export never contains its own
+	// download event and a later export shows it as the newest entry.
+	if err := s.recordExport(r, "audit_log", "audit_exported"); err != nil {
+		s.fail(w, r, err)
+		return
+	}
 	w.Header().Set("Content-Type", "application/x-ndjson; charset=utf-8")
 	w.Header().Set("Content-Disposition", `attachment; filename="household-audit-`+time.Now().Format("2006-01-02")+`.jsonl"`)
 	s.writeBytes(w, r, lines.Bytes())

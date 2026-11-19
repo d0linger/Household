@@ -2056,10 +2056,20 @@ Executed checks (task-owned database on 55444, review server on 127.0.0.1:8101):
 - Regression run after the stage 2 changes to session creation and `require()` and the stage 3 origin exemption: `TestRequestSecurityContract`, `TestForcedPasswordAndRevocationContract`, `TestLoginAccountLimitIsScopedToNetwork`, `TestNotificationSecurityActualAuthenticationHooksAndOwnInbox`, `TestNotificationSecurityDeviceHooksAndNoHistoricalReplay`, `TestSecurityAnonymousPasskeyGenerationInvalidation`, `TestSecurityFactorRecoveryAndSessionLifecycle`, `TestSecurityPasskeyChallengeInvalidation`, `TestSecurityPasskeyCryptographicLifecycle`, `TestSecurityRecentAuthenticationAndAdminCreation`, `TestSessionInvalidationContract`, `TestSessionRenewalContract`, `TestUserCorrectableAuthRefusals`, `TestPublicLanguageRequiresLoginCSRF`, `TestChoreHTTPStrictAuthorityCSRFAndWorkspaceAssets`, `TestDocumentsHTTPOriginalIdentityReplayArchiveAndPrivateHeaders` pass (`-p 1`).
 
 Deviations from the approved plan, still open:
-- The household export carries CSV tables only, is built in memory and is not written to the audit history (neither is the audit export). The plan named the documents ZIP, recipes and finance CSV, streaming and an audit entry. An audit entry needs a new Core migration with re-pins.
+- The household export carries CSV tables only and is built in memory. The plan named the documents ZIP, recipes and finance CSV and streaming. (The missing audit entry is closed by Core44, see below.)
 - The breach check covers the two web paths that set passwords; the bootstrap password and `recover` are excluded on purpose.
 - The update check compares the `main` revision, because no GitHub releases are published.
 - Help is reachable from the settings navigation; per-page "?" links are not added.
 - The share target saves into Documents only, not into finance receipts.
 
 Not executed: a real share from an installed Android/iOS app, a real request to GitHub or Have I Been Pwned, the system page with an update available, a large-household export near the size budget, the complete integration suite (`verify.ps1 -Integration`), the restore lifecycle test (it refuses the task-owned port 55444) and race tests. Nothing was pushed.
+
+## Export audit events: Core44 (2026-11-19, branch `ops-backup-gui`)
+
+Implemented: Core44 (`000044_export_audit`) adds the audit actions `household_exported` and `audit_exported`, freezes the replaced Core43 functions in `core.export_audit_predecessor_catalog()` and advances the Fuel pins to 44. Both exports write their event in an own audited transaction before sending; a failed write refuses the export. The audit export records after its chain is final. The audit viewer labels and filters the two actions and now also labels the backup, restore and security policy actions from Core42/43.
+
+Executed checks (task-owned database on 55444):
+- Integration: `TestHouseholdExportRequiresRecentAdminAndCarriesManifest` (exactly one `household_exported` event by the administrator, none for the refused stale request), `TestAuditExportChainsEveryVisibleEntry` (one `audit_exported` event, not contained in the export itself), `TestConvenienceRoutesAnswerWithoutSideEffects`, `TestBreachedPasswordsAreRefusedWhenCheckIsOn`, `TestSharedFileSavesThroughTheShareScriptRequests`, `TestNotificationCryptoPopulated39UpgradePreservesFacts` (reconstructs Core44 → 43 → 42 → 41 → 39), `TestNotificationCryptoReadinessRejectsDrift`, `TestFuelOverviewReadyPinsDateAndIndexShape`, `TestAuditViewerBoundaries`, `TestBackupRequestsAreValidatedAndOnlyCancellable`, `TestSecurityPolicyRequiresSecondFactorAfterGrace` pass (`-p 1`).
+- `gofmt`, `go vet` (with and without integration tags), unit tests (coverage 20.0 %), golangci-lint v2.15.0 (0 issues), gosec (no findings), 524 Node tests, workflow policy, 123 migration checksums and localization (templates/JS and `--go`) pass.
+
+Not executed: the complete integration suite, race tests and the Docker backup rehearsal with Core44. Nothing was pushed.

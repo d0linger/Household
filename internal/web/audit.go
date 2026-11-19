@@ -111,7 +111,7 @@ func (s *Server) readAudit(r *http.Request) (auditResult, error) {
 	exportQuery := r.URL.Query()
 	exportQuery.Del("before")
 	result.ExportURL = "/api/v1/core/audit/export.jsonl?" + exportQuery.Encode()
-	for _, action := range []string{"CREATE", "UPDATE", "DELETE", "login_success", "login_failed", "logout", "password_changed", "totp_enabled", "session_revoked", "module_enabled", "module_disabled"} {
+	for _, action := range []string{"CREATE", "UPDATE", "DELETE", "login_success", "login_failed", "logout", "password_changed", "totp_enabled", "session_revoked", "module_enabled", "module_disabled", "household_exported", "audit_exported"} {
 		result.Actions = append(result.Actions, auditOption{Value: action, Label: auditActionLabel(action)})
 	}
 	if filter.Action != "" {
@@ -687,6 +687,9 @@ func auditActionLabel(action string) string {
 		"archive": "Archiviert", "check": "Abgehakt", "post": "Gebucht", "reverse": "Storniert", "complete": "Abgeschlossen", "shopping": "Einkauf übertragen",
 		"tags": "Zuordnungen geändert", "recipe": "Rezept übernommen", "expense": "Ausgabe übernommen", "transfer": "Übertragen", "bootstrap": "Haushalt eingerichtet",
 		"worker_job_failed": "Hintergrundaufgabe fehlgeschlagen", "worker_job_unsupported": "Hintergrundaufgabe nicht unterstützt", "worker_lease_exhausted": "Hintergrundaufgabe abgebrochen",
+		"backup_requested": "Sicherungsauftrag angelegt", "backup_cancelled": "Sicherungsauftrag abgebrochen", "backup_settings_changed": "Sicherungseinstellungen geändert",
+		"restore_completed": "Wiederherstellung abgeschlossen", "restore_failed": "Wiederherstellung fehlgeschlagen", "security_policy_changed": "Anmelderichtlinie geändert",
+		"household_exported": "Alle Daten exportiert", "audit_exported": "Protokoll exportiert",
 	}
 	if label, ok := labels[action]; ok {
 		return label
