@@ -37,6 +37,14 @@ func (s *Server) securityPage(w http.ResponseWriter, r *http.Request) {
 			"CreatedAt": securityTime(requestLocale(r), key.CreatedAt), "LastUsedAt": lastUsed})
 	}
 	p.Extra = map[string]any{"totp": status.TOTPEnabled, "recovery_remaining": status.RecoveryRemaining, "passkeys": keyViews, "passkeys_available": s.Auth.PasskeysAvailable(), "recent": identity(r).Recent()}
+	if identity(r).Role == "admin" {
+		policy, err := s.securityPolicy(r.Context(), identity(r).HouseholdID)
+		if err != nil {
+			s.fail(w, r, err)
+			return
+		}
+		p.Extra.(map[string]any)["policy"] = policy
+	}
 	rows, err := s.Pool.Query(r.Context(), "SELECT id,user_agent,created_at,last_seen_at,idle_expires_at FROM core.sessions WHERE user_id=$1 AND revoked_at IS NULL AND idle_expires_at>now() AND absolute_expires_at>now() AND auth_version=$2 ORDER BY created_at DESC LIMIT 100", identity(r).UserID, identity(r).AuthVersion)
 	if err != nil {
 		s.fail(w, r, err)

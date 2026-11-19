@@ -18,7 +18,7 @@ const JobKind = "security_notification_source_v1"
 func ValidKind(kind string) bool {
 	switch kind {
 	case "password_changed", "totp_enabled", "totp_disabled", "recovery_codes_regenerated", "recovery_code_used",
-		"passkey_added", "passkey_removed", "sessions_revoked", "account_changed", "device_authorized":
+		"passkey_added", "passkey_removed", "sessions_revoked", "account_changed", "device_authorized", "sign_in_new_device":
 		return true
 	default:
 		return false

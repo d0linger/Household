@@ -13,6 +13,7 @@ import (
 	"household/internal/audit"
 	"household/internal/auth"
 	"household/internal/i18n"
+	"household/internal/metrics"
 	"household/internal/module"
 	"household/internal/store"
 	"household/internal/value"
@@ -42,6 +43,12 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 	}
 	raw, id, err := s.Auth.Login(r.Context(), r.FormValue("username"), r.FormValue("password"), r.FormValue("code"), s.clientIP(r), r.UserAgent())
 	if err != nil {
+		switch {
+		case errors.Is(err, auth.ErrLimited):
+			metrics.Default.Inc("household_login_limited_total")
+		case errors.Is(err, auth.ErrCredentials):
+			metrics.Default.Inc("household_login_failures_total")
+		}
 		s.fail(w, r, err)
 		return
 	}

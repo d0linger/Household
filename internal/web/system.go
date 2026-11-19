@@ -1,14 +1,64 @@
 package web
 
 import (
+	"context"
 	"net/http"
+	"sort"
+	"time"
 
+	"household/internal/backupplan"
 	"household/internal/buildinfo"
 	"household/internal/database"
+	"household/internal/metrics"
 	"household/internal/store"
 
 	"github.com/jackc/pgx/v5"
 )
+
+// metricGauges samples the database pool, the maintenance pause and the
+// backup state for /metrics. A failed backup query omits only those gauges.
+func (s *Server) metricGauges(ctx context.Context) []metrics.Gauge {
+	stats := s.Pool.Stat()
+	maintenance := 0.0
+	if s.Paused() {
+		maintenance = 1
+	}
+	gauges := []metrics.Gauge{
+		{Name: "household_db_acquired_connections", Help: "Database connections in use.", Value: float64(stats.AcquiredConns())},
+		{Name: "household_db_total_connections", Help: "Open database connections.", Value: float64(stats.TotalConns())},
+		{Name: "household_maintenance", Help: "1 while a live restore pauses the app.", Value: maintenance},
+	}
+	queryCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+	overview, err := s.loadBackupOverview(queryCtx)
+	if err != nil {
+		return gauges
+	}
+	healthy := func(state backupplan.State) float64 {
+		if state == backupplan.StateFailed || state == backupplan.StateOverdue {
+			return 0
+		}
+		return 1
+	}
+	for _, target := range []struct {
+		name   string
+		health backupplan.Health
+	}{{"local", overview.Local}, {"offsite", overview.Offsite}} {
+		labels := map[string]string{"target": target.name}
+		gauges = append(gauges, metrics.Gauge{Name: "household_backup_healthy", Help: "1 when the backup target is current by its own schedule.", Labels: labels, Value: healthy(target.health.State)})
+		if target.health.LastSuccess != nil {
+			gauges = append(gauges, metrics.Gauge{Name: "household_backup_last_success_timestamp_seconds", Help: "Start of the last successful backup.", Labels: labels, Value: float64(target.health.LastSuccess.Unix())})
+		}
+	}
+	if overview.LastVerified != nil {
+		gauges = append(gauges, metrics.Gauge{Name: "household_backup_last_verified_timestamp_seconds", Help: "Last successful restore test.", Value: float64(overview.LastVerified.Unix())})
+	}
+	if overview.ServiceSeen != nil {
+		gauges = append(gauges, metrics.Gauge{Name: "household_backup_service_seen_timestamp_seconds", Help: "Last heartbeat of the backup service.", Value: float64(overview.ServiceSeen.Unix())})
+	}
+	sort.SliceStable(gauges, func(i, j int) bool { return gauges[i].Name < gauges[j].Name })
+	return gauges
+}
 
 // systemCheck is one line of the system page: a plain-language state with a
 // tone and an optional link to the page where it can be fixed.

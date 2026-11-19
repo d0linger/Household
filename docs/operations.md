@@ -12,7 +12,7 @@ docker compose exec app household healthcheck
 
 `/health/live` checks the process. `/health/ready` checks every expected schema version/dirty flag, that the runtime role cannot write any migration ledger, and the module contract inspectors. One inspection runs at a time; its result is cached for five seconds and bounded to two seconds, so unauthenticated probes cannot multiply database work. Shutdown makes readiness fail immediately. These endpoints do not expose data or database configuration. The `household healthcheck` command probes `/health/ready` on the port from `HOUSEHOLD_LISTEN` (default `:8080`); a wildcard bind is probed on `127.0.0.1`, a specific address on that address.
 
-A recovered request panic is logged as `request panic` with its request ID, route, Go panic type and a call path of function names and file:line. The panic value and argument words are never logged, because they can hold request data. Meter-adapter failures are logged under `meter adapter processing failed` with a fixed `reason` (`deadline`, `lease_lost`, `lease_refused`, `database_unreachable`, `database_<SQLSTATE>`, `panic` or `unclassified`); feed problems themselves are recorded on the meter source. `/metrics` is hidden unless its secret token is configured. Send that token in `X-Metrics-Token`; do not put it in URLs.
+A recovered request panic is logged as `request panic` with its request ID, route, Go panic type and a call path of function names and file:line. The panic value and argument words are never logged, because they can hold request data. Meter-adapter failures are logged under `meter adapter processing failed` with a fixed `reason` (`deadline`, `lease_lost`, `lease_refused`, `database_unreachable`, `database_<SQLSTATE>`, `panic` or `unclassified`); feed problems themselves are recorded on the meter source. `/metrics` is hidden unless its secret token is configured. Send that token in `X-Metrics-Token`; do not put it in URLs. It exposes request counts and durations by route pattern, panics, rejected and rate-limited sign-ins, CSRF rejections, worker failures, the maintenance pause, database pool use and the backup state; [monitoring](monitoring/README.md) lists every series and example alert rules.
 
 For production, use a valid HTTPS reverse proxy and the exact canonical origin/trusted proxy CIDR. A proxy on the host can reach the loopback port. A containerized proxy needs the intended frontend network connection; determine the actual source network before configuring trust. Never trust all addresses simply to make forwarded headers work.
 
@@ -75,6 +75,10 @@ docker compose run --rm --no-deps --entrypoint restic backup key remove OLD_KEY_
 ```
 
 For the offsite repository, run the same commands with `-e RESTIC_REPOSITORY=… -e RESTIC_PASSWORD=…` set to the offsite values (and its transport credentials). Keep old passwords until every snapshot you may need has been verified with the new key.
+
+### Operator alerts outside the app
+
+The app's own inbox cannot report a stopped server. The backup service can additionally send failed backups, offsite copies, restore tests and restores, and completed restores, to an external channel: an ntfy topic (`HOUSEHOLD_ALERT_NTFY_URL`, optional `HOUSEHOLD_ALERT_NTFY_TOKEN`), a webhook receiving a small JSON document (`HOUSEHOLD_ALERT_WEBHOOK_URL`) or e-mail (`HOUSEHOLD_ALERT_SMTP_ADDRESS` as `host:587` with STARTTLS or `host:465` with TLS, `_USER`, `_PASSWORD`, `_FROM`, comma-separated `_TO`). `HOUSEHOLD_ALERT_NAME` names the installation in messages. URLs must be https without credentials; secrets accept `_FILE` or `/run/secrets`. `start` strips these settings from the web process. Messages carry fixed texts, the target and a public reason code, never household data. Delivery failures are logged and never block the work. Combine this with external uptime monitoring: a host that is down sends nothing.
 
 ## Restore verification
 

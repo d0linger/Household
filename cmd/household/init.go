@@ -197,6 +197,15 @@ HOUSEHOLD_ADMIN_USERNAME=admin
 # HOUSEHOLD_BACKUP_S3_ACCESS_KEY_ID=
 # HOUSEHOLD_BACKUP_S3_SECRET_ACCESS_KEY=
 # HOUSEHOLD_BACKUP_S3_REGION=eu-central-1
+# Warnungen des Sicherungsdienstes nach außen (ntfy, Webhook oder E-Mail über TLS):
+# HOUSEHOLD_ALERT_NTFY_URL=https://ntfy.sh/mein-geheimes-thema
+# HOUSEHOLD_ALERT_NTFY_TOKEN=
+# HOUSEHOLD_ALERT_WEBHOOK_URL=https://example.org/hook
+# HOUSEHOLD_ALERT_SMTP_ADDRESS=mail.example.org:587
+# HOUSEHOLD_ALERT_SMTP_USER=household@example.org
+# HOUSEHOLD_ALERT_SMTP_PASSWORD=
+# HOUSEHOLD_ALERT_SMTP_FROM=household@example.org
+# HOUSEHOLD_ALERT_SMTP_TO=ich@example.org
 `)
 	return b.String(), nil
 }

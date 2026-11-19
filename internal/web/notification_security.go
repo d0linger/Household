@@ -43,6 +43,8 @@ func securityNoticeTitle(locale, kind string) string {
 		return i18n.Text(locale, "Angemeldete Sitzungen wurden beendet.")
 	case "security_account_changed":
 		return i18n.Text(locale, "Die Berechtigungen oder der Status deines Kontos wurden geändert.")
+	case "security_sign_in_new_device":
+		return i18n.Text(locale, "Neue Anmeldung mit einem Browser oder Gerät, das du bisher nicht verwendet hast.")
 	case "security_device_authorized":
 		return i18n.Text(locale, "Ein Gerät wurde für Benachrichtigungen freigegeben.")
 	default:

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"household/internal/i18n"
+	"household/internal/metrics"
 
 	"github.com/jackc/pgx/v5"
 )
@@ -44,6 +45,7 @@ func (s *Server) maintenanceGate(next http.Handler) http.Handler {
 		s.maintenance.inflight.Add(1)
 		defer s.maintenance.inflight.Add(-1)
 		if s.maintenance.active.Load() {
+			metrics.Default.Inc("household_maintenance_rejections_total")
 			s.maintenancePage(w, r)
 			return
 		}

@@ -9,6 +9,7 @@ import (
 	"syscall"
 	"time"
 
+	"household/internal/alerts"
 	"household/internal/config"
 	"household/internal/database"
 )
@@ -114,7 +115,7 @@ func serveEnvironment(current []string, appPassword string) []string {
 }
 
 func startOnly(name string) bool {
-	for _, list := range [][]string{startOnlyVariables, config.BackupServiceVariables} {
+	for _, list := range [][]string{startOnlyVariables, config.BackupServiceVariables, alerts.Variables} {
 		for _, variable := range list {
 			if name == variable || name == variable+"_FILE" {
 				return true

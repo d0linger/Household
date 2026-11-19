@@ -13,6 +13,7 @@ import (
 
 	"household/internal/audit"
 	"household/internal/config"
+	"household/internal/metrics"
 	"household/internal/modules"
 	"household/internal/store"
 	"household/internal/value"
@@ -168,9 +169,11 @@ func runSteps(ctx context.Context, steps []step) error {
 			return errors.Join(append(failures, err)...)
 		}
 		if err := guarded(ctx, st.run); err != nil {
+			metrics.Default.Inc("household_worker_step_failures_total")
 			failures = append(failures, fmt.Errorf("%s: %w", st.name, err))
 		}
 	}
+	metrics.Default.Inc("household_worker_ticks_total")
 	return errors.Join(failures...)
 }
 

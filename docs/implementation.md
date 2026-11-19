@@ -2015,3 +2015,21 @@ Executed checks (local Windows host, task-owned PostgreSQL on 127.0.0.1:55444 be
 - Browser `scripts/browser-backup-check.cjs` against the review server: 26 checks, 5 clean axe scans (desktop, restore dialog, mobile dark, system page mobile dark, English), no JavaScript errors or external requests.
 
 Not executed: the complete integration suite, race tests, the container workflow and image scan, a real S3/MinIO endpoint, crash injection during a live restore, physical-device push, and the live 8100 stack (unchanged). Nothing was pushed.
+
+## Monitoring and account security: stage 2 (2026-11-19, branch `ops-backup-gui`)
+
+Implemented:
+- `internal/metrics`: bounded Prometheus text exposition. Requests by method, fixed route pattern and status class, a duration histogram, panics, rejected and rate-limited sign-ins, CSRF rejections, worker ticks and step failures, maintenance rejections, uptime; scrape-time gauges for the database pool, the maintenance pause and backup health, last success, last restore test and service heartbeat. Route families beyond 400 fold into `other`. `docs/monitoring/` documents the series and example alert rules.
+- `internal/alerts`: optional operator warnings from the backup service to ntfy, a webhook or SMTP (STARTTLS on 587, TLS on 465; https-only URLs without credentials). Failed backups, offsite copies, restore tests and restores and completed restores send fixed texts with public reason codes. `start` strips the alert settings from the web process.
+- Core43 (`000043_security_policy`): `core.security_policies`, `core.known_devices`, the `security_policy_changed` audit action, the `security_sign_in_new_device` security event (guard and re-pinned readiness), predecessor catalog and audit/Pantry/Fuel re-pins.
+- Second-factor policy: an administrator with an own factor and recent sign-in requires a factor for administrators (optionally editors) with a grace period; a notice appears meanwhile and afterwards only the security settings remain reachable (`mfa_required`).
+- New-device notice: a keyed hash of a coarse browser/system label per account; a new label after a one-day learning period records the personal security event. It runs in a savepoint and never blocks sign-in.
+
+Executed checks (same task-owned database on 55444):
+- `gofmt`, `go vet ./...`, `go test ./... -count=1 -shuffle=on` pass; unit coverage 20.0 % (floor 14 %). golangci-lint v2.15.0: 0 issues. gosec v2.30.0: 0 issues in 421 files. 524 Node quality tests, localization (templates/JS and `--go`), 122 migration checksums, workflow policy, task list and design-preview checks pass.
+- Core43 applied to the Core42 test database; audit, security event, both Pantry and both Fuel readiness functions returned true.
+- Integration: `TestMetricsExposeBoundedOperationalSeries`, `TestNewDeviceSignInNotifiesAfterLearningDay`, `TestSecurityPolicyRequiresSecondFactorAfterGrace` (first run failed because the test accounts still had to change their password; fixed in the test, rerun passed), `TestNotificationCryptoPopulated39UpgradePreservesFacts` (now reconstructs Core43 → Core42 → Core41), `TestNotificationCryptoReadinessRejectsDrift`, `TestFuelOverviewReadyPinsDateAndIndexShape`, `TestAuditViewerBoundaries`, `TestBackupRequestsAreValidatedAndOnlyCancellable`, `TestLiveRestorePausesAndResumesTheApp` pass.
+- The Docker rehearsal `scripts/test-backup-operations.sh` passed again with an image built from this stage (report `outputs/backup-operations/report-cac28e9d397d.json`), so the backup service starts and works with alert loading and no channel configured.
+- Unit tests for the metrics registry, alert channels (HTTP channels against a TLS test server; SMTP only through validation and header encoding), device labels and the stripped serve environment.
+
+Not executed: delivery to a real ntfy/webhook/SMTP endpoint, a Prometheus scrape, browser checks of the security policy form, the complete integration suite and race tests. Nothing was pushed.

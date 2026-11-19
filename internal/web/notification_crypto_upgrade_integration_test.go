@@ -28,6 +28,10 @@ func notificationCryptoRestore39(t *testing.T, f *integrationFixture) {
 	if version == 39 {
 		return
 	}
+	if version == 43 {
+		securityPolicyRestore42(t, f)
+		version = 42
+	}
 	if version == 42 {
 		backupOperationsRestore41(t, f)
 		version = 41
@@ -78,6 +82,40 @@ func notificationCryptoRestore39(t *testing.T, f *integrationFixture) {
  END $restore$;`)
 	if err != nil {
 		t.Fatal("restore exact Core39 predecessor", err)
+	}
+	if err = tx.Commit(f.ctx); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// securityPolicyRestore42 removes Core43's policy and device state and
+// restores its replaced functions from the frozen predecessor evidence.
+func securityPolicyRestore42(t *testing.T, f *integrationFixture) {
+	t.Helper()
+	tx, err := f.owner.Begin(f.ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer notificationCryptoRollback(tx)
+	_, err = tx.Exec(f.ctx, `DO $restore$
+ DECLARE snapshot jsonb;item record;
+ BEGIN
+ IF current_database()<>'household_test' OR NOT(SELECT count(*)=1 AND bool_and(version=43 AND NOT dirty) FROM core.schema_migrations)
+  OR EXISTS(SELECT 1 FROM core.security_policies) OR EXISTS(SELECT 1 FROM core.notifications WHERE kind='security_sign_in_new_device') THEN
+ RAISE EXCEPTION 'Security policy predecessor requires the unused isolated Core43 fixture';END IF;
+ snapshot=core.security_policy_predecessor_catalog();
+ IF (SELECT count(*) FROM jsonb_object_keys(snapshot))<>9 THEN RAISE EXCEPTION 'Missing frozen Core42 evidence';END IF;
+ DROP TABLE core.known_devices,core.security_policies;
+ FOR item IN SELECT key,value FROM jsonb_each(snapshot) ORDER BY key LOOP
+ EXECUTE item.value->>'definition';END LOOP;
+ DROP FUNCTION core.security_policy_predecessor_catalog();
+ UPDATE core.schema_migrations SET version=42 WHERE version=43 AND NOT dirty;
+ IF NOT core.audit_ready() OR NOT core.security_events_ready() OR NOT fuel.module_ready() OR NOT fuel.overview_ready()
+  OR NOT pantry.prepared_capture_ready() OR NOT pantry.notification_observations_ready() THEN
+ RAISE EXCEPTION 'Core42 reconstruction changed reviewed contracts';END IF;
+ END $restore$;`)
+	if err != nil {
+		t.Fatal("restore exact Core42 predecessor", err)
 	}
 	if err = tx.Commit(f.ctx); err != nil {
 		t.Fatal(err)

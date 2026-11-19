@@ -373,6 +373,7 @@ func (s *Service) createSession(ctx context.Context, tx pgx.Tx, uid, ip, ua stri
 	if err != nil {
 		return "", fmt.Errorf("create session: %w", err)
 	}
+	s.noteDevice(ctx, tx, uid, ua)
 	return raw, nil
 }
 

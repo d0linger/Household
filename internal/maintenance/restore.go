@@ -596,6 +596,7 @@ func (s *Service) completeSwap(ctx context.Context, conn *pgx.Conn, j restoreJou
 	(&restoredSnapshot{Directory: j.Directory}).Remove()
 	removeJournal()
 	s.Log.Info("live restore completed", "job", j.Job, "snapshot", j.Snapshot, "previous_database", j.Previous)
+	s.alert(ctx, Job{ID: j.Job, Kind: "restore", Target: j.Target}, nil)
 	return nil
 }
 

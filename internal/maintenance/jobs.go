@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"household/internal/alerts"
 	"household/internal/audit"
 	"household/internal/backupplan"
 	"household/internal/buildinfo"
@@ -28,6 +29,8 @@ type Service struct {
 	Superuser string
 	// DrainTimeout bounds how long a live restore waits for the web process.
 	DrainTimeout time.Duration
+	// Alerts reports failures and restores to an optional external channel.
+	Alerts *alerts.Sender
 
 	mu   sync.Mutex
 	pool *pgxpool.Pool
@@ -36,11 +39,19 @@ type Service struct {
 
 // NewService opens the owner pool of the backup service.
 func NewService(ctx context.Context, cfg config.Config, log *slog.Logger, superuser string) (*Service, error) {
+	channels, err := alerts.Load(config.Secret)
+	if err != nil {
+		return nil, err
+	}
 	pool, err := database.Open(ctx, cfg.DatabaseURL, 4)
 	if err != nil {
 		return nil, err
 	}
-	return &Service{Config: cfg, Log: log, Superuser: superuser, DrainTimeout: 2 * time.Minute, pool: pool, now: time.Now}, nil
+	service := &Service{Config: cfg, Log: log, Superuser: superuser, DrainTimeout: 2 * time.Minute, pool: pool, now: time.Now}
+	if channels.Enabled() {
+		service.Alerts = alerts.NewSender(channels)
+	}
+	return service, nil
 }
 
 // Pool returns the current owner pool; a live restore replaces it.
@@ -356,6 +367,7 @@ func (s *Service) perform(ctx context.Context, job Job) {
 	}
 	if err != nil {
 		s.Log.Error("backup work failed", "job", job.ID, "kind", job.Kind, "code", ResultCode(err))
+		s.alert(ctx, job, err)
 	} else {
 		s.Log.Info("backup work completed", "job", job.ID, "kind", job.Kind, "snapshot", snapshot)
 	}
@@ -574,4 +586,38 @@ func CheckHealth(ctx context.Context, pool *pgxpool.Pool) (HealthReport, error) 
 	report.Healthy = report.Local.State != backupplan.StateFailed && report.Local.State != backupplan.StateOverdue &&
 		report.Offsite.State != backupplan.StateFailed && report.Offsite.State != backupplan.StateOverdue
 	return report, nil
+}
+
+// alertTitles names each kind of failed work in operator alerts.
+var alertTitles = map[string]string{
+	"backup":           "Sicherung fehlgeschlagen",
+	"verify":           "Probewiederherstellung fehlgeschlagen",
+	"offsite_test":     "Externes Sicherungsziel nicht erreichbar",
+	"restore":          "Wiederherstellung fehlgeschlagen",
+	"discard_previous": "Früheren Stand verwerfen fehlgeschlagen",
+}
+
+// alert sends a failed or completed unit of work to the external channel.
+// Only the kind, target and public reason code leave the installation.
+func (s *Service) alert(ctx context.Context, job Job, err error) {
+	if s.Alerts == nil {
+		return
+	}
+	message := alerts.Message{Critical: job.Kind == "backup" || job.Kind == "restore"}
+	if err == nil {
+		message.Title = "Wiederherstellung abgeschlossen"
+		message.Body = "Household wurde aus einer Sicherung wiederhergestellt. Alle Benutzer melden sich neu an; der frühere Stand bleibt aufbewahrt, bis ein Administrator ihn verwirft."
+	} else {
+		message.Title = alertTitles[job.Kind]
+		if message.Title == "" {
+			message.Title = "Sicherungsauftrag fehlgeschlagen"
+		}
+		message.Body = "Ziel: " + job.Target + "\nGrund: " + ResultCode(err) +
+			"\nDetails stehen in der App unter Einstellungen → Sicherung und im Protokoll des Dienstes backup."
+	}
+	sendCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
+	defer cancel()
+	if sendErr := s.Alerts.Send(sendCtx, message); sendErr != nil {
+		s.Log.Warn("operator alert could not be delivered", "error", sendErr)
+	}
 }

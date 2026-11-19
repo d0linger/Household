@@ -31,6 +31,7 @@ import (
 	"household/internal/database"
 	"household/internal/foodfacts"
 	"household/internal/i18n"
+	"household/internal/metrics"
 	"household/internal/module"
 	"household/internal/recipeimport"
 	"household/internal/store"
@@ -63,6 +64,7 @@ type Server struct {
 	assets        map[string]string
 	shutting      atomic.Bool
 	maintenance   maintenanceState
+	policy        policyCache
 	readiness     readinessCache
 	imageSlots    chan struct{}
 	recipeFetcher *recipeimport.Fetcher
@@ -92,6 +94,7 @@ type Page struct {
 	Page         int
 	Query        string
 	Extra        any
+	MFANotice    string
 	Related      []Related
 }
 type Related struct {
@@ -478,9 +481,10 @@ func (s *Server) metrics(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	stats := s.Pool.Stat()
 	w.Header().Set("Content-Type", "text/plain; version=0.0.4")
-	s.writeBytes(w, r, []byte(fmt.Sprintf("household_db_acquired_connections %d\nhousehold_db_total_connections %d\n", stats.AcquiredConns(), stats.TotalConns())))
+	if err := metrics.Default.Write(w, s.metricGauges(r.Context())); err != nil {
+		s.Log.Debug("metrics response interrupted", "request_id", trace(r))
+	}
 }
 
 func (s *Server) middleware(next http.Handler) http.Handler {
@@ -516,11 +520,13 @@ func (s *Server) middleware(next http.Handler) http.Handler {
 				}
 				// The panic value may hold request data; log only its type and call path.
 				s.Log.Error("request panic", "request_id", requestID, "route", r.Pattern, "panic_type", fmt.Sprintf("%T", recovered), "call_path", callPath())
+				metrics.Default.Inc("household_http_panics_total")
 				if !recorder.wrote {
 					http.Error(recorder, i18n.Text(requestLocale(r), "Interner Fehler"), 500)
 				}
 			}
 			s.Log.Info("http request", "request_id", requestID, "method", r.Method, "route", r.Pattern, "status", recorder.status, "duration_ms", time.Since(started).Milliseconds())
+			metrics.Default.ObserveRequest(r.Method, r.Pattern, recorder.status, time.Since(started))
 		}()
 		if !strings.HasPrefix(r.URL.Path, "/health/") {
 			origin, _ := url.Parse(s.Cfg.Origin)
@@ -697,6 +703,9 @@ func (s *Server) require(next http.HandlerFunc) http.Handler {
 			}
 			return
 		}
+		if s.enforceSecurityPolicy(w, r, id) {
+			return
+		}
 		if r.Method != "GET" && r.Method != "HEAD" {
 			token := r.Header.Get("X-CSRF-Token")
 			if token == "" && !strings.Contains(r.Header.Get("Content-Type"), "application/json") {
@@ -709,6 +718,7 @@ func (s *Server) require(next http.HandlerFunc) http.Handler {
 				token = r.FormValue("csrf")
 			}
 			if !s.Auth.ValidCSRF(cookie.Value, "session", token) {
+				metrics.Default.Inc("household_csrf_rejections_total")
 				s.fail(w, r, store.ErrForbidden)
 				return
 			}
@@ -731,6 +741,9 @@ func (s *Server) page(r *http.Request, title string) Page {
 }
 func (s *Server) render(w http.ResponseWriter, r *http.Request, p Page) {
 	p.Workspace = workspaceNavigation(r, p)
+	if p.User.UserID != "" && !p.OfflineShell {
+		p.MFANotice = s.mfaNotice(r, p.User)
+	}
 	p.Locale, p.LanguageTag = requestLocale(r), i18n.LanguageTag(requestLocale(r))
 	p.Title, p.Error, p.Success = i18n.Text(p.Locale, p.Title), s.localizedError(p.Locale, p.Error), i18n.Message(p.Locale, p.Success)
 	p.Modules, p.Module, p.Entity = localizedModules(p.Locale, p.Modules), localizedModule(p.Locale, p.Module), localizedEntity(p.Locale, p.Entity)

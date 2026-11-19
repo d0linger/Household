@@ -74,8 +74,7 @@ Alles Wichtige steht in der App unter **Einstellungen → Sicherung** (nur für 
 - **Zustand:** ob die letzte Sicherung geklappt hat, wann die nächste fällig ist und wann zuletzt eine Sicherung probeweise wiederhergestellt wurde.
 - **Jetzt sichern**, **Prüfen** und **Wiederherstellen** per Knopfdruck. Die App gibt den Auftrag nur weiter; ausgeführt wird er vom Dienst `backup`, der als einziger die Zugangsdaten kennt.
 - **Zeitplan und Aufbewahrung:** Uhrzeit, Häufigkeit und wie viele tägliche, wöchentliche und monatliche Sicherungen bleiben. Die Probewiederherstellung läuft standardmäßig wöchentlich.
-- **Warnungen:** Schlägt eine Sicherung fehl oder ist sie überfällig, erscheint eine Mitteilung für alle Administratoren.
-
+- **Warnungen:** Schlägt eine Sicherung fehl oder ist sie überfällig, erscheint eine Mitteilung für alle Administratoren. Zusätzlich kann der Sicherungsdienst Warnungen nach außen schicken, etwa auf dein Handy über [ntfy](https://ntfy.sh) oder per E-Mail: Fülle dazu in Abschnitt 4 der `.env` die Zeilen `HOUSEHOLD_ALERT_…` aus.
 **Speicherort:** Das lokale Backup liegt im Volume `backups` auf demselben Rechner. Das schützt vor Bedienfehlern, aber nicht vor Plattenausfall, Diebstahl oder Brand. Richte deshalb ein **externes Ziel** ein.
 
 ### Externes Backup (S3, Backblaze, NAS)
@@ -179,3 +178,4 @@ Bis November 2026 bestand die Installation aus mehreren Compose-Dateien mit Pass
 - Die Passwörter stehen in `.env` und damit in der Umgebung der Container. Der Dienst `backup` kennt auch das PostgreSQL-Admin-Passwort, weil er für `restore-check` eine vorübergehende Datenbank anlegt. Wer Docker auf dem Rechner bedienen darf, kann sie lesen. Gib Docker-Rechte deshalb nur Administratoren.
 - Nach der Einrichtung läuft die Oberfläche nur mit den Rechten des App-Datenbankkontos. Das PostgreSQL-Admin-Passwort und das Owner-Passwort werden nur beim Start verwendet und danach aus dem Prozess entfernt.
 - Die `.env` sollte nur für den Betreiber lesbar sein: `chmod 600 .env`.
+- Unter **Einstellungen → Sicherheit** kannst du als Administrator verlangen, dass alle Administratoren (und auf Wunsch Bearbeiter) einen zweiten Faktor einrichten. Wer sich von einem neuen Browser oder Gerät anmeldet, bekommt eine Sicherheitsmitteilung.
