@@ -198,6 +198,7 @@ func run(log *slog.Logger) error {
 	server := &http.Server{Addr: cfg.Listen, Handler: app.Handler(), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 30 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 90 * time.Second, MaxHeaderBytes: 16 << 10}
 	background := &worker.Worker{Pool: pool, Log: log, Cfg: cfg, Push: app.Push, Paused: app.Paused}
 	go app.WatchRestores(ctx)
+	go app.WatchUpdates(ctx)
 	workerDone := make(chan struct{})
 	go func() { defer close(workerDone); background.Run(ctx) }()
 	defer func() { stop(); <-workerDone }()

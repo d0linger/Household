@@ -158,6 +158,20 @@ func (s *Server) systemPage(w http.ResponseWriter, r *http.Request) {
 	} else {
 		check("Verschlüsselung", "Fehler", "Der Schlüsselring konnte nicht gelesen werden.", "bad", "")
 	}
+	if s.checks.updates == nil {
+		check("Updates", "Prüfung ausgeschaltet", "Mit HOUSEHOLD_UPDATE_CHECK=true fragt Household einmal täglich bei GitHub nach dem aktuellen Stand.", "ok", "")
+	} else {
+		switch result := s.checks.updates.Result(); {
+		case result.Checked.IsZero():
+			check("Updates", "Noch nicht geprüft", "", "warn", "")
+		case result.Failed:
+			check("Updates", "Prüfung fehlgeschlagen", "GitHub war nicht erreichbar; die Prüfung wird morgen wiederholt.", "warn", "")
+		case result.Available:
+			check("Updates", "Neuere Version verfügbar", "Lies die Versionshinweise und aktualisiere mit docker compose pull und docker compose up -d.", "warn", "")
+		default:
+			check("Updates", "Aktuell", "", "ok", "")
+		}
+	}
 	if s.Cfg.MetricsToken != "" {
 		check("Metriken", "Aktiv", "Abrufbar unter /metrics mit dem Kopfzeilen-Token.", "ok", "")
 	} else {

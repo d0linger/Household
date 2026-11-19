@@ -2,6 +2,7 @@ package web
 
 import (
 	"bytes"
+	"context"
 	"encoding/csv"
 	"encoding/json"
 	"fmt"
@@ -9,6 +10,8 @@ import (
 	"net/http"
 	"strings"
 
+	"household/internal/auth"
+	"household/internal/module"
 	"household/internal/store"
 	"household/internal/value"
 )
@@ -43,6 +46,20 @@ func (s *Server) exportCSV(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, err)
 		return
 	}
+	data, err := s.entityCSV(r.Context(), identity(r), m, e)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s-%s.csv"`, m.ID, e.ID))
+	s.writeBytes(w, r, data)
+}
+
+// entityCSV renders one module entity as the CSV the export endpoint serves,
+// with the same 10,000-row and size bounds. The caller holds the store gate.
+func (s *Server) entityCSV(ctx context.Context, id auth.Identity, m module.Descriptor, e module.Entity) ([]byte, error) {
+	var err error
 	var buf bytes.Buffer
 	writer := csv.NewWriter(&buf)
 	header := []string{}
@@ -53,9 +70,8 @@ func (s *Server) exportCSV(w http.ResponseWriter, r *http.Request) {
 	if withPantrySources {
 		header = append(header, "source_provenance")
 	}
-	if err = writer.Write(header); err != nil {
-		s.fail(w, r, err)
-		return
+	if err := writer.Write(header); err != nil {
+		return nil, err
 	}
 	emit := func(rows []store.Record) error {
 		var sources map[string]string
@@ -65,7 +81,7 @@ func (s *Server) exportCSV(w http.ResponseWriter, r *http.Request) {
 				ids = append(ids, store.String(row["id"]))
 			}
 			var sourceErr error
-			sources, sourceErr = s.Store.PantryFoodFactsExportSources(r.Context(), identity(r), e.ID, ids)
+			sources, sourceErr = s.Store.PantryFoodFactsExportSources(ctx, id, e.ID, ids)
 			if sourceErr != nil {
 				return sourceErr
 			}
@@ -102,11 +118,11 @@ func (s *Server) exportCSV(w http.ResponseWriter, r *http.Request) {
 		return nil
 	}
 	if m.ID == "expenses" && (e.ID == "entries" || e.ID == "entry_lines") {
-		err = s.Store.ExportFinancial(r.Context(), identity(r), e.ID, emit)
+		err = s.Store.ExportFinancial(ctx, id, e.ID, emit)
 	} else {
 		for offset := 0; offset < 10000; offset += 100 {
 			var rows []store.Record
-			rows, err = s.Store.List(r.Context(), identity(r), m, e, "", 100, offset)
+			rows, err = s.Store.List(ctx, id, m, e, "", 100, offset)
 			if err != nil {
 				break
 			}
@@ -122,18 +138,15 @@ func (s *Server) exportCSV(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if err != nil {
-		s.fail(w, r, err)
-		return
+		return nil, err
 	}
 	writer.Flush()
 	if err = writer.Error(); err != nil {
-		s.fail(w, r, err)
-		return
+		return nil, err
 	}
-	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
-	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s-%s.csv"`, m.ID, e.ID))
-	s.writeBytes(w, r, buf.Bytes())
+	return buf.Bytes(), nil
 }
+
 func (s *Server) importCSV(w http.ResponseWriter, r *http.Request) {
 	s.Store.Gate.RLock()
 	defer s.Store.Gate.RUnlock()

@@ -67,12 +67,14 @@ type auditEntry struct {
 type auditOption struct{ Value, Label string }
 
 type auditResult struct {
-	Entries  []auditEntry  `json:"entries"`
-	Next     int64         `json:"next_before,omitempty"`
-	Filter   auditFilter   `json:"-"`
-	NextURL  string        `json:"-"`
-	FirstURL string        `json:"-"`
-	Actions  []auditOption `json:"-"`
+	Entries  []auditEntry `json:"entries"`
+	Next     int64        `json:"next_before,omitempty"`
+	Filter   auditFilter  `json:"-"`
+	NextURL  string       `json:"-"`
+	FirstURL string       `json:"-"`
+	// ExportURL downloads the filtered history with a hash chain.
+	ExportURL string        `json:"-"`
+	Actions   []auditOption `json:"-"`
 }
 
 func (s *Server) auditPage(w http.ResponseWriter, r *http.Request) {
@@ -106,6 +108,9 @@ func (s *Server) readAudit(r *http.Request) (auditResult, error) {
 		return result, err
 	}
 	result.Filter = filter
+	exportQuery := r.URL.Query()
+	exportQuery.Del("before")
+	result.ExportURL = "/api/v1/core/audit/export.jsonl?" + exportQuery.Encode()
 	for _, action := range []string{"CREATE", "UPDATE", "DELETE", "login_success", "login_failed", "logout", "password_changed", "totp_enabled", "session_revoked", "module_enabled", "module_disabled"} {
 		result.Actions = append(result.Actions, auditOption{Value: action, Label: auditActionLabel(action)})
 	}

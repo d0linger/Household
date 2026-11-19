@@ -15,3 +15,7 @@
 .maintenance-page{margin-top:12vh}
 #backup-restore ul{padding-left:20px}
 @media (max-width:860px){.backup-layout{grid-template-columns:1fr}.backup-targets{grid-template-columns:1fr}.backup-snapshot,.backup-job,.system-check{flex-direction:column;align-items:flex-start}.backup-snapshot-actions,.backup-job-state,.system-value{justify-content:flex-start}}
+.help-index ul{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px 20px;margin:0;padding:0;list-style:none}.help-terms{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:24px;margin-top:24px;align-items:start}.help-terms>.panel{margin:0;min-width:0;scroll-margin-top:24px}
+@media (max-width:860px){.help-terms{grid-template-columns:1fr}}
+.share-list{display:grid;gap:16px;margin:16px 0}.share-item{display:flex;gap:20px;align-items:flex-start;border-bottom:1px solid var(--line);padding:16px 0}.share-item img{width:120px;max-width:30%;height:auto;border-radius:var(--radius);border:1px solid var(--line)}.share-fields{flex:1;min-width:0}
+@media (max-width:860px){.share-item{flex-direction:column}.share-item img{max-width:100%}}

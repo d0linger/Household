@@ -156,6 +156,10 @@ func (s *Server) createUser(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, store.Invalid{Message: "Rolle und Startpasswort prüfen (mindestens 14 Zeichen)"})
 		return
 	}
+	if err := s.rejectBreachedPassword(r.Context(), r.FormValue("password")); err != nil {
+		s.fail(w, r, err)
+		return
+	}
 	hash, err := s.Auth.HashPassword(r.Context(), id.UserID, r.FormValue("password"))
 	if err != nil {
 		s.fail(w, r, err)

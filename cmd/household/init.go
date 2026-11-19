@@ -206,6 +206,9 @@ HOUSEHOLD_ADMIN_USERNAME=admin
 # HOUSEHOLD_ALERT_SMTP_PASSWORD=
 # HOUSEHOLD_ALERT_SMTP_FROM=household@example.org
 # HOUSEHOLD_ALERT_SMTP_TO=ich@example.org
+# Optionale Prüfungen mit Verbindung nach außen (standardmäßig aus):
+# HOUSEHOLD_UPDATE_CHECK=true
+# HOUSEHOLD_PASSWORD_BREACH_CHECK=true
 `)
 	return b.String(), nil
 }

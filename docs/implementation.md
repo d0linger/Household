@@ -2033,3 +2033,23 @@ Executed checks (same task-owned database on 55444):
 - Unit tests for the metrics registry, alert channels (HTTP channels against a TLS test server; SMTP only through validation and header encoding), device labels and the stripped serve environment.
 
 Not executed: delivery to a real ntfy/webhook/SMTP endpoint, a Prometheus scrape, browser checks of the security policy form, the complete integration suite and race tests. Nothing was pushed.
+
+## Convenience and remaining gaps: stage 3 (2026-11-19, branch `ops-backup-gui`)
+
+Implemented:
+- Opt-in outbound checks, off by default: `HOUSEHOLD_UPDATE_CHECK` (`internal/updatecheck`, the latest `main` commit at most once a day, shown on `/settings/system`) and `HOUSEHOLD_PASSWORD_BREACH_CHECK` (`internal/pwned`, Have I Been Pwned range API with padding; password change and user creation; fails open). Both use TLS 1.2+, timeouts and no redirects.
+- Household export `GET /api/v1/core/export.zip` (administrator, recent sign-in, CSV per enabled entity plus `manifest.json` with SHA-256 and omitted entities, 96 MiB budget, shared export slots). It is logged, not written to the audit history; existing exports are not audited either.
+- Audit export `GET /api/v1/core/audit/export.jsonl` with a SHA-256 hash chain and a manifest line, at most 20,000 entries, same visibility as the viewer.
+- Browser error reports `POST /api/v1/core/client-errors` (signed in, CSRF, rate-limited, clipped, log only).
+- gzip for static assets with `Vary: Accept-Encoding`; HTML and API responses stay uncompressed (BREACH).
+- `/help` glossary (DE/EN) linked from the settings navigation.
+- Web Share Target: manifest `share_target`, the service worker parks shared photos/PDFs in the device cache, `/share` saves each through the normal document routes; a share before the worker is active is redirected by `POST /share`, which is exempt from the origin check and reads no body. Sign-out clears the parked files.
+- The bootstrap API reports the build release instead of a fixed version.
+
+Executed checks (task-owned database on 55444, review server on 127.0.0.1:8101):
+- `gofmt`, `go vet ./...` (also with `integration,testtools` tags), `go test ./... -count=1` pass; unit coverage 20.1 %. golangci-lint v2.15.0: 0 issues. gosec v2.30.0: no findings. 524 Node quality tests, workflow policy, 122 migration checksums, localization (templates/JS and `--go`) pass.
+- Integration: `TestHouseholdExportRequiresRecentAdminAndCarriesManifest`, `TestAuditExportChainsEveryVisibleEntry`, `TestConvenienceRoutesAnswerWithoutSideEffects`, `TestBreachedPasswordsAreRefusedWhenCheckIsOn` (against a local stub of the range API, including the unreachable case) pass.
+- Unit tests for the breach checker, the update checker and gzip asset serving.
+- `scripts/browser-backup-check.cjs`, extended with the help page, the share page (empty state and missed-share notice) and the export button: 35 checks and 8 axe scans without violations, DE/EN, desktop and mobile dark, no JavaScript errors or external requests. The first start of the review server timed out in the fixture while the unit/lint pipeline ran in parallel; the rerun alone passed.
+
+Not executed: a real share from an installed Android/iOS app, a real request to GitHub or Have I Been Pwned, the system page with an update available, a large-household export near the size budget, the complete integration suite and race tests. Nothing was pushed.

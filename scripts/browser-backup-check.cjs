@@ -63,6 +63,19 @@ const must=(condition,message)=>{if(!condition)throw Error(message);report.check
   must(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),'Mobile system page has no horizontal overflow');
   await shot('system-mobile-dark');await axe('system page mobile dark');
 
+  await page.goto(base+'/help');
+  await page.getByRole('heading',{name:'Hilfe',exact:true}).waitFor();
+  must(await page.locator('.help-terms section').count()>=14&&await page.locator('#probewiederherstellung').count()===1,'Help page explains every listed term');
+  must(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),'Mobile help page has no horizontal overflow');
+  await shot('help-mobile-dark');await axe('help page mobile dark');
+  await page.goto(base+'/share');
+  await page.getByRole('heading',{name:'Geteilte Dateien',exact:true}).waitFor();
+  must(await page.locator('[data-share-empty]').isVisible()&&await page.locator('[data-share-missed]').isHidden(),'Share page shows its empty state');
+  await page.goto(base+'/share?missed=1');
+  await page.locator('[data-share-missed]').waitFor();
+  must(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),'Mobile share page has no horizontal overflow');
+  await shot('share-mobile-dark');await axe('share page mobile dark');
+
   await page.setViewportSize({width:1440,height:1000});
   await page.evaluate(()=>{localStorage.setItem('household-theme','light');document.documentElement.dataset.theme='light';});
   await page.goto(base+'/settings/backup');
@@ -75,6 +88,14 @@ const must=(condition,message)=>{if(!condition)throw Error(message);report.check
   await page.goto(base+'/settings/system');
   await page.getByRole('heading',{name:'System status',exact:true}).waitFor();
   must(true,'English system page');
+  await page.goto(base+'/settings/backup');
+  must(await page.getByRole('button',{name:'Export all data',exact:true}).count()===1,'English backup page offers the household export');
+  await page.goto(base+'/help');
+  await page.getByRole('heading',{name:'Help',exact:true}).waitFor();
+  await axe('help page English');
+  await page.goto(base+'/share');
+  await page.getByRole('heading',{name:'Shared files',exact:true}).waitFor();
+  must(await page.getByText('No shared files on this device.',{exact:true}).isVisible(),'English share page');
   await page.locator('form.language-control button[name=locale][value=de]').click();
   await page.waitForLoadState('load');
 

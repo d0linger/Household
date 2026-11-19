@@ -1,0 +1,26 @@
+{{define "help"}}
+<link rel="stylesheet" href="{{index .Asset "backup.css"}}">
+<div class="page-heading"><div><h1>{{t "Hilfe"}}</h1><p class="muted">{{t "Begriffe, die in Household immer wieder vorkommen, kurz erklärt."}}</p></div></div>
+<nav class="panel help-index" aria-label="{{t "Begriffe"}}"><ul>
+<li><a href="#rollen">{{t "Rollen"}}</a></li><li><a href="#module">{{t "Module"}}</a></li><li><a href="#zweiter-faktor">{{t "Zweiter Faktor"}}</a></li>
+<li><a href="#passkey">{{t "Passkey"}}</a></li><li><a href="#wiederherstellungscode">{{t "Wiederherstellungscode"}}</a></li><li><a href="#anmelderichtlinie">{{t "Anmelderichtlinie"}}</a></li>
+<li><a href="#sicherung">{{t "Sicherung"}}</a></li><li><a href="#externe-sicherung">{{t "Externe Sicherung"}}</a></li><li><a href="#probewiederherstellung">{{t "Probewiederherstellung"}}</a></li>
+<li><a href="#wiederherstellung">{{t "Wiederherstellung"}}</a></li><li><a href="#gerätebenachrichtigungen">{{t "Gerätebenachrichtigungen"}}</a></li><li><a href="#offline">{{t "Offline-Nutzung"}}</a></li>
+<li><a href="#protokoll">{{t "Änderungsprotokoll"}}</a></li><li><a href="#export">{{t "Datenexport"}}</a></li></ul></nav>
+<div class="help-terms">
+<section class="panel" id="rollen"><h2>{{t "Rollen"}}</h2><p>{{t "Administratoren verwalten Benutzer, Module, Sicherungen und Richtlinien. Bearbeiter pflegen die Einträge des Haushalts. Leser sehen die freigegebenen Einträge, ändern aber nichts."}}</p></section>
+<section class="panel" id="module"><h2>{{t "Module"}}</h2><p>{{t "Einkauf, Vorrat, Kochbuch, Planung, Finanzen, Fahrzeuge, Aufgaben, Zähler und Dokumente sind einzeln einschaltbar. Ein ausgeschaltetes Modul behält seine Daten; endgültig gelöscht werden sie nur über eine eigene Löschanforderung."}}</p></section>
+<section class="panel" id="zweiter-faktor"><h2>{{t "Zweiter Faktor"}}</h2><p>{{t "Zusätzlich zum Passwort bestätigst du die Anmeldung mit einem sechsstelligen Code aus einer Authenticator-App oder mit einem Passkey. Wer nur dein Passwort kennt, kommt so nicht in dein Konto."}}</p></section>
+<section class="panel" id="passkey"><h2>{{t "Passkey"}}</h2><p>{{t "Ein Passkey meldet dich mit Fingerabdruck, Gesichtserkennung, Geräte-PIN oder Sicherheitsschlüssel an. Household speichert dabei keine biometrischen Daten, nur einen öffentlichen Schlüssel."}}</p></section>
+<section class="panel" id="wiederherstellungscode"><h2>{{t "Wiederherstellungscode"}}</h2><p>{{t "Einmal verwendbare Codes für den Fall, dass du keinen Zugriff auf deine Authenticator-App hast. Bewahre sie getrennt vom Telefon auf."}}</p></section>
+<section class="panel" id="anmelderichtlinie"><h2>{{t "Anmelderichtlinie"}}</h2><p>{{t "Administratoren können verlangen, dass Konten mit erweiterten Rechten einen zweiten Faktor einrichten. Nach der Übergangsfrist erreichen betroffene Konten nur noch ihre Sicherheitseinstellungen."}}</p></section>
+<section class="panel" id="sicherung"><h2>{{t "Sicherung"}}</h2><p>{{t "Ein verschlüsselter Wiederherstellungspunkt mit allen Daten und Dateien des Haushalts. Der Dienst backup erstellt ihn nach Zeitplan; ältere Punkte werden nach der eingestellten Aufbewahrung entfernt."}}</p></section>
+<section class="panel" id="externe-sicherung"><h2>{{t "Externe Sicherung"}}</h2><p>{{t "Eine Kopie der Sicherungen außerhalb dieses Rechners, etwa in einem S3-Speicher oder auf einem NAS. Sie schützt vor Diebstahl, Brand und Plattenausfall."}}</p></section>
+<section class="panel" id="probewiederherstellung"><h2>{{t "Probewiederherstellung"}}</h2><p>{{t "Household stellt eine Sicherung probeweise in eine eigene Prüfdatenbank wieder her, prüft alle Daten und Dateien und löscht die Prüfdatenbank danach. Erst dann gilt eine Sicherung als geprüft."}}</p></section>
+<section class="panel" id="wiederherstellung"><h2>{{t "Wiederherstellung"}}</h2><p>{{t "Setzt den ganzen Haushalt auf einen Wiederherstellungspunkt zurück. Household sichert vorher den aktuellen Stand, pausiert kurz und meldet danach alle ab. Der vorherige Stand bleibt aufbewahrt, bis ein Administrator ihn verwirft."}}</p></section>
+<section class="panel" id="gerätebenachrichtigungen"><h2>{{t "Gerätebenachrichtigungen"}}</h2><p>{{t "Hinweise auf dem Telefon oder Computer über Web Push. Du gibst jedes Gerät einzeln frei; die Nachricht enthält keine privaten Inhalte."}}</p></section>
+<section class="panel" id="offline"><h2>{{t "Offline-Nutzung"}}</h2><p>{{t "Einkaufslisten und Rezepte bleiben auf freigegebenen Geräten auch ohne Verbindung lesbar. Änderungen werden übertragen, sobald das Gerät wieder online ist."}}</p></section>
+<section class="panel" id="protokoll"><h2>{{t "Änderungsprotokoll"}}</h2><p>{{t "Administratoren sehen, wer wann was geändert hat. Geschützte Felder zeigen nur, dass sie sich geändert haben, nicht den Inhalt."}}</p></section>
+<section class="panel" id="export"><h2>{{t "Datenexport"}}</h2><p>{{t "Administratoren laden alle Einträge des Haushalts als ZIP-Datei mit CSV-Tabellen herunter, etwa für einen Umzug. Dateien enthält der Export nicht, und eine Sicherung ersetzt er nicht."}}</p></section>
+</div>
+{{end}}

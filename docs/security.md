@@ -31,6 +31,10 @@ Backup work follows the purge pattern. The web role may insert an unclaimed requ
 
 Every HTML response has a new CSP nonce. Scripts are local and nonce-authorized; styles/fonts/images/connect/worker/manifest are local. Frames and plugins are forbidden. HSTS, nosniff, frame denial, a restrictive permissions policy, and same-origin referrers are set. Production rejects an incorrect Host, untrusted HTTPS forwarding, cross-origin unsafe requests and cross-site Fetch Metadata.
 
+The only unsafe route without these origin checks is `POST /share`, the share-target fallback: it reads no body, changes nothing and only redirects to `/share`. Shared files stay in the device cache until the member saves them through the normal CSRF-protected upload routes. Static assets are gzip-compressed; HTML and API responses are not, so secrets such as CSRF tokens are never compressed together with attacker-influenced text (BREACH).
+
+Outbound requests from the web process are opt-in and carry no household data: `HOUSEHOLD_UPDATE_CHECK` sends one anonymous GitHub API request a day, and `HOUSEHOLD_PASSWORD_BREACH_CHECK` sends the first five hexadecimal characters of a new password's SHA-1 hash to the Have I Been Pwned range API with padding enabled. Both use TLS 1.2 or newer, bounded timeouts and no redirects. The breach check fails open, because it is a hint, not an authentication factor.
+
 Unsafe authenticated requests require a session-bound HMAC CSRF token. Login has a separately bound pre-authentication cookie/token. JSON decoders reject unknown fields and trailing documents; bodies and multipart files are bounded. Errors expose a stable user message/request ID and keep internal details in operator logs. User-correctable account refusals (password rules, re-authentication for factor changes, factor already active or not yet set up) are HTTP 422 with their message, not generic failures. Panic logs contain the panic type and a value-free call path only.
 
 ## Files and extraction

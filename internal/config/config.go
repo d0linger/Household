@@ -45,8 +45,12 @@ type Config struct {
 	WebPushPrivateKey  string
 	WebPushContact     string
 	MetricsToken       string
-	MeterFeeds         meterfeed.Config
-	DocumentInputs     documentinput.Config
+	// UpdateCheck asks GitHub once a day which commit main is at (opt-in).
+	UpdateCheck bool
+	// PasswordBreachCheck asks the HIBP range API about new passwords (opt-in).
+	PasswordBreachCheck bool
+	MeterFeeds          meterfeed.Config
+	DocumentInputs      documentinput.Config
 }
 
 // DefaultListen is the HTTP listen address when HOUSEHOLD_LISTEN is unset.
@@ -116,6 +120,13 @@ func Load() (Config, error) {
 		c.FoodFactsEnabled, err = strconv.ParseBool(raw)
 		if err != nil {
 			return Config{}, errors.New("invalid Open Food Facts setting")
+		}
+	}
+	for name, target := range map[string]*bool{"HOUSEHOLD_UPDATE_CHECK": &c.UpdateCheck, "HOUSEHOLD_PASSWORD_BREACH_CHECK": &c.PasswordBreachCheck} {
+		if raw := os.Getenv(name); raw != "" {
+			if *target, err = strconv.ParseBool(raw); err != nil {
+				return Config{}, fmt.Errorf("invalid %s setting", name)
+			}
 		}
 	}
 	if raw := os.Getenv("HOUSEHOLD_OFF_STAGING"); raw != "" {

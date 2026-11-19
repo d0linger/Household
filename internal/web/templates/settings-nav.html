@@ -3,6 +3,7 @@
 <a href="/settings/modules" {{if eq .View "modules"}}aria-current="page"{{end}}><svg aria-hidden="true"><use href="{{icon .Asset "grid"}}"/></svg><span>{{t "Module"}}</span></a>
 <a href="/settings/notifications" {{if eq .View "notification-settings"}}aria-current="page"{{end}}><svg aria-hidden="true"><use href="{{icon .Asset "bell"}}"/></svg><span>{{t "Benachrichtigungen"}}</span></a>
 <a href="/settings/security" {{if or (eq .View "security") (eq .View "reauth") (eq .View "totp") (eq .View "recovery")}}aria-current="page"{{end}}><svg aria-hidden="true"><use href="{{icon .Asset "shield"}}"/></svg><span>{{t "Sicherheit"}}</span></a>
+<a href="/help" {{if eq .View "help"}}aria-current="page"{{end}}><svg aria-hidden="true"><use href="{{icon .Asset "book-open"}}"/></svg><span>{{t "Hilfe"}}</span></a>
 {{if eq .User.Role "admin"}}<a href="/settings/users" {{if eq .View "users"}}aria-current="page"{{end}}><svg aria-hidden="true"><use href="{{icon .Asset "users"}}"/></svg><span>{{t "Benutzer"}}</span></a>
 <a href="/settings/audit" {{if eq .View "audit"}}aria-current="page"{{end}}><svg aria-hidden="true"><use href="{{icon .Asset "list"}}"/></svg><span>{{t "Protokoll"}}</span></a>
 <a href="/settings/backup" {{if eq .View "backup"}}aria-current="page"{{end}}><svg aria-hidden="true"><use href="{{icon .Asset "archive"}}"/></svg><span>{{t "Sicherung"}}</span></a>

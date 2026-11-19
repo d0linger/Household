@@ -81,6 +81,10 @@
 <p class="fine">{{t "Zurück zum früheren Stand: App stoppen und den Wartungsbefehl restore-rollback ausführen (siehe Betriebsanleitung)."}}</p>
 <form method="post" action="/settings/backup/jobs" data-security-form>{{template "csrf" .}}<input type="hidden" name="kind" value="discard_previous"><input type="hidden" name="target" value="local"><label class="check-label"><input type="checkbox" name="confirm" required>{{t "Früheren Stand endgültig löschen"}}</label><button class="danger">{{t "Verwerfen"}}</button></form></section>{{end}}
 
+<section class="panel backup-wide" aria-labelledby="backup-export-heading"><h2 id="backup-export-heading">{{t "Datenexport"}}</h2>
+<p>{{t "Lade alle Einträge deines Haushalts als ZIP-Datei mit einer CSV-Tabelle je Bereich herunter, etwa für einen Umzug. Dateien und Dokumente enthält der Export nicht; dafür gibt es den Dokumente-Export und die Sicherung."}}</p>
+<form method="get" action="/api/v1/core/export.zip" data-security-form data-security-document><button>{{t "Alle Daten exportieren"}}</button></form></section>
+
 <section class="panel backup-wide" aria-labelledby="backup-history-heading"><h2 id="backup-history-heading">{{t "Verlauf"}}</h2>
 {{if $o.Jobs}}<div class="backup-history">{{range $o.Jobs}}<article class="backup-job">
 <div><h3>{{template "backup-kind" .}}</h3><p class="fine">{{$d.At .Created}}{{if .Requester}} · {{.Requester}}{{else}} · {{t "Zeitplan"}}{{end}}{{if .Snapshot}} · <span class="backup-id">{{slice .Snapshot 0 8}}</span>{{end}}</p>

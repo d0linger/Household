@@ -12,6 +12,7 @@ import (
 
 	"household/internal/audit"
 	"household/internal/auth"
+	"household/internal/buildinfo"
 	"household/internal/i18n"
 	"household/internal/metrics"
 	"household/internal/module"
@@ -71,6 +72,12 @@ func (s *Server) passwordPage(w http.ResponseWriter, r *http.Request) {
 	s.render(w, r, p)
 }
 func (s *Server) password(w http.ResponseWriter, r *http.Request) {
+	if auth.PasswordValid(r.FormValue("next")) {
+		if err := s.rejectBreachedPassword(r.Context(), r.FormValue("next")); err != nil {
+			s.fail(w, r, err)
+			return
+		}
+	}
 	if err := s.Auth.ChangePassword(r.Context(), identity(r), r.FormValue("current"), r.FormValue("next")); err != nil {
 		s.fail(w, r, err)
 		return
@@ -415,7 +422,7 @@ func (s *Server) referencesAPI(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, records)
 }
 func (s *Server) bootstrap(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, 200, map[string]any{"user": identity(r), "modules": localizedModules(requestLocale(r), orderedModules(s.Store.Modules, requestModuleOrder(r))), "states": s.Store.States(), "csrf": r.Context().Value(csrfKey), "version": "0.1.0", "locale": requestLocale(r)})
+	writeJSON(w, 200, map[string]any{"user": identity(r), "modules": localizedModules(requestLocale(r), orderedModules(s.Store.Modules, requestModuleOrder(r))), "states": s.Store.States(), "csrf": r.Context().Value(csrfKey), "version": buildinfo.Release(), "locale": requestLocale(r)})
 }
 func (s *Server) settings(w http.ResponseWriter, r *http.Request) {
 	p := s.page(r, "Einstellungen")

@@ -65,6 +65,7 @@ type Server struct {
 	shutting      atomic.Bool
 	maintenance   maintenanceState
 	policy        policyCache
+	checks        optionalChecks
 	readiness     readinessCache
 	imageSlots    chan struct{}
 	recipeFetcher *recipeimport.Fetcher
@@ -135,6 +136,7 @@ func New(ctx context.Context, pool *pgxpool.Pool, cfg config.Config, mods []modu
 		return nil, err
 	}
 	s := &Server{Cfg: cfg, Pool: pool, Auth: a, Store: records, Push: push, Log: log, assets: map[string]string{}, imageSlots: make(chan struct{}, 2), recipeFetcher: recipeimport.NewFetcher()}
+	s.configureOptionalChecks()
 	s.Store.FuelOCREnabled = cfg.OCREnabled
 	s.Store.FoodFacts = provider
 	if err = s.Store.LoadStates(ctx); err != nil {
@@ -410,6 +412,7 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /capture/{id}", s.require(s.capturePage))
 	mux.Handle("POST /capture/{id}/confirm", s.require(s.confirmCapture))
 	s.registerBackupRoutes(mux)
+	s.registerExportRoutes(mux)
 	mux.HandleFunc("GET /maintenance/status", s.maintenanceStatus)
 	return s.middleware(s.maintenanceGate(mux))
 }
@@ -539,7 +542,9 @@ func (s *Server) middleware(next http.Handler) http.Handler {
 				return
 			}
 		}
-		if r.Method != "GET" && r.Method != "HEAD" {
+		// A share from another app arrives as a browser-made POST /share with no
+		// page origin; its fallback handler reads nothing and only redirects.
+		if r.Method != "GET" && r.Method != "HEAD" && r.URL.Path != "/share" {
 			if origin := r.Header.Get("Origin"); origin != "" && origin != s.Cfg.Origin {
 				http.Error(recorder, i18n.Text(requestLocale(r), "Ungültiger Ursprung"), http.StatusForbidden)
 				return

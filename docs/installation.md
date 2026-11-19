@@ -120,6 +120,14 @@ Wartungsbefehle laufen über den Dienst `backup`, weil nur er die Rechte des Dat
 
 Weitere Befehle (Schlüsselrotation, Löschen von Modulen, Lagerbestand prüfen) stehen im [Betriebshandbuch](operations.md).
 
+## Export, Teilen und Hilfe
+
+- **Alle Daten exportieren:** Unter *Einstellungen → Sicherung* lädt ein Administrator alle Einträge als ZIP-Datei mit CSV-Tabellen herunter, etwa für einen Umzug. Fotos und Dokumente sind nicht enthalten; dafür gibt es den Dokumente-Export und die Sicherung.
+- **Änderungsprotokoll exportieren:** Unter *Einstellungen → Protokoll* exportierst du die gefilterte Historie als JSONL-Datei. Jede Zeile trägt eine Prüfsumme, die auf der vorherigen aufbaut. So fällt später auf, wenn jemand die Datei verändert.
+- **Teilen:** Ist Household auf dem Handy installiert, erscheint es im Teilen-Menü anderer Apps. Fotos und PDFs landen zuerst nur auf dem Gerät; unter *Geteilte Dateien* speicherst du sie als Dokument.
+- **Hilfe:** Unter *Einstellungen → Hilfe* stehen die wichtigsten Begriffe kurz erklärt.
+- **Optionale Prüfungen:** Mit `HOUSEHOLD_UPDATE_CHECK=true` zeigt die Systemseite an, ob es eine neuere Version gibt. Mit `HOUSEHOLD_PASSWORD_BREACH_CHECK=true` lehnt Household neue Passwörter ab, die aus Datenlecks bekannt sind. Dabei verlässt nur ein kurzer Teil einer Prüfsumme den Server, nie das Passwort. Beide Prüfungen sind standardmäßig aus.
+
 ## Rootless Docker
 
 Mit Rootless Docker läuft schon der Docker-Dienst selbst ohne Root. Ein Ausbruch aus einem Container landet dann bei einem normalen Benutzer. `compose.yaml` funktioniert unverändert:
