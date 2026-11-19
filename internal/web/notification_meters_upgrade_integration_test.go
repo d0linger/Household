@@ -17,6 +17,49 @@ import (
 // Reconstruct the exact reviewed Meters2 catalog only inside the exclusively
 // leased integration database. Empty notification sidecars are required: this
 // helper is predecessor setup, not an application downgrade operation.
+// notificationMetersRestore3 reconstructs the exact Meters3 predecessor of the
+// bounded invalidation (Meters4) from its frozen definitions.
+func notificationMetersRestore3(t *testing.T, f *integrationFixture) {
+	t.Helper()
+	var valid bool
+	var version int
+	err := f.owner.QueryRow(f.ctx, `SELECT current_database()='household_test' AND current_user='household_owner',
+ (SELECT version FROM meters.schema_migrations WHERE NOT dirty)`).Scan(&valid, &version)
+	if err != nil || !valid {
+		t.Fatal("Meters3 predecessor requires the isolated owner fixture", valid, err)
+	}
+	if version != 4 {
+		return
+	}
+	tx, err := f.owner.Begin(f.ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+		_ = tx.Rollback(ctx)
+	}()
+	_, err = tx.Exec(f.ctx, `DO $restore$
+ DECLARE snapshot jsonb;item record;
+ BEGIN
+ snapshot=meters.invalidation_predecessor_catalog();
+ IF (SELECT count(*) FROM jsonb_object_keys(snapshot))<>2 THEN RAISE EXCEPTION 'Missing frozen Meters3 evidence';END IF;
+ FOR item IN SELECT key,value FROM jsonb_each(snapshot) ORDER BY key LOOP
+ EXECUTE item.value->>'definition';END LOOP;
+ DROP FUNCTION meters.invalidation_predecessor_catalog();
+ UPDATE meters.schema_migrations SET version=3 WHERE version=4 AND NOT dirty;
+ IF NOT meters.expansion_ready() OR NOT meters.notification_ready() THEN
+ RAISE EXCEPTION 'Meters3 reconstruction changed reviewed contracts';END IF;
+ END $restore$;`)
+	if err != nil {
+		t.Fatal("restore exact Meters3 predecessor", err)
+	}
+	if err = tx.Commit(f.ctx); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func notificationMetersRestore2(t *testing.T, f *integrationFixture) {
 	t.Helper()
 	notificationDocumentsRestore2(t, f)
