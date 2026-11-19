@@ -11,10 +11,11 @@ import (
 
 	"household/internal/config"
 	"household/internal/database"
-	"household/internal/maintenance"
 )
 
 // startOnlyVariables carry setup credentials that `serve` must never inherit.
+// Backup repository credentials (config.BackupServiceVariables) are removed too:
+// the web process requests backup work, the owner backup service performs it.
 var startOnlyVariables = []string{"POSTGRES_PASSWORD", "HOUSEHOLD_OWNER_PASSWORD", "HOUSEHOLD_APP_PASSWORD", "HOUSEHOLD_DATABASE_USER", "HOUSEHOLD_DATABASE_PASSWORD", "HOUSEHOLD_DATABASE_URL"}
 
 // setupCredentials are the passwords `setup` and `start` work with.
@@ -113,9 +114,11 @@ func serveEnvironment(current []string, appPassword string) []string {
 }
 
 func startOnly(name string) bool {
-	for _, variable := range startOnlyVariables {
-		if name == variable || name == variable+"_FILE" {
-			return true
+	for _, list := range [][]string{startOnlyVariables, config.BackupServiceVariables} {
+		for _, variable := range list {
+			if name == variable || name == variable+"_FILE" {
+				return true
+			}
 		}
 	}
 	return false
@@ -130,41 +133,4 @@ func replaceEnvironment(environment []string) error {
 		}
 	}
 	return nil
-}
-
-// withRestoreTarget creates a fresh, uniquely named restore database on the
-// server of the source connection, prepares the Household roles in it, runs
-// verify against it with the target's credentials, and always drops it again.
-func withRestoreTarget(ctx context.Context, source, target, superuser string, verify func(target string) error) error {
-	owner, err := config.Secret("HOUSEHOLD_OWNER_PASSWORD")
-	if err != nil {
-		return err
-	}
-	app, err := config.Secret("HOUSEHOLD_APP_PASSWORD")
-	if err != nil || owner == "" || app == "" {
-		return errors.New("restore preparation needs HOUSEHOLD_OWNER_PASSWORD and HOUSEHOLD_APP_PASSWORD")
-	}
-	maintenanceURL, err := config.RestoreMaintenanceURL(source, superuser)
-	if err != nil {
-		return err
-	}
-	return database.WithAutomaticRestoreDatabase(ctx, maintenanceURL, func(name string) error {
-		restoreURL, err := config.WithDatabase(maintenanceURL, name)
-		if err != nil {
-			return err
-		}
-		runTarget, err := config.WithDatabase(target, name)
-		if err != nil {
-			return err
-		}
-		if err = maintenance.ValidateAutomaticRestoreTarget(source, runTarget); err != nil {
-			return err
-		}
-		setupCtx, cancel := context.WithTimeout(ctx, time.Minute)
-		defer cancel()
-		if err = database.PrepareRestoreDatabase(setupCtx, restoreURL, owner, app); err != nil {
-			return err
-		}
-		return verify(runTarget)
-	})
 }

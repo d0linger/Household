@@ -18,44 +18,111 @@ For production, use a valid HTTPS reverse proxy and the exact canonical origin/t
 
 ## Backups
 
-The `backup` service runs the same image with database-owner credentials, no HTTP port, read-only uploads access, an encrypted repository volume, and a private work volume. Starting the scheduled service normally requires the app to be healthy; a one-off `run --rm --no-deps backup backup` can take the final maintenance snapshot while the app is stopped. The database must remain healthy. The runtime app cannot mark backup verification successful.
+The `backup` service runs the same image with database-owner credentials, no HTTP port, the uploads volume, an encrypted local repository volume and a private work volume. It is the only process with repository credentials: `start` strips `RESTIC_PASSWORD*`, `HOUSEHOLD_BACKUP_OFFSITE_*`, `HOUSEHOLD_BACKUP_S3_*` and `HOUSEHOLD_BACKUP_REST_*` before `serve` runs. Starting the scheduled service normally requires the app to be healthy; a one-off `run --rm --no-deps backup backup` can take the final maintenance snapshot while the app is stopped. The database must remain healthy. The runtime app cannot mark backup verification successful.
 
-The `backup` service is also the owner-credential maintenance service: run owner-only commands (`backup`, `restore-check`, `recover`, `purge`, `encryption-reencrypt`, `encryption-retirement-check`, `pantry-rebuild`) with `docker compose run --rm --no-deps backup COMMAND`. Changing `.env` takes effect only after the affected services are recreated (`docker compose up -d`).
+The `backup` service is also the owner-credential maintenance service: run owner-only commands (`backup`, `restore-check`, `restore`, `restore-rollback`, `backup-health`, `recover`, `purge`, `encryption-reencrypt`, `encryption-retirement-check`, `pantry-rebuild`) with `docker compose run --rm --no-deps backup COMMAND`. Changing `.env` takes effect only after the affected services are recreated (`docker compose up -d`).
 
-Maintenance accepts explicit `postgres://user:password@host:port/database` or `postgresql://` URIs. Percent-encode reserved characters. Allowed query parameters are `sslmode`, `sslrootcert`, `sslcert`, `sslkey`, and `connect_timeout`; repeated parameters and connection overrides such as `dbname`, `host` or `service` are rejected. Set `sslmode` explicitly: maintenance defaults to `require`, while pgx normally defaults to `prefer`. URLs built from `HOUSEHOLD_DATABASE_PASSWORD` specify `sslmode=disable` for the isolated Docker database network. Inherited `PG*` settings are cleared for operator tools so they cannot redirect the validated connection. The names `household_restore` and `household_restore_auto_<unix>_<random>` are reserved for disposable verification and cannot be a backup source; similar names such as `household_restored` remain valid sources.
+Maintenance accepts explicit `postgres://user:password@host:port/database` or `postgresql://` URIs. Percent-encode reserved characters. Allowed query parameters are `sslmode`, `sslrootcert`, `sslcert`, `sslkey`, and `connect_timeout`; repeated parameters and connection overrides such as `dbname`, `host` or `service` are rejected. Set `sslmode` explicitly: maintenance defaults to `require`, while pgx normally defaults to `prefer`. URLs built from `HOUSEHOLD_DATABASE_PASSWORD` specify `sslmode=disable` for the isolated Docker database network. Inherited `PG*` settings are cleared for operator tools so they cannot redirect the validated connection. The names `household_restore`, `household_restore_auto_<unix>_<random>`, `household_restore_job_<12 hex>` and `household_pre_restore_<unix>_<8 hex>` are reserved for restore maintenance and can never be a backup source; similar names such as `household_restored` remain valid sources.
 
 ```sh
 docker compose up -d backup
-docker compose run --rm --no-deps backup backup
+docker compose run --rm --no-deps backup backup            # local snapshot
+docker compose run --rm --no-deps backup backup --offsite  # local snapshot plus offsite copy
 docker compose logs --tail=50 backup
 ```
 
-The first command creates the scheduler. The second creates an additional immediate snapshot and prints its nonsecret snapshot identifier. The database and ready attachment/preview metadata are captured behind the household exclusive write barrier. The helper includes a custom-format dump, schema/file-hash manifest and security-key bundle, then encrypts them with restic. This barrier can briefly delay writes; schedule large backups outside normal household use.
+The database and ready attachment/preview metadata are captured behind the household exclusive write barrier. The helper includes a custom-format dump, schema/file-hash manifest and security-key bundle, then encrypts them with restic. This barrier can briefly delay writes; schedule large backups outside normal household use. restic only ever receives the variables of the repository a command uses, never the service's whole environment.
 
-Daily backups run at 03:00 Europe/Vienna. Retention is 7 daily / 4 weekly / 12 monthly, scoped to the `household` tag. The repository is fully checked after a backup. Failed runs are recorded and logged; operators must monitor backup logs and the age of the last successful/verified run. Local snapshots do not protect against loss of the entire host: replicate the encrypted repository to separate storage using your chosen open-source storage/backup transport.
+### Schedule, retention and requests in the app
 
-Preserve `.env` (it holds the restic password, encryption key and Web Push key) separately from the repository. Temporary unencrypted dump/key material lives only in the private work directory and is removed after the command; encrypt the host disk/backup work volume when the threat model includes physical disk access.
+Administrators manage backups under **Settings → Backup** (`/settings/backup`). The page shows the health of the local and offsite targets (derived from each target's own schedule plus a grace of a tenth of the interval, 15 minutes to 2 hours), the last restore test, every restore point and the history of requested and scheduled work. It stores the schedule in `core.backup_settings`: start time and interval (default daily at 03:00 in the household zone), local retention (default 7 daily / 4 weekly / 12 monthly, `household` tag), offsite interval and retention, and the automatic restore test (default weekly, local).
+
+Buttons on the page record work in `core.backup_jobs`: back up now (local, or local plus offsite), test the offsite connection, verify a restore point, restore a restore point and discard a kept previous state. The web role may only insert unclaimed requests and cancel them before they are claimed; a trigger refuses every other change. The backup service polls every 30 seconds, claims one request with `FOR UPDATE SKIP LOCKED` and validates it again with owner privileges: the requester must still be an active administrator, a restore must name a full snapshot ID, carry the typed confirmation `WIEDERHERSTELLEN <first 8 characters>` and come from a session re-authenticated within ten minutes. Unclaimed requests expire after 30 minutes. Scheduled runs and restore tests appear in the same history. Every request, cancellation and schedule change is recorded as a semantic audit event; backup work itself is operational state, like `core.jobs`.
+
+The service writes its heartbeat, release and the nonsecret repository labels into `core.backup_settings`. The page warns when the service has not reported for three minutes. The worker notifies administrators in the app (inbox, not Web Push) when the last local backup or offsite copy failed, the backup is overdue, no backup was restore-tested within the configured interval (or 30 days when the test is off), the service stopped reporting, or a live restore completed or failed. Each incident has its own deduplication key, so dismissing an old warning never hides a new one. The service's container healthcheck runs `household backup-health`, which fails when a target's last attempt failed or its schedule is overdue.
+
+After a local backup restic fully checks the local repository. Failed runs are recorded with a public reason code (for example `wrong_password`, `repository_unreachable`, `access_denied`, `disk_full`); tool output is never stored or shown because it can name locations or provider details.
+
+### Offsite repository
+
+Local snapshots do not protect against loss of the entire host. Configure an offsite restic repository in `.env` and recreate the services:
+
+```sh
+HOUSEHOLD_BACKUP_OFFSITE_REPOSITORY=s3:https://s3.eu-central-1.amazonaws.com/my-bucket/household
+HOUSEHOLD_BACKUP_OFFSITE_PASSWORD=<own long password, kept separately>
+HOUSEHOLD_BACKUP_S3_ACCESS_KEY_ID=…
+HOUSEHOLD_BACKUP_S3_SECRET_ACCESS_KEY=…
+HOUSEHOLD_BACKUP_S3_REGION=eu-central-1   # optional
+```
+
+Supported are `s3:http(s)://host/bucket[/prefix]` (AWS, Backblaze B2, Wasabi, Hetzner, MinIO and other S3-compatible storage), `rest:http(s)://host/path` with optional `HOUSEHOLD_BACKUP_REST_USERNAME`/`_PASSWORD`, and an absolute mounted path such as a NAS share added under `backup.volumes`. Credentials, queries and fragments inside the repository URL are refused; the URL is therefore also the nonsecret label shown in the app and stored in `core.backup_runs`. Every variable also accepts `_FILE` or a file in `/run/secrets`. Use a password of its own (at least 16 characters) and a bucket or prefix used only by this installation; keep the password and `.env` outside the host.
+
+The first copy creates the offsite repository with the local chunker parameters (`restic init --copy-chunker-params`), so later copies deduplicate. Each run copies the new local snapshot (`restic copy`), checks the repository structure plus one rotating sixth of its data (`restic check --read-data-subset=n/6`) instead of downloading everything daily, records an offsite run and applies the offsite retention. When the offsite schedule is due between local runs, the newest local snapshot is copied. The restic cache lives on the work volume (`/work/restic-cache`).
+
+Offsite storage can have separate terms and costs. Egress for restore tests from offsite counts against them; the default restore test reads the local repository.
+
+Preserve `.env` (it holds the restic passwords, encryption key and Web Push key) separately from the repositories. Temporary unencrypted dump/key material lives only in the private work directory and is removed after the command; encrypt the host disk/backup work volume when the threat model includes physical disk access.
+
+### Changing a repository password
+
+restic keeps several keys per repository. To replace a password, add a key with the new one, switch `.env`, verify a backup and only then remove the old key:
+
+```sh
+docker compose run --rm --no-deps --entrypoint restic backup key add       # prompts for the new password
+docker compose run --rm --no-deps --entrypoint restic backup key list
+# set the new RESTIC_PASSWORD in .env, docker compose up -d, take and verify a backup
+docker compose run --rm --no-deps --entrypoint restic backup key remove OLD_KEY_ID
+```
+
+For the offsite repository, run the same commands with `-e RESTIC_REPOSITORY=… -e RESTIC_PASSWORD=…` set to the offsite values (and its transport credentials). Keep old passwords until every snapshot you may need has been verified with the new key.
 
 ## Restore verification
 
-`restore-check` creates a **temporary database of its own** (`household_restore_auto_<time>_<random>`) on the PostgreSQL server of the source connection with the superuser password from `.env`, prepares the Household roles in it, verifies the snapshot and always drops that database again, also after a failure. Concurrent checks therefore never share or drop each other's database. A later check drops leftovers of interrupted runs that are older than six hours. With an explicit `HOUSEHOLD_RESTORE_DATABASE_URL` (or without a superuser password) it uses that separate `household_restore` database unchanged instead. A configured or derived target must be named exactly `household_restore`; `household_restore_auto_…` names are reserved for automatic checks, because their leftover cleanup may drop them. `restore-check` refuses any other target name, refuses a source with one of those reserved names, and requires a known completed snapshot.
+`restore-check` creates a **temporary database of its own** (`household_restore_auto_<time>_<random>`) on the PostgreSQL server of the source connection with the superuser password from `.env`, prepares the Household roles in it, verifies the snapshot and always drops that database again, also after a failure. Concurrent checks therefore never share or drop each other's database. A later check drops leftovers of interrupted runs that are older than six hours. With an explicit `HOUSEHOLD_RESTORE_DATABASE_URL` (or without a superuser password) it uses that separate `household_restore` database unchanged instead. A configured or derived target must be named exactly `household_restore`; `household_restore_auto_…` names are reserved for automatic checks, because their leftover cleanup may drop them. `restore-check` refuses any other target name, refuses a source with one of the reserved names, and requires a known completed snapshot of the chosen repository.
 
 ```sh
 docker compose run --rm --no-deps backup restore-check SNAPSHOT_ID
+docker compose run --rm --no-deps backup restore-check latest
+docker compose run --rm --no-deps backup restore-check --offsite latest
 ```
 
-This decrypts into a private temporary directory, restores PostgreSQL with fail-fast checks, verifies schema versions, counts ready files/previews and hashes every referenced restored file. Core40 additionally decrypts every protected record using the snapshot's archived security bundle before marking the source backup verified; current live encryption keys cannot substitute for missing archived readers. Use the matching predecessor release to verify a pre-upgrade snapshot, then rehearse the candidate migration and decryption separately on the restored copy. The disposable recovery database is overwritten on each verification; it must never be used as the live application database. Record duration and test periodically with representative data, including attachments.
+This decrypts into a private temporary directory, restores PostgreSQL with fail-fast checks, verifies schema versions, counts ready files/previews and hashes every referenced restored file. Core40 additionally decrypts every protected record using the snapshot's archived security bundle before marking the source backup verified; current live encryption keys cannot substitute for missing archived readers. Use the matching predecessor release to verify a pre-upgrade snapshot, then rehearse the candidate migration and decryption separately on the restored copy. The disposable recovery database is overwritten on each verification; it must never be used as the live application database. The backup service runs this check automatically at the configured interval for the newest restore point of the chosen target whose schema matches the running release; administrators can also request it for any compatible restore point in the app.
+
+## Live restore
+
+Administrators can restore the running installation from a local or offsite restore point under **Settings → Backup**, after confirming their sign-in and typing the confirmation phrase; operators can run the same procedure with
+
+```sh
+docker compose run --rm --no-deps backup restore [--offsite] FULL_SNAPSHOT_ID --confirm "WIEDERHERSTELLEN XXXXXXXX"
+```
+
+Only restore points whose schema manifest equals the running release are offered; older ones need their own release (see disaster recovery). The backup service performs the restore in phases recorded on the job and in a journal file on the work volume:
+
+1. **Prepare** while the app keeps running: take a safety backup of the current state, restore the snapshot into a new database `household_restore_job_<id>` on the same server, run every restore-check verification, require that the current key ring in `.env` can read every protected record, carry over backup history, schedule and work (so no restore point or the safety backup disappears from the app), end every session and authentication challenge, revoke calendar feeds that are no longer valid in the live data and drop push connections the live data no longer has, then run readiness. Any failure stops here; the live database is untouched.
+2. **Pause:** the job waits for the app. The app answers every request except liveness, assets and `/maintenance/status` with a self-refreshing 503 page (JSON for API clients), lets running requests finish, pauses its worker and confirms through `core.acknowledge_backup_drain`. A stopped app counts as paused once it has no sessions on the database. Without a confirmation within two minutes the restore fails and the app resumes.
+3. **Switch:** connections to the live database are disabled, it is renamed to `household_pre_restore_<unix>_<random>` and the stage takes its name. Upload files the restored data does not reference, or references with other content, are moved to `/work/pre_restore_<…>/` and the restored files are copied in, all checked against the manifest hashes.
+4. **Finish:** the job is marked complete in the restored database with an audit event; the app resumes and everyone signs in again.
+
+If the service stops during a restore, its next start completes or undoes the switch from the journal: before the second rename the original database name and connections are restored; after it the upload reconciliation and record are finished. The replaced database and moved uploads are kept until an administrator discards them on the backup page. To switch back instead, stop the app and run
+
+```sh
+docker compose stop app
+docker compose run --rm --no-deps backup restore-rollback
+docker compose up -d
+```
+
+The live restore needs the PostgreSQL superuser password in the backup service (as for `restore-check`), identical database-level settings for the live and stage database, enough free space on the work volume (about twice the snapshot size), and writable uploads for the backup service.
 
 ## Disaster recovery
 
-1. Preserve the failed installation and encrypted repository; do not overwrite the only surviving copy.
-2. Create a separate replacement deployment with the same release image, PostgreSQL major version and a private maintenance window.
-3. Restore the selected restic snapshot into a private recovery directory with the saved repository password.
-4. Identify `manifest.json`, `database.dump`, `security-keys.json`, and the manifest's uploads path.
-5. Restore into the replacement database as `household_owner` using PostgreSQL 18 `pg_restore --no-owner --exit-on-error` and restore the uploads directory with UID/GID 10001 access.
-6. Restore the security-key bundle into the corresponding `.env` settings. Generate/retain replacement database passwords appropriate to the replacement deployment.
-7. Run readiness/schema checks, verify referenced file hashes, test login/TOTP and one read/write workflow, and revoke pre-incident sessions if the incident involved compromise.
-8. Switch the reverse proxy to the verified replacement, then retain the old deployment until recovery has been accepted.
+When the host is lost, restore into a new installation:
+
+1. Preserve the failed installation and every repository; do not overwrite the only surviving copy.
+2. Create a separate replacement deployment with the same release image, PostgreSQL major version and the saved `.env` (restic passwords and keys). For an offsite-only recovery, point `RESTIC_REPOSITORY` at a local volume and the offsite settings at the offsite repository.
+3. Start `db` and `app` once so `start` creates the roles and schema, then stop `app`.
+4. Run `docker compose run --rm --no-deps backup restore [--offsite] FULL_SNAPSHOT_ID --confirm "WIEDERHERSTELLEN …"`. The command reads the snapshot directly from the repository, so it works although the new database does not know it; list snapshots with `docker compose run --rm --no-deps --entrypoint restic backup snapshots` (for offsite, with the offsite variables). The restore refuses a snapshot whose protected records the `.env` key ring cannot read: restore the snapshot's `security-keys.json` into `.env` first if the original `.env` is lost (restic restore into a private directory to read it).
+5. Run readiness/schema checks, test login/TOTP and one read/write workflow, and revoke pre-incident sessions if the incident involved compromise.
+6. Switch the reverse proxy to the verified replacement, then retain the old deployment until recovery has been accepted.
 
 Do not run a production destructive restore against the source database as a routine test. The automated verification path exists specifically to avoid that.
 
@@ -66,7 +133,7 @@ Installations from before the single `compose.yaml` (several Compose files with 
 
 1. Read release notes and compare the migration manifest. Build or load and check the reviewed candidate before downtime; retain the exact old image, `.env` and `compose.yaml`.
 2. For incompatible maintenance, stop the app (including its workers) and the scheduled backup service, leaving PostgreSQL healthy. Take a fresh one-off backup with the old release and `--no-deps`, then verify it by isolated restore with that same release.
-3. For the current Core37→41 upgrade (Core41 only replaces Finance functions and re-pins readiness; it does not rewrite data), migrate only that restored copy with the candidate first. Require current readiness, preserved records/files and successful protected-record verification with the archived keys. The old binary cannot certify a Core40 database, and the new binary cannot certify an unupgraded Core37 snapshot.
+3. For the current Core37→42 upgrade (Core41 only replaces Finance functions and re-pins readiness; Core42 adds the backup settings and job tables, four nullable backup-run columns and re-pins the audit, Pantry and Fuel contracts; neither rewrites data), migrate only that restored copy with the candidate first. Require current readiness, preserved records/files and successful protected-record verification with the archived keys. The old binary cannot certify a Core42 database, and the new binary cannot certify an unupgraded snapshot. Snapshots taken before Core42 stay listed in the app but can only be restored with their own release. Core42 also changes `compose.yaml`: the `backup` service gets the writable uploads volume and its `backup-health` healthcheck; take the new file before `docker compose up -d`.
 4. Keep the live app stopped from the final snapshot through live migration. If it resumes or writes intervene, repeat the final backup/verification. Run `docker compose run --rm --no-deps app setup` with the reviewed candidate image; preserve PostgreSQL/uploads volumes and `.env`.
 5. Start the new app, confirm readiness and embedded assets, then test login, module state and representative records/files. Ensure the local image tag used by ordinary Compose commands resolves to the accepted candidate; retain the predecessor image under a separate rollback tag.
 6. Resume the scheduler only with the compatible image and secret configuration. Monitor errors/backup age and record actual backup, migration and acceptance results.

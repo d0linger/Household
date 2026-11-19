@@ -571,6 +571,14 @@ func (s *Server) notificationRecords(ctx context.Context, id auth.Identity, loca
 			notice.title = securityNoticeTitle(locale, notice.kind)
 			notice.target = "/settings/security"
 		}
+		if strings.HasPrefix(notice.kind, "backup_") {
+			// Operational notices belong to administrators only.
+			if id.Role != "admin" {
+				continue
+			}
+			notice.title = backupNoticeTitle(locale, notice.kind, notice.title)
+			notice.target = "/settings/backup"
+		}
 		if notice.kind == "shopping_list_changed_v1" {
 			projection, projectionErr := s.Store.ShoppingNotificationProjection(ctx, id, notice.id)
 			if errors.Is(projectionErr, store.ErrNotFound) || errors.Is(projectionErr, store.ErrForbidden) || errors.Is(projectionErr, store.ErrConflict) {

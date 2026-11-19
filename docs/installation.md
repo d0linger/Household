@@ -47,7 +47,7 @@ Der erste Start richtet die Datenbank ein und kann einige Minuten dauern. `docke
 | --- | --- |
 | `db` | PostgreSQL-Datenbank, nur im internen Netz erreichbar |
 | `app` | Household. Beim Start legt es die Datenbankrollen an, migriert und startet die Oberfläche auf `127.0.0.1:8100`. |
-| `backup` | Verschlüsseltes Backup von Datenbank und Dateien, täglich um 03:00 Uhr (Europe/Vienna). Über diesen Dienst laufen auch die Wartungsbefehle. |
+| `backup` | Sicherungsdienst: verschlüsselte Backups von Datenbank und Dateien nach dem Zeitplan aus **Einstellungen → Sicherung** (standardmäßig täglich um 03:00 Uhr), auf Wunsch zusätzlich extern, dazu Probewiederherstellungen und Wiederherstellungen aus der App. Über diesen Dienst laufen auch die Wartungsbefehle. |
 
 Alle Dienste laufen ohne Root-Rechte: die Datenbank als Benutzer `postgres` (70), Household als Benutzer 10001.
 
@@ -69,17 +69,44 @@ Migrationen laufen beim Start automatisch. Lies vorher die Versionshinweise. Beh
 
 ## Backups
 
-- **Speicherort:** Das Backup liegt im Volume `backups` auf demselben Rechner. Das schützt vor Bedienfehlern, aber nicht vor einem Plattenausfall. Kopiere das Volume regelmäßig auf ein anderes Gerät.
-- **Was du brauchst:** Zum Wiederherstellen brauchst du das Backup **und** die `.env`.
-- **Wiederherstellung üben:** Wie das geht, steht unter [Wiederherstellung prüfen](operations.md#restore-verification).
+Alles Wichtige steht in der App unter **Einstellungen → Sicherung** (nur für Administratoren):
 
-Backup prüfen: Der Befehl stellt das Backup in eine eigene vorübergehende Datenbank (`household_restore_auto_…`) auf demselben Datenbankserver wieder her, prüft alles und löscht sie danach wieder, auch nach einem Fehler.
+- **Zustand:** ob die letzte Sicherung geklappt hat, wann die nächste fällig ist und wann zuletzt eine Sicherung probeweise wiederhergestellt wurde.
+- **Jetzt sichern**, **Prüfen** und **Wiederherstellen** per Knopfdruck. Die App gibt den Auftrag nur weiter; ausgeführt wird er vom Dienst `backup`, der als einziger die Zugangsdaten kennt.
+- **Zeitplan und Aufbewahrung:** Uhrzeit, Häufigkeit und wie viele tägliche, wöchentliche und monatliche Sicherungen bleiben. Die Probewiederherstellung läuft standardmäßig wöchentlich.
+- **Warnungen:** Schlägt eine Sicherung fehl oder ist sie überfällig, erscheint eine Mitteilung für alle Administratoren.
+
+**Speicherort:** Das lokale Backup liegt im Volume `backups` auf demselben Rechner. Das schützt vor Bedienfehlern, aber nicht vor Plattenausfall, Diebstahl oder Brand. Richte deshalb ein **externes Ziel** ein.
+
+### Externes Backup (S3, Backblaze, NAS)
+
+Trage in Abschnitt 4 der `.env` das Ziel ein, entferne das `#` und führe `docker compose up -d` aus:
 
 ```bash
-docker compose run --rm --no-deps backup restore-check SNAPSHOT_ID
+HOUSEHOLD_BACKUP_OFFSITE_REPOSITORY=s3:https://s3.eu-central-1.amazonaws.com/mein-bucket/household
+HOUSEHOLD_BACKUP_OFFSITE_PASSWORD=ein-eigenes-langes-passwort
+HOUSEHOLD_BACKUP_S3_ACCESS_KEY_ID=…
+HOUSEHOLD_BACKUP_S3_SECRET_ACCESS_KEY=…
 ```
 
-Die Snapshot-ID steht im Log: `docker compose logs backup`.
+- **S3-kompatibel:** AWS, Backblaze B2, Wasabi, Hetzner Object Storage oder ein eigenes MinIO, jeweils mit `s3:https://adresse/bucket/ordner`.
+- **restic-REST-Server:** `rest:https://adresse/pfad`, Benutzer und Passwort über `HOUSEHOLD_BACKUP_REST_USERNAME` und `HOUSEHOLD_BACKUP_REST_PASSWORD`.
+- **NAS oder USB-Platte:** ein absoluter Pfad, den du beim Dienst `backup` unter `volumes` einbindest, zum Beispiel `- /mnt/nas/household:/offsite` und `HOUSEHOLD_BACKUP_OFFSITE_REPOSITORY=/offsite`.
+
+Danach erscheint in der App das externe Ziel. Teste die Verbindung mit **Externe Verbindung testen** und schalte **Automatisch extern kopieren** ein. Verwende für das externe Ziel ein **eigenes Passwort** und bewahre es zusammen mit der `.env` getrennt vom Server auf. Zugangsdaten gehören nie in die Adresse selbst; Household lehnt das ab.
+
+### Wiederherstellen
+
+- **Was du brauchst:** Zum Wiederherstellen brauchst du das Backup **und** die `.env`.
+- **In der App:** Bei jedem Wiederherstellungspunkt gibt es **Wiederherstellen**. Du bestätigst deine Anmeldung und tippst die angezeigte Bestätigung (zum Beispiel `WIEDERHERSTELLEN 0123ABCD`) ein. Household sichert zuerst den aktuellen Stand, prüft die Sicherung vollständig, pausiert kurz und schaltet dann um. Danach melden sich alle neu an. Der vorherige Stand bleibt aufbewahrt, bis du ihn verwirfst.
+- **Per Befehl:** `docker compose run --rm --no-deps backup restore SNAPSHOT_ID --confirm "WIEDERHERSTELLEN 0123ABCD"` (mit `--offsite` aus dem externen Ziel). Zurück zum vorherigen Stand: `docker compose stop app`, `docker compose run --rm --no-deps backup restore-rollback`, `docker compose up -d`.
+- **Neuer Rechner:** Wie du nach einem Totalausfall wiederherstellst, steht im [Betriebshandbuch](operations.md#disaster-recovery).
+
+Backup prüfen ohne etwas zu verändern: Der Befehl stellt das Backup in eine eigene vorübergehende Datenbank (`household_restore_auto_…`) auf demselben Datenbankserver wieder her, prüft alles und löscht sie danach wieder, auch nach einem Fehler. In der App heißt das **Prüfen**.
+
+```bash
+docker compose run --rm --no-deps backup restore-check latest
+```
 
 ## Wartung
 
@@ -87,7 +114,7 @@ Wartungsbefehle laufen über den Dienst `backup`, weil nur er die Rechte des Dat
 
 | Aufgabe | Befehl |
 | --- | --- |
-| Sofort ein Backup | `docker compose run --rm --no-deps backup backup` |
+| Sofort ein Backup | `docker compose run --rm --no-deps backup backup` (mit `--offsite` auch extern) |
 | Admin-Passwort vergessen | Neues Passwort bei `HOUSEHOLD_ADMIN_PASSWORD` in `.env` eintragen, dann `docker compose stop app`, `docker compose run --rm --no-deps backup recover admin` und `docker compose up -d` |
 | Datenbank nur einrichten/migrieren | `docker compose run --rm --no-deps app setup` |
 | Logs ansehen | `docker compose logs --tail=100 app` |

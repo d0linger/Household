@@ -24,6 +24,8 @@ jobs:
           # The published image includes OCR and backup tools (see Dockerfile).
           target: ocr
           platforms: linux/amd64
+          build-args: |
+            HOUSEHOLD_COMMIT=${{ github.sha }}
           labels: |
             org.opencontainers.image.source=https://github.com/d0linger/Household
             org.opencontainers.image.revision=${{ github.sha }}

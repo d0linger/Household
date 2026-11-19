@@ -1,0 +1,17 @@
+.backup-layout{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:24px;align-items:start}.backup-layout>.panel{margin:0;min-width:0}.backup-wide{grid-column:1/-1}
+.backup-target,.backup-schedule,.backup-schedule fieldset{min-width:0}.backup-target .break{overflow-wrap:anywhere}
+.backup-targets{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:20px}.backup-target h3{margin:0 0 8px}.backup-target p{margin:6px 0}
+.backup-actions{flex-wrap:wrap;border-top:1px solid var(--line);margin-top:20px;padding-top:20px}.backup-actions form{margin:0}
+.badge.backup-bad{background:var(--ground);border-color:var(--danger);color:var(--danger)}.badge.backup-warn{border-color:var(--warning);color:var(--ink)}.badge.backup-running{border-color:var(--accent);color:var(--accent)}
+.backup-schedule fieldset{border:0;border-top:1px solid var(--line);margin:0;padding:16px 0 4px}.backup-schedule legend{font-weight:650;padding:0 0 8px}
+.backup-snapshot,.backup-job,.system-check{display:flex;justify-content:space-between;align-items:center;gap:20px;border-bottom:1px solid var(--line);padding:16px 0}
+.backup-snapshot:last-child,.backup-job:last-child,.system-check:last-child{border-bottom:0}.backup-snapshot>div,.backup-job>div,.system-check>div{min-width:0}
+.backup-snapshot h3,.backup-job h3,.system-check h3{margin:0;font-size:16px}.backup-snapshot p,.backup-job p,.system-check p{margin:4px 0}
+.backup-snapshot-actions,.backup-job-state,.system-value{display:flex;flex-wrap:wrap;align-items:center;justify-content:flex-end;gap:10px;flex-shrink:0}.backup-snapshot-actions form,.backup-job-state form{margin:0}
+.backup-id{font-family:ui-monospace,"Cascadia Mono",Consolas,monospace;letter-spacing:.02em}
+.backup-env{overflow-x:auto;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:14px;font-size:13px;white-space:pre}
+.backup-progress p{margin:6px 0 0}
+.system-facts{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:8px 20px;margin:0}.system-facts dt{color:var(--muted)}.system-facts dd{margin:0}
+.maintenance-page{margin-top:12vh}
+#backup-restore ul{padding-left:20px}
+@media (max-width:860px){.backup-layout{grid-template-columns:1fr}.backup-targets{grid-template-columns:1fr}.backup-snapshot,.backup-job,.system-check{flex-direction:column;align-items:flex-start}.backup-snapshot-actions,.backup-job-state,.system-value{justify-content:flex-start}}

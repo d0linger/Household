@@ -124,6 +124,27 @@ var ErrRestoreSelfTarget = errors.New("restore maintenance must not connect to a
 // IsAutomaticRestoreDatabase reports whether name is an automatic check's database.
 func IsAutomaticRestoreDatabase(name string) bool { return automaticRestoreName.MatchString(name) }
 
+// Live restores stage a snapshot in household_restore_job_<12 hex> and keep
+// the replaced database as household_pre_restore_<unix seconds>_<8 hex> until
+// an administrator discards it. Neither is ever dropped by the automatic
+// check cleanup (its pattern does not match) or accepted as a backup source.
+var (
+	liveRestoreStageName    = regexp.MustCompile(`^household_restore_job_[0-9a-f]{12}$`)
+	liveRestorePreviousName = regexp.MustCompile(`^household_pre_restore_[0-9]{10}_[0-9a-f]{8}$`)
+)
+
+// IsLiveRestoreStage reports whether name is a live restore's staging database.
+func IsLiveRestoreStage(name string) bool { return liveRestoreStageName.MatchString(name) }
+
+// IsLiveRestorePrevious reports whether name is a database replaced by a live restore.
+func IsLiveRestorePrevious(name string) bool { return liveRestorePreviousName.MatchString(name) }
+
+// IsReservedRestoreDatabase reports whether name belongs to restore
+// maintenance and can therefore never be a live installation or backup source.
+func IsReservedRestoreDatabase(name string) bool {
+	return name == "household_restore" || IsAutomaticRestoreDatabase(name) || IsLiveRestoreStage(name) || IsLiveRestorePrevious(name)
+}
+
 // WithAutomaticRestoreDatabase creates a new, uniquely named restore database
 // on the server behind maintenanceURL (a superuser connection to a maintenance
 // database), runs use with its name and always drops it again. Before that, it

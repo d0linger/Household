@@ -162,6 +162,19 @@ func RestoreMaintenanceURL(source, superuser string) (string, error) {
 	return restoreServer(source, "postgres", superuser, "postgres")
 }
 
+// ServerMaintenanceURL addresses the server of source itself (never the
+// restore server override) as postgres in its maintenance database. A live
+// restore renames databases, which is only possible within that server.
+func ServerMaintenanceURL(source, superuser string) (string, error) {
+	u, err := url.Parse(source)
+	if err != nil || u.Scheme != "postgres" && u.Scheme != "postgresql" || u.Host == "" || u.User == nil {
+		return "", errors.New("a live restore needs a postgres:// database URL")
+	}
+	u.User = url.UserPassword("postgres", superuser)
+	u.Path, u.RawPath = "/postgres", ""
+	return u.String(), nil
+}
+
 // WithDatabase returns raw with its database replaced by name.
 func WithDatabase(raw, name string) (string, error) {
 	u, err := url.Parse(raw)

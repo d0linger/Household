@@ -50,6 +50,8 @@ The operator-only recovery rehearsal loads its additional synthetic financial me
 
 Workers claim one durable job at a time with `SKIP LOCKED`, a unique lease token, expiry and bounded attempts. Final writes verify the lease and module generation. Crashes release transactions; stale jobs are reclaimed. Failures use bounded exponential retry and eventually become failed jobs. Module pauses suspend work; OCR disabled at deployment pauses OCR jobs. Outbox delivery records are deduplicated.
 
+Backup work runs in the separate owner `backup` service (`internal/maintenance`): it claims requests from `core.backup_jobs` with `SKIP LOCKED`, re-validates them, performs scheduled backups, offsite copies and restore tests, and drives live restores through a stage database, an app pause confirmed by the web process (`internal/web/maintenance.go`), a database rename and a journal on the work volume. `internal/backupplan` holds the pure schedule and health rules both sides share; `internal/buildinfo` the compiled release identity.
+
 Reminder scheduling uses the household timezone. Recurring chores advance calendar days in their configured timezone, preserving local wall-clock intent across DST. Notification keys prevent duplicate delivery. Low-stock notifications are issued once per low-stock episode, with a new episode after stock recovers and falls again.
 
 ## Frontend and offline

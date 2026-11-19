@@ -16,3 +16,17 @@ func TestServeEnvironmentDropsSetupCredentials(t *testing.T) {
 		t.Fatalf("serve environment = %q", got)
 	}
 }
+
+func TestServeEnvironmentDropsBackupRepositoryCredentials(t *testing.T) {
+	got := serveEnvironment([]string{
+		"PATH=/usr/bin", "RESTIC_REPOSITORY=/data/backups", "RESTIC_PASSWORD=local", "RESTIC_PASSWORD_FILE=/run/secrets/restic",
+		"HOUSEHOLD_BACKUP_OFFSITE_REPOSITORY=s3:https://s3.example.test/bucket/house", "HOUSEHOLD_BACKUP_OFFSITE_PASSWORD=offsite",
+		"HOUSEHOLD_BACKUP_S3_ACCESS_KEY_ID=id", "HOUSEHOLD_BACKUP_S3_SECRET_ACCESS_KEY_FILE=/run/secrets/s3", "HOUSEHOLD_BACKUP_S3_REGION=eu-central-1",
+		"HOUSEHOLD_BACKUP_REST_USERNAME=u", "HOUSEHOLD_BACKUP_REST_PASSWORD=p", "AWS_ACCESS_KEY_ID=aws", "AWS_SECRET_ACCESS_KEY=aws",
+	}, "app")
+	// The nonsecret local repository path stays: it is the image default.
+	want := []string{"PATH=/usr/bin", "RESTIC_REPOSITORY=/data/backups", "HOUSEHOLD_DATABASE_USER=household_app", "HOUSEHOLD_DATABASE_PASSWORD=app"}
+	if !slices.Equal(got, want) {
+		t.Fatalf("serve environment = %q", got)
+	}
+}

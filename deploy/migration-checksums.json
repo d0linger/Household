@@ -47,6 +47,7 @@
   "core/000039_notification_financial_authority.up.sql": "0c509ec737b21f3545833a021acbde518f4c59f8754b66cedb045486362aef08",
   "core/000040_crypto_envelopes.up.sql": "ae970cd4874ded9a391cc59f7c996aa8a2a35da0d1c8fd11eb4b0e26696a78bd",
   "core/000041_security_hardening.up.sql": "2816b02f1c8d2ba57fbaf59aa591d8185da096244f9e88dca244205216a9d828",
+  "core/000042_backup_operations.up.sql": "a03d2d8f001aadc542e7b061de4aa93fe1f77b40005f2f9ddb4c0b66d4d86fc1",
   "documents/000001_init.up.sql": "6a33d06f5655f4c7968cb4cdd29a4ae7720a7e7e4b43ef7fdc944932e2cc9c3f",
   "documents/000002_document_workspace.up.sql": "625e64a359223df1c4374417fcdfe260036b0f8332058e0dfa634bb3b145f6da",
   "documents/000003_notification_sources.up.sql": "a31298d0301353ef27b71c91dacf810b0726fbbdac9e2270e3654be23079b999",

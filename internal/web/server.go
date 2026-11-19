@@ -26,6 +26,7 @@ import (
 
 	"household/internal/audit"
 	"household/internal/auth"
+	"household/internal/buildinfo"
 	"household/internal/config"
 	"household/internal/database"
 	"household/internal/foodfacts"
@@ -61,6 +62,7 @@ type Server struct {
 	templatesEN   *template.Template
 	assets        map[string]string
 	shutting      atomic.Bool
+	maintenance   maintenanceState
 	readiness     readinessCache
 	imageSlots    chan struct{}
 	recipeFetcher *recipeimport.Fetcher
@@ -167,7 +169,7 @@ func New(ctx context.Context, pool *pgxpool.Pool, cfg config.Config, mods []modu
 			return "/m/meters/workspace/overview"
 		}
 		return "/m/" + m.ID + "/" + m.Entities[0].ID
-	}, "dict": dict, "icon": func(asset map[string]string, name string) string { return asset["icons.svg"] + "#" + name }}).Funcs(localizedTemplateFuncs("de")).ParseFS(files, "templates/*.html")
+	}, "dict": dict, "list": func(values ...any) []any { return values }, "hasPrefix": strings.HasPrefix, "icon": func(asset map[string]string, name string) string { return asset["icons.svg"] + "#" + name }}).Funcs(localizedTemplateFuncs("de")).ParseFS(files, "templates/*.html")
 	if err != nil {
 		return nil, err
 	}
@@ -404,7 +406,9 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /attachments/{id}/preview", s.require(s.download))
 	mux.Handle("GET /capture/{id}", s.require(s.capturePage))
 	mux.Handle("POST /capture/{id}/confirm", s.require(s.confirmCapture))
-	return s.middleware(mux)
+	s.registerBackupRoutes(mux)
+	mux.HandleFunc("GET /maintenance/status", s.maintenanceStatus)
+	return s.middleware(s.maintenanceGate(mux))
 }
 
 func (s *Server) Stop() { s.shutting.Store(true) }
@@ -462,11 +466,12 @@ func (s *Server) databaseReady(ctx context.Context) bool {
 
 func (s *Server) ready(w http.ResponseWriter, r *http.Request) {
 	// Shutdown can begin while the database inspection runs: check it again.
-	if s.shutting.Load() || !s.databaseReady(r.Context()) || s.shutting.Load() {
+	if s.shutting.Load() || s.maintenance.active.Load() || !s.databaseReady(r.Context()) || s.shutting.Load() {
 		writeJSON(w, 503, map[string]string{"status": "unavailable"})
 		return
 	}
-	writeJSON(w, 200, map[string]string{"status": "ready", "version": "0.1.0"})
+	// The public probe names only the release, never the source revision.
+	writeJSON(w, 200, map[string]string{"status": "ready", "version": buildinfo.Release()})
 }
 func (s *Server) metrics(w http.ResponseWriter, r *http.Request) {
 	if s.Cfg.MetricsToken == "" || !hmac.Equal([]byte(s.Cfg.MetricsToken), []byte(r.Header.Get("X-Metrics-Token"))) {

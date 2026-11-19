@@ -27,7 +27,9 @@ type Worker struct {
 	Log  *slog.Logger
 	Cfg  config.Config
 	Push *webpush.Service
-	scan directoryScan
+	// Paused reports a live restore in progress; ticks are skipped meanwhile.
+	Paused func() bool
+	scan   directoryScan
 }
 
 func (w *Worker) Run(ctx context.Context) {
@@ -87,6 +89,9 @@ func (w *Worker) Close() error {
 }
 
 func (w *Worker) Tick(ctx context.Context) error {
+	if w.Paused != nil && w.Paused() {
+		return nil
+	}
 	ctx = audit.WithRequest(audit.WithSystem(ctx, "worker"), value.UUID())
 	// An unreachable database would fail every step; report it once instead.
 	if err := w.Pool.Ping(ctx); err != nil {
@@ -96,6 +101,7 @@ func (w *Worker) Tick(ctx context.Context) error {
 	return runSteps(ctx, []step{
 		{"housekeeping schedule", w.scheduleHousekeeping},
 		{"reminders", w.deliver},
+		{"backup notices", w.BackupNotices},
 		{"low stock", w.lowStock},
 		{"outbox", w.outbox},
 		{"shopping notifications", w.shoppingNotifications},

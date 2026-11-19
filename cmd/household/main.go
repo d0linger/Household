@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"household/internal/auth"
+	"household/internal/buildinfo"
 	"household/internal/config"
 	"household/internal/database"
 	"household/internal/maintenance"
@@ -53,7 +54,7 @@ func run(log *slog.Logger) error {
 		command = os.Args[1]
 	}
 	if command == "version" {
-		fmt.Println("Household 0.1.0")
+		fmt.Println("Household " + buildinfo.Label())
 		return nil
 	}
 	if command == "start" {
@@ -148,66 +149,27 @@ func run(log *slog.Logger) error {
 	case "backup":
 		backupCtx, cancel := context.WithTimeout(ctx, 30*time.Minute)
 		defer cancel()
-		snapshot, err := maintenance.Backup(backupCtx, pool, cfg)
+		result, err := maintenance.RunBackup(backupCtx, pool, cfg, maintenance.BackupOptions{Offsite: len(os.Args) == 3 && os.Args[2] == "--offsite"})
 		if err != nil {
 			return err
 		}
-		log.Info("encrypted backup completed", "snapshot", snapshot)
+		log.Info("encrypted backup completed", "snapshot", result.Snapshot, "offsite_snapshot", result.OffsiteSnapshot)
+		if result.OffsiteErr != nil {
+			return fmt.Errorf("offsite copy failed: %w", result.OffsiteErr)
+		}
 		return nil
 	case "restore-check":
-		if len(os.Args) != 3 {
-			return errors.New("usage: household restore-check SNAPSHOT")
-		}
-		// One read decides both the target and whether it is explicit.
-		target, explicit, err := config.RestoreTarget(cfg.DatabaseURL)
-		if err != nil {
-			return err
-		}
-		if err = maintenance.ValidateRestoreTarget(cfg.DatabaseURL, target); err != nil {
-			return err
-		}
-		verifyCtx, cancel := context.WithTimeout(ctx, 30*time.Minute)
-		defer cancel()
-		verify := func(target string) error { return maintenance.VerifyRestore(verifyCtx, pool, cfg, os.Args[2], target) }
-		superuser, err := config.Secret("POSTGRES_PASSWORD")
-		if err != nil {
-			return err
-		}
-		// An explicit target, or no superuser to create one, is used as it is.
-		// Otherwise each check gets its own database on the source's server.
-		if explicit || superuser == "" {
-			return verify(target)
-		}
-		return withRestoreTarget(verifyCtx, cfg.DatabaseURL, target, superuser, verify)
+		return runRestoreCheck(ctx, pool, cfg, os.Args[2:])
 	case "purge":
 		if len(os.Args) != 3 {
 			return errors.New("usage: household purge REQUEST_UUID")
 		}
 		return maintenance.Purge(ctx, pool, os.Args[2])
-	case "backup-loop":
-		for {
-			backupCtx, cancel := context.WithTimeout(ctx, 30*time.Minute)
-			snapshot, err := maintenance.Backup(backupCtx, pool, cfg)
-			cancel()
-			if err != nil {
-				log.Error("daily backup failed", "error", err)
-			} else {
-				log.Info("daily encrypted backup completed", "snapshot", snapshot)
-			}
-			zone, err := time.LoadLocation("Europe/Vienna")
-			if err != nil {
-				return err
-			}
-			now := time.Now().In(zone)
-			next := time.Date(now.Year(), now.Month(), now.Day()+1, 3, 0, 0, 0, zone)
-			timer := time.NewTimer(time.Until(next))
-			select {
-			case <-ctx.Done():
-				timer.Stop()
-				return nil
-			case <-timer.C:
-			}
-		}
+	case "backup-health":
+		return runBackupHealth(ctx, pool)
+	case "backup-loop", "restore", "restore-rollback":
+		pool.Close()
+		return runBackupService(ctx, log, cfg, command, os.Args[2:])
 	}
 	if command == "recover" {
 		if len(os.Args) != 3 && (len(os.Args) != 4 || os.Args[3] != "--reset-mfa") {
@@ -223,7 +185,7 @@ func run(log *slog.Logger) error {
 		return a.RecoverPassword(ctx, os.Args[2], cfg.AdminPassword, len(os.Args) == 4)
 	}
 	if command != "serve" {
-		return errors.New("unknown command; use init, setup, start, serve, migrate, healthcheck, recover, version, push-keygen, encryption-keygen, encryption-reencrypt or encryption-retirement-check")
+		return errors.New("unknown command; use init, setup, start, serve, migrate, healthcheck, recover, version, backup, backup-loop, backup-health, restore-check, restore, restore-rollback, purge, push-keygen, encryption-keygen, encryption-reencrypt or encryption-retirement-check")
 	}
 	if err = database.Ready(ctx, pool); err != nil {
 		return err
@@ -234,7 +196,8 @@ func run(log *slog.Logger) error {
 	}
 	defer app.Push.Close()
 	server := &http.Server{Addr: cfg.Listen, Handler: app.Handler(), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 30 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 90 * time.Second, MaxHeaderBytes: 16 << 10}
-	background := &worker.Worker{Pool: pool, Log: log, Cfg: cfg, Push: app.Push}
+	background := &worker.Worker{Pool: pool, Log: log, Cfg: cfg, Push: app.Push, Paused: app.Paused}
+	go app.WatchRestores(ctx)
 	workerDone := make(chan struct{})
 	go func() { defer close(workerDone); background.Run(ctx) }()
 	defer func() { stop(); <-workerDone }()

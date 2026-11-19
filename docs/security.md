@@ -18,7 +18,10 @@ Passkeys validate the configured origin and hostname; their private keys remain 
 | Write household records | No | Yes | Yes |
 | Own password/TOTP/sessions/preferences | Yes | Yes | Yes |
 | Toggle modules/manage users/request purge | No | No | Yes, with recent login for sensitive actions |
-| Execute purge/recovery/backup | No HTTP endpoint | No HTTP endpoint | Separate operator credentials and CLI |
+| Request backup, restore test or live restore; change the backup schedule | No | No | Yes; a live restore needs a recent login and the snapshot-bound confirmation |
+| Execute purge/recovery/backup/restore | No HTTP endpoint | No HTTP endpoint | Only the owner `backup` service or operator CLI |
+
+Backup work follows the purge pattern. The web role may insert an unclaimed request into `core.backup_jobs` (column grants plus the `backup_jobs_guard` trigger refuse claimed state, results or a missing requester) and cancel it while unclaimed; it may change only the schedule columns of `core.backup_settings`. The owner `backup` service claims each request and repeats every check with its own privileges: active administrator, unexpired request, full snapshot ID, and for a restore the typed confirmation bound to that snapshot plus a session re-authenticated within ten minutes. During a live restore the web role can only confirm its pause through the `SECURITY DEFINER` function `core.acknowledge_backup_drain`. Repository passwords and offsite credentials never reach the web process: `start` removes them from its environment, restic receives only the variables of the repository one command uses, the repository URL may not contain credentials and is stored only as that nonsecret label, and tool output is reduced to fixed reason codes. The backup service mounts the uploads volume writable only because a live restore must reconcile files; the replaced database and moved uploads are kept until an administrator discards them.
 
 ## Browser and request boundaries
 

@@ -2,6 +2,27 @@ package web
 
 import "household/internal/i18n"
 
+// backupNoticeTitle localizes operational backup notices for administrators.
+func backupNoticeTitle(locale, kind, stored string) string {
+	switch kind {
+	case "backup_failed":
+		return i18n.Text(locale, "Die letzte Sicherung ist fehlgeschlagen.")
+	case "backup_overdue":
+		return i18n.Text(locale, "Die Sicherung ist überfällig.")
+	case "backup_offsite_failed":
+		return i18n.Text(locale, "Die externe Sicherungskopie ist fehlgeschlagen.")
+	case "backup_service_missing":
+		return i18n.Text(locale, "Der Sicherungsdienst meldet sich nicht.")
+	case "backup_probe_stale":
+		return i18n.Text(locale, "Keine Sicherung wurde kürzlich durch eine Probewiederherstellung geprüft.")
+	case "backup_restore_complete":
+		return i18n.Text(locale, "Household wurde aus einer Sicherung wiederhergestellt.")
+	case "backup_restore_failed":
+		return i18n.Text(locale, "Eine Wiederherstellung ist fehlgeschlagen. Es wurde nichts verändert.")
+	}
+	return stored
+}
+
 func securityNoticeTitle(locale, kind string) string {
 	switch kind {
 	case "security_password_changed":
