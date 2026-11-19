@@ -90,6 +90,7 @@
   "meters/000001_init.up.sql": "65b60eb5ac1d873f5b2b38c99e76823d6dcb694dcac405814bec018699b89213",
   "meters/000002_energy_workspace.up.sql": "78aac616dd5eed669b5465b17300fc06b159f40010cb6dab445f9dbfae849191",
   "meters/000003_notification_sources.up.sql": "987374858242d23163bf5e0365a5c583a3315b52c0e8b0ecfa6a664777dbb16c",
+  "meters/000004_bounded_invalidation.up.sql": "db18b8dabe814c6144b5d9b932cd84823349f5c29661b1ee5cae23aa3998343f",
   "pantry/000001_init.up.sql": "1e3ff3206f8aa0d7e004a328754d9abcd3983c818fca4f7baedc83b42eaa79c5",
   "pantry/000002_stock_projection.up.sql": "466ac5e7803fc5d55ebb46426ed8bb3520344551ce8d566951e760c93d2fd66d",
   "pantry/000003_daily_workflows.up.sql": "2f8e53bb23ee9dc62ba941e94607c2d3cc6139d4e0504a63e5fe22ef5d29dbf4",

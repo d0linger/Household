@@ -98,11 +98,19 @@ func newRestoreBarcodeFixture(t *testing.T) restoreBarcodeFixture {
 		for _, schema := range database.Schemas {
 			names = append(names, pgx.Identifier{schema}.Sanitize())
 		}
-		_, err := owner.Exec(ctx, "DROP SCHEMA IF EXISTS "+strings.Join(names, ",")+" CASCADE")
-		return err
+		// Dropping every compiled schema resolves about a thousand relations and
+		// their dependencies; on slower hosts that exceeds the pool's 10-second
+		// statement_timeout, so only this transaction gets a longer limit.
+		return pgx.BeginFunc(ctx, owner, func(tx pgx.Tx) error {
+			if _, err := tx.Exec(ctx, "SET LOCAL statement_timeout='120s'"); err != nil {
+				return err
+			}
+			_, err := tx.Exec(ctx, "DROP SCHEMA IF EXISTS "+strings.Join(names, ",")+" CASCADE")
+			return err
+		})
 	}
 	t.Cleanup(func() {
-		cleanup, stop := context.WithTimeout(context.Background(), 20*time.Second)
+		cleanup, stop := context.WithTimeout(context.Background(), 2*time.Minute)
 		defer stop()
 		if err := reset(cleanup); err != nil {
 			t.Error("clean isolated compiled restore schemas")

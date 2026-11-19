@@ -34,11 +34,19 @@ func energyNativeWrite(t *testing.T, f *recipeExpansionFixture, action, id strin
 
 func newEnergyNative(t *testing.T, mode string) *energyNative {
 	t.Helper()
-	f := newRecipeExpansionFixture(t)
-	fixture := &energyNative{f: f, start: time.Now().UTC().Truncate(24*time.Hour).AddDate(0, 0, -2)}
+	start := time.Now().UTC().Truncate(24*time.Hour).AddDate(0, 0, -2)
 	if mode == "retention" {
-		fixture.start = fixture.start.AddDate(0, 0, -18)
+		start = start.AddDate(0, 0, -18)
 	}
+	return newEnergyNativeAt(t, mode, start)
+}
+
+// newEnergyNativeAt installs the fixture device at start, for tests that need
+// a controlled date such as one in summer time.
+func newEnergyNativeAt(t *testing.T, mode string, start time.Time) *energyNative {
+	t.Helper()
+	f := newRecipeExpansionFixture(t)
+	fixture := &energyNative{f: f, start: start}
 	meter := energyNativeWrite(t, f, "meter.save", "", 0, Record{"name": "Native electricity", "unit_code": "kWh"})
 	fixture.meter = String(meter["id"])
 	if err := f.owner.QueryRow(f.ctx, `SELECT id::text FROM meters.registers WHERE household_id=$1 AND meter_id=$2 AND is_default`, f.identity.HouseholdID, fixture.meter).Scan(&fixture.register); err != nil {

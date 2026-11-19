@@ -14,6 +14,15 @@ import (
 
 const EnergyWorkspaceJobKind = "energy_workspace"
 
+// A rebuild with more than energyAggregatePaceAfter of hour buckets left waits
+// energyAggregatePace between batches: corrections within the last year
+// rebuild at full speed, while a 30-year backlog takes hours of wall time
+// instead of monopolizing the shared worker and database.
+const (
+	energyAggregatePaceAfter = 366 * 24 * time.Hour
+	energyAggregatePace      = 2 * time.Second
+)
+
 func (s *Store) ScheduleEnergyWorkspace(ctx context.Context) error {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
@@ -92,11 +101,12 @@ func (s *Store) CompleteEnergyWorkspaceJob(ctx context.Context, job, lease strin
 	if err != nil {
 		return err
 	}
+	var remaining time.Duration
 	if len(dirty) != 0 {
 		if String(dirty[0]["phase"]) == "intervals" {
 			err = energyRebuildIntervals(ctx, tx, household, dirty[0])
 		} else {
-			err = energyRebuildAggregates(ctx, tx, household, dirty[0])
+			remaining, err = energyRebuildAggregates(ctx, tx, household, dirty[0])
 		}
 		if err != nil {
 			return err
@@ -133,9 +143,17 @@ func (s *Store) CompleteEnergyWorkspaceJob(ctx context.Context, job, lease strin
 	if more {
 		finished = "pending"
 	}
+	// A long historical rebuild continues at a bounded rate instead of taking
+	// the shared worker back at once; ordinary short rebuilds are not delayed.
+	// The job row is the durable state: the scheduler adds no second job for
+	// this household while it is pending.
+	delay := time.Duration(0)
+	if more && remaining > energyAggregatePaceAfter {
+		delay = energyAggregatePace
+	}
 	tag, err := tx.Exec(ctx, `UPDATE core.jobs SET state=$3,finished_at=CASE WHEN $3='done' THEN clock_timestamp() END,
- available_at=clock_timestamp(),lease_token=NULL,lease_until=NULL,attempts=0
- WHERE id=$1 AND lease_token=$2 AND state='running' AND lease_until>clock_timestamp()`, job, lease, finished)
+ available_at=clock_timestamp()+make_interval(secs=>$4),lease_token=NULL,lease_until=NULL,attempts=0
+ WHERE id=$1 AND lease_token=$2 AND state='running' AND lease_until>clock_timestamp()`, job, lease, finished, delay.Seconds())
 	if err != nil {
 		return err
 	}
