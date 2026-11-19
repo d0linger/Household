@@ -10,14 +10,19 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"image"
+	"image/png"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
 
 	"household/internal/pwned"
+	"household/internal/value"
 )
 
 func TestHouseholdExportRequiresRecentAdminAndCarriesManifest(t *testing.T) {
@@ -199,4 +204,71 @@ func TestBreachedPasswordsAreRefusedWhenCheckIsOn(t *testing.T) {
 func breachedSuffix(password string) string {
 	sum := sha1.Sum([]byte(password)) // #nosec G401 -- mirrors the HIBP range protocol
 	return strings.ToUpper(hex.EncodeToString(sum[:]))[5:]
+}
+
+// TestSharedFileSavesThroughTheShareScriptRequests replays exactly the
+// requests share.js sends when a member saves a shared photo as a document.
+func TestSharedFileSavesThroughTheShareScriptRequests(t *testing.T) {
+	f := newIntegrationFixture(t)
+	if state := f.app.Store.States()["documents"]; state.State != "enabled" {
+		if err := f.app.Store.SetModule(f.ctx, f.identity, "documents", true, state.Version, value.UUID()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	csrf := f.app.Auth.CSRF(f.token, "session")
+	response, body, err := f.request("GET", "/api/v1/core/bootstrap", f.token, "", "", nil, nil)
+	if err != nil || response.StatusCode != 200 {
+		t.Fatalf("bootstrap: %v %v", response, err)
+	}
+	var bootstrap struct {
+		States map[string]struct {
+			State      string `json:"state"`
+			Generation int64  `json:"generation"`
+		} `json:"states"`
+	}
+	if err = json.Unmarshal(body, &bootstrap); err != nil || bootstrap.States["documents"].State != "enabled" {
+		t.Fatalf("bootstrap states: %s %v", body, err)
+	}
+	generation := bootstrap.States["documents"].Generation
+	create, _ := json.Marshal(map[string]any{"data": map[string]any{"title": "Geteilter Beleg"}, "generation": generation})
+	response, body, err = f.request("POST", "/api/v1/m/documents/documents", f.token, csrf, "application/json", bytes.NewReader(create), map[string]string{"Idempotency-Key": value.UUID()})
+	if err != nil || response.StatusCode != 200 {
+		t.Fatalf("create document like share.js: %v %s %v", response, body, err)
+	}
+	var record struct {
+		ID      string `json:"id"`
+		Version int64  `json:"version"`
+	}
+	if err = json.Unmarshal(body, &record); err != nil || record.ID == "" || record.Version < 1 {
+		t.Fatalf("created record: %s %v", body, err)
+	}
+	var photo bytes.Buffer
+	if err = png.Encode(&photo, image.NewRGBA(image.Rect(0, 0, 9, 5))); err != nil {
+		t.Fatal(err)
+	}
+	var upload bytes.Buffer
+	form := multipart.NewWriter(&upload)
+	part, err := form.CreateFormFile("file", "beleg.png")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = part.Write(photo.Bytes())
+	_ = form.WriteField("generation", strconv.FormatInt(generation, 10))
+	_ = form.WriteField("document_version", strconv.FormatInt(record.Version, 10))
+	_ = form.WriteField("current", "true")
+	if err = form.Close(); err != nil {
+		t.Fatal(err)
+	}
+	response, body, err = f.request("POST", "/api/v1/documents/"+record.ID+"/original", f.token, csrf, form.FormDataContentType(), bytes.NewReader(upload.Bytes()), map[string]string{"Idempotency-Key": value.UUID()})
+	if err != nil || response.StatusCode >= 300 {
+		t.Fatalf("upload like share.js: %v %s %v", response, body, err)
+	}
+	response, _, err = f.request("GET", "/m/documents/workspace/review?id="+url.QueryEscape(record.ID), f.token, "", "", nil, map[string]string{"Accept": "text/html"})
+	if err != nil || response.StatusCode != 200 {
+		t.Fatalf("document link from share.js: %v %v", response, err)
+	}
+	var originals int
+	if err = f.owner.QueryRow(f.ctx, `SELECT count(*) FROM core.attachments WHERE resource_id::text=$1`, record.ID).Scan(&originals); err != nil || originals != 1 {
+		t.Fatalf("stored originals %d: %v", originals, err)
+	}
 }

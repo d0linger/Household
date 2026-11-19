@@ -2052,4 +2052,14 @@ Executed checks (task-owned database on 55444, review server on 127.0.0.1:8101):
 - Unit tests for the breach checker, the update checker and gzip asset serving.
 - `scripts/browser-backup-check.cjs`, extended with the help page, the share page (empty state and missed-share notice) and the export button: 35 checks and 8 axe scans without violations, DE/EN, desktop and mobile dark, no JavaScript errors or external requests. The first start of the review server timed out in the fixture while the unit/lint pipeline ran in parallel; the rerun alone passed.
 
-Not executed: a real share from an installed Android/iOS app, a real request to GitHub or Have I Been Pwned, the system page with an update available, a large-household export near the size budget, the complete integration suite and race tests. Nothing was pushed.
+- `TestSharedFileSavesThroughTheShareScriptRequests` replays the exact requests of `share.js` (bootstrap state, generic document create, multipart original upload with generation, document version and `current`, the review link) and passes.
+- Regression run after the stage 2 changes to session creation and `require()` and the stage 3 origin exemption: `TestRequestSecurityContract`, `TestForcedPasswordAndRevocationContract`, `TestLoginAccountLimitIsScopedToNetwork`, `TestNotificationSecurityActualAuthenticationHooksAndOwnInbox`, `TestNotificationSecurityDeviceHooksAndNoHistoricalReplay`, `TestSecurityAnonymousPasskeyGenerationInvalidation`, `TestSecurityFactorRecoveryAndSessionLifecycle`, `TestSecurityPasskeyChallengeInvalidation`, `TestSecurityPasskeyCryptographicLifecycle`, `TestSecurityRecentAuthenticationAndAdminCreation`, `TestSessionInvalidationContract`, `TestSessionRenewalContract`, `TestUserCorrectableAuthRefusals`, `TestPublicLanguageRequiresLoginCSRF`, `TestChoreHTTPStrictAuthorityCSRFAndWorkspaceAssets`, `TestDocumentsHTTPOriginalIdentityReplayArchiveAndPrivateHeaders` pass (`-p 1`).
+
+Deviations from the approved plan, still open:
+- The household export carries CSV tables only, is built in memory and is not written to the audit history (neither is the audit export). The plan named the documents ZIP, recipes and finance CSV, streaming and an audit entry. An audit entry needs a new Core migration with re-pins.
+- The breach check covers the two web paths that set passwords; the bootstrap password and `recover` are excluded on purpose.
+- The update check compares the `main` revision, because no GitHub releases are published.
+- Help is reachable from the settings navigation; per-page "?" links are not added.
+- The share target saves into Documents only, not into finance receipts.
+
+Not executed: a real share from an installed Android/iOS app, a real request to GitHub or Have I Been Pwned, the system page with an update available, a large-household export near the size budget, the complete integration suite (`verify.ps1 -Integration`), the restore lifecycle test (it refuses the task-owned port 55444) and race tests. Nothing was pushed.
