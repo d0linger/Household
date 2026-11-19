@@ -29,7 +29,7 @@ try {
     $taskNetwork=docker inspect $taskStackDatabase --format '{{range $name, $_ := .NetworkSettings.Networks}}{{$name}}{{println}}{{end}}' | Where-Object {$_} | Select-Object -First 1
     if($LASTEXITCODE -ne 0 -or !$taskNetwork){throw 'Could not resolve the local stack network'}
     $taskContainer=docker run -d --rm --name $taskDatabase --network $taskNetwork --user 70:70 --env-file $taskDatabaseEnv `
-      --tmpfs '/var/lib/postgresql:rw,size=512m,uid=70,gid=70' postgres:18-alpine@sha256:b6972e1115a4ff8eba5d7f7d19184926d1e16d7d1136ae1e1a7ebf286da0f015
+      --tmpfs '/var/lib/postgresql:rw,size=512m,uid=70,gid=70' postgres:18-alpine@sha256:ff64c9e3bdf8e2120107d3559de8db314e8305f7e38c5105903c6295876738ff
     if($LASTEXITCODE -ne 0 -or !$taskContainer){$taskContainer=$null;throw 'Recovery database container could not start'}
     $taskReady=$false
     for($taskAttempt=0;$taskAttempt -lt 60;$taskAttempt++){docker exec $taskContainer pg_isready -h 127.0.0.1 -U postgres -d household_restore | Out-Null;if($LASTEXITCODE -eq 0){$taskReady=$true;break};Start-Sleep -Seconds 1}

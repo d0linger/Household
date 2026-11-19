@@ -3,7 +3,7 @@
 const fs=require('node:fs'),path=require('node:path'),{spawnSync}=require('node:child_process');
 const {resolveBrowserPrivateRoot}=require('./browser-private-root.cjs');
 const SUITES=Object.freeze(['settings','fuel','finance','meters','documents','mealplan']);
-const PG_IMAGE='postgres:18-alpine@sha256:b6972e1115a4ff8eba5d7f7d19184926d1e16d7d1136ae1e1a7ebf286da0f015';
+const PG_IMAGE='postgres:18-alpine@sha256:ff64c9e3bdf8e2120107d3559de8db314e8305f7e38c5105903c6295876738ff';
 const origin='http://localhost:8101';
 function need(value,message){if(!value)throw Error(message);}
 function boundedJSON(file){const stat=fs.lstatSync(file);need(stat.isFile()&&!stat.isSymbolicLink()&&stat.size<=(1<<20),'Fixture JSON must be a bounded regular file');return JSON.parse(fs.readFileSync(file,'utf8'));}
