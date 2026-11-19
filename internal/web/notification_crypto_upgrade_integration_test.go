@@ -18,6 +18,8 @@ import (
 // fixture. A version2 record cannot safely be downgraded and is refused.
 func notificationCryptoRestore39(t *testing.T, f *integrationFixture) {
 	t.Helper()
+	// Meters4 runs after Core41, so the reverse path removes it first.
+	notificationMetersRestore3(t, f)
 	var valid bool
 	var version int
 	err := f.owner.QueryRow(f.ctx, `SELECT current_database()='household_test' AND current_user='household_owner',

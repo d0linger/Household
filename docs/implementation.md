@@ -1792,7 +1792,7 @@ No new automated test covers the device-date change (the floor moves with the cl
 
 ## Security scan findings (2026-11-18)
 
-Seven findings from a security scan were checked against the code. Five are fixed here; two need an energy-projection design change and are recorded below.
+Seven findings from a security scan were checked against the code. Five are fixed in PR 20; the two energy-projection findings need a migration and are fixed on their own branch, as recorded below.
 
 Fixed:
 - **Fuel CSV import (CWE-400, medium):** `fuelModuleImportParse` decodes `full_tank_values` and `missing_values` once, before any row is read, and refuses more than 32 entries per map. Previously every row lookup re-encoded and re-decoded the whole map. `TestFuelModuleImportFlagMapsAreDecodedOnceAndBounded`.
@@ -1804,9 +1804,21 @@ Fixed:
   - An open reader locks itself and releases its image URLs when the copy expires.
   - No automated test covers the reader timer; the existing Node harness has no reader DOM.
 
-Open, needs a design change (not fixed):
-- **Meters dirty-range merge (`meters.invalidate`, CWE-400, low):** a late sample merges into the accumulated range and restarts aggregate work for the whole range. A fix needs separate tracking of new ranges or an aggregate cursor, which means a new migration and worker changes.
-- **Hourly aggregate materialization (`energy_aggregates.go`, CWE-400, low):** the finding's 1900 example cannot occur, because `EnergyInstantAccepted` limits inputs to the last 30 years. A 30-year span is still about 263,000 hourly buckets per register, and continuations have no durable work budget. A bucket budget or sparse storage is a projection design change.
+Energy projection findings, fixed on the `energy-bounded-rebuild` branch:
+- **Meters dirty-range merge (`meters.invalidate`, CWE-400, low):**
+  - Migration `meters/000004_bounded_invalidation` replaces only the conflict update of `meters.invalidate`. Callers pass the point before a change as `p_from`, so intervals before it stay valid.
+  - In the intervals phase, a later range keeps the cursor. An earlier range resumes at its own start instead of at the merged range start.
+  - In the aggregates phase, intervals are complete and every hour before the aggregate cursor is final. A new range redoes only its own intervals and the hours from min(cursor, new start).
+  - The migration checks that no other Meters relation, column, constraint, index, trigger or function changed. It then re-pins `meters.expansion_ready()` to the new catalog, the same way Meters3 did. `Migrate` runs it after Core41.
+  - `TestEnergyNativeLateInvalidationKeepsCompletedWork` checks all four merge cases. It also checks that a partial restart produces exactly the aggregates of a full rebuild.
+- **Hourly aggregate materialization (`energy_aggregates.go`, CWE-400, low):**
+  - The finding's 1900 example cannot occur, because `EnergyInstantAccepted` limits inputs to the last 30 years.
+  - Each batch of 48 hour buckets now writes every touched day and month once, instead of once per hour. That removes about two of every three aggregate writes.
+  - While more than 366 days of hour buckets remain, the worker sets the job's `available_at` two seconds ahead. The job row is the durable state, and the scheduler adds no second job for the household while it is pending. A 30-year backlog (about 263,000 hours, roughly 5,500 batches per register) therefore takes about three hours of wall time instead of occupying the shared worker continuously. Corrections within the last year are not delayed.
+  - The first version paced from seven days on, at five seconds. CI's meters browser check showed that this is too strict: a device installed seven weeks ago did not finish its projection within 90 seconds, so an ordinary late reading would have left the history stale for minutes.
+  - `TestEnergyNativeLongAggregateRebuildIsPaced` covers a two-year backlog (paced), a three-month correction and a 60-hour backlog (both immediate).
+  - CodeRabbit review of PR 21: the suggestion to start the full-rebuild comparison at the device start was checked and not applied. With that change the test failed: the partial snapshot held one more row, the empty hour `[base-1h, base)`, because reading changes invalidate from the hour before the device start. CodeRabbit then pointed out that the replaced provisional device mapping starts at midnight in the household's zone, which in summer time is two hours before the device start. The full rebuild now starts at the partial snapshot's first hour bucket, so both cover the same bucket domain on any fixture date. `newEnergyNativeAt` now installs the fixture device at a chosen date, and `TestEnergyNativeLateInvalidationKeepsCompletedWorkInSummerTime` runs the same checks with a device installed on 15 July of the previous year. It passes; with the earlier fixed start one hour before the device start, it fails, which confirms the summer-time case. The pacing check now compares `available_at` with database times taken before and after the completion, so a slow assertion cannot change its result. `energyAssertRollups` checks day and month rows independently of the Go grouping: each starts on a local calendar boundary, spans one calendar day or month, and equals the sum of its hour rows; every hour lies in exactly one day and one month.
+- **Remaining risk:** hour rows stay materialized, because series read `bucket_kind='hour'` and one long interval covers every hour. Storage is bounded by 30 years × registers, and there is no per-household register limit. A household that creates many registers with old installation dates can still grow `meters.aggregates` substantially, though only at the paced rate.
 
 ## Second CodeRabbit review of PR 20 (2026-11-18)
 
@@ -1990,3 +2002,18 @@ The fifth review of `2f19230` reported 13 findings: 10 inline and 3 outside the 
 - **Upgrade guide:** if `owner_password` and `app_password` were identical, keep the newly generated app password; `start` sets it.
 - **CI after `2f19230`:** shard 13 failed because the shard runner treats a skipped test as a failure, and `TestAutomaticRestoreDatabasesAreIndependent` skipped without a superuser URL. The CI `Tests` job now provides `HOUSEHOLD_TEST_SUPERUSER_URL` for its disposable PostgreSQL service. The shard runner requires it and scrubs it for discovery. `scripts/test-integration.ps1` and `scripts/test-race.ps1` set it as well. The test now fails rather than skips when integration is required and the URL is missing, and it also accepts the race container's `db:5432`.
 - **Follow-up on `e5faf7e`:** on Windows, the watch inbox now uses the file ID (volume serial number and file index from `GetFileInformationByHandle`) as its identity, so a replacement restarts settling even with the same name, size, write time and creation time (`TestWatchRestartsSettlingForAReplacementOnWindows` sets matching timestamps). Other non-Unix platforms keep no identity; the watch inbox is not supported there.
+
+## PostgreSQL image refresh and maintenance test reset (2026-11-19)
+
+- **PostgreSQL pin:**
+  - `postgres:18-alpine` (also `postgres:latest`) currently resolves to `sha256:ff64c9e3bdf8e2120107d3559de8db314e8305f7e38c5105903c6295876738ff`.
+  - That image has the same PostgreSQL 18.7, Alpine 3.24.4, OpenSSL 3.5.9, musl and ICU as the previous pin `b6972e11…`; it is an upstream rebuild of 2026-11-18.
+  - Compose, the test Compose file, the three CI workflows and three scripts now use it. The pin stays a digest of the 18 line instead of the `latest` tag, because a later major version would pull in silently and cannot start on the existing data volume without `pg_upgrade` or a dump and restore.
+  - Local validation:
+    - `compose.yaml` config and the 25 quality-tool Node tests passed.
+    - The test database ran on the new image. The database integration package passed, and the maintenance package passed after the reset fix below.
+    - The local stack's `db` service was recreated with its named volume; `/health/ready` returned 200.
+- **Maintenance test reset:**
+  - `newRestoreBarcodeFixture` drops every compiled schema (about 930 relations) before and after each test. On this Windows Docker host that takes 15–16 seconds, with both the old and the new image (measured on the same schema dump), so it hit the pool's 10-second `statement_timeout`. Five maintenance tests failed locally; the faster CI runners stayed below the limit.
+  - The reset now runs in its own transaction with `SET LOCAL statement_timeout='120s'`, and the cleanup context is two minutes. Production code and assertions are unchanged.
+  - `go test -tags=integration,testtools ./internal/maintenance/` passed locally.
