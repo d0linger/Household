@@ -1990,3 +1990,18 @@ The fifth review of `2f19230` reported 13 findings: 10 inline and 3 outside the 
 - **Upgrade guide:** if `owner_password` and `app_password` were identical, keep the newly generated app password; `start` sets it.
 - **CI after `2f19230`:** shard 13 failed because the shard runner treats a skipped test as a failure, and `TestAutomaticRestoreDatabasesAreIndependent` skipped without a superuser URL. The CI `Tests` job now provides `HOUSEHOLD_TEST_SUPERUSER_URL` for its disposable PostgreSQL service. The shard runner requires it and scrubs it for discovery. `scripts/test-integration.ps1` and `scripts/test-race.ps1` set it as well. The test now fails rather than skips when integration is required and the URL is missing, and it also accepts the race container's `db:5432`.
 - **Follow-up on `e5faf7e`:** on Windows, the watch inbox now uses the file ID (volume serial number and file index from `GetFileInformationByHandle`) as its identity, so a replacement restarts settling even with the same name, size, write time and creation time (`TestWatchRestartsSettlingForAReplacementOnWindows` sets matching timestamps). Other non-Unix platforms keep no identity; the watch inbox is not supported there.
+
+## PostgreSQL image refresh and maintenance test reset (2026-11-19)
+
+- **PostgreSQL pin:**
+  - `postgres:18-alpine` (also `postgres:latest`) currently resolves to `sha256:ff64c9e3bdf8e2120107d3559de8db314e8305f7e38c5105903c6295876738ff`.
+  - That image has the same PostgreSQL 18.7, Alpine 3.24.4, OpenSSL 3.5.9, musl and ICU as the previous pin `b6972e11…`; it is an upstream rebuild of 2026-11-18.
+  - Compose, the test Compose file, the three CI workflows and three scripts now use it. The pin stays a digest of the 18 line instead of the `latest` tag, because a later major version would pull in silently and cannot start on the existing data volume without `pg_upgrade` or a dump and restore.
+  - Local validation:
+    - `compose.yaml` config and the 25 quality-tool Node tests passed.
+    - The test database ran on the new image. The database integration package passed, and the maintenance package passed after the reset fix below.
+    - The local stack's `db` service was recreated with its named volume; `/health/ready` returned 200.
+- **Maintenance test reset:**
+  - `newRestoreBarcodeFixture` drops every compiled schema (about 930 relations) before and after each test. On this Windows Docker host that takes 15–16 seconds, with both the old and the new image (measured on the same schema dump), so it hit the pool's 10-second `statement_timeout`. Five maintenance tests failed locally; the faster CI runners stayed below the limit.
+  - The reset now runs in its own transaction with `SET LOCAL statement_timeout='120s'`, and the cleanup context is two minutes. Production code and assertions are unchanged.
+  - `go test -tags=integration,testtools ./internal/maintenance/` passed locally.
