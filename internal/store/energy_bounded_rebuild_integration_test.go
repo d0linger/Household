@@ -48,7 +48,18 @@ func energyInvalidate(t *testing.T, f *energyNative, from, through time.Time) {
 // Regression: a late range no longer restarts completed projection work for the
 // whole accumulated range.
 func TestEnergyNativeLateInvalidationKeepsCompletedWork(t *testing.T) {
-	f := newEnergyNative(t, "manual")
+	energyLateInvalidationKeepsCompletedWork(t, newEnergyNative(t, "manual"))
+}
+
+// The household's zone is in summer time on 15 July: the provisional device
+// mapping then starts two hours before a device installed at midnight UTC.
+func TestEnergyNativeLateInvalidationKeepsCompletedWorkInSummerTime(t *testing.T) {
+	start := time.Date(time.Now().Year()-1, time.July, 15, 0, 0, 0, 0, time.UTC)
+	energyLateInvalidationKeepsCompletedWork(t, newEnergyNativeAt(t, "manual", start))
+}
+
+func energyLateInvalidationKeepsCompletedWork(t *testing.T, f *energyNative) {
+	t.Helper()
 	energyNativeProject(t, f.f)
 	base := f.start
 	at := func(hours int) time.Time { return base.Add(time.Duration(hours) * time.Hour) }
