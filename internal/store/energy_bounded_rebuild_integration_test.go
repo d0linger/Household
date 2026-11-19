@@ -100,13 +100,21 @@ func TestEnergyNativeLateInvalidationKeepsCompletedWork(t *testing.T) {
 		return out
 	}
 	partial := snapshot()
+	// The replaced provisional device mapping starts at midnight in the
+	// household's zone and leaves empty hours before base (one in winter, two
+	// in summer time), so the full rebuild starts at the partial snapshot's
+	// first bucket: both then cover the same bucket domain on any fixture date.
+	var first time.Time
+	if err := f.f.owner.QueryRow(f.f.ctx, `SELECT min(from_at) FROM meters.aggregates WHERE register_id=$1 AND bucket_kind='hour'`, f.register).Scan(&first); err != nil {
+		t.Fatal(err)
+	}
+	if first.After(base) || first.Before(base.Add(-24*time.Hour)) {
+		t.Fatalf("partial snapshot starts at %s, want within the day before %s", first, base)
+	}
 	if _, err := f.f.owner.Exec(f.f.ctx, `DELETE FROM meters.aggregates WHERE register_id=$1`, f.register); err != nil {
 		t.Fatal(err)
 	}
-	// Reading changes invalidate from the hour before the device start (callers
-	// pass the point before a change), so the partial snapshot holds an empty
-	// [base-1h, base) row; the full rebuild starts at the same hour.
-	energyInvalidate(t, f, base.Add(-time.Hour), at(31))
+	energyInvalidate(t, f, first, at(31))
 	energyNativeProject(t, f.f)
 	if full := snapshot(); partial == "" || partial != full {
 		t.Fatalf("partial restart differs from a full rebuild:\npartial %s\nfull    %s", partial, full)
@@ -159,16 +167,25 @@ func TestEnergyNativeLongAggregateRebuildIsPaced(t *testing.T) {
 			cursor := tc.from
 			energySetDirty(t, f, tc.from, now, &cursor, "", "aggregates")
 			job, lease := energyNativeLease(t, f.f)
+			// The delay is checked against database times taken around the
+			// completion, so a slow assertion afterwards cannot change the result.
+			var before, after, available time.Time
+			if err := f.f.owner.QueryRow(f.f.ctx, `SELECT clock_timestamp()`).Scan(&before); err != nil {
+				t.Fatal(err)
+			}
 			if err := f.f.store.CompleteEnergyWorkspaceJob(f.f.ctx, job, lease); err != nil {
 				t.Fatal(err)
 			}
 			var state string
-			var delayed bool
-			if err := f.f.owner.QueryRow(f.f.ctx, `SELECT state,available_at>clock_timestamp()+interval '1 second' FROM core.jobs WHERE id=$1`, job).Scan(&state, &delayed); err != nil {
+			if err := f.f.owner.QueryRow(f.f.ctx, `SELECT clock_timestamp(),state,available_at FROM core.jobs WHERE id=$1`, job).Scan(&after, &state, &available); err != nil {
 				t.Fatal(err)
 			}
-			if state != "pending" || delayed != tc.paced {
-				t.Fatalf("state %s delayed %v, want pending and delayed=%v", state, delayed, tc.paced)
+			delay := time.Duration(0)
+			if tc.paced {
+				delay = energyAggregatePace
+			}
+			if state != "pending" || available.Before(before.Add(delay)) || available.After(after.Add(delay)) {
+				t.Fatalf("state %s available %s, want pending and available within [%s, %s]", state, available, before.Add(delay), after.Add(delay))
 			}
 			if got := energyDirty(t, f); !got.cursor.Equal(tc.from.Add(energyAggregateBatchHours * time.Hour)) {
 				t.Fatalf("one batch must advance exactly %d hours: %+v", energyAggregateBatchHours, got)
