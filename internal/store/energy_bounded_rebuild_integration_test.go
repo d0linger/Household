@@ -103,15 +103,45 @@ func TestEnergyNativeLateInvalidationKeepsCompletedWork(t *testing.T) {
 	if _, err := f.f.owner.Exec(f.f.ctx, `DELETE FROM meters.aggregates WHERE register_id=$1`, f.register); err != nil {
 		t.Fatal(err)
 	}
+	// Reading changes invalidate from the hour before the device start (callers
+	// pass the point before a change), so the partial snapshot holds an empty
+	// [base-1h, base) row; the full rebuild starts at the same hour.
 	energyInvalidate(t, f, base.Add(-time.Hour), at(31))
 	energyNativeProject(t, f.f)
 	if full := snapshot(); partial == "" || partial != full {
 		t.Fatalf("partial restart differs from a full rebuild:\npartial %s\nfull    %s", partial, full)
 	}
+	energyAssertRollups(t, f)
+}
+
+// energyAssertRollups checks the day and month rows independently of the Go
+// bucket grouping: each starts at a local calendar boundary of the register's
+// time zone, spans exactly one calendar day or month there, and equals the sum
+// of the hour rows inside it; every hour row lies in exactly one day and one
+// month row.
+func energyAssertRollups(t *testing.T, f *energyNative) {
+	t.Helper()
+	var rollups, wrong, uncovered int
+	if err := f.f.owner.QueryRow(f.f.ctx, `WITH z AS(SELECT timezone tz FROM meters.registers WHERE id=$1),
+ a AS(SELECT * FROM meters.aggregates WHERE register_id=$1)
+SELECT (SELECT count(*) FROM a WHERE bucket_kind IN('day','month')),
+ (SELECT count(*) FROM a r,z WHERE r.bucket_kind IN('day','month') AND (
+   date_trunc(r.bucket_kind,r.from_at AT TIME ZONE z.tz)<>r.from_at AT TIME ZONE z.tz
+   OR r.through_at AT TIME ZONE z.tz<>r.from_at AT TIME ZONE z.tz+CASE r.bucket_kind WHEN 'day' THEN interval '1 day' ELSE interval '1 month' END
+   OR r.quantity IS DISTINCT FROM (SELECT sum(h.quantity) FROM a h WHERE h.bucket_kind='hour' AND h.from_at>=r.from_at AND h.through_at<=r.through_at)
+   OR r.covered_seconds<>(SELECT coalesce(sum(h.covered_seconds),0) FROM a h WHERE h.bucket_kind='hour' AND h.from_at>=r.from_at AND h.through_at<=r.through_at)
+   OR r.estimated_seconds<>(SELECT coalesce(sum(h.estimated_seconds),0) FROM a h WHERE h.bucket_kind='hour' AND h.from_at>=r.from_at AND h.through_at<=r.through_at))),
+ (SELECT count(*) FROM a h,unnest(ARRAY['day','month']) k WHERE h.bucket_kind='hour' AND
+   (SELECT count(*) FROM a r WHERE r.bucket_kind=k AND h.from_at>=r.from_at AND h.through_at<=r.through_at)<>1)`, f.register).Scan(&rollups, &wrong, &uncovered); err != nil {
+		t.Fatal("check rollups", err)
+	}
+	if rollups == 0 || wrong != 0 || uncovered != 0 {
+		t.Fatalf("day/month rollups: %d rows, %d not a local calendar sum of their hours, %d hour placements not in exactly one day and month", rollups, wrong, uncovered)
+	}
 }
 
 // Regression: a long historical aggregate rebuild continues at a paced rate;
-// a short one continues at once.
+// corrections within the last year continue at once.
 func TestEnergyNativeLongAggregateRebuildIsPaced(t *testing.T) {
 	f := newEnergyNative(t, "manual")
 	energyNativeProject(t, f.f)
@@ -121,7 +151,8 @@ func TestEnergyNativeLongAggregateRebuildIsPaced(t *testing.T) {
 		from  time.Time
 		paced bool
 	}{
-		{"long backlog", now.AddDate(0, 0, -30), true},
+		{"historical backlog", now.AddDate(-2, 0, 0), true},
+		{"recent correction", now.AddDate(0, -3, 0), false},
 		{"short backlog", now.Add(-60 * time.Hour), false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -133,7 +164,7 @@ func TestEnergyNativeLongAggregateRebuildIsPaced(t *testing.T) {
 			}
 			var state string
 			var delayed bool
-			if err := f.f.owner.QueryRow(f.f.ctx, `SELECT state,available_at>clock_timestamp()+interval '3 seconds' FROM core.jobs WHERE id=$1`, job).Scan(&state, &delayed); err != nil {
+			if err := f.f.owner.QueryRow(f.f.ctx, `SELECT state,available_at>clock_timestamp()+interval '1 second' FROM core.jobs WHERE id=$1`, job).Scan(&state, &delayed); err != nil {
 				t.Fatal(err)
 			}
 			if state != "pending" || delayed != tc.paced {

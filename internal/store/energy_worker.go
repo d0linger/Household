@@ -15,11 +15,12 @@ import (
 const EnergyWorkspaceJobKind = "energy_workspace"
 
 // A rebuild with more than energyAggregatePaceAfter of hour buckets left waits
-// energyAggregatePace between batches: a 30-year backlog then takes hours of
-// wall time instead of monopolizing the shared worker and database.
+// energyAggregatePace between batches: corrections within the last year
+// rebuild at full speed, while a 30-year backlog takes hours of wall time
+// instead of monopolizing the shared worker and database.
 const (
-	energyAggregatePaceAfter = 7 * 24 * time.Hour
-	energyAggregatePace      = 5 * time.Second
+	energyAggregatePaceAfter = 366 * 24 * time.Hour
+	energyAggregatePace      = 2 * time.Second
 )
 
 func (s *Store) ScheduleEnergyWorkspace(ctx context.Context) error {
