@@ -68,7 +68,7 @@ docker run --rm -v "$prefix-uploads:/data/uploads" -v "$prefix-backups:/data/bac
 
 docker run -d --name "$db" --network "$network" --user 70:70 -e POSTGRES_DB=household -e POSTGRES_PASSWORD="$postgres_password" \
   --tmpfs /var/lib/postgresql:rw,size=768m,uid=70,gid=70 \
-  postgres:18-alpine@sha256:b6972e1115a4ff8eba5d7f7d19184926d1e16d7d1136ae1e1a7ebf286da0f015 >/dev/null
+  postgres:18-alpine@sha256:ff64c9e3bdf8e2120107d3559de8db314e8305f7e38c5105903c6295876738ff >/dev/null
 for _ in $(seq 1 60); do docker exec "$db" pg_isready -U postgres -d household >/dev/null 2>&1 && break; sleep 1; done
 
 psql() { docker exec -i "$db" psql -U postgres -d household -v ON_ERROR_STOP=1 -Atqc "$1"; }
