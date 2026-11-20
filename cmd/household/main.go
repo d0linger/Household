@@ -112,6 +112,11 @@ func run(log *slog.Logger) error {
 		defer cancel()
 		return database.Migrate(migrationCtx, cfg.DatabaseURL)
 	}
+	if command == "backup-loop" || command == "restore" || command == "restore-rollback" {
+		// The backup service completes an interrupted live restore before it
+		// needs the live database, which such an interruption can leave absent.
+		return runBackupService(ctx, log, cfg, command, os.Args[2:])
+	}
 	pool, err := database.Open(ctx, cfg.DatabaseURL, cfg.MaxConnections)
 	if err != nil {
 		return err
@@ -147,9 +152,13 @@ func run(log *slog.Logger) error {
 		}
 		return nil
 	case "backup":
+		// Accept exactly no option or --offsite; anything else is a mistake, not a local-only backup.
+		if len(os.Args) > 3 || len(os.Args) == 3 && os.Args[2] != "--offsite" {
+			return errors.New("usage: household backup [--offsite]")
+		}
 		backupCtx, cancel := context.WithTimeout(ctx, 30*time.Minute)
 		defer cancel()
-		result, err := maintenance.RunBackup(backupCtx, pool, cfg, maintenance.BackupOptions{Offsite: len(os.Args) == 3 && os.Args[2] == "--offsite"})
+		result, err := maintenance.RunBackup(backupCtx, pool, cfg, maintenance.BackupOptions{Offsite: len(os.Args) == 3})
 		if err != nil {
 			return err
 		}
@@ -167,9 +176,6 @@ func run(log *slog.Logger) error {
 		return maintenance.Purge(ctx, pool, os.Args[2])
 	case "backup-health":
 		return runBackupHealth(ctx, pool)
-	case "backup-loop", "restore", "restore-rollback":
-		pool.Close()
-		return runBackupService(ctx, log, cfg, command, os.Args[2:])
 	}
 	if command == "recover" {
 		if len(os.Args) != 3 && (len(os.Args) != 4 || os.Args[3] != "--reset-mfa") {
@@ -196,8 +202,10 @@ func run(log *slog.Logger) error {
 	}
 	defer app.Push.Close()
 	server := &http.Server{Addr: cfg.Listen, Handler: app.Handler(), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 30 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 90 * time.Second, MaxHeaderBytes: 16 << 10}
-	background := &worker.Worker{Pool: pool, Log: log, Cfg: cfg, Push: app.Push, Paused: app.Paused}
+	background := &worker.Worker{Pool: pool, Log: log, Cfg: cfg, Push: app.Push, Admit: app.AdmitWork}
+	app.CheckRestoreOnce(ctx)
 	go app.WatchRestores(ctx)
+	go app.HoldPresence(ctx)
 	go app.WatchUpdates(ctx)
 	workerDone := make(chan struct{})
 	go func() { defer close(workerDone); background.Run(ctx) }()

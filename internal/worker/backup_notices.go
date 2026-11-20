@@ -37,39 +37,38 @@ func (w *Worker) BackupNotices(ctx context.Context) error {
 	settings.LocalTime = localTime.Format("15:04")
 	var notices []backupNotice
 	type latest struct {
-		id      string
-		state   string
-		success *time.Time
+		since, success, ended *time.Time
+		failed                bool
 	}
 	read := func(kind string) (latest, error) {
 		var item latest
-		err := w.Pool.QueryRow(ctx, `SELECT coalesce((SELECT id::text||'|'||state FROM core.backup_runs WHERE repository_kind=$1 AND state<>'running' ORDER BY started_at DESC LIMIT 1),''),
- (SELECT max(started_at) FROM core.backup_runs WHERE repository_kind=$1 AND state IN('complete','retention_pending'))`, kind).Scan(&item.id, &item.success)
-		if err != nil {
-			return item, err
+		err := w.Pool.QueryRow(ctx, backupplan.HealthQuery, kind).Scan(&item.since, &item.success, &item.failed, &item.ended)
+		return item, err
+	}
+	// unix keys one incident by a time; a missing time keys the never-ran case.
+	unix := func(at *time.Time) int64 {
+		if at == nil {
+			return 0
 		}
-		if n := len(item.id); n > 37 {
-			item.id, item.state = item.id[:36], item.id[37:]
-		}
-		return item, nil
+		return at.Unix()
 	}
 	local, err := read("local")
 	if err != nil {
 		return err
 	}
-	switch health := backupplan.Evaluate(now, location, settings.LocalTime, settings.LocalIntervalHours, true, local.success, local.state == "failed"); health.State {
+	switch health := backupplan.Evaluate(now, location, settings.LocalTime, settings.LocalIntervalHours, true, local.since, local.success, local.failed); health.State {
 	case backupplan.StateFailed:
-		notices = append(notices, backupNotice{"backup_failed", "Die letzte Sicherung ist fehlgeschlagen.", "backup/failed/" + local.id})
+		notices = append(notices, backupNotice{"backup_failed", "Die letzte Sicherung ist fehlgeschlagen.", fmt.Sprintf("backup/failed/%d", unix(local.ended))})
 	case backupplan.StateOverdue:
-		notices = append(notices, backupNotice{"backup_overdue", "Die Sicherung ist überfällig.", fmt.Sprintf("backup/overdue/%d", local.success.Unix())})
+		notices = append(notices, backupNotice{"backup_overdue", "Die Sicherung ist überfällig.", fmt.Sprintf("backup/overdue/%d", unix(local.success))})
 	}
 	if settings.OffsiteEnabled {
 		offsite, err := read("offsite")
 		if err != nil {
 			return err
 		}
-		if offsite.state == "failed" {
-			notices = append(notices, backupNotice{"backup_offsite_failed", "Die externe Sicherungskopie ist fehlgeschlagen.", "backup/offsite-failed/" + offsite.id})
+		if offsite.failed {
+			notices = append(notices, backupNotice{"backup_offsite_failed", "Die externe Sicherungskopie ist fehlgeschlagen.", fmt.Sprintf("backup/offsite-failed/%d", unix(offsite.ended))})
 		}
 	}
 	// A new installation gets a day before missing service or probe reports count.
@@ -82,7 +81,8 @@ func (w *Worker) BackupNotices(ctx context.Context) error {
 		notices = append(notices, backupNotice{"backup_service_missing", "Der Sicherungsdienst meldet sich nicht.", fmt.Sprintf("backup/service/%d", seen)})
 	}
 	var verified *time.Time
-	if err = w.Pool.QueryRow(ctx, "SELECT max(verified_at) FROM core.backup_runs").Scan(&verified); err != nil {
+	// Only a check of the configured probe target keeps the probe fresh.
+	if err = w.Pool.QueryRow(ctx, "SELECT max(verified_at) FROM core.backup_runs WHERE repository_kind=coalesce((SELECT probe_target FROM core.backup_settings LIMIT 1),'local')").Scan(&verified); err != nil {
 		return err
 	}
 	if settled && local.success != nil && backupplan.ProbeStale(now, settings.ProbeIntervalDays, verified) {
@@ -105,7 +105,7 @@ func (w *Worker) BackupNotices(ctx context.Context) error {
 		if state == "complete" {
 			notices = append(notices, backupNotice{"backup_restore_complete", "Household wurde aus einer Sicherung wiederhergestellt.", "backup/restore/" + id})
 		} else {
-			notices = append(notices, backupNotice{"backup_restore_failed", "Eine Wiederherstellung ist fehlgeschlagen. Es wurde nichts verändert.", "backup/restore/" + id})
+			notices = append(notices, backupNotice{"backup_restore_failed", "Eine Wiederherstellung ist fehlgeschlagen. Details stehen auf der Sicherungsseite.", "backup/restore/" + id})
 		}
 	}
 	rows.Close()

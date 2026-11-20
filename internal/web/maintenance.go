@@ -19,14 +19,32 @@ import (
 // serving, lets running requests finish, confirms the pause to the backup
 // service and resumes when the restore ended either way.
 type maintenanceState struct {
-	active   atomic.Bool
-	inflight atomic.Int64
+	active atomic.Bool
+	// admitted counts work that passed the gate and may still write: requests
+	// and worker ticks. Work increments it before checking active, so once a
+	// pause is visible, admitted reaching zero means nothing can still write.
+	admitted atomic.Int64
 	job      atomic.Value // string
 	since    atomic.Int64
 }
 
 // Paused reports whether a live restore holds the app.
 func (s *Server) Paused() bool { return s.maintenance.active.Load() }
+
+// admit registers one unit of writing work unless a live restore pauses the
+// app. The caller must call the returned release exactly once when admitted.
+func (s *Server) admit() (func(), bool) {
+	s.maintenance.admitted.Add(1)
+	if s.maintenance.active.Load() {
+		s.maintenance.admitted.Add(-1)
+		return nil, false
+	}
+	return func() { s.maintenance.admitted.Add(-1) }, true
+}
+
+// AdmitWork lets background work take part in the restore drain: a worker
+// tick runs only when admitted, and the pause is confirmed only after it ended.
+func (s *Server) AdmitWork() (func(), bool) { return s.admit() }
 
 // maintenanceExempt routes keep working while paused: liveness, static
 // assets and the status the maintenance page polls.
@@ -42,13 +60,13 @@ func (s *Server) maintenanceGate(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
-		s.maintenance.inflight.Add(1)
-		defer s.maintenance.inflight.Add(-1)
-		if s.maintenance.active.Load() {
+		release, ok := s.admit()
+		if !ok {
 			metrics.Default.Inc("household_maintenance_rejections_total")
 			s.maintenancePage(w, r)
 			return
 		}
+		defer release()
 		next.ServeHTTP(w, r)
 	})
 }
@@ -81,6 +99,11 @@ func (s *Server) maintenancePage(w http.ResponseWriter, r *http.Request) {
 func (s *Server) maintenanceStatus(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]bool{"maintenance": s.maintenance.active.Load()})
 }
+
+// CheckRestoreOnce runs one restore check before the listener starts, so a
+// web process that starts during a live restore never serves restored
+// metadata before the restore finished its uploads.
+func (s *Server) CheckRestoreOnce(ctx context.Context) { s.checkRestore(ctx) }
 
 // WatchRestores runs until ctx ends and drives the pause for live restores.
 func (s *Server) WatchRestores(ctx context.Context) {
@@ -126,27 +149,65 @@ func (s *Server) checkRestore(ctx context.Context) {
 		s.maintenance.active.Store(false)
 		s.Log.Warn("live restore: resuming the app", "job", id, "state", state)
 	case state == "awaiting_drain":
-		// A pause confirmed before a restart of this process is confirmed again.
-		s.acknowledgeDrain(ctx, id)
+		// Not confirmed yet, or confirmed before a restart of this process:
+		// confirm only while no admitted work is running.
+		if s.maintenance.admitted.Load() == 0 {
+			s.acknowledgeDrain(ctx, id)
+		}
 	}
 }
 
-// drainForRestore waits until running requests finished, then confirms the
-// pause. Without a confirmation the backup service gives up and the app resumes.
+// drainForRestore waits until admitted requests and worker ticks finished,
+// then confirms the pause. Work still running after a minute is not cut
+// short: the watcher confirms on a later check once it ended, and without a
+// confirmation the backup service gives up and the app resumes.
 func (s *Server) drainForRestore(ctx context.Context, id string) {
 	deadline := time.Now().Add(60 * time.Second)
-	for s.maintenance.inflight.Load() > 0 && time.Now().Before(deadline) {
+	for s.maintenance.admitted.Load() > 0 && time.Now().Before(deadline) {
 		select {
 		case <-ctx.Done():
 			return
 		case <-time.After(100 * time.Millisecond):
 		}
 	}
-	if s.maintenance.inflight.Load() > 0 {
-		s.Log.Warn("live restore: requests still running; not confirming the pause", "job", id)
+	if s.maintenance.admitted.Load() > 0 {
+		s.Log.Warn("live restore: work still running; not confirming the pause yet", "job", id)
 		return
 	}
 	s.acknowledgeDrain(ctx, id)
+}
+
+// HoldPresence keeps one database session open for as long as the web
+// process runs, outside the request pool. The backup service treats a live
+// database without any app session as a stopped web process; this session
+// makes that inference sound while the app runs but has no idle connections.
+func (s *Server) HoldPresence(ctx context.Context) {
+	for ctx.Err() == nil {
+		cfg := s.Pool.Config().ConnConfig.Copy()
+		cfg.RuntimeParams["application_name"] = "household-presence"
+		conn, err := pgx.ConnectConfig(ctx, cfg)
+		if err == nil {
+			for ctx.Err() == nil {
+				pingCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+				err = conn.Ping(pingCtx)
+				cancel()
+				if err != nil {
+					break
+				}
+				select {
+				case <-ctx.Done():
+				case <-time.After(2 * time.Second):
+				}
+			}
+			closeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), time.Second)
+			_ = conn.Close(closeCtx)
+			cancel()
+		}
+		select {
+		case <-ctx.Done():
+		case <-time.After(time.Second):
+		}
+	}
 }
 
 func (s *Server) acknowledgeDrain(ctx context.Context, id string) {

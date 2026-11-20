@@ -4,9 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"mime"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -37,8 +39,12 @@ func TestValidate(t *testing.T) {
 func TestSendDeliversFixedTextToHTTPChannels(t *testing.T) {
 	var ntfyBody, ntfyTitle, ntfyPriority, ntfyAuth string
 	var hook map[string]any
+	// The channels deliver concurrently; the captures are shared with the test.
+	var captured sync.Mutex
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
+		captured.Lock()
+		defer captured.Unlock()
 		if r.URL.Path == "/topic" {
 			ntfyBody, ntfyTitle, ntfyPriority, ntfyAuth = string(body), r.Header.Get("Title"), r.Header.Get("Priority"), r.Header.Get("Authorization")
 		} else {
@@ -51,6 +57,8 @@ func TestSendDeliversFixedTextToHTTPChannels(t *testing.T) {
 	if err := sender.Send(context.Background(), Message{Title: "Backup failed", Body: "Code: wrong_password", Critical: true}); err != nil {
 		t.Fatal(err)
 	}
+	captured.Lock()
+	defer captured.Unlock()
 	if ntfyBody != "Code: wrong_password" || ntfyTitle != "Zuhause: Backup failed" || ntfyPriority != "high" || ntfyAuth != "Bearer tk" {
 		t.Fatalf("ntfy = %q %q %q %q", ntfyBody, ntfyTitle, ntfyPriority, ntfyAuth)
 	}
@@ -73,7 +81,20 @@ func TestMimeHeader(t *testing.T) {
 	if got := mimeHeader("Backup ok"); got != "Backup ok" {
 		t.Fatal(got)
 	}
-	if got := mimeHeader("Sicherung überfällig\r\nBcc: x"); !strings.HasPrefix(got, "=?UTF-8?Q?") || strings.ContainsAny(got, "\r\n ") {
-		t.Fatalf("encoded = %q", got)
+	decoder := new(mime.WordDecoder)
+	for _, subject := range []string{"Sicherung überfällig\r\nBcc: x", "Haushalt " + strings.Repeat("ü", 40) + ": Sicherung überfällig"} {
+		got := mimeHeader(subject)
+		if !strings.HasPrefix(got, "=?UTF-8?q?") || strings.ContainsAny(got, "\r\n") {
+			t.Fatalf("encoded = %q", got)
+		}
+		for _, word := range strings.Fields(got) {
+			if len(word) > 75 {
+				t.Fatalf("encoded word longer than 75 characters: %q", word)
+			}
+		}
+		decoded, err := decoder.DecodeHeader(got)
+		if want := strings.NewReplacer("\r", " ", "\n", " ").Replace(subject); err != nil || decoded != want {
+			t.Fatalf("decoded = %q, %v; want %q", decoded, err, want)
+		}
 	}
 }

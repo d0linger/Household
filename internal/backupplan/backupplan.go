@@ -104,11 +104,12 @@ func LastSlot(now time.Time, zone *time.Location, localTime string, intervalHour
 	if anchor.After(local) {
 		anchor = anchor.AddDate(0, 0, -1)
 	}
-	// Walk forward in whole intervals from the day's anchor; wall-clock steps
-	// keep the slots stable across daylight-saving changes.
+	// Walk forward in whole intervals of wall-clock time from the day's
+	// anchor (time.Date normalizes the hour), so the slots stay on the
+	// configured clock times across daylight-saving changes.
 	slot := anchor
-	for {
-		next := slot.Add(time.Duration(intervalHours) * time.Hour)
+	for k := 1; ; k++ {
+		next := time.Date(anchor.Year(), anchor.Month(), anchor.Day(), hour+k*intervalHours, minute, 0, 0, zone)
 		if next.After(local) || !next.Before(anchor.AddDate(0, 0, 1)) {
 			return slot, nil
 		}
@@ -170,30 +171,59 @@ func grace(intervalHours int) time.Duration {
 
 // Evaluate derives the health of one target from its own schedule. lastFailed
 // reports whether the most recent attempt failed.
-func Evaluate(now time.Time, zone *time.Location, localTime string, intervalHours int, enabled bool, lastSuccess *time.Time, lastFailed bool) Health {
+// since is when the target became active (the household's creation, or the
+// offsite target's enabling); a target that never succeeded is StateNever
+// until the first slot after since plus grace passed, then StateOverdue.
+func Evaluate(now time.Time, zone *time.Location, localTime string, intervalHours int, enabled bool, since, lastSuccess *time.Time, lastFailed bool) Health {
 	if !enabled {
 		return Health{State: StateDisabled, LastSuccess: lastSuccess}
 	}
 	h := Health{LastSuccess: lastSuccess}
-	if lastSuccess != nil {
+	reference := lastSuccess
+	if reference == nil {
+		reference = since
+	} else {
 		age := int64(now.Sub(*lastSuccess) / time.Second)
 		h.AgeSeconds = &age
-		if next, err := NextSlot(*lastSuccess, zone, localTime, intervalHours); err == nil {
+	}
+	if reference != nil {
+		if next, err := NextSlot(*reference, zone, localTime, intervalHours); err == nil {
 			h.NextDue = &next
 		}
 	}
+	late := h.NextDue != nil && now.After(h.NextDue.Add(grace(intervalHours)))
 	switch {
 	case lastFailed:
 		h.State = StateFailed
-	case lastSuccess == nil:
+	case lastSuccess == nil && !late:
 		h.State = StateNever
-	case h.NextDue != nil && now.After(h.NextDue.Add(grace(intervalHours))):
+	case late:
 		h.State = StateOverdue
 	default:
 		h.State = StateOK
 	}
 	return h
 }
+
+// HealthQuery reads one target's health inputs. $1 is the repository kind
+// ('local' or 'offsite'). It returns the activation time, the newest
+// successful run, whether the newest finished attempt failed and when that
+// attempt ended (an incident key for notices). Attempts
+// are runs and backup jobs together, ordered by when they ended, so a job
+// that failed before it created a run, or after its run (retention), counts.
+// Offsite failures carry the offsite_ prefix and do not fail the local target.
+const HealthQuery = `SELECT CASE WHEN $1='local' THEN (SELECT created_at FROM core.households WHERE singleton=1)
+  ELSE (SELECT updated_at FROM core.backup_settings LIMIT 1) END,
+ (SELECT max(started_at) FROM core.backup_runs WHERE repository_kind=$1 AND state IN('complete','retention_pending')),
+ coalesce(latest.failed,false),latest.ended
+FROM (SELECT 1) one LEFT JOIN LATERAL (SELECT ended,failed FROM (
+   SELECT coalesce(finished_at,started_at) AS ended,state='failed' AS failed FROM core.backup_runs
+    WHERE repository_kind=$1 AND state IN('complete','retention_pending','failed','expired')
+   UNION ALL
+   SELECT finished_at,state='failed' FROM core.backup_jobs
+    WHERE kind='backup' AND state IN('complete','failed') AND finished_at IS NOT NULL
+     AND CASE WHEN $1='local' THEN coalesce(result_code,'') NOT LIKE 'offsite\_%' ELSE target='both' END
+  ) attempts ORDER BY ended DESC LIMIT 1) latest ON true`
 
 // ProbeStale reports whether the restore probe is older than its interval
 // plus one day. A disabled probe still counts as stale after 30 days: module

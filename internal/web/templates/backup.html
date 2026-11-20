@@ -2,7 +2,7 @@
 
 {{define "backup-kind"}}{{if eq .Kind "backup"}}{{if eq .Target "both"}}{{t "Sicherung lokal und extern"}}{{else}}{{t "Lokale Sicherung"}}{{end}}{{else if eq .Kind "verify"}}{{if eq .Target "offsite"}}{{t "Probewiederherstellung extern"}}{{else}}{{t "Probewiederherstellung lokal"}}{{end}}{{else if eq .Kind "restore"}}{{if eq .Target "offsite"}}{{t "Wiederherstellung aus externer Sicherung"}}{{else}}{{t "Wiederherstellung aus lokaler Sicherung"}}{{end}}{{else if eq .Kind "offsite_test"}}{{t "Verbindungstest extern"}}{{else}}{{t "Früheren Stand verwerfen"}}{{end}}{{end}}
 
-{{define "backup-job-state"}}{{if eq .State "complete"}}<span class="badge active">{{t "Erledigt"}}</span>{{else if eq .State "failed"}}<span class="badge backup-bad">{{t "Fehlgeschlagen"}}</span>{{else if eq .State "cancelled"}}<span class="badge">{{t "Abgebrochen"}}</span>{{else if eq .State "requested"}}<span class="badge">{{t "Wartet"}}</span>{{else}}<span class="badge backup-running">{{t "Läuft"}}</span>{{end}}{{end}}
+{{define "backup-job-state"}}{{if eq .State "complete"}}<span class="badge active">{{t "Erledigt"}}</span>{{else if eq .State "failed"}}<span class="badge backup-bad">{{t "Fehlgeschlagen"}}</span>{{else if eq .State "cancelled"}}<span class="badge">{{t "Abgebrochen"}}</span>{{else if eq .State "requested"}}<span class="badge backup-waiting">{{t "Wartet"}}</span>{{else}}<span class="badge backup-running">{{t "Läuft"}}</span>{{end}}{{end}}
 
 {{define "backup-phase"}}{{if eq . "safety_backup"}}{{t "Aktueller Stand wird gesichert"}}{{else if eq . "restoring"}}{{t "Sicherung wird in eine Prüfdatenbank geladen"}}{{else if eq . "checking"}}{{t "Wiederhergestellte Daten werden geprüft"}}{{else if eq . "pausing_app"}}{{t "Household pausiert"}}{{else if eq . "switching"}}{{t "Daten werden umgeschaltet"}}{{else if eq . "scheduled"}}{{t "Geplanter Lauf"}}{{else if .}}{{t "Läuft"}}{{end}}{{end}}
 
@@ -57,7 +57,7 @@
 </div></fieldset>
 <fieldset><legend>{{t "Externe Kopie"}}</legend>{{if not $o.OffsiteConfigured}}<p class="fine">{{t "Richte zuerst ein externes Ziel in der .env ein (siehe unten)."}}</p>{{end}}<div class="form-grid">
 <label class="check-label"><input type="checkbox" name="offsite_enabled" {{if $o.Settings.OffsiteEnabled}}checked{{end}}>{{t "Automatisch extern kopieren"}}</label>
-<label>{{t "Wiederholen"}}<select name="offsite_interval_hours">{{range $h := (list 24 12 6 48 168)}}<option value="{{$h}}" {{if eq $h $o.Settings.OffsiteIntervalHours}}selected{{end}}>{{if eq $h 24}}{{t "Täglich"}}{{else if eq $h 48}}{{t "Alle zwei Tage"}}{{else if eq $h 168}}{{t "Wöchentlich"}}{{else}}{{t "Alle %d Stunden" $h}}{{end}}</option>{{end}}</select></label>
+<label>{{t "Wiederholen"}}<select name="offsite_interval_hours">{{range $h := (list 24 12 8 6 4 3 2 1 48 168)}}<option value="{{$h}}" {{if eq $h $o.Settings.OffsiteIntervalHours}}selected{{end}}>{{if eq $h 24}}{{t "Täglich"}}{{else if eq $h 48}}{{t "Alle zwei Tage"}}{{else if eq $h 168}}{{t "Wöchentlich"}}{{else if eq $h 1}}{{t "Stündlich"}}{{else}}{{t "Alle %d Stunden" $h}}{{end}}</option>{{end}}</select></label>
 <label>{{t "Tägliche behalten"}}<input type="number" name="offsite_keep_daily" min="1" max="90" value="{{$o.Settings.OffsiteKeepDaily}}" required></label>
 <label>{{t "Wöchentliche behalten"}}<input type="number" name="offsite_keep_weekly" min="0" max="104" value="{{$o.Settings.OffsiteKeepWeekly}}" required></label>
 <label>{{t "Monatliche behalten"}}<input type="number" name="offsite_keep_monthly" min="0" max="120" value="{{$o.Settings.OffsiteKeepMonthly}}" required></label>
@@ -76,9 +76,10 @@
 {{if $o.OffsiteConfigured}}<section class="panel backup-wide" aria-labelledby="backup-offsite-heading"><h2 id="backup-offsite-heading">{{t "Externe Wiederherstellungspunkte"}}</h2>
 {{template "backup-snapshots" (list $page $o.OffsiteSnapshots "offsite")}}</section>{{end}}
 
-{{if $o.Previous}}<section class="panel backup-wide" aria-labelledby="backup-previous-heading"><h2 id="backup-previous-heading">{{t "Früherer Stand"}}</h2>
-<p>{{t "Die letzte Wiederherstellung hat den vorherigen Stand aufbewahrt. Prüfe die wiederhergestellten Daten und verwirf ihn danach, um Speicher freizugeben."}}</p>
+{{if $o.Retained}}<section class="panel backup-wide" aria-labelledby="backup-previous-heading"><h2 id="backup-previous-heading">{{t "Früherer Stand"}}</h2>
+{{if $o.Previous}}<p>{{t "Die letzte Wiederherstellung hat den vorherigen Stand aufbewahrt. Prüfe die wiederhergestellten Daten und verwirf ihn danach, um Speicher freizugeben."}}</p>
 <p class="fine">{{t "Zurück zum früheren Stand: App stoppen und den Wartungsbefehl restore-rollback ausführen (siehe Betriebsanleitung)."}}</p>
+{{else}}<p>{{t "Eine zurückgenommene Wiederherstellung ist noch aufbewahrt. Verwirf sie, um Speicher freizugeben."}}</p>{{end}}
 <form method="post" action="/settings/backup/jobs" data-security-form>{{template "csrf" .}}<input type="hidden" name="kind" value="discard_previous"><input type="hidden" name="target" value="local"><label class="check-label"><input type="checkbox" name="confirm" required>{{t "Früheren Stand endgültig löschen"}}</label><button class="danger">{{t "Verwerfen"}}</button></form></section>{{end}}
 
 <section class="panel backup-wide" aria-labelledby="backup-export-heading"><h2 id="backup-export-heading">{{t "Datenexport"}}</h2>

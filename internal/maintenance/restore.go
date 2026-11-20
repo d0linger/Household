@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -52,6 +53,10 @@ type restoreJournal struct {
 	Started   time.Time `json:"started"`
 }
 
+// drainIdlePolls is how many one-second polls without any app session prove
+// a stopped web process; it exceeds the presence session's reconnect time.
+const drainIdlePolls = 15
+
 func journalPath() string { return filepath.Join(workDirectory(), "restore-journal.json") }
 
 func writeJournal(j restoreJournal) error {
@@ -85,9 +90,13 @@ func syncDirectory(path string) error {
 		return err
 	}
 	defer func() { _ = dir.Close() }()
-	if err = dir.Sync(); err != nil && !errors.Is(err, os.ErrInvalid) {
-		// Windows cannot sync directories; the container (Linux) can.
-		return nil
+	if err = dir.Sync(); err != nil {
+		// Windows cannot sync directories (developer tests only); the Linux
+		// container can, so any failure there is real.
+		if runtime.GOOS == "windows" {
+			return nil
+		}
+		return err
 	}
 	return nil
 }
@@ -194,15 +203,20 @@ func dropDatabase(ctx context.Context, conn *pgx.Conn, name string) error {
 // restore performs a requested live restore. Preparation never touches the
 // live database; only after the stage passed every check does the web process
 // pause and the databases swap. The replaced database stays available.
-func (s *Service) restore(ctx context.Context, job Job) (err error) {
-	if s.Superuser == "" {
-		return errSuperuserMissing
-	}
+func (s *Service) restore(ctx context.Context, job Job) error {
 	unlock, err := acquireRestoreLock()
 	if err != nil {
 		return err
 	}
 	defer unlock()
+	return s.restoreLocked(ctx, job)
+}
+
+// restoreLocked performs a live restore while the caller holds the restore lock.
+func (s *Service) restoreLocked(ctx context.Context, job Job) (err error) {
+	if s.Superuser == "" {
+		return errSuperuserMissing
+	}
 	ctx = audit.WithRequest(audit.WithSystem(ctx, "operator"), job.ID)
 	stop := s.keepAlive(ctx, job.ID)
 	defer stop()
@@ -259,6 +273,11 @@ func (s *Service) restore(ctx context.Context, job Job) (err error) {
 	if err = s.drain(ctx, job.ID, liveName); err != nil {
 		return s.abortBeforeSwap(ctx, conn, journal, restored, err)
 	}
+	// Writers have stopped: copy the operational state again, so a backup job
+	// cancelled or a feed revoked during preparation stays that way.
+	if err = s.refreshOperationalState(ctx, journal.Stage, job.ID); err != nil {
+		return s.abortBeforeSwap(ctx, conn, journal, restored, err)
+	}
 	if err = s.swap(ctx, conn, &journal); err != nil {
 		return err // swap undid itself or left the journal for recovery
 	}
@@ -293,7 +312,7 @@ func (s *Service) prepareStage(ctx context.Context, conn *pgx.Conn, serverURL st
 	if err != nil {
 		return nil, err
 	}
-	if _, _, err = backupLocked(ctx, pool, s.Config, local, settings, job.ID); err != nil {
+	if _, _, err = backupLocked(ctx, pool, s.Config, local, settings, job.ID, false); err != nil {
 		return nil, err
 	}
 	if err = s.setPhase(ctx, job.ID, "", "restoring"); err != nil {
@@ -351,6 +370,31 @@ func (s *Service) prepareStage(ctx context.Context, conn *pgx.Conn, serverURL st
 		return restored, err
 	}
 	return restored, nil
+}
+
+// refreshOperationalState repeats carryOperationalState after the drain and
+// before the first rename; a failure aborts the restore before the swap. The
+// stage then shows its own restore as switching, so a web process that
+// connects to it after the rename stays paused until the uploads match and
+// completeSwap records the outcome.
+func (s *Service) refreshOperationalState(ctx context.Context, stageName, job string) error {
+	stageURL, err := config.WithDatabase(s.Config.DatabaseURL, stageName)
+	if err != nil {
+		return err
+	}
+	stage, err := database.Open(ctx, stageURL, 2)
+	if err != nil {
+		return err
+	}
+	defer stage.Close()
+	if err = carryOperationalState(ctx, s.Pool(), stage); err != nil {
+		return err
+	}
+	tag, err := stage.Exec(ctx, "UPDATE core.backup_jobs SET state='swapping',phase='switching',heartbeat_at=now() WHERE id=$1 AND kind='restore'", job)
+	if err == nil && tag.RowsAffected() != 1 {
+		err = errors.New("the restore job is missing from the restored database")
+	}
+	return err
 }
 
 // sameDatabaseSettings requires identical database-level settings, owner and
@@ -450,7 +494,10 @@ func carryOperationalState(ctx context.Context, live, stage *pgxpool.Pool) error
 }
 
 // drain asks the web process to pause and waits for its confirmation. A
-// stopped web process has no sessions on the live database and counts as paused.
+// running web process always holds a presence session on the live database
+// (Server.HoldPresence, reconnecting within seconds), so only a database
+// without any app session for drainIdlePolls consecutive seconds counts as a
+// stopped web process that needs no confirmation.
 func (s *Service) drain(ctx context.Context, id, live string) error {
 	if err := s.setPhase(ctx, id, "awaiting_drain", "pausing_app"); err != nil {
 		return err
@@ -474,7 +521,7 @@ func (s *Service) drain(ctx context.Context, id, live string) error {
 		} else {
 			idle = 0
 		}
-		if acknowledged || idle >= 5 {
+		if acknowledged || idle >= drainIdlePolls {
 			return nil
 		}
 		select {
@@ -591,6 +638,12 @@ func (s *Service) completeSwap(ctx context.Context, conn *pgx.Conn, j restoreJou
 		return err
 	}
 	if err = tx.Commit(auditCtx); err != nil {
+		return err
+	}
+	// Record the commit before removing the material recovery would need
+	// otherwise: a restart after this point only cleans up.
+	j.Phase = "committed"
+	if err = writeJournal(j); err != nil {
 		return err
 	}
 	(&restoredSnapshot{Directory: j.Directory}).Remove()
@@ -731,6 +784,11 @@ func (s *Service) RecoverRestore(ctx context.Context) error {
 		return err
 	}
 	defer unlock()
+	return s.recoverRestoreLocked(ctx)
+}
+
+// recoverRestoreLocked is RecoverRestore for a caller holding the restore lock.
+func (s *Service) recoverRestoreLocked(ctx context.Context) error {
 	j, err := readJournal()
 	if err != nil {
 		return err
@@ -741,6 +799,14 @@ func (s *Service) RecoverRestore(ctx context.Context) error {
  WHERE kind='restore' AND state IN('running','preparing','awaiting_drain','swapping')`)
 		}
 		return err
+	}
+	if j.Phase == "committed" {
+		// The restored database already records the outcome; only cleanup is left.
+		if j.Directory != "" {
+			(&restoredSnapshot{Directory: j.Directory}).Remove()
+		}
+		removeJournal()
+		return nil
 	}
 	if s.Superuser == "" {
 		return errSuperuserMissing
@@ -754,6 +820,10 @@ func (s *Service) RecoverRestore(ctx context.Context) error {
 		return err
 	}
 	defer func() { _ = conn.Close(context.Background()) }()
+	if j.Phase == "rollback" {
+		s.Log.Warn("completing interrupted rollback", "job", j.Job)
+		return s.finishRollback(ctx, conn, *j)
+	}
 	liveExists, err := exists(ctx, conn, j.Live)
 	if err != nil {
 		return err
@@ -781,12 +851,16 @@ func (s *Service) RecoverRestore(ctx context.Context) error {
 		return s.completeSwap(ctx, conn, *j, manifest)
 	case !liveExists && previousExists:
 		s.Log.Warn("undoing interrupted live restore", "job", j.Job)
-		return s.undoSwap(ctx, conn, *j, interrupted)
 	default:
 		// The live database was never renamed.
 		s.Log.Warn("abandoning interrupted live restore before the switch", "job", j.Job)
-		return s.undoSwap(ctx, conn, *j, interrupted)
 	}
+	// undoSwap reports the restore's own cause once the undo succeeded (and
+	// records it on the job); recovery itself succeeded then.
+	if err = s.undoSwap(ctx, conn, *j, interrupted); err != interrupted { //nolint:errorlint // identity marks a completed undo
+		return err
+	}
+	return nil
 }
 
 // restoredManifest rereads the manifest of a restored snapshot directory.
@@ -821,17 +895,13 @@ func restoredManifest(directory string) (Manifest, error) {
 	return manifest, json.Unmarshal(raw, &manifest)
 }
 
-// discardPrevious drops every database and upload folder kept by earlier
+// discardPreviousLocked drops every database and upload folder kept by earlier
 // live restores, after an administrator accepted the restored state.
-func (s *Service) discardPrevious(ctx context.Context) error {
+// The caller (Tick) holds the restore lock.
+func (s *Service) discardPreviousLocked(ctx context.Context) error {
 	if s.Superuser == "" {
 		return errSuperuserMissing
 	}
-	unlock, err := acquireRestoreLock()
-	if err != nil {
-		return err
-	}
-	defer unlock()
 	serverURL, err := config.ServerMaintenanceURL(s.Config.DatabaseURL, s.Superuser)
 	if err != nil {
 		return err
@@ -843,31 +913,50 @@ func (s *Service) discardPrevious(ctx context.Context) error {
 	defer func() { _ = conn.Close(context.Background()) }()
 	// Stage databases are kept only by a rollback; no restore runs while
 	// this holds the restore lock, so every remaining stage is discardable.
-	rows, err := conn.Query(ctx, "SELECT datname FROM pg_database WHERE starts_with(datname,'household_pre_restore_') OR starts_with(datname,'household_restore_job_') ORDER BY datname LIMIT 50")
-	if err != nil {
-		return err
-	}
-	names, err := pgx.CollectRows(rows, pgx.RowTo[string])
-	if err != nil {
-		return err
-	}
-	for _, name := range names {
-		if database.IsLiveRestoreStage(name) {
-			if err = dropDatabase(ctx, conn, name); err != nil {
-				return err
-			}
-			continue
-		}
-		if !database.IsLiveRestorePrevious(name) {
-			continue
-		}
-		if err = dropDatabase(ctx, conn, name); err != nil {
+	// Bounded batches; references are cleared only for databases actually
+	// dropped, so a failure never hides a database that still exists.
+	for round := 0; round < 20; round++ {
+		rows, err := conn.Query(ctx, `SELECT datname FROM pg_database WHERE starts_with(datname,'household_pre_restore_') OR starts_with(datname,'household_restore_job_')
+ ORDER BY datname LIMIT 50`)
+		if err != nil {
 			return err
 		}
-		folder := filepath.Join(workDirectory(), "pre_restore_"+strings.TrimPrefix(name, "household_pre_restore_"))
-		_ = os.RemoveAll(folder) // #nosec G703 -- derived from a validated reserved name
+		names, err := pgx.CollectRows(rows, pgx.RowTo[string])
+		if err != nil {
+			return err
+		}
+		dropped := make([]string, 0, len(names))
+		for _, name := range names {
+			if !database.IsLiveRestoreStage(name) && !database.IsLiveRestorePrevious(name) {
+				continue
+			}
+			if err = dropDatabase(ctx, conn, name); err != nil {
+				return errors.Join(err, s.clearPrevious(ctx, dropped))
+			}
+			dropped = append(dropped, name)
+			if database.IsLiveRestorePrevious(name) {
+				folder := filepath.Join(workDirectory(), "pre_restore_"+strings.TrimPrefix(name, "household_pre_restore_"))
+				_ = os.RemoveAll(folder) // #nosec G703 -- derived from a validated reserved name
+			}
+		}
+		if err = s.clearPrevious(ctx, dropped); err != nil {
+			return err
+		}
+		if len(dropped) < len(names) || len(names) < 50 {
+			if len(dropped) < len(names) {
+				return errors.New("some kept restore databases have unexpected names and were left in place")
+			}
+			return nil
+		}
 	}
-	_, err = s.Pool().Exec(ctx, "UPDATE core.backup_jobs SET previous_database=NULL WHERE previous_database IS NOT NULL")
+	return errors.New("kept restore databases remain after the discard limit; repeat the request")
+}
+
+func (s *Service) clearPrevious(ctx context.Context, dropped []string) error {
+	if len(dropped) == 0 {
+		return nil
+	}
+	_, err := s.Pool().Exec(ctx, "UPDATE core.backup_jobs SET previous_database=NULL WHERE previous_database=ANY($1::text[])", dropped)
 	return err
 }
 
@@ -882,6 +971,27 @@ func (s *Service) Rollback(ctx context.Context) error {
 		return err
 	}
 	defer unlock()
+	if pending, readErr := readJournal(); readErr != nil || pending != nil {
+		if readErr != nil {
+			return readErr
+		}
+		if pending.Phase != "rollback" {
+			return errors.New("an interrupted live restore is pending; restart the backup service to complete it first")
+		}
+		serverURL, urlErr := config.ServerMaintenanceURL(s.Config.DatabaseURL, s.Superuser)
+		if urlErr != nil {
+			return urlErr
+		}
+		conn, connErr := superuserConn(ctx, serverURL)
+		if connErr != nil {
+			return connErr
+		}
+		defer func() { _ = conn.Close(context.Background()) }()
+		return s.finishRollback(ctx, conn, *pending)
+	}
+	if s.Pool() == nil {
+		return errors.New("the live database is not reachable")
+	}
 	var job, previous string
 	err = s.Pool().QueryRow(ctx, `SELECT id,previous_database FROM core.backup_jobs WHERE kind='restore' AND state='complete'
  AND previous_database IS NOT NULL ORDER BY finished_at DESC LIMIT 1`).Scan(&job, &previous)
@@ -918,21 +1028,64 @@ func (s *Service) Rollback(ctx context.Context) error {
 	if found, _ := exists(ctx, conn, away); found {
 		return errors.New("a staging database of this restore still exists")
 	}
+	// Journal every name before the first rename, so an interruption at any
+	// point is completed by the next start (RecoverRestore → finishRollback).
+	j := restoreJournal{Job: job, Phase: "rollback", Live: live, Stage: away, Previous: previous, Started: time.Now().UTC(),
+		Moved: filepath.Join(workDirectory(), "pre_restore_"+strings.TrimPrefix(previous, "household_pre_restore_"))}
+	if err = writeJournal(j); err != nil {
+		return err
+	}
 	s.Close()
-	if err = renameDatabase(ctx, conn, live, away); err != nil {
+	return s.finishRollback(ctx, conn, j)
+}
+
+// finishRollback drives a journaled rollback to its end from whatever state
+// an interruption left: restored database moved aside, previous database
+// back under the live name, uploads moved back, restore job ended. Every step
+// is idempotent; the journal stays until all of them succeeded.
+func (s *Service) finishRollback(ctx context.Context, conn *pgx.Conn, j restoreJournal) error {
+	state := func() (live, away, previous bool, err error) {
+		if live, err = exists(ctx, conn, j.Live); err != nil {
+			return
+		}
+		if away, err = exists(ctx, conn, j.Stage); err != nil {
+			return
+		}
+		previous, err = exists(ctx, conn, j.Previous)
+		return
+	}
+	live, away, previous, err := state()
+	if err != nil {
 		return err
 	}
-	if err = renameDatabase(ctx, conn, previous, live); err != nil {
-		return errors.Join(err, renameDatabase(ctx, conn, away, live))
+	if live && previous && !away {
+		if err = renameDatabase(ctx, conn, j.Live, j.Stage); err != nil {
+			return err
+		}
+		live, away = false, true
 	}
-	if err = allowConnections(ctx, conn, live, true); err != nil {
+	if !live && away && previous {
+		if err = renameDatabase(ctx, conn, j.Previous, j.Live); err != nil {
+			return err // the journal stays; the next start retries this step
+		}
+		live, previous = true, false
+	}
+	if !live || !away || previous {
+		return errors.New("rollback found an unexpected set of databases; inspect them before retrying")
+	}
+	if err = allowConnections(ctx, conn, j.Live, true); err != nil {
 		return err
 	}
-	moved := filepath.Join(workDirectory(), "pre_restore_"+strings.TrimPrefix(previous, "household_pre_restore_"))
-	if entries, readErr := os.ReadDir(moved); readErr == nil {
+	entries, err := os.ReadDir(j.Moved)
+	switch {
+	case errors.Is(err, os.ErrNotExist):
+		// The restore moved no uploads aside.
+	case err != nil:
+		return err
+	default:
 		for _, entry := range entries {
 			if value.ValidUUID(entry.Name()) && entry.Type().IsRegular() {
-				if err = moveFile(filepath.Join(moved, entry.Name()), filepath.Join(s.Config.UploadDir, entry.Name())); err != nil {
+				if err = moveFile(filepath.Join(j.Moved, entry.Name()), filepath.Join(s.Config.UploadDir, entry.Name())); err != nil {
 					return err
 				}
 			}
@@ -947,6 +1100,7 @@ func (s *Service) Rollback(ctx context.Context) error {
  WHERE kind='restore' AND state IN('running','preparing','awaiting_drain','swapping')`); err != nil {
 		return err
 	}
-	s.Log.Info("live restore rolled back", "job", job, "restored_database", away)
+	removeJournal()
+	s.Log.Info("live restore rolled back", "job", j.Job, "restored_database", j.Stage)
 	return nil
 }

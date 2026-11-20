@@ -51,6 +51,41 @@ func TestLastSlot(t *testing.T) {
 	}
 }
 
+// The ambiguous and missing wall-clock hours around both daylight-saving
+// changes are given as exact instants, because local parsing cannot name them.
+func TestLastSlotAcrossDaylightSavingChanges(t *testing.T) {
+	zone := vienna(t)
+	utc := func(value string) time.Time {
+		parsed, err := time.Parse("2006-01-02 15:04", value)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return parsed
+	}
+	for _, tc := range []struct {
+		name, now, local string
+		interval         int
+		want             time.Time
+	}{
+		// 02:30 CET on 2026-10-25 lies after the fall-back; the 03:00 slot of
+		// that day is still ahead, so the previous day's 03:00 CEST applies.
+		{"autumn before anchor", "2026-10-25 01:30", "03:00", 24, utc("2026-10-24 01:00")},
+		{"autumn after anchor", "2026-10-25 02:30", "03:00", 24, utc("2026-10-25 02:00")},
+		{"autumn intraday", "2026-10-25 09:30", "03:00", 6, at(t, zone, "2026-10-25 09:00")},
+		{"spring intraday", "2026-03-29 06:30", "03:00", 6, at(t, zone, "2026-03-29 03:00")},
+		{"spring after slot", "2026-03-29 07:30", "03:00", 6, at(t, zone, "2026-03-29 09:00")},
+		{"spring daily", "2026-03-29 10:00", "03:00", 24, at(t, zone, "2026-03-29 03:00")},
+	} {
+		got, err := LastSlot(utc(tc.now), zone, tc.local, tc.interval)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !got.Equal(tc.want) {
+			t.Fatalf("%s: LastSlot = %s, want %s", tc.name, got.In(zone), tc.want.In(zone))
+		}
+	}
+}
+
 func TestLastSlotMultiDayIntervalsAreStable(t *testing.T) {
 	zone := vienna(t)
 	now := at(t, zone, "2026-11-19 10:00")
@@ -86,25 +121,41 @@ func TestDueAndEvaluate(t *testing.T) {
 	if due, _ := Due(now, zone, "03:00", 24, &after); due {
 		t.Fatal("attempt after slot is not due")
 	}
-	if h := Evaluate(now, zone, "03:00", 24, true, &after, false); h.State != StateOK || h.NextDue == nil {
+	if h := Evaluate(now, zone, "03:00", 24, true, nil, &after, false); h.State != StateOK || h.NextDue == nil {
 		t.Fatalf("fresh backup health = %+v", h)
 	}
 	old := at(t, zone, "2026-11-17 03:05")
-	if h := Evaluate(now, zone, "03:00", 24, true, &old, false); h.State != StateOverdue {
+	if h := Evaluate(now, zone, "03:00", 24, true, nil, &old, false); h.State != StateOverdue {
 		t.Fatalf("old backup health = %+v", h)
 	}
 	// Within the grace period after the expected run it stays ok.
-	if h := Evaluate(at(t, zone, "2026-11-20 03:30"), zone, "03:00", 24, true, &after, false); h.State != StateOK {
+	if h := Evaluate(at(t, zone, "2026-11-20 03:30"), zone, "03:00", 24, true, nil, &after, false); h.State != StateOK {
 		t.Fatalf("grace period health = %+v", h)
 	}
-	if h := Evaluate(now, zone, "03:00", 24, true, &after, true); h.State != StateFailed {
+	if h := Evaluate(now, zone, "03:00", 24, true, nil, &after, true); h.State != StateFailed {
 		t.Fatalf("failed attempt health = %+v", h)
 	}
-	if h := Evaluate(now, zone, "03:00", 24, true, nil, false); h.State != StateNever {
+	if h := Evaluate(now, zone, "03:00", 24, true, nil, nil, false); h.State != StateNever {
 		t.Fatalf("never health = %+v", h)
 	}
-	if h := Evaluate(now, zone, "03:00", 24, false, nil, true); h.State != StateDisabled {
+	if h := Evaluate(now, zone, "03:00", 24, false, nil, nil, true); h.State != StateDisabled {
 		t.Fatalf("disabled health = %+v", h)
+	}
+}
+
+func TestEvaluateTargetThatNeverSucceeded(t *testing.T) {
+	zone := vienna(t)
+	activated := at(t, zone, "2026-11-18 10:00")
+	// Before the first slot after activation (2026-11-19 03:00) plus grace.
+	if h := Evaluate(at(t, zone, "2026-11-19 03:30"), zone, "03:00", 24, true, &activated, nil, false); h.State != StateNever {
+		t.Fatalf("initial grace health = %+v", h)
+	}
+	// The first slot passed with grace and no backup ever succeeded.
+	if h := Evaluate(at(t, zone, "2026-11-19 12:00"), zone, "03:00", 24, true, &activated, nil, false); h.State != StateOverdue || h.NextDue == nil {
+		t.Fatalf("missed first backup health = %+v", h)
+	}
+	if h := Evaluate(at(t, zone, "2026-11-19 12:00"), zone, "03:00", 24, true, &activated, nil, true); h.State != StateFailed {
+		t.Fatalf("failed first backup health = %+v", h)
 	}
 }
 

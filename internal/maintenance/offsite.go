@@ -53,8 +53,24 @@ func loadSettings(ctx context.Context, q querier) (backupplan.Settings, *time.Lo
 // checks a rotating sixth of its data, records the run and applies the
 // offsite retention. The repository lock is held by the caller.
 func copyOffsiteLocked(ctx context.Context, pool *pgxpool.Pool, local, offsite config.BackupTarget, settings backupplan.Settings, snapshot string, schemas []byte, jobID string) (string, error) {
+	if err := ensureRepository(ctx, offsite, &local); err != nil {
+		return "", err
+	}
+	before, err := listSnapshots(ctx, offsite)
+	if err != nil {
+		return "", err
+	}
+	if existing := offsiteCopyOf(before, snapshot); existing != "" {
+		// Already offsite: no new restore point, so no new run that would make
+		// the target look freshly backed up. The rotating data check still runs.
+		return existing, checkOffsite(ctx, pool, offsite)
+	}
+	var sourceBytes *int64
+	if err = pool.QueryRow(ctx, "SELECT max(total_bytes) FROM core.backup_runs WHERE repository_kind='local' AND snapshot_reference=$1", snapshot).Scan(&sourceBytes); err != nil {
+		return "", err
+	}
 	run := value.UUID()
-	if _, err := audit.Exec(ctx, pool, "INSERT INTO core.backup_runs(id,state,application_version,repository_reference,repository_kind,job_id) VALUES($1,'running',$2,$3,'offsite',$4)",
+	if _, err = audit.Exec(ctx, pool, "INSERT INTO core.backup_runs(id,state,application_version,repository_reference,repository_kind,job_id) VALUES($1,'running',$2,$3,'offsite',$4)",
 		run, buildinfo.Label(), offsite.Label(), nullableUUID(jobID)); err != nil {
 		return "", err
 	}
@@ -66,30 +82,22 @@ func copyOffsiteLocked(ctx context.Context, pool *pgxpool.Pool, local, offsite c
 			_, _ = audit.Exec(failureCtx, pool, "UPDATE core.backup_runs SET state='failed',finished_at=now(),failure_reason='offsite copy failed' WHERE id=$1", run)
 		}
 	}()
-	if err := ensureRepository(ctx, offsite, &local); err != nil {
-		return "", err
-	}
-	if _, err := restic(ctx, offsite, &local, "copy", snapshot); err != nil {
+	if _, err = restic(ctx, offsite, &local, "copy", snapshot); err != nil {
 		return "", err
 	}
 	snapshots, err := listSnapshots(ctx, offsite)
 	if err != nil {
 		return "", err
 	}
-	copied := ""
-	for _, item := range snapshots {
-		if item.Original == snapshot || item.ID == snapshot {
-			copied = item.ID
-		}
-	}
+	copied := offsiteCopyOf(snapshots, snapshot)
 	if copied == "" {
 		return "", &ToolError{Program: "restic", Code: "copy_missing", err: errors.New("copied snapshot not found offsite")}
 	}
 	if err = checkOffsite(ctx, pool, offsite); err != nil {
 		return "", err
 	}
-	if _, err = audit.Exec(ctx, pool, "UPDATE core.backup_runs SET state='complete',finished_at=now(),snapshot_reference=$2,schema_manifest=$3 WHERE id=$1",
-		run, copied, schemas); err != nil {
+	if _, err = audit.Exec(ctx, pool, "UPDATE core.backup_runs SET state='complete',finished_at=now(),snapshot_reference=$2,schema_manifest=$3,total_bytes=$4 WHERE id=$1",
+		run, copied, schemas, sourceBytes); err != nil {
 		return "", err
 	}
 	finished = true
@@ -97,6 +105,17 @@ func copyOffsiteLocked(ctx context.Context, pool *pgxpool.Pool, local, offsite c
 		return copied, err
 	}
 	return copied, nil
+}
+
+// offsiteCopyOf returns the offsite snapshot that copies the local snapshot.
+func offsiteCopyOf(snapshots []resticSnapshot, local string) string {
+	copied := ""
+	for _, item := range snapshots {
+		if item.Original == local || item.ID == local {
+			copied = item.ID
+		}
+	}
+	return copied
 }
 
 // offsiteCheckParts splits the offsite data check: each copy reads one part,
@@ -134,6 +153,16 @@ func TestOffsite(ctx context.Context, pool *pgxpool.Pool) error {
 	}
 	if offsite == nil {
 		return ErrOffsiteUnconfigured
+	}
+	if _, err = restic(ctx, *offsite, nil, "cat", "config"); err == nil {
+		// An existing target is only read.
+		_, err = listSnapshots(ctx, *offsite)
+		return err
+	}
+	// A new target takes the local chunker parameters, so the local
+	// repository must exist first, also before the very first backup.
+	if err = ensureRepository(ctx, local, nil); err != nil {
+		return err
 	}
 	if err = ensureRepository(ctx, *offsite, &local); err != nil {
 		return err

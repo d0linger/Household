@@ -34,7 +34,8 @@
   // Follow running work: reload when it changes state; a live restore ends
   // every session, so the poller then leads to the sign-in page.
   const active = document.querySelector('[data-backup-active]');
-  const running = document.querySelectorAll('.backup-running').length > 0 || active;
+  // Queued jobs are followed too, so the page shows their result without a reload.
+  const running = document.querySelectorAll('.backup-running, .backup-waiting').length > 0 || active;
   if (!running) return;
   let failures = 0;
   const poll = async () => {

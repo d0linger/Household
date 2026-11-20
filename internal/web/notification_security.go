@@ -18,7 +18,7 @@ func backupNoticeTitle(locale, kind, stored string) string {
 	case "backup_restore_complete":
 		return i18n.Text(locale, "Household wurde aus einer Sicherung wiederhergestellt.")
 	case "backup_restore_failed":
-		return i18n.Text(locale, "Eine Wiederherstellung ist fehlgeschlagen. Es wurde nichts verändert.")
+		return i18n.Text(locale, "Eine Wiederherstellung ist fehlgeschlagen. Details stehen auf der Sicherungsseite.")
 	}
 	return stored
 }

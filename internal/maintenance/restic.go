@@ -57,21 +57,24 @@ func ResultCode(err error) string {
 func classifyResticOutput(stderr []byte) string {
 	text := strings.ToLower(string(stderr))
 	switch {
+	// Access and connectivity failures come first: a refused or unreachable
+	// repository often also reports that its config file could not be opened,
+	// and must never be mistaken for a missing repository to initialize.
 	case strings.Contains(text, "wrong password") || strings.Contains(text, "no key found"):
 		return "wrong_password"
-	case strings.Contains(text, "is there a repository at the following location") || strings.Contains(text, "repository does not exist") ||
-		strings.Contains(text, "unable to open config file") || strings.Contains(text, "config file not found"):
-		return "repository_missing"
 	case strings.Contains(text, "nosuchbucket") || strings.Contains(text, "bucket does not exist"):
 		return "bucket_missing"
 	case strings.Contains(text, "access denied") || strings.Contains(text, "accessdenied") || strings.Contains(text, "403") ||
 		strings.Contains(text, "signaturedoesnotmatch") || strings.Contains(text, "invalidaccesskeyid") || strings.Contains(text, "401 unauthorized"):
 		return "access_denied"
-	case strings.Contains(text, "no space left"):
-		return "disk_full"
 	case strings.Contains(text, "connection refused") || strings.Contains(text, "no such host") || strings.Contains(text, "i/o timeout") ||
 		strings.Contains(text, "dial tcp") || strings.Contains(text, "tls:") || strings.Contains(text, "certificate"):
 		return "repository_unreachable"
+	case strings.Contains(text, "no space left"):
+		return "disk_full"
+	case strings.Contains(text, "is there a repository at the following location") || strings.Contains(text, "repository does not exist") ||
+		strings.Contains(text, "unable to open config file") || strings.Contains(text, "config file not found"):
+		return "repository_missing"
 	case strings.Contains(text, "repository contains errors") || strings.Contains(text, "check failed") || strings.Contains(text, "pack") && strings.Contains(text, "damaged"):
 		return "repository_damaged"
 	case strings.Contains(text, "unable to create lock") || strings.Contains(text, "repository is already locked"):
@@ -137,7 +140,13 @@ func restic(ctx context.Context, target config.BackupTarget, source *config.Back
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
 		}
-		return nil, &ToolError{Program: "restic", Code: classifyResticOutput(stderr), err: err}
+		code := classifyResticOutput(stderr)
+		// restic 0.17+ exits with 10 exactly when the repository does not exist.
+		var exit *exec.ExitError
+		if errors.As(err, &exit) && exit.ExitCode() == 10 && code == "tool_failed" {
+			code = "repository_missing"
+		}
+		return nil, &ToolError{Program: "restic", Code: code, err: err}
 	}
 	return stdout, nil
 }
@@ -171,8 +180,8 @@ func ensureRepository(ctx context.Context, target config.BackupTarget, chunkerSo
 		return nil
 	}
 	var tool *ToolError
-	if !errors.As(err, &tool) || tool.Code != "repository_missing" && tool.Code != "tool_failed" {
-		return err
+	if !errors.As(err, &tool) || tool.Code != "repository_missing" {
+		return err // only a confirmed missing repository is initialized
 	}
 	args := []string{"init"}
 	if chunkerSource != nil {

@@ -82,8 +82,9 @@ func (r *Registry) ObserveRequest(method, route string, status int, elapsed time
 		h = &histogram{counts: make([]atomic.Uint64, len(Buckets))}
 		r.duration[method] = h
 	}
-	r.mu.Unlock()
 	counter.Add(1)
+	// The whole histogram update happens under the lock Write snapshots under,
+	// so a scrape always sees cumulative buckets with +Inf equal to _count.
 	seconds := elapsed.Seconds()
 	for index, bound := range Buckets {
 		if seconds <= bound {
@@ -92,6 +93,7 @@ func (r *Registry) ObserveRequest(method, route string, status int, elapsed time
 	}
 	h.sum.Add(uint64(max(elapsed.Microseconds(), 0))) // #nosec G115 -- non-negative
 	h.total.Add(1)
+	r.mu.Unlock()
 }
 
 // Inc increments a named counter; names must be fixed identifiers.

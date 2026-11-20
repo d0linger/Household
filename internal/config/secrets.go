@@ -172,7 +172,27 @@ func ServerMaintenanceURL(source, superuser string) (string, error) {
 	}
 	u.User = url.UserPassword("postgres", superuser)
 	u.Path, u.RawPath = "/postgres", ""
+	stripTargetQuery(u)
 	return u.String(), nil
+}
+
+// connectionTargetKeys are query parameters pgx applies after the URL's
+// authority and path; they could change the role, database or server.
+var connectionTargetKeys = []string{"user", "password", "database", "dbname", "host", "hostaddr", "port", "service", "servicefile", "passfile"}
+
+// stripTargetQuery removes every query parameter that could override the
+// identity or target set on a derived maintenance URL; transport options
+// such as sslmode stay.
+func stripTargetQuery(u *url.URL) {
+	query := u.Query()
+	for key := range query {
+		for _, target := range connectionTargetKeys {
+			if strings.EqualFold(key, target) {
+				query.Del(key)
+			}
+		}
+	}
+	u.RawQuery = query.Encode()
 }
 
 // WithDatabase returns raw with its database replaced by name.
@@ -182,6 +202,14 @@ func WithDatabase(raw, name string) (string, error) {
 		return "", errors.New("restore checks need postgres:// URLs; set HOUSEHOLD_RESTORE_DATABASE_URL")
 	}
 	u.Path, u.RawPath = "/"+name, ""
+	// Only the database may change here; a query override must not move it elsewhere.
+	query := u.Query()
+	for key := range query {
+		if strings.EqualFold(key, "database") || strings.EqualFold(key, "dbname") {
+			query.Del(key)
+		}
+	}
+	u.RawQuery = query.Encode()
 	return u.String(), nil
 }
 

@@ -28,9 +28,11 @@ type Worker struct {
 	Log  *slog.Logger
 	Cfg  config.Config
 	Push *webpush.Service
-	// Paused reports a live restore in progress; ticks are skipped meanwhile.
-	Paused func() bool
-	scan   directoryScan
+	// Admit takes part in the live restore drain: a tick runs only when
+	// admitted and releases its admission when it ends, so the web process
+	// confirms a pause only after the running tick stopped writing.
+	Admit func() (func(), bool)
+	scan  directoryScan
 }
 
 func (w *Worker) Run(ctx context.Context) {
@@ -90,8 +92,12 @@ func (w *Worker) Close() error {
 }
 
 func (w *Worker) Tick(ctx context.Context) error {
-	if w.Paused != nil && w.Paused() {
-		return nil
+	if w.Admit != nil {
+		release, ok := w.Admit()
+		if !ok {
+			return nil
+		}
+		defer release()
 	}
 	ctx = audit.WithRequest(audit.WithSystem(ctx, "worker"), value.UUID())
 	// An unreachable database would fail every step; report it once instead.

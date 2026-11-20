@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"mime"
 	"net"
 	"net/http"
 	"net/mail"
@@ -18,6 +19,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -139,16 +141,24 @@ func (s *Sender) Send(ctx context.Context, m Message) error {
 		return nil
 	}
 	title := s.Config.Installation + ": " + m.Title
-	var errs []error
+	// Every channel gets the whole deadline: a slow mail server must not
+	// use up the time of ntfy or the webhook.
+	var deliveries []func() error
 	if s.Config.NtfyURL != "" {
-		errs = append(errs, s.ntfy(ctx, title, m))
+		deliveries = append(deliveries, func() error { return s.ntfy(ctx, title, m) })
 	}
 	if s.Config.WebhookURL != "" {
-		errs = append(errs, s.webhook(ctx, title, m))
+		deliveries = append(deliveries, func() error { return s.webhook(ctx, title, m) })
 	}
 	if s.Config.SMTPAddress != "" {
-		errs = append(errs, s.mail(ctx, title, m))
+		deliveries = append(deliveries, func() error { return s.mail(ctx, title, m) })
 	}
+	errs := make([]error, len(deliveries))
+	var wait sync.WaitGroup
+	for index, deliver := range deliveries {
+		wait.Go(func() { errs[index] = deliver() })
+	}
+	wait.Wait()
 	return errors.Join(errs...)
 }
 
@@ -231,11 +241,20 @@ func (s *Sender) mail(ctx context.Context, title string, m Message) error {
 			return errors.New("mail server rejected the credentials")
 		}
 	}
-	if err = client.Mail(s.Config.SMTPFrom); err != nil {
+	// The envelope takes bare addresses; display names stay in the headers.
+	sender, err := mail.ParseAddress(s.Config.SMTPFrom)
+	if err != nil {
+		return errors.New("invalid sender address")
+	}
+	if err = client.Mail(sender.Address); err != nil {
 		return errors.New("mail server refused the sender")
 	}
 	for _, to := range s.Config.SMTPTo {
-		if err = client.Rcpt(to); err != nil {
+		recipient, parseErr := mail.ParseAddress(to)
+		if parseErr != nil {
+			return errors.New("invalid recipient address")
+		}
+		if err = client.Rcpt(recipient.Address); err != nil {
 			return errors.New("mail server refused a recipient")
 		}
 	}
@@ -255,30 +274,9 @@ func (s *Sender) mail(ctx context.Context, title string, m Message) error {
 	return client.Quit()
 }
 
-// mimeHeader encodes a non-ASCII subject as RFC 2047 UTF-8.
+// mimeHeader encodes a non-ASCII subject as RFC 2047 UTF-8; the standard
+// encoder splits long text into several encoded words of valid length.
 func mimeHeader(value string) string {
 	value = strings.NewReplacer("\r", " ", "\n", " ").Replace(value)
-	for _, r := range value {
-		if r > 127 {
-			return mimeEncode(value)
-		}
-	}
-	return value
-}
-
-func mimeEncode(value string) string {
-	var b strings.Builder
-	b.WriteString("=?UTF-8?Q?")
-	for _, c := range []byte(value) {
-		switch {
-		case c == ' ':
-			b.WriteByte('_')
-		case c >= '0' && c <= '9' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c == '.' || c == '-' || c == ':':
-			b.WriteByte(c)
-		default:
-			fmt.Fprintf(&b, "=%02X", c)
-		}
-	}
-	b.WriteString("?=")
-	return b.String()
+	return mime.QEncoding.Encode("UTF-8", value)
 }

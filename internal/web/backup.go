@@ -80,8 +80,11 @@ type backupOverview struct {
 	Jobs              []backupJob         `json:"jobs"`
 	ActiveRestore     *backupJob          `json:"active_restore,omitempty"`
 	Previous          string              `json:"previous,omitempty"`
-	Zone              string              `json:"zone"`
-	location          *time.Location
+	// Retained reports any database kept by a live restore or a rollback:
+	// the rollback copy (Previous) or a restored state that was rolled back.
+	Retained bool   `json:"retained"`
+	Zone     string `json:"zone"`
+	location *time.Location
 }
 
 func (s *Server) loadBackupOverview(ctx context.Context) (backupOverview, error) {
@@ -134,9 +137,6 @@ func (s *Server) loadBackupOverview(ctx context.Context) (backupOverview, error)
 		}
 		item.Compatible = backupplan.SchemaCompatible(schemas, current)
 		item.Confirmation = backupplan.RestoreConfirmation(item.Snapshot)
-		if item.Verified != nil && (o.LastVerified == nil || item.Verified.After(*o.LastVerified)) {
-			o.LastVerified = item.Verified
-		}
 		if item.Kind == "offsite" {
 			o.OffsiteSnapshots = append(o.OffsiteSnapshots, item)
 		} else {
@@ -148,14 +148,12 @@ func (s *Server) loadBackupOverview(ctx context.Context) (backupOverview, error)
 		return o, err
 	}
 	health := func(kind string, enabled bool, interval int) (backupplan.Health, error) {
-		var success *time.Time
+		var since, success, ended *time.Time
 		var failed bool
-		err := s.Pool.QueryRow(ctx, `SELECT (SELECT max(started_at) FROM core.backup_runs WHERE repository_kind=$1 AND state IN('complete','retention_pending')),
- coalesce((SELECT state='failed' FROM core.backup_runs WHERE repository_kind=$1 AND state IN('complete','retention_pending','failed','expired') ORDER BY started_at DESC LIMIT 1),false)`, kind).Scan(&success, &failed)
-		if err != nil {
+		if err := s.Pool.QueryRow(ctx, backupplan.HealthQuery, kind).Scan(&since, &success, &failed, &ended); err != nil {
 			return backupplan.Health{}, err
 		}
-		return backupplan.Evaluate(now, o.location, o.Settings.LocalTime, interval, enabled, success, failed), nil
+		return backupplan.Evaluate(now, o.location, o.Settings.LocalTime, interval, enabled, since, success, failed), nil
 	}
 	if o.Local, err = health("local", true, o.Settings.LocalIntervalHours); err != nil {
 		return o, err
@@ -163,7 +161,14 @@ func (s *Server) loadBackupOverview(ctx context.Context) (backupOverview, error)
 	if o.Offsite, err = health("offsite", o.Settings.OffsiteEnabled, o.Settings.OffsiteIntervalHours); err != nil {
 		return o, err
 	}
-	o.ProbeStale = backupplan.ProbeStale(now, o.Settings.ProbeIntervalDays, o.LastVerified)
+	// Verification freshness is read independently of the listed snapshots,
+	// and only a check of the configured probe target keeps the probe fresh.
+	var probeVerified *time.Time
+	if err = s.Pool.QueryRow(ctx, `SELECT max(verified_at),max(verified_at) FILTER (WHERE repository_kind=$1) FROM core.backup_runs WHERE verified_at IS NOT NULL`,
+		o.Settings.ProbeTarget).Scan(&o.LastVerified, &probeVerified); err != nil {
+		return o, err
+	}
+	o.ProbeStale = backupplan.ProbeStale(now, o.Settings.ProbeIntervalDays, probeVerified)
 	rows, err = s.Pool.Query(ctx, `SELECT j.id::text,j.kind,j.target,j.state,coalesce(j.phase,''),coalesce(j.result_code,''),coalesce(j.snapshot_reference,coalesce(j.result_snapshot,'')),
  coalesce(u.username,''),j.created_at,j.finished_at,coalesce(j.previous_database,'')
  FROM core.backup_jobs j LEFT JOIN core.users u ON u.id=j.requested_by ORDER BY j.created_at DESC LIMIT 15`)
@@ -186,7 +191,11 @@ func (s *Server) loadBackupOverview(ctx context.Context) (backupOverview, error)
 	if err = rows.Err(); err != nil {
 		return o, err
 	}
-	err = s.Pool.QueryRow(ctx, "SELECT coalesce((SELECT previous_database FROM core.backup_jobs WHERE previous_database IS NOT NULL ORDER BY finished_at DESC LIMIT 1),'')").Scan(&o.Previous)
+	// pg_database is readable by every role; no restore runs while the
+	// overview offers discarding, because the service holds its lock then.
+	err = s.Pool.QueryRow(ctx, `SELECT coalesce((SELECT previous_database FROM core.backup_jobs WHERE previous_database IS NOT NULL ORDER BY finished_at DESC LIMIT 1),''),
+ EXISTS(SELECT 1 FROM pg_database WHERE starts_with(datname,'household_pre_restore_') OR starts_with(datname,'household_restore_job_'))`).Scan(&o.Previous, &o.Retained)
+	o.Retained = o.Retained && o.ActiveRestore == nil
 	return o, err
 }
 
@@ -320,7 +329,7 @@ func (s *Server) requestBackupJob(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, store.Invalid{Message: "Kein externes Sicherungsziel eingerichtet"})
 		return
 	}
-	if kind == "discard_previous" && overview.Previous == "" {
+	if kind == "discard_previous" && !overview.Retained {
 		s.fail(w, r, store.Invalid{Message: "Es gibt keinen aufbewahrten früheren Stand"})
 		return
 	}
@@ -360,8 +369,9 @@ func (s *Server) requestBackupJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	job := value.UUID()
+	// The service re-checks that this session is still recently re-authenticated.
 	var session any
-	if kind == "restore" {
+	if kind == "restore" || kind == "discard_previous" {
 		session = id.SessionID
 	}
 	_, err = tx.Exec(r.Context(), `INSERT INTO core.backup_jobs(id,household_id,kind,target,snapshot_reference,requested_by,requested_session,confirmation)

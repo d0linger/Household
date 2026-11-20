@@ -223,7 +223,7 @@ func RunBackup(ctx context.Context, pool *pgxpool.Pool, cfg config.Config, optio
 	if err != nil {
 		return BackupResult{}, err
 	}
-	snapshot, schemas, err := backupLocked(ctx, pool, cfg, local, settings, options.JobID)
+	snapshot, schemas, err := backupLocked(ctx, pool, cfg, local, settings, options.JobID, true)
 	result := BackupResult{Snapshot: snapshot}
 	if err != nil || !options.Offsite {
 		return result, err
@@ -242,7 +242,11 @@ func RunBackup(ctx context.Context, pool *pgxpool.Pool, cfg config.Config, optio
 // ErrOffsiteUnconfigured reports offsite work without an offsite repository.
 var ErrOffsiteUnconfigured = errors.New("no offsite repository is configured")
 
-func backupLocked(ctx context.Context, pool *pgxpool.Pool, cfg config.Config, local config.BackupTarget, settings backupplan.Settings, jobID string) (string, []byte, error) {
+// backupLocked creates one local snapshot under the repository lock. retain
+// applies the configured retention afterwards; a live restore's safety backup
+// passes false, because a same-day prune could forget the very snapshot that
+// is being restored.
+func backupLocked(ctx context.Context, pool *pgxpool.Pool, cfg config.Config, local config.BackupTarget, settings backupplan.Settings, jobID string, retain bool) (string, []byte, error) {
 	manifest, err := newManifest(cfg.UploadDir, time.Now())
 	if err != nil {
 		return "", nil, err
@@ -359,6 +363,9 @@ func backupLocked(ctx context.Context, pool *pgxpool.Pool, cfg config.Config, lo
 		return "", nil, err
 	}
 	finished = true
+	if !retain {
+		return snapshot, schemas, nil
+	}
 	if err = applyRetention(ctx, pool, local, settings.KeepDaily, settings.KeepWeekly, settings.KeepMonthly); err != nil {
 		return snapshot, schemas, err
 	}
@@ -384,7 +391,9 @@ func applyRetention(ctx context.Context, pool *pgxpool.Pool, target config.Backu
 		return err
 	}
 	if err = forget(ctx, target, daily, weekly, monthly); err != nil {
-		return err
+		// A failed prune may have removed some snapshots; reconciliation marks
+		// exactly the surviving ones complete again, so they stay usable.
+		return errors.Join(err, reconcileRuns(ctx, pool, target))
 	}
 	return reconcileRuns(ctx, pool, target)
 }

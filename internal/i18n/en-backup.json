@@ -152,7 +152,7 @@
   "Der Sicherungsdienst meldet sich nicht.": "The backup service is not reporting.",
   "Keine Sicherung wurde kürzlich durch eine Probewiederherstellung geprüft.": "No backup has recently been checked with a restore test.",
   "Household wurde aus einer Sicherung wiederhergestellt.": "Household was restored from a backup.",
-  "Eine Wiederherstellung ist fehlgeschlagen. Es wurde nichts verändert.": "A restore failed. Nothing was changed.",
+  "Eine Wiederherstellung ist fehlgeschlagen. Details stehen auf der Sicherungsseite.": "A restore failed. Details are on the backup page.",
   "Kopiert": "Copied",
   "Beispiel für die .env": "Example for the .env file",
   "Ein anderer Wiederherstellungsvorgang läuft gerade.": "Another restore operation is running.",

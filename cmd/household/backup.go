@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"os"
 	"time"
@@ -13,6 +14,7 @@ import (
 	"household/internal/maintenance"
 	"household/internal/value"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -21,11 +23,12 @@ import (
 //	household restore-check [--offsite] SNAPSHOT|latest
 func runRestoreCheck(ctx context.Context, pool *pgxpool.Pool, cfg config.Config, args []string) error {
 	kind := "local"
-	if len(args) == 2 && args[0] == "--offsite" {
+	if len(args) > 0 && args[0] == "--offsite" {
 		kind, args = "offsite", args[1:]
 	}
-	if len(args) != 1 {
-		return errors.New("usage: household restore-check [--offsite] SNAPSHOT|latest")
+	// Validate before any work, including creating a restore target.
+	if len(args) != 1 || args[0] != "latest" && !backupplan.ValidSnapshot(args[0]) {
+		return errors.New("usage: household restore-check [--offsite] FULL_SNAPSHOT_ID|latest")
 	}
 	local, err := config.LocalBackupTarget()
 	if err != nil {
@@ -46,7 +49,10 @@ func runRestoreCheck(ctx context.Context, pool *pgxpool.Pool, cfg config.Config,
 	if snapshot == "latest" {
 		if err = pool.QueryRow(ctx, `SELECT snapshot_reference FROM core.backup_runs WHERE repository_reference=$1 AND state='complete'
  AND snapshot_reference IS NOT NULL ORDER BY started_at DESC LIMIT 1`, target.Label()).Scan(&snapshot); err != nil {
-			return errors.New("no completed snapshot to check")
+			if errors.Is(err, pgx.ErrNoRows) {
+				return errors.New("no completed snapshot to check")
+			}
+			return fmt.Errorf("look up the latest snapshot: %w", err)
 		}
 	}
 	superuser, err := config.Secret("POSTGRES_PASSWORD")

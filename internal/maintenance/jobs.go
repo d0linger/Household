@@ -43,14 +43,30 @@ func NewService(ctx context.Context, cfg config.Config, log *slog.Logger, superu
 	if err != nil {
 		return nil, err
 	}
-	pool, err := database.Open(ctx, cfg.DatabaseURL, 4)
-	if err != nil {
-		return nil, err
-	}
-	service := &Service{Config: cfg, Log: log, Superuser: superuser, DrainTimeout: 2 * time.Minute, pool: pool, now: time.Now}
+	service := &Service{Config: cfg, Log: log, Superuser: superuser, DrainTimeout: 2 * time.Minute, now: time.Now}
 	if channels.Enabled() {
 		service.Alerts = alerts.NewSender(channels)
 	}
+	pool, err := database.Open(ctx, cfg.DatabaseURL, 4)
+	if err != nil {
+		// An interrupted swap can leave no database under the live name. The
+		// journal recovery needs only the superuser connection; it puts the
+		// live name back first, then the pool opens.
+		pending, journalErr := readJournal()
+		if journalErr != nil || pending == nil {
+			return nil, errors.Join(err, journalErr)
+		}
+		if recoverErr := service.RecoverRestore(ctx); recoverErr != nil {
+			return nil, errors.Join(err, recoverErr)
+		}
+		if service.Pool() == nil {
+			if err = service.reopen(ctx); err != nil {
+				return nil, err
+			}
+		}
+		return service, nil
+	}
+	service.pool = pool
 	return service, nil
 }
 
@@ -93,12 +109,18 @@ func (s *Service) clock() time.Time {
 	return time.Now()
 }
 
+// tickBudget bounds one tick's work: a backup with its offsite copy, a
+// restore check or a live restore. It is far above normal durations and
+// exists so a stalled restic or PostgreSQL call cannot hold the locks forever.
+const tickBudget = 6 * time.Hour
+
 // Run completes an interrupted live restore, then ticks every 30 seconds
 // until ctx ends.
 func (s *Service) Run(ctx context.Context) error {
 	if err := s.RecoverRestore(ctx); err != nil {
 		s.Log.Error("interrupted restore recovery failed", "code", ResultCode(err))
 	}
+	go s.reportLiveness(ctx)
 	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
 	for {
@@ -118,7 +140,9 @@ func (s *Service) Tick(ctx context.Context) {
 		return
 	}
 	// Another process (an operator's `household restore`) may be restoring:
-	// then this loop leaves the database alone until it finished.
+	// then this loop leaves the database alone until it finished. The lock is
+	// held for the whole tick, through claiming and executing work, so an
+	// operator restore can never start between this check and the work.
 	unlock, err := acquireRestoreLock()
 	if err != nil {
 		if !errors.Is(err, errRestoreBusy) {
@@ -126,11 +150,15 @@ func (s *Service) Tick(ctx context.Context) {
 		}
 		return
 	}
-	unlock()
+	defer unlock()
+	// Bound the whole unit of work, so a stalled tool eventually releases the
+	// repository and restore locks; large backups get generous time.
+	ctx, cancelWork := context.WithTimeout(ctx, tickBudget)
+	defer cancelWork()
 	// A live restore that failed mid-switch leaves its journal: finish or undo it first.
 	if journal, err := readJournal(); err != nil || journal != nil || s.Pool() == nil {
 		if err == nil && journal != nil {
-			err = s.RecoverRestore(ctx)
+			err = s.recoverRestoreLocked(ctx)
 		}
 		if err == nil && s.Pool() == nil {
 			err = s.reopen(ctx)
@@ -164,6 +192,30 @@ func (s *Service) Tick(ctx context.Context) {
 	}
 }
 
+// reportLiveness refreshes the service heartbeat every minute while the
+// service runs, independent of Tick, which a long backup or restore check
+// can block for hours. It stops with ctx, so service_seen_at then expires.
+// While a live restore has closed the pool there is nothing to report to.
+func (s *Service) reportLiveness(ctx context.Context) {
+	ticker := time.NewTicker(time.Minute)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+		if s.Pool() == nil {
+			continue
+		}
+		beat, cancel := context.WithTimeout(ctx, 10*time.Second)
+		if err := s.heartbeat(beat); err != nil && ctx.Err() == nil {
+			s.Log.Warn("backup service heartbeat failed", "error", err)
+		}
+		cancel()
+	}
+}
+
 // heartbeat lets the app show that the service runs and which repositories
 // it has, without ever giving the app their credentials.
 func (s *Service) heartbeat(ctx context.Context) error {
@@ -185,11 +237,13 @@ func (s *Service) heartbeat(ctx context.Context) error {
 	return err
 }
 
-// failStale ends claimed work whose service stopped heartbeating. A live
-// restore is recovered from its journal instead (RecoverRestore).
+// failStale ends claimed work whose service stopped heartbeating. Tick calls
+// it holding the restore lock and after any journal was recovered, so a
+// restore job in an active state without a recent heartbeat is orphaned too
+// (for example a crash before its journal was written).
 func (s *Service) failStale(ctx context.Context) error {
-	_, err := s.Pool().Exec(ctx, `UPDATE core.backup_jobs SET state='failed',result_code='interrupted',finished_at=now()
- WHERE state IN('running','preparing','awaiting_drain','swapping') AND kind<>'restore' AND coalesce(heartbeat_at,started_at,created_at)<now()-interval '5 minutes'`)
+	_, err := s.Pool().Exec(ctx, `UPDATE core.backup_jobs SET state='failed',result_code='interrupted',phase=NULL,finished_at=now()
+ WHERE state IN('running','preparing','awaiting_drain','swapping') AND coalesce(heartbeat_at,started_at,created_at)<now()-interval '5 minutes'`)
 	if err != nil {
 		return err
 	}
@@ -226,7 +280,7 @@ func (s *Service) claim(ctx context.Context) (*Job, error) {
 	var job Job
 	var snapshot *string
 	err = tx.QueryRow(ctx, `SELECT id,kind,target,snapshot_reference,requested_by,requested_session,confirmation,created_at FROM core.backup_jobs
- WHERE state='requested' ORDER BY created_at LIMIT 1 FOR UPDATE SKIP LOCKED`).Scan(&job.ID, &job.Kind, &job.Target, &snapshot, &job.RequestedBy, &job.RequestedSession, &job.Confirmation, &job.CreatedAt)
+ WHERE state='requested' AND (expires_at IS NULL OR expires_at>=now()) ORDER BY created_at LIMIT 1 FOR UPDATE SKIP LOCKED`).Scan(&job.ID, &job.Kind, &job.Target, &snapshot, &job.RequestedBy, &job.RequestedSession, &job.Confirmation, &job.CreatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
 	}
@@ -281,13 +335,14 @@ func validateRequest(ctx context.Context, tx pgx.Tx, job Job) (string, error) {
 			return "snapshot_invalid", nil
 		}
 	}
-	if job.Kind == "restore" {
-		if !fresh {
-			return "reauthentication_required", nil
-		}
-		if job.Confirmation == nil || !backupplan.ConfirmationMatches(job.Snapshot, *job.Confirmation) {
-			return "confirmation_mismatch", nil
-		}
+	// Restoring and discarding the rollback copy both end a recovery path, so
+	// both need a recently re-authenticated session; only a restore also needs
+	// the typed snapshot confirmation.
+	if (job.Kind == "restore" || job.Kind == "discard_previous") && !fresh {
+		return "reauthentication_required", nil
+	}
+	if job.Kind == "restore" && (job.Confirmation == nil || !backupplan.ConfirmationMatches(job.Snapshot, *job.Confirmation)) {
+		return "confirmation_mismatch", nil
 	}
 	return "", nil
 }
@@ -356,12 +411,13 @@ func (s *Service) perform(ctx context.Context, job Job) {
 		err = TestOffsite(ctx, s.Pool())
 	case "restore":
 		stop()
-		err = s.restore(ctx, job)
+		// Claimed jobs run inside Tick, which holds the restore lock.
+		err = s.restoreLocked(ctx, job)
 		if err == nil {
 			return // the restore recorded its own outcome in the new database
 		}
 	case "discard_previous":
-		err = s.discardPrevious(ctx)
+		err = s.discardPreviousLocked(ctx)
 	default:
 		err = errors.New("unsupported backup work")
 	}
@@ -486,6 +542,12 @@ func (s *Service) scheduled(ctx context.Context) error {
 			unlock()
 		}
 		stop()
+		if err != nil {
+			// Only the offsite copy ran: its failure must not fail the local target.
+			err = &ToolError{Program: "restic", Code: "offsite_" + ResultCode(err), err: err}
+			s.Log.Error("backup work failed", "job", id, "kind", "backup", "code", ResultCode(err))
+			s.alert(ctx, Job{ID: id, Kind: "backup", Target: "offsite"}, err)
+		}
 		s.finish(ctx, id, err, snapshot)
 		return nil
 	}
@@ -504,7 +566,8 @@ func (s *Service) scheduledProbe(ctx context.Context, settings backupplan.Settin
 		return nil // an unconfigured offsite probe target is shown on the status page
 	}
 	var lastProbe *time.Time
-	if err = pool.QueryRow(ctx, "SELECT max(created_at) FROM core.backup_jobs WHERE kind='verify' AND target=$1", settings.ProbeTarget).Scan(&lastProbe); err != nil {
+	// Only checks that actually started count; a cancelled request never ran.
+	if err = pool.QueryRow(ctx, "SELECT max(started_at) FROM core.backup_jobs WHERE kind='verify' AND target=$1 AND started_at IS NOT NULL", settings.ProbeTarget).Scan(&lastProbe); err != nil {
 		return err
 	}
 	if lastProbe != nil && now.Sub(*lastProbe) < time.Duration(settings.ProbeIntervalDays)*24*time.Hour {
@@ -545,9 +608,15 @@ func (s *Service) scheduledProbe(ctx context.Context, settings backupplan.Settin
 	return nil
 }
 
+// lastAttempt is the newest start of work for one target: a run of that
+// repository, or a backup job that covered it, so a job that failed before it
+// created a run (lock, settings, repository access) still waits for the next
+// slot instead of retrying every tick.
 func lastAttempt(ctx context.Context, pool *pgxpool.Pool, kind, label string) (*time.Time, error) {
 	var last *time.Time
-	err := pool.QueryRow(ctx, "SELECT max(started_at) FROM core.backup_runs WHERE repository_kind=$1 AND repository_reference=$2", kind, label).Scan(&last)
+	err := pool.QueryRow(ctx, `SELECT greatest(
+ (SELECT max(started_at) FROM core.backup_runs WHERE repository_kind=$1 AND repository_reference=$2),
+ (SELECT max(started_at) FROM core.backup_jobs WHERE kind='backup' AND started_at IS NOT NULL AND (target='both' OR $1='local')))`, kind, label).Scan(&last)
 	return last, err
 }
 
@@ -567,14 +636,12 @@ func CheckHealth(ctx context.Context, pool *pgxpool.Pool) (HealthReport, error) 
 	}
 	now := time.Now()
 	evaluate := func(kind string, enabled bool, interval int) (backupplan.Health, error) {
-		var success *time.Time
+		var since, success, ended *time.Time
 		var failed bool
-		err := pool.QueryRow(ctx, `SELECT (SELECT max(started_at) FROM core.backup_runs WHERE repository_kind=$1 AND state IN('complete','retention_pending')),
- coalesce((SELECT state='failed' FROM core.backup_runs WHERE repository_kind=$1 AND state IN('complete','retention_pending','failed','expired') ORDER BY started_at DESC LIMIT 1),false)`, kind).Scan(&success, &failed)
-		if err != nil {
+		if err := pool.QueryRow(ctx, backupplan.HealthQuery, kind).Scan(&since, &success, &failed, &ended); err != nil {
 			return backupplan.Health{}, err
 		}
-		return backupplan.Evaluate(now, zone, settings.LocalTime, interval, enabled, success, failed), nil
+		return backupplan.Evaluate(now, zone, settings.LocalTime, interval, enabled, since, success, failed), nil
 	}
 	report := HealthReport{}
 	if report.Local, err = evaluate("local", true, settings.LocalIntervalHours); err != nil {

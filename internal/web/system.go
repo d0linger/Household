@@ -34,18 +34,22 @@ func (s *Server) metricGauges(ctx context.Context) []metrics.Gauge {
 	if err != nil {
 		return gauges
 	}
+	// Only a target that is current counts as healthy; one that never
+	// succeeded is not. A switched-off target exports no health series.
 	healthy := func(state backupplan.State) float64 {
-		if state == backupplan.StateFailed || state == backupplan.StateOverdue {
-			return 0
+		if state == backupplan.StateOK {
+			return 1
 		}
-		return 1
+		return 0
 	}
 	for _, target := range []struct {
 		name   string
 		health backupplan.Health
 	}{{"local", overview.Local}, {"offsite", overview.Offsite}} {
 		labels := map[string]string{"target": target.name}
-		gauges = append(gauges, metrics.Gauge{Name: "household_backup_healthy", Help: "1 when the backup target is current by its own schedule.", Labels: labels, Value: healthy(target.health.State)})
+		if target.health.State != backupplan.StateDisabled {
+			gauges = append(gauges, metrics.Gauge{Name: "household_backup_healthy", Help: "1 when the backup target is current by its own schedule.", Labels: labels, Value: healthy(target.health.State)})
+		}
 		if target.health.LastSuccess != nil {
 			gauges = append(gauges, metrics.Gauge{Name: "household_backup_last_success_timestamp_seconds", Help: "Start of the last successful backup.", Labels: labels, Value: float64(target.health.LastSuccess.Unix())})
 		}
@@ -130,6 +134,8 @@ func (s *Server) systemPage(w http.ResponseWriter, r *http.Request) {
 		check("Externe Sicherung", "Eingerichtet, Zeitplan aus", "Das externe Ziel ist eingerichtet, aber der Zeitplan ist ausgeschaltet.", "warn", "/settings/backup")
 	case overview.Offsite.State == "failed" || overview.Offsite.State == "overdue":
 		check("Externe Sicherung", backupStateLabel(string(overview.Offsite.State)), "Die letzte externe Kopie ist fehlgeschlagen oder überfällig.", "bad", "/settings/backup")
+	case overview.Offsite.State == "never":
+		check("Externe Sicherung", backupStateLabel(string(overview.Offsite.State)), "Es gibt noch keine externe Kopie. Starte eine externe Sicherung auf der Sicherungsseite.", "warn", "/settings/backup")
 	default:
 		check("Externe Sicherung", backupStateLabel(string(overview.Offsite.State)), data.Backup.When(overview.Offsite.LastSuccess), "ok", "/settings/backup")
 	}

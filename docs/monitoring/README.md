@@ -26,7 +26,7 @@ Prometheus versions without `http_headers` can scrape through a reverse proxy th
 | `household_csrf_rejections_total` | Unsafe requests refused for CSRF. |
 | `household_worker_ticks_total`, `household_worker_step_failures_total` | Background work. |
 | `household_maintenance`, `household_maintenance_rejections_total` | Live-restore pause. |
-| `household_backup_healthy{target}` | 1 when the local or offsite target is current by its own schedule (offsite also 1 when switched off). |
+| `household_backup_healthy{target}` | 1 when the local or offsite target is current by its own schedule, 0 when it failed, is overdue or never succeeded. A switched-off offsite target exports no series. |
 | `household_backup_last_success_timestamp_seconds{target}` | Start of the last successful backup per target. |
 | `household_backup_last_verified_timestamp_seconds` | Last successful restore test. |
 | `household_backup_service_seen_timestamp_seconds` | Last heartbeat of the backup service. |
