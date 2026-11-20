@@ -267,7 +267,7 @@ func (s *Service) restoreLocked(ctx context.Context, job Job) (err error) {
 		_ = dropDatabase(cleanupCtx, conn, journal.Stage)
 		cancel()
 		if restored != nil {
-			restored.Remove()
+			_ = restored.Remove() // before the switch; the work volume is reused
 		}
 		removeJournal()
 		return err
@@ -547,7 +547,7 @@ func (s *Service) abortBeforeSwap(ctx context.Context, conn *pgx.Conn, j restore
 	_ = allowConnections(cleanupCtx, conn, j.Live, true)
 	_ = dropDatabase(cleanupCtx, conn, j.Stage)
 	if restored != nil {
-		restored.Remove()
+		_ = restored.Remove() // before the switch; the work volume is reused
 	}
 	removeJournal()
 	return cause
@@ -599,10 +599,7 @@ func (s *Service) undoSwap(ctx context.Context, conn *pgx.Conn, j restoreJournal
 		return errors.Join(cause, err)
 	}
 	_ = dropDatabase(cleanupCtx, conn, j.Stage)
-	if j.Directory != "" {
-		(&restoredSnapshot{Directory: j.Directory}).Remove()
-	}
-	removeJournal()
+	s.removeRestored(j)
 	if reopenErr := s.reopen(cleanupCtx); reopenErr == nil {
 		s.finish(cleanupCtx, j.Job, cause, "")
 	}
@@ -684,8 +681,18 @@ func (s *Service) cleanupCompleted(j restoreJournal) {
 	if err := writeJournal(j); err != nil {
 		s.Log.Warn("restore journal could not be marked committed", "job", j.Job, "error", err)
 	}
+	s.removeRestored(j)
+}
+
+// removeRestored deletes the restored snapshot directory and then the
+// journal. If the directory cannot be removed, the journal stays, so the
+// next start finds the leftover and retries; the outcome is unaffected.
+func (s *Service) removeRestored(j restoreJournal) {
 	if j.Directory != "" {
-		(&restoredSnapshot{Directory: j.Directory}).Remove()
+		if err := (&restoredSnapshot{Directory: j.Directory}).Remove(); err != nil {
+			s.Log.Warn("restored snapshot directory could not be removed; cleanup is retried on the next start", "job", j.Job, "error", err)
+			return
+		}
 	}
 	removeJournal()
 }
@@ -839,10 +846,7 @@ func (s *Service) recoverRestoreLocked(ctx context.Context) error {
 	}
 	if j.Phase == "committed" {
 		// The restored database already records the outcome; only cleanup is left.
-		if j.Directory != "" {
-			(&restoredSnapshot{Directory: j.Directory}).Remove()
-		}
-		removeJournal()
+		s.removeRestored(*j)
 		return nil
 	}
 	if s.Superuser == "" {

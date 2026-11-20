@@ -492,10 +492,15 @@ func (s *Service) RestoreNow(ctx context.Context, id, target, snapshot, confirma
 }
 
 // startScheduled records scheduled work as a job, so administrators see one
-// history of requested and automatic work.
-func (s *Service) startScheduled(ctx context.Context, kind, target, snapshot string) (string, error) {
+// history of requested and automatic work. offsiteOnly marks a copy of an
+// existing local snapshot: the job records no local repository, so it never
+// counts as a local backup attempt (backup jobs name only local or both).
+func (s *Service) startScheduled(ctx context.Context, kind, target, snapshot string, offsiteOnly bool) (string, error) {
 	id := value.UUID()
 	localLabel, offsiteLabel := repositoryLabels()
+	if offsiteOnly {
+		localLabel = ""
+	}
 	_, err := s.Pool().Exec(ctx, `INSERT INTO core.backup_jobs(id,household_id,kind,target,snapshot_reference,state,phase,started_at,heartbeat_at,local_label,offsite_label)
  SELECT $1,id,$2,$3,nullif($4,''),'running','scheduled',now(),now(),nullif($5,''),nullif($6,'') FROM core.households WHERE singleton=1`, id, kind, target, snapshot, localLabel, offsiteLabel)
 	return id, err
@@ -541,14 +546,14 @@ func (s *Service) scheduled(ctx context.Context) error {
 		if offsiteDue {
 			target = "both"
 		}
-		id, err := s.startScheduled(ctx, "backup", target, "")
+		id, err := s.startScheduled(ctx, "backup", target, "", false)
 		if err != nil {
 			return err
 		}
 		s.perform(ctx, Job{ID: id, Kind: "backup", Target: target})
 		return nil
 	case offsiteDue:
-		id, err := s.startScheduled(ctx, "backup", "both", "")
+		id, err := s.startScheduled(ctx, "backup", "both", "", true)
 		if err != nil {
 			return err
 		}
@@ -618,7 +623,7 @@ func (s *Service) scheduledProbe(ctx context.Context, settings backupplan.Settin
 	if snapshot == "" {
 		return nil
 	}
-	id, err := s.startScheduled(ctx, "verify", settings.ProbeTarget, snapshot)
+	id, err := s.startScheduled(ctx, "verify", settings.ProbeTarget, snapshot, false)
 	if err != nil {
 		return err
 	}

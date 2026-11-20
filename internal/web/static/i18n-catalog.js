@@ -2757,6 +2757,7 @@ globalThis.HouseholdEnglish = Object.freeze({
   "Dieser Bereich ist nicht mehr verfügbar.": "This area is no longer available.",
   "Dieser Bereich konnte nicht geladen werden. Aktualisiere die Übersicht, um es erneut zu versuchen.": "This section could not be loaded. Refresh the overview to try again.",
   "Dieser bestätigte Stand ist bereits ausgewählt.": "This confirmed version is already selected.",
+  "Dieser Browser kann geteilte Dateien nicht sicher speichern. Bitte aktualisiere ihn.": "This browser cannot save shared files safely. Please update it.",
   "Dieser Browser stellt Gerätehinweise nicht bereit.": "This browser does not provide device notifications.",
   "Dieser Browser unterstützt das Wachhalten nicht.": "This browser does not support keeping the screen awake.",
   "Dieser Browser unterstützt hier keine Passkeys. Verwende dein Passwort.": "This browser does not support passkeys here. Use your password.",

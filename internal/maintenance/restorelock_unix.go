@@ -14,6 +14,10 @@ import (
 // container on the same volume) can never run or recover a restore at once.
 // It returns errRestoreBusy when another process holds the lock.
 func acquireRestoreLock() (func(), error) {
+	// A custom HOUSEHOLD_BACKUP_WORK may not exist yet before the first backup.
+	if err := os.MkdirAll(workDirectory(), 0700); err != nil { // #nosec G301 -- private operator work directory
+		return nil, err
+	}
 	path := filepath.Join(workDirectory(), "restore.lock")
 	file, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0600) // #nosec G304 -- fixed name in the operator work directory
 	if err != nil {

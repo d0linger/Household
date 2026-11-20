@@ -2147,3 +2147,14 @@ Executed checks for round 2 (task-owned database on 55444, review server on 127.
 - Docker rehearsal passed (`outputs/backup-operations/report-4c4d1ab8d0a4.json`), including the interrupted-swap recovery that now waits for the journal removal.
 - Browser suite as CI runs it passed up to the documents component (local poppler limit); `browser-backup-check` passed separately with 37 checks, including the real share save flow (one document, cache entry removed). Three fresh browser-check plus accessibility runs passed after the pointer fix.
 - `gofmt`, `go vet` (both tag sets), unit tests (coverage 20.0 %), golangci-lint (0 issues), gosec (no findings), 524 Node tests, workflow policy, 124 migration checksums and localization pass.
+
+## CodeRabbit review of PR 23, round 3 (2026-11-20)
+
+The incremental review of `1ed842f` raised five minor findings and no major one; all were valid and fixed:
+- The restore lock creates a custom `HOUSEHOLD_BACKUP_WORK` directory before it opens its lock file.
+- A scheduled offsite-only copy records no local repository label, so it never counts as a local backup attempt in schedules or health (backup jobs name only `local` or `both`).
+- If the restored snapshot directory cannot be removed, the journal stays and the next start retries the cleanup; a committed restore stays successful.
+- `share.js` requires Web Locks and otherwise offers no save or discard, instead of running same-file work unserialized.
+- The browser backup check gives the shared file a title unique to the run.
+
+Executed checks for round 3: static pipeline (gofmt, vet with both tag sets, unit tests at 20.0 % coverage, golangci-lint 0 issues, gosec no findings, 524 Node tests, workflows, 124 checksums, localization) passes; `TestBackup*`, `TestLiveRestore*`, `TestMetrics*` and `TestHouseholdExport*` pass; the Docker rehearsal passed (`outputs/backup-operations/report-a7d06f5a9975.json`); `browser-backup-check` passed with 37 checks.

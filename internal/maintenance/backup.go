@@ -498,7 +498,7 @@ func verifyRestoreLocked(ctx context.Context, pool *pgxpool.Pool, cfg config.Con
 	}
 	restored, err := restoreVerified(ctx, cfg, target, snapshot, targetURL, false)
 	if restored != nil {
-		restored.Remove()
+		_ = restored.Remove() // a disposable check directory; nothing to recover
 	}
 	if err != nil {
 		return err
@@ -531,8 +531,10 @@ type restoredSnapshot struct {
 }
 
 // Remove deletes the private work directory.
-func (r *restoredSnapshot) Remove() {
-	_ = os.RemoveAll(r.Directory) // #nosec G703 -- exact private directory returned by MkdirTemp
+// Remove deletes the restored snapshot directory. Callers that keep a
+// journal keep it when this fails, so the next start retries the cleanup.
+func (r *restoredSnapshot) Remove() error {
+	return os.RemoveAll(r.Directory) // #nosec G703 -- exact private directory returned by MkdirTemp
 }
 
 // restoreVerified restores snapshot from target into the empty database at

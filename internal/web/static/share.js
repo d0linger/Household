@@ -21,9 +21,9 @@
   const user = document.body.dataset.user || '';
   // Saving and discarding one shared file are serialized across tabs; the
   // state always comes from the cache entry, never from a page's old copy.
-  const exclusive = (request, work) => navigator.locks?.request
-    ? navigator.locks.request('household-share:' + request.url, work)
-    : work();
+  // Without Web Locks (every current browser has them) the page offers no
+  // actions rather than risking two documents for one file.
+  const exclusive = (request, work) => navigator.locks.request('household-share:' + request.url, work);
   // update stores new state headers on the parked file and returns the entry.
   async function update(cache, request, response, values) {
     const headers = new Headers(response.headers);
@@ -81,6 +81,11 @@
 
   async function render() {
     if (!('caches' in window)) { refreshEmpty(); return; }
+    if (!navigator.locks?.request) {
+      fail(t('Dieser Browser kann geteilte Dateien nicht sicher speichern. Bitte aktualisiere ihn.'));
+      refreshEmpty();
+      return;
+    }
     const cache = await caches.open(CACHE);
     for (const request of await cache.keys()) {
       // A parked file belongs to the first account that opens it here;

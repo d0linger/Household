@@ -25,6 +25,7 @@
   "Die geteilte Datei kam an, bevor Household auf diesem Gerät bereit war. Teile sie bitte noch einmal.": "The shared file arrived before Household was ready on this device. Please share it again.",
   "Wartende Dateien": "Waiting files",
   "Diese Datei wurde bereits gespeichert oder verworfen.": "This file was already saved or discarded.",
+  "Dieser Browser kann geteilte Dateien nicht sicher speichern. Bitte aktualisiere ihn.": "This browser cannot save shared files safely. Please update it.",
   "Nicht alle geteilten Dateien konnten auf diesem Gerät abgelegt werden. Teile die fehlenden bitte noch einmal.": "Not every shared file could be stored on this device. Please share the missing ones again.",
   "Keine geteilten Dateien auf diesem Gerät.": "No shared files on this device.",
   "Gespeichert wird als neues Dokument im Modul Dokumente. Dort ergänzt du Kategorie, Aussteller, Garantie und Erinnerungen.": "Each file is saved as a new document in the Documents module, where you add category, issuer, warranty and reminders.",
