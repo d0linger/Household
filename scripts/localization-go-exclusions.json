@@ -579,5 +579,13 @@
   "error pattern\ninternal/pwned/pwned.go\npassword breach check unavailable": "Internal/operator diagnostic outside typed Invalid/Rejection and HTTP presentation boundaries; preserve diagnostic text.",
   "error pattern\ninternal/updatecheck/updatecheck.go\nunexpected update response": "Internal/operator diagnostic outside typed Invalid/Rejection and HTTP presentation boundaries; preserve diagnostic text.",
   "error pattern\ninternal/updatecheck/updatecheck.go\nupdate source refused the lookup": "Internal/operator diagnostic outside typed Invalid/Rejection and HTTP presentation boundaries; preserve diagnostic text.",
-  "error pattern\ninternal/updatecheck/updatecheck.go\nupdate source unreachable": "Internal/operator diagnostic outside typed Invalid/Rejection and HTTP presentation boundaries; preserve diagnostic text."
+  "error pattern\ninternal/updatecheck/updatecheck.go\nupdate source unreachable": "Internal/operator diagnostic outside typed Invalid/Rejection and HTTP presentation boundaries; preserve diagnostic text.",
+  "error pattern\ninternal/maintenance/restore.go\nan interrupted live restore is pending; restart the backup service to complete it first": "Internal/operator diagnostic outside typed Invalid/Rejection and HTTP presentation boundaries; preserve diagnostic text.",
+  "error pattern\ninternal/alerts/alerts.go\ninvalid recipient address": "Internal/operator diagnostic outside typed Invalid/Rejection and HTTP presentation boundaries; preserve diagnostic text.",
+  "error pattern\ninternal/alerts/alerts.go\ninvalid sender address": "Internal/operator diagnostic outside typed Invalid/Rejection and HTTP presentation boundaries; preserve diagnostic text.",
+  "error pattern\ninternal/maintenance/restore.go\nkept restore databases remain after the discard limit; repeat the request": "Internal/operator diagnostic outside typed Invalid/Rejection and HTTP presentation boundaries; preserve diagnostic text.",
+  "error pattern\ninternal/maintenance/restore.go\nrollback found an unexpected set of databases; inspect them before retrying": "Internal/operator diagnostic outside typed Invalid/Rejection and HTTP presentation boundaries; preserve diagnostic text.",
+  "error pattern\ninternal/maintenance/restore.go\nsome kept restore databases have unexpected names and were left in place": "Internal/operator diagnostic outside typed Invalid/Rejection and HTTP presentation boundaries; preserve diagnostic text.",
+  "error pattern\ninternal/maintenance/restore.go\nthe live database is not reachable": "Internal/operator diagnostic outside typed Invalid/Rejection and HTTP presentation boundaries; preserve diagnostic text.",
+  "error pattern\ninternal/maintenance/restore.go\nthe restore job is missing from the restored database": "Internal/operator diagnostic outside typed Invalid/Rejection and HTTP presentation boundaries; preserve diagnostic text."
 }

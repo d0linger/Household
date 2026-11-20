@@ -11,7 +11,7 @@ import (
 
 func TestAcceptsGzip(t *testing.T) {
 	for header, want := range map[string]bool{
-		"gzip": true, "br, gzip;q=0.8": true, "GZIP": true, "gzip;q=0": false, "gzip; q=0.0": false, "br": false, "": false, "identity": false,
+		"gzip": true, "br, gzip;q=0.8": true, "GZIP": true, "gzip;q=0": false, "gzip; q=0.0": false, "gzip;Q=0": false, "gzip; Q = 0.000": false, "gzip;q=0.001": true, "gzip;level=1;q=0": false, "gzip;q=bad": false, "br": false, "": false, "identity": false,
 	} {
 		r := httptest.NewRequest("GET", "/", nil)
 		r.Header.Set("Accept-Encoding", header)

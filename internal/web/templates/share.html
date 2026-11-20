@@ -2,6 +2,7 @@
 <link rel="stylesheet" href="{{index .Asset "backup.css"}}">
 <div class="page-heading"><div><h1>{{t "Geteilte Dateien"}}</h1><p class="muted">{{t "Fotos und PDFs, die du aus einer anderen App mit Household geteilt hast. Sie liegen nur auf diesem Gerät, bis du sie speicherst."}}</p></div></div>
 <div class="notice" role="status" data-share-missed hidden>{{t "Die geteilte Datei kam an, bevor Household auf diesem Gerät bereit war. Teile sie bitte noch einmal."}}</div>
+<div class="notice error" role="alert" data-share-failed hidden>{{t "Nicht alle geteilten Dateien konnten auf diesem Gerät abgelegt werden. Teile die fehlenden bitte noch einmal."}}</div>
 <div class="notice error" role="alert" data-share-error hidden></div>
 <section class="panel" aria-labelledby="share-heading"><h2 id="share-heading">{{t "Wartende Dateien"}}</h2>
 <p class="fine" data-share-empty>{{t "Keine geteilten Dateien auf diesem Gerät."}}</p>

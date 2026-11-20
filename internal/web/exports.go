@@ -91,7 +91,7 @@ func (s *Server) householdExport(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		for _, e := range m.Entities {
-			data, err := s.entityCSV(r.Context(), id, m, e)
+			data, err := s.entityCSV(r.Context(), id, m, e, true)
 			var invalid store.Invalid
 			if errors.As(err, &invalid) || errors.Is(err, store.ErrForbidden) {
 				// Too large for an export, or not visible to this administrator.
@@ -190,11 +190,12 @@ func (s *Server) auditExport(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, store.ErrBusy)
 		return
 	}
+	// A supplied before cursor continues a truncated export; readAudit validates it.
 	query := r.URL.Query()
-	query.Del("before")
 	var lines bytes.Buffer
 	chain := auditChainStep("", []byte(auditChainSeed))
 	count, truncated := 0, false
+	var last int64
 	for {
 		page := r.Clone(r.Context())
 		page.URL = &url.URL{Path: r.URL.Path, RawQuery: query.Encode()}
@@ -221,14 +222,20 @@ func (s *Server) auditExport(w http.ResponseWriter, r *http.Request) {
 			lines.Write(line)
 			lines.WriteByte('\n')
 			count++
+			last = item.ID
 		}
 		if truncated || result.Next == 0 {
 			break
 		}
 		query.Set("before", strconv.FormatInt(result.Next, 10))
 	}
-	manifest, _ := json.Marshal(map[string]any{"manifest": map[string]any{"format": "household-audit-export-1", "entries": count,
-		"final_chain": chain, "truncated": truncated, "exported_at": time.Now().UTC(), "release": buildinfo.Label()}})
+	summary := map[string]any{"format": "household-audit-export-1", "entries": count,
+		"final_chain": chain, "truncated": truncated, "exported_at": time.Now().UTC(), "release": buildinfo.Label()}
+	if truncated {
+		// Request the same filters with before=next_before for the older part.
+		summary["next_before"] = last
+	}
+	manifest, _ := json.Marshal(map[string]any{"manifest": summary})
 	lines.Write(manifest)
 	lines.WriteByte('\n')
 	// Recorded after the chain is final, so the export never contains its own
@@ -242,8 +249,14 @@ func (s *Server) auditExport(w http.ResponseWriter, r *http.Request) {
 	s.writeBytes(w, r, lines.Bytes())
 }
 
+// clientErrorClasses are the error classes a report may name; the same list
+// is in app.js. Messages are never accepted, because they can quote user input.
+var clientErrorClasses = map[string]bool{"Error": true, "TypeError": true, "ReferenceError": true, "RangeError": true, "SyntaxError": true,
+	"URIError": true, "EvalError": true, "AggregateError": true, "DOMException": true, "AbortError": true, "NetworkError": true,
+	"QuotaExceededError": true, "SecurityError": true, "NotAllowedError": true, "InvalidStateError": true}
+
 // clientError records a browser script error in the log, without personal
-// data: a bounded message, the script's file name, line and column.
+// data: an allowlisted error class, the script's file name, line and column.
 func (s *Server) clientError(w http.ResponseWriter, r *http.Request) {
 	id := identity(r)
 	if err := s.Auth.Limit(r.Context(), "client-error", id.UserID, 30, 15*time.Minute); err != nil {
@@ -251,11 +264,11 @@ func (s *Server) clientError(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var report struct {
-		Message string `json:"message"`
-		Source  string `json:"source"`
-		Line    int    `json:"line"`
-		Column  int    `json:"column"`
-		Kind    string `json:"kind"`
+		Name   string `json:"name"`
+		Source string `json:"source"`
+		Line   int    `json:"line"`
+		Column int    `json:"column"`
+		Kind   string `json:"kind"`
 	}
 	if err := readJSON(w, r, &report); err != nil {
 		s.fail(w, r, err)
@@ -284,7 +297,12 @@ func (s *Server) clientError(w http.ResponseWriter, r *http.Request) {
 	if report.Kind == "rejection" {
 		kind = "rejection"
 	}
-	s.Log.Warn("browser script error", "request_id", trace(r), "kind", kind, "message", clip(report.Message, 200),
+	// Only an allowlisted error class is logged, never free text.
+	name := "other"
+	if clientErrorClasses[report.Name] {
+		name = report.Name
+	}
+	s.Log.Warn("browser script error", "request_id", trace(r), "kind", kind, "class", name,
 		"source", clip(source, 80), "line", max(report.Line, 0), "column", max(report.Column, 0))
 	w.WriteHeader(http.StatusNoContent)
 }

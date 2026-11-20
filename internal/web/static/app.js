@@ -1,21 +1,26 @@
 const _householdText_app_js = (source, ...args) => { const i18n = globalThis.HouseholdI18n; if (i18n) return i18n.t(source, ...args); let index = 0; return args.length ? source.replace(/%%|%[sdv]/g, token => token === '%%' ? '%' : String(args[index++] ?? '')) : source; };
 /* Household uses only bundled assets. Private pages are never service-worker cached. */
-// Report script errors of signed-in pages without personal data: message,
-// script file and position only, at most five per page load.
+// Report script errors of signed-in pages without personal data: the error
+// class (never its message, which can quote user input), script file and
+// position only, at most five per page load.
 (() => {
   'use strict';
   const csrf = document.querySelector('meta[name="csrf-token"]')?.content;
   if (!csrf || !document.body?.dataset.user) return;
+  // Error class names (not user-visible copy); the server keeps the same list.
+  const classes = {Error: 1, TypeError: 1, ReferenceError: 1, RangeError: 1, SyntaxError: 1, URIError: 1, EvalError: 1, AggregateError: 1,
+    DOMException: 1, AbortError: 1, NetworkError: 1, QuotaExceededError: 1, SecurityError: 1, NotAllowedError: 1, InvalidStateError: 1};
+  const errorClass = value => typeof value?.name === 'string' && Object.hasOwn(classes, value.name) ? value.name : 'other';
   let sent = 0;
-  const report = (kind, message, source, line, column) => {
+  const report = (kind, name, source, line, column) => {
     if (sent >= 5) return;
     sent += 1;
     fetch('/api/v1/core/client-errors', {method: 'POST', credentials: 'same-origin', keepalive: true,
       headers: {'Content-Type': 'application/json', 'X-CSRF-Token': csrf},
-      body: JSON.stringify({kind, message: String(message || '').slice(0, 200), source: String(source || '').slice(0, 300), line: Number(line) || 0, column: Number(column) || 0})}).catch(() => {});
+      body: JSON.stringify({kind, name, source: String(source || '').slice(0, 300), line: Number(line) || 0, column: Number(column) || 0})}).catch(() => {});
   };
-  addEventListener('error', event => { if (event.message) report('error', event.message, event.filename, event.lineno, event.colno); });
-  addEventListener('unhandledrejection', event => report('rejection', event.reason?.message || event.reason, '', 0, 0));
+  addEventListener('error', event => { if (event.message) report('error', errorClass(event.error), event.filename, event.lineno, event.colno); });
+  addEventListener('unhandledrejection', event => report('rejection', errorClass(event.reason), '', 0, 0));
 })();
 (() => {
   'use strict';

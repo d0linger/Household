@@ -43,6 +43,15 @@ func TestCheckComparesTheRunningRevisionOncePerInterval(t *testing.T) {
 	if result := checker.Check(context.Background(), now.Add(50*time.Hour)); result.Available {
 		t.Fatal("local build reported as outdated")
 	}
+	// Short build revisions compare with the same prefix of the latest commit.
+	running = main[:12]
+	if result := checker.Check(context.Background(), now.Add(75*time.Hour)); result.Available {
+		t.Fatal("matching short revision reported as outdated")
+	}
+	running = strings.Repeat("c", 7)
+	if result := checker.Check(context.Background(), now.Add(100*time.Hour)); !result.Available {
+		t.Fatal("different short revision not reported")
+	}
 }
 
 func TestCheckReportsFailureWithoutAvailability(t *testing.T) {

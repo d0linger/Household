@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"image"
 	"image/png"
+	"io"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
@@ -38,6 +39,18 @@ func TestHouseholdExportRequiresRecentAdminAndCarriesManifest(t *testing.T) {
 		t.Fatalf("stale admin export: %v %s %v", response, body, err)
 	}
 	if _, err := f.owner.Exec(f.ctx, "UPDATE core.sessions SET reauthenticated_at=now() WHERE id=$1", f.identity.SessionID); err != nil {
+		t.Fatal(err)
+	}
+	// Records the list views hide still belong in a complete export.
+	var archivedList string
+	if err := f.owner.QueryRow(f.ctx, `INSERT INTO shopping.lists(household_id,name,created_by,archived_at) VALUES($1,'Archivierte Liste',$2,now()) RETURNING id`,
+		f.identity.HouseholdID, f.identity.UserID).Scan(&archivedList); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.owner.Exec(f.ctx, `INSERT INTO shopping.lists(household_id,name,created_by,is_template) VALUES($1,'Vorlage Wocheneinkauf',$2,true)`, f.identity.HouseholdID, f.identity.UserID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.owner.Exec(f.ctx, `INSERT INTO shopping.items(household_id,list_id,name,created_by) VALUES($1,$2,'Artikel der archivierten Liste',$3)`, f.identity.HouseholdID, archivedList, f.identity.UserID); err != nil {
 		t.Fatal(err)
 	}
 	response, body, err := f.request("GET", "/api/v1/core/export.zip", f.token, "", "", nil, nil)
@@ -79,6 +92,29 @@ func TestHouseholdExportRequiresRecentAdminAndCarriesManifest(t *testing.T) {
 	}
 	if len(files) != len(manifest.Entries)+1 {
 		t.Fatalf("archive holds %d files for %d entries", len(files), len(manifest.Entries))
+	}
+	read := func(name string) string {
+		t.Helper()
+		file := files[name]
+		if file == nil {
+			t.Fatalf("export lacks %s", name)
+		}
+		handle, err := file.Open()
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer func() { _ = handle.Close() }()
+		data, err := io.ReadAll(handle)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(data)
+	}
+	if lists := read("shopping/lists.csv"); !strings.Contains(lists, "Archivierte Liste") || !strings.Contains(lists, "Vorlage Wocheneinkauf") {
+		t.Fatal("export omits archived or template shopping lists")
+	}
+	if !strings.Contains(read("shopping/items.csv"), "Artikel der archivierten Liste") {
+		t.Fatal("export omits items of archived shopping lists")
 	}
 	var events int
 	var actor string
@@ -149,9 +185,14 @@ func TestAuditExportChainsEveryVisibleEntry(t *testing.T) {
 func TestConvenienceRoutesAnswerWithoutSideEffects(t *testing.T) {
 	f := newIntegrationFixture(t)
 	csrf := f.app.Auth.CSRF(f.token, "session")
-	report := `{"message":"TypeError: x is \u0000undefined` + strings.Repeat("ü", 200) + `","source":"https://example.invalid/assets/app.js?v=1","line":12,"column":-4,"kind":"rejection"}`
+	report := `{"name":"TypeError","source":"https://example.invalid/assets/app.js?v=1","line":12,"column":-4,"kind":"rejection"}`
 	if response, body, err := f.request("POST", "/api/v1/core/client-errors", f.token, csrf, "application/json", strings.NewReader(report), nil); err != nil || response.StatusCode != 204 {
 		t.Fatalf("client error report: %v %s %v", response, body, err)
+	}
+	// Free-text messages can quote user input and are refused outright.
+	withMessage := `{"name":"TypeError","message":"Milch für Anna","source":"app.js","line":1,"column":1,"kind":"error"}`
+	if response, _, err := f.request("POST", "/api/v1/core/client-errors", f.token, csrf, "application/json", strings.NewReader(withMessage), nil); err != nil || response.StatusCode != 422 {
+		t.Fatalf("client error report with message: %v %v", response, err)
 	}
 	if response, _, err := f.request("POST", "/api/v1/core/client-errors", f.token, "", "application/json", strings.NewReader(report), nil); err != nil || response.StatusCode != 403 {
 		t.Fatalf("client error report without CSRF: %v %v", response, err)

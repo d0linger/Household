@@ -7,7 +7,9 @@
   const empty = document.querySelector('[data-share-empty]');
   const errorBox = document.querySelector('[data-share-error]');
   const template = document.querySelector('[data-share-item]');
-  if (new URLSearchParams(location.search).has('missed')) document.querySelector('[data-share-missed]').hidden = false;
+  const params = new URLSearchParams(location.search);
+  if (params.has('missed')) document.querySelector('[data-share-missed]').hidden = false;
+  if (params.has('failed')) document.querySelector('[data-share-failed]').hidden = false;
   const fail = message => { errorBox.textContent = message; errorBox.hidden = false; };
   const json = async response => {
     const body = await response.json().catch(() => ({}));
@@ -16,14 +18,30 @@
   };
   const refreshEmpty = () => { empty.hidden = list.children.length > 0; };
 
+  // The request keys are created once per shared file and kept with it, so a
+  // retry, even after a reload, replays the same document and upload instead
+  // of creating another title-only document.
+  async function keysFor(request, response) {
+    let create = response.headers.get('X-Share-Create-Key'), upload = response.headers.get('X-Share-Upload-Key');
+    if (create && upload) return { create, upload };
+    create = crypto.randomUUID();
+    upload = crypto.randomUUID();
+    const headers = new Headers(response.headers);
+    headers.set('X-Share-Create-Key', create);
+    headers.set('X-Share-Upload-Key', upload);
+    await (await caches.open(CACHE)).put(request, new Response(await response.clone().blob(), { headers }));
+    return { create, upload };
+  }
+
   async function save(request, response, title, status) {
     const bootstrap = await json(await fetch('/api/v1/core/bootstrap', { headers: { Accept: 'application/json' }, cache: 'no-store' }));
     const documents = bootstrap.states?.documents;
     if (!documents || documents.state !== 'enabled') throw new Error(t('Das Modul Dokumente ist ausgeschaltet.'));
+    const keys = await keysFor(request, response);
     status.textContent = t('Dokument wird angelegt …');
     const record = await json(await fetch('/api/v1/m/documents/documents', {
       method: 'POST', cache: 'no-store',
-      headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-CSRF-Token': csrf, 'Idempotency-Key': crypto.randomUUID() },
+      headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-CSRF-Token': csrf, 'Idempotency-Key': keys.create },
       body: JSON.stringify({ data: { title }, generation: documents.generation }) }));
     status.textContent = t('Datei wird hochgeladen …');
     const blob = await response.blob();
@@ -35,7 +53,7 @@
     form.set('current', 'true');
     await json(await fetch('/api/v1/documents/' + record.id + '/original', {
       method: 'POST', cache: 'no-store', body: form,
-      headers: { Accept: 'application/json', 'X-CSRF-Token': csrf, 'Idempotency-Key': crypto.randomUUID() } }));
+      headers: { Accept: 'application/json', 'X-CSRF-Token': csrf, 'Idempotency-Key': keys.upload } }));
     await (await caches.open(CACHE)).delete(request);
     return record.id;
   }
@@ -52,9 +70,13 @@
       item.querySelector('[data-share-meta]').textContent = t('%s · %s KB', name, Math.max(1, Math.round(blob.size / 1024)));
       const title = item.querySelector('input[name="title"]');
       title.value = name.replace(/\.[A-Za-z0-9]{1,5}$/, '').slice(0, 200) || t('Geteiltes Dokument');
+      // A preview URL keeps its blob alive; it is released with the preview.
+      let previewURL = '';
+      const releasePreview = () => { if (previewURL) URL.revokeObjectURL(previewURL); previewURL = ''; };
       if (blob.type.startsWith('image/')) {
         const preview = item.querySelector('[data-share-preview]');
-        preview.src = URL.createObjectURL(blob);
+        previewURL = URL.createObjectURL(blob);
+        preview.src = previewURL;
         preview.alt = t('Vorschau von %s', name);
         preview.hidden = false;
       }
@@ -79,6 +101,7 @@
       });
       item.querySelector('[data-share-discard]').addEventListener('click', async () => {
         await cache.delete(request);
+        releasePreview();
         item.remove();
         refreshEmpty();
       });

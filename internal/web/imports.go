@@ -46,7 +46,7 @@ func (s *Server) exportCSV(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, err)
 		return
 	}
-	data, err := s.entityCSV(r.Context(), identity(r), m, e)
+	data, err := s.entityCSV(r.Context(), identity(r), m, e, false)
 	if err != nil {
 		s.fail(w, r, err)
 		return
@@ -58,7 +58,9 @@ func (s *Server) exportCSV(w http.ResponseWriter, r *http.Request) {
 
 // entityCSV renders one module entity as the CSV the export endpoint serves,
 // with the same 10,000-row and size bounds. The caller holds the store gate.
-func (s *Server) entityCSV(ctx context.Context, id auth.Identity, m module.Descriptor, e module.Entity) ([]byte, error) {
+// entityCSV renders one entity as CSV. complete includes records the list views
+// hide (archived and template shopping lists and their items), for the household export.
+func (s *Server) entityCSV(ctx context.Context, id auth.Identity, m module.Descriptor, e module.Entity, complete bool) ([]byte, error) {
 	var err error
 	var buf bytes.Buffer
 	writer := csv.NewWriter(&buf)
@@ -122,7 +124,11 @@ func (s *Server) entityCSV(ctx context.Context, id auth.Identity, m module.Descr
 	} else {
 		for offset := 0; offset < 10000; offset += 100 {
 			var rows []store.Record
-			rows, err = s.Store.List(ctx, id, m, e, "", 100, offset)
+			query := ""
+			if complete && m.ID == "shopping" && (e.ID == "lists" || e.ID == "items") {
+				query = "is:all"
+			}
+			rows, err = s.Store.List(ctx, id, m, e, query, 100, offset)
 			if err != nil {
 				break
 			}

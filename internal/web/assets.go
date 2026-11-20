@@ -105,10 +105,10 @@ var offlineShellAssets = [...]string{
 const serviceWorkerRuntime = `const STATIC_ASSETS=new Set(ASSETS.filter(path=>path.startsWith('/assets/')));
 const SHARE_CACHE='household-share-v1';
 self.addEventListener('fetch',event=>{const url=new URL(event.request.url);if(event.request.method!=='POST'||url.origin!==self.location.origin||url.pathname!=='/share')return;
-event.respondWith((async()=>{try{const form=await event.request.formData(),cache=await caches.open(SHARE_CACHE),stamp=Date.now();let index=0;
+event.respondWith((async()=>{let failed=false;try{const form=await event.request.formData(),cache=await caches.open(SHARE_CACHE),share=crypto.randomUUID();let index=0;
 for(const file of form.getAll('files')){if(!(file instanceof File)||index>=10||file.size<1||file.size>10485760||!['image/jpeg','image/png','application/pdf'].includes(file.type))continue;
-await cache.put('/share/parked/'+stamp+'-'+index,new Response(file,{headers:{'Content-Type':file.type,'X-Share-Name':encodeURIComponent(String(file.name||'').slice(0,200))}}));index++;}}catch{}
-return Response.redirect('/share',303);})());});
+try{await cache.put('/share/parked/'+share+'-'+index,new Response(file,{headers:{'Content-Type':file.type,'X-Share-Name':encodeURIComponent(String(file.name||'').slice(0,200))}}));index++;}catch{failed=true;}}}catch{failed=true;}
+return Response.redirect(failed?'/share?failed=1':'/share',303);})());});
 const PREFERENCE_CACHE='household-public-preferences-v1',LOCALE_KEY='/__household_public_locale';
 self.householdLocale=async()=>{try{const response=await(await caches.open(PREFERENCE_CACHE)).match(LOCALE_KEY);const value=response?await response.text():'';return value==='en'?'en':'de';}catch{return 'de';}};
 self.addEventListener('install',event=>event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(PRECACHE))));

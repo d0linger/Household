@@ -12,6 +12,7 @@ import (
 	"io"
 	"net/http"
 	"regexp"
+	"strings"
 	"sync"
 	"time"
 )
@@ -23,6 +24,9 @@ var Endpoint = "https://api.github.com/repos/d0linger/Household/commits/main"
 const Interval = 24 * time.Hour
 
 var commitPattern = regexp.MustCompile(`^[0-9a-f]{40}$`)
+
+// revisionPattern accepts the build revisions buildinfo reports, full or short.
+var revisionPattern = regexp.MustCompile(`^[0-9a-f]{7,40}$`)
 
 // Result is the last lookup.
 type Result struct {
@@ -68,7 +72,8 @@ func (c *Checker) Check(ctx context.Context, now time.Time) Result {
 	latest, err := c.lookup(ctx)
 	result := Result{Checked: now, Latest: latest, Failed: err != nil}
 	current := c.Current()
-	result.Available = err == nil && commitPattern.MatchString(current) && current != latest
+	// A short build revision is compared with the same prefix of the latest commit.
+	result.Available = err == nil && revisionPattern.MatchString(current) && !strings.HasPrefix(latest, current)
 	c.mu.Lock()
 	c.result = result
 	c.mu.Unlock()
