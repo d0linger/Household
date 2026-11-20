@@ -13,15 +13,19 @@ const must=(condition,message)=>{if(!condition)throw Error(message);report.check
  const browser=await chromium.launch({headless:true,executablePath:process.env.CHROME_PATH||(process.platform==='win32'?'C:/Program Files/Google/Chrome/Application/chrome.exe':undefined)});
  try{
   await fs.mkdir(output,{recursive:true});
-  const context=await browser.newContext({viewport:{width:1440,height:1000},colorScheme:'light'});
+  // In the suite this check reuses the shared authenticated session, so the
+  // whole suite stays inside the production per-account login budget.
+  const handoff=process.env.HOUSEHOLD_BROWSER_HANDOFF;
+  const context=await browser.newContext({viewport:{width:1440,height:1000},colorScheme:'light',...(handoff?{storageState:handoff}:{})});
   await context.route('**/*',route=>{const url=new URL(route.request().url());if(url.origin!==target.origin){report.externalRequests.push(url.href);return route.abort();}return route.continue();});
   const page=await context.newPage();page.on('pageerror',error=>report.errors.push(String(error)));
   let password=process.env.HOUSEHOLD_BROWSER_PASSWORD||'Browser review only 1234';
   const login=async()=>{await page.goto(base+'/login');await page.locator('[name=username]').fill('bootstrap');await page.locator('[name=password]').fill(password);
    await Promise.all([page.waitForURL(url=>url.pathname!=='/login'),page.getByRole('button',{name:/^Anmelden/}).click()]);};
-  await login();
+  if(handoff){await page.goto(base+'/');must(new URL(page.url()).pathname!=='/login','Shared suite session authorized');}
+  else await login();
   // A freshly prepared fixture account must change its password first.
-  if(new URL(page.url()).pathname==='/change-password'){const next='Browser backup review 1234';await page.locator('[name=current]').fill(password);await page.locator('[name=next]').fill(next);
+  if(!handoff&&new URL(page.url()).pathname==='/change-password'){const next='Browser backup review 1234';await page.locator('[name=current]').fill(password);await page.locator('[name=next]').fill(next);
    await Promise.all([page.waitForURL('**/login'),page.getByRole('button',{name:'Passwort speichern'}).click()]);password=next;await login();}
   async function shot(name){const file=path.join(output,name+'.png');await page.screenshot({path:file,fullPage:true});report.screenshots.push(file);}
   async function axe(name){const result=await new AxeBuilder({page}).withTags(['wcag2a','wcag2aa','wcag21aa']).analyze();report.accessibility.push({name,violations:result.violations.map(v=>({id:v.id,nodes:v.nodes.map(n=>n.target)}))});must(result.violations.length===0,'No axe violations: '+name);}
@@ -112,7 +116,7 @@ const must=(condition,message)=>{if(!condition)throw Error(message);report.check
   await page.waitForLoadState('load');
 
   must(report.errors.length===0,'No JavaScript errors');must(report.externalRequests.length===0,'No external requests');
-  report.passed=true;
+  report.passed=true;if(handoff)await context.storageState({path:handoff});
  }catch(error){report.passed=false;report.failure=String(error);throw error;}
  finally{await fs.writeFile(path.join(output,'browser-backup-report.json'),JSON.stringify(report,null,2));await browser.close();}
  console.log(JSON.stringify({checks:report.checks.length,screenshots:report.screenshots.length,accessibility:report.accessibility.length}));
