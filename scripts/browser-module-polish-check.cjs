@@ -44,7 +44,7 @@ async function recipeAndSearch(page, recipe) {
     for (const width of widths) {
       await page.setViewportSize({width, height: width >= 768 ? 1000 : 844});
       await page.waitForFunction(mode => document.documentElement.dataset.theme === mode, mode);
-      const sizes = await page.locator('#recipe-workspace > .actions a').evaluateAll(nodes => nodes.map(node => {const r = node.getBoundingClientRect(); return {text: node.textContent, width: r.width, height: r.height};}));
+      const sizes = await page.locator('#recipe-workspace > .actions a, .recipe-primary-action a[href^="/m/recipes/cook/"]').evaluateAll(nodes => nodes.map(node => {const r = node.getBoundingClientRect(); return {text: node.textContent, width: r.width, height: r.height};}));
       must(sizes.length === 6 && sizes.every(s => s.width >= 120 && s.height < 160), mode + '/' + width + ' Recipe actions have readable width and height');
       await noOverflow(page, mode + '/' + width + ' Recipe');
       if (width === 320) await screenshot(page, 'recipe-' + mode + '-320');
@@ -152,6 +152,14 @@ async function financeDocuments(page) {
   await screenshot(page, 'documents-editor-1024');
   await page.setViewportSize({width: 390, height: 844});
   await visit(page, '/m/documents/workspace/library', '#documents-workspace[aria-busy=false]');
+  const emptySearch='empty-layout-'+Date.now();
+  await page.locator('#doc-filters [name=search]').fill(emptySearch);
+  await Promise.all([
+    page.waitForResponse(response=>{const url=new URL(response.url());return url.pathname==='/api/v1/documents/library'&&url.searchParams.get('search')===emptySearch&&response.status()===200;}),
+    page.locator('#doc-filters form').getByRole('button',{name:'Filter anwenden',exact:true}).click()
+  ]);
+  await page.waitForFunction(()=>document.querySelector('#documents-workspace').getAttribute('aria-busy')==='false'&&document.querySelector('#doc-status').textContent.includes('Ansicht geladen.'));
+  must(await page.locator('.doc-row').count() === 0, 'Unique search prepares an actual empty Documents view');
   must((await page.locator('#doc-status').innerText()).includes('Ansicht geladen.'), 'Empty Documents view finishes loading');
   must(await page.locator('.doc-selection').count() === 0, 'Empty Documents view omits selection controls');
   for (const selector of ['.doc-filter-options', '.doc-view-options']) must(await page.locator(selector).getAttribute('open') === null, 'Documents ' + selector + ' starts collapsed');

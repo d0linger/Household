@@ -13,7 +13,7 @@ const _householdText_today_js=(source,...args)=>{
     if(!value||!['ready','disabled','error'].includes(value.state))return {state:'error',items:[],more:false};
     if(value.state!=='ready')return {state:value.state,items:[],more:false};
     if(!Array.isArray(value.items))return {state:'error',items:[],more:false};
-    const items=value.items.slice(0,limit).filter(item=>item&&typeof item.title==='string'&&typeof item.url==='string').map(item=>({title:item.title.slice(0,1000),url:safeURL(item.url),meta:typeof item.meta==='string'?item.meta.slice(0,300):'',read:item.read===true}));
+    const items=value.items.slice(0,limit).filter(item=>item&&typeof item.title==='string'&&typeof item.url==='string').map(item=>({title:item.title.slice(0,1000),url:safeURL(item.url),meta:typeof item.meta==='string'?item.meta.slice(0,300):'',read:item.read===true,image:typeof item.image==='string'&&/^\/attachments\/[a-f0-9-]{36}\/preview$/.test(item.image)?item.image:'',minor:typeof item.minor==='string'&&/^-?(?:0|[1-9]\d{0,59})$/.test(item.minor)?item.minor:null}));
     return {state:'ready',items,more:value.more===true||value.items.length>limit};
   }
   function dayLabel(day,locale){
@@ -22,29 +22,62 @@ const _householdText_today_js=(source,...args)=>{
     if(!Number.isFinite(date.getTime())||date.toISOString().slice(0,10)!==day)return '';
     return new Intl.DateTimeFormat(locale,{weekday:'long',day:'numeric',month:'long',timeZone:'UTC'}).format(date);
   }
-  if(typeof module!=='undefined'&&module.exports){module.exports={safeURL,sectionModel,dayLabel};return;}
+  function taskProgress(open,done){
+    if([open,done].some(v=>!v||v.state!=='ready'||v.more||!Array.isArray(v.items)))return null;
+    const total=open.items.length+done.items.length;
+    return total?{done:done.items.length,total,percent:Math.round(done.items.length*100/total)}:null;
+  }
+  if(typeof module!=='undefined'&&module.exports){module.exports={safeURL,sectionModel,dayLabel,taskProgress};return;}
   const root=document.querySelector('#today');if(!root)return;
   const $=id=>document.getElementById(id),status=$('today-status'),refresh=$('today-refresh'),error=$('today-error');
   const descriptions={
     tasks:{limit:6,empty:()=>tr('Für dich sind heute keine offenen Aufgaben fällig.'),disabled:()=>tr('Die Aufgabenverwaltung ist in diesem Haushalt nicht aktiviert.')},
+    shopping:{limit:4,empty:()=>tr('Keine offenen Artikel auf der Einkaufsliste.'),disabled:()=>tr('Einkaufslisten sind in diesem Haushalt nicht aktiviert.')},
+    finances:{limit:3,empty:()=>tr('Keine Finanzdaten für diesen Monat.'),disabled:()=>tr('Finanzen sind in diesem Haushalt nicht aktiviert.')},
     notifications:{limit:6,empty:()=>tr('Keine aktuellen Mitteilungen für dich.'),disabled:()=>tr('Mitteilungen sind derzeit nicht verfügbar.')},
     cooking:{limit:3,empty:()=>tr('Keine offene Kochsitzung. Starte in einem Rezept, wenn du kochen möchtest.'),disabled:()=>tr('Das Kochbuch ist in diesem Haushalt nicht aktiviert.')},
     meals:{limit:6,empty:()=>tr('Für heute ist noch keine Mahlzeit geplant.'),disabled:()=>tr('Die Essensplanung ist in diesem Haushalt nicht aktiviert.')}
   };
   let active=null,sequence=0;
   function paragraph(text,className){const p=document.createElement('p');p.textContent=text;p.className=className;return p;}
-  function clearSections(message){for(const name of Object.keys(descriptions)){const target=$('today-'+name);target.replaceChildren(paragraph(message,'today-empty'));target.setAttribute('aria-busy','false');}}
+  function clearSections(message){
+    status.classList.remove('sr-only');root.querySelector('.today-meal-cover')?.remove();
+    $('today-meter').hidden=true;$('today-percent').textContent='';$('today-fraction').textContent='';
+    $('today-completed').replaceChildren();$('today-completed').hidden=true;
+    const shop=$('today-shop-link');if(shop){shop.href='/m/shopping/lists';shop.textContent=tr('Einkaufslisten')+' →';}
+    for(const name of Object.keys(descriptions)){const target=$('today-'+name);target.replaceChildren(paragraph(message,'today-empty'));target.setAttribute('aria-busy','false');}}
   function renderSection(name,value){
     const settings=descriptions[name],model=sectionModel(value,settings.limit),target=$('today-'+name);target.replaceChildren();target.setAttribute('aria-busy','false');
     if(model.state==='error'){const message=paragraph(tr('Dieser Bereich konnte nicht geladen werden. Aktualisiere die Übersicht, um es erneut zu versuchen.'),'today-empty');message.classList.add('today-partial');target.append(message);return false;}
     if(model.state==='disabled'){target.append(paragraph(settings.disabled(),'today-empty'));return true;}
-    if(!model.items.length){target.append(paragraph(settings.empty(),'today-empty'));return true;}
+    if(!model.items.length){target.append(paragraph(name==='shopping'&&!value.title?tr('Noch keine Einkaufsliste angelegt.'):settings.empty(),'today-empty'));return true;}
     const list=document.createElement('ul');list.className='today-list';
     for(const item of model.items){const li=document.createElement('li'),a=document.createElement('a'),text=document.createElement('span'),title=document.createElement('span');a.href=item.url;text.className='today-item-text';title.className='today-item-title';title.textContent=item.title;text.append(title);
       if(name==='notifications'&&!item.read){const dot=document.createElement('span');dot.className='today-unread';dot.setAttribute('aria-hidden','true');a.append(dot);const unread=document.createElement('span');unread.className='sr-only';unread.textContent=tr('Ungelesen')+' · ';title.prepend(unread);}
+      if(item.image&&name==='meals'&&item===model.items[0]){
+        const photo=document.createElement('img');photo.className='today-meal-cover';photo.alt='';photo.src=item.image;
+        photo.addEventListener('error',()=>photo.remove(),{once:true});target.parentElement.prepend(photo);
+      }
+      if(item.minor!==null)item.meta=HouseholdFinanceValues.money(item.minor,'EUR',2);
       if(item.meta){const meta=document.createElement('span');meta.className='today-item-meta';meta.textContent=item.meta;text.append(meta);}
       const arrow=document.createElement('span');arrow.textContent='→';arrow.setAttribute('aria-hidden','true');a.append(text,arrow);li.append(a);list.append(li);}
-    target.append(list);if(model.more)target.append(paragraph(tr('Weitere Einträge findest du im jeweiligen Bereich.'),'today-more'));return true;
+    target.append(list);if(model.more&&name!=='shopping')target.append(paragraph(tr('Weitere Einträge findest du im jeweiligen Bereich.'),'today-more'));return true;
+  }
+  function renderProgress(data){
+    const open=sectionModel(data.tasks,6),done=sectionModel(data.completed,6),meter=taskProgress(open,done);
+    if(meter){
+      $('today-meter').hidden=false;$('today-percent').textContent=meter.percent+'%';
+      $('today-ring').setAttribute('stroke-dasharray',meter.percent+' '+(100-meter.percent));
+      $('today-fraction').textContent=tr('%d von %d Aufgaben erledigt',meter.done,meter.total);
+    }
+    const complete=$('today-completed');
+    if(done.items.length){
+      const list=document.createElement('ul');list.classList.add('today-list','completed-tasks');
+      for(const item of done.items){const li=document.createElement('li'),link=document.createElement('a');link.href=item.url;link.textContent=item.title;link.setAttribute('aria-label',item.title+' · '+tr('Erledigt'));li.append(link);list.append(li);}
+      complete.replaceChildren(list);complete.hidden=false;
+    }
+    const shop=$('today-shop-link');
+    if(shop&&data.shopping?.state==='ready'&&data.shopping.title&&data.shopping.url){shop.href=safeURL(data.shopping.url);shop.textContent=data.shopping.title+' →';}
   }
   async function load(){
     if(active)active.abort();const controller=new AbortController();active=controller;const request=++sequence;
@@ -57,6 +90,7 @@ const _householdText_today_js=(source,...args)=>{
       const data=await response.json();if(request!==sequence)return;
       const label=dayLabel(data.day,document.documentElement.lang||'de');$('today-date').textContent=label?label+' · '+String(data.timezone||''):tr('Der Haushaltstag ist gerade nicht verfügbar.');
       let complete=Boolean(label);for(const name of Object.keys(descriptions))if(!renderSection(name,data[name]))complete=false;
+      renderProgress(data);status.classList.toggle('sr-only',complete);
       status.textContent=complete?tr('Aktueller Stand geladen.'):tr('Ein Teil der Übersicht ist nicht verfügbar. Die übrigen Bereiche sind aktuell.');
     }catch{if(request!==sequence)return;clearSections(tr('Keine aktuellen Daten geladen.'));$('today-date').textContent=tr('Der Haushaltstag ist gerade nicht verfügbar.');error.hidden=false;status.textContent=tr('Die Übersicht konnte nicht aktualisiert werden.');}
     finally{clearTimeout(timer);if(request===sequence){refresh.disabled=false;active=null;}}

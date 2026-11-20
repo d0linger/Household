@@ -54,6 +54,13 @@ const _householdText_app_js = (source, ...args) => { const i18n = globalThis.Hou
   addEventListener('online', connection); addEventListener('offline', connection); connection();
   const nav = $('.mobile-nav');
   if (nav && !all('a', nav).length) nav.hidden = true;
+  const contextMenu = $('.workspace-context-fold');
+  if (contextMenu) {
+    const compact = matchMedia('(max-width:600px)');
+    const adaptMenu = () => { contextMenu.open = !compact.matches; };
+    adaptMenu();
+    compact.addEventListener('change', adaptMenu);
+  }
   const entityTabs = all('.entity-tabs,.mobile-nav');
   if (entityTabs.length) {
     const pending = new Set(); let frame = null;

@@ -15,7 +15,7 @@
 {{define "appearance-control"}}<button type="button" class="appearance-trigger" data-open="appearance-dialog" aria-label="{{t "Darstellung wählen"}}" title="{{t "Darstellung wählen"}}"><svg aria-hidden="true"><use href="{{icon .Asset "sun"}}"/></svg></button>{{end}}
 
 {{define "appearance-dialog"}}<dialog id="appearance-dialog" aria-labelledby="appearance-heading"><div class="dialog-heading"><h2 id="appearance-heading">{{t "Darstellung"}}</h2><button type="button" data-close aria-label="{{t "Schließen"}}">×</button></div>
-<form id="appearance-form"><label>{{t "Design"}}<select name="family"><option value="ocean">{{t "Ozean"}}</option><option value="pink">Pink</option></select></label>
+<form id="appearance-form"><label>{{t "Design"}}<select name="family"><option value="ocean">{{t "Warm Midnight"}}</option><option value="pink">Pink</option></select></label>
 <fieldset><legend>{{t "Helligkeit"}}</legend><div class="appearance-modes"><label><input type="radio" name="mode" value="system" checked>{{t "Automatisch"}}</label><label><input type="radio" name="mode" value="light">{{t "Hell"}}</label><label><input type="radio" name="mode" value="dark">{{t "Dunkel"}}</label></div></fieldset>
 <p class="fine">{{t "Automatisch folgt der Hell-/Dunkel-Einstellung deines Geräts und behält das gewählte Design."}}</p><p id="appearance-status" role="status" hidden></p><p id="appearance-error" class="form-error" role="alert" hidden></p>
 <div class="actions"><button type="button" data-close>{{t "Schließen"}}</button><button class="primary">{{t "Darstellung übernehmen"}}</button></div></form></dialog>{{end}}

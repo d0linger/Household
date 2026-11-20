@@ -105,6 +105,17 @@ const responseIs=(response,url,method='POST')=>new URL(response.url()).pathname=
   await go('overview');const first=await workspace('overview'),today=first.context.today,start=isoAdd(today,-90),day1=isoAdd(today,-30),day2=isoAdd(today,-20),day3=isoAdd(today,-10),tomorrow=isoAdd(today,1);
   const fixture={today,start,day1,day2,day3,tomorrow};
   await workflow('FU01','Vehicle overview, real unknown states, dates and explicit current series',async()=>{
+   const emptyOverview=url=>url.origin===base&&url.pathname==='/api/v1/fuel/module'&&url.searchParams.get('pane')==='overview';
+   const desktop=page.viewportSize();
+   try{
+    await page.route(emptyOverview,route=>route.fulfill({json:{...first,records:[],next_cursor:'',more:false,options:{...first.options,vehicles:[],vehicles_limited:false}}}));
+    await page.setViewportSize({width:320,height:568});await go('overview');
+    const add=page.getByRole('button',{name:'Fahrzeug anlegen',exact:true});
+    must(await add.evaluate(el=>el.getBoundingClientRect().bottom<=document.querySelector('.mobile-nav').getBoundingClientRect().top),'Empty fleet shows the first-vehicle action above the mobile rail');
+    await add.click();must(await page.locator('form[data-action="vehicle.save"] [name=name]').evaluate(el=>el===document.activeElement),'First vehicle opens the reviewed form and focuses its name');
+    must(await secondaryPage.locator('#fm-add-vehicle').count()===0,'A reader is never offered the first-vehicle action');
+   }finally{await page.unroute(emptyOverview);await page.setViewportSize(desktop);}
+   await go('overview');
    const v=await save('vehicle.save',{name:label('Diesel'),registration:'SYNTHETIC-'+suffix,fuel_type:'diesel',next_service_on:today,next_inspection_on:tomorrow,tank_capacity:'60',notes:'Disposable browser review vehicle'});fixture.vehicle=v.result.record_id;must(Boolean(fixture.vehicle),'Vehicle is created through reviewed human form');
    await reference(page.locator('#fm-filter'),'vehicle',fixture.vehicle,label('Diesel'));await page.locator('#fm-filter-submit').click();await ready();must(await page.locator('#fm-filter .fm-select-tools button').filter({hasText:'Weitere Treffer'}).isHidden(),'Actual vehicle search keeps no-next state coherent after refresh');
    await go('overview',fixture.vehicle);const text=await page.locator('#fm-records').innerText(),empty=(await workspace('overview',fixture.vehicle)).records.find(row=>row.id===fixture.vehicle);must(Boolean(empty),'Selected empty vehicle is present in its current authorized workspace');same(empty.odometer,null,'No undocumented odometer becomes a fabricated zero');same(empty.last,null,'No undocumented last fillup is invented');same(empty.consumption,null,'No undocumented consumption becomes a fabricated zero');same(empty.series_state,'no_current_series','Missing applicable counter series has its explicit unknown state');must(text.includes('Noch keine Tankung dokumentiert')&&text.includes('Keine aktuell passende Zählerreihe dokumentiert.'),'No-fact overview explains both absent fills and absent counter series');must(text.includes('heute')&&text.includes(tomorrow),'Manual due dates retain household civil-day meaning');
@@ -114,6 +125,16 @@ const responseIs=(response,url,method='POST')=>new URL(response.url()).pathname=
    await go('overview',fixture.vehicle);await snapshot('fuel-module-desktop-overview');
   });
   await workflow('FU02','Personal quick-entry defaults are suggestions, then reviewed entry',async()=>{
+   const desktop=page.viewportSize();await page.setViewportSize({width:390,height:844});
+   try{
+    await go('capture');await page.locator('#fm-start-capture').click();
+    must(await page.locator('#fm-vehicle').evaluate(el=>el===document.activeElement),'Starting a fill-up prompts for an available vehicle when none is selected');
+    await go('capture',fixture.vehicle);
+    const start=page.getByRole('button',{name:'Tankdaten eingeben',exact:true});
+    must(await start.evaluate(el=>el.getBoundingClientRect().bottom<=document.querySelector('.mobile-nav').getBoundingClientRect().top),'Mobile quick capture starts above the module rail');
+    await start.click();
+    must(await page.locator('form[data-action="fillup.save"] [name=quantity]').evaluate(el=>el===document.activeElement),'The applied vehicle leads directly to the quantity field without saving');
+   }finally{await page.setViewportSize(desktop);}
    await go('settings');await save('settings.save',{default_station:label('Station'),plausibility_unit:'l',plausibility_currency_code:'EUR',maximum_fill_quantity:'100',maximum_daily_distance:'2000',maximum_unit_price:'5'},{default_vehicle_id:{id:fixture.vehicle,query:label('Diesel')},default_series_id:{id:fixture.series,query:label('Original counter')}});
    await go('capture',fixture.vehicle);await page.locator('#fm-apply-defaults').click();const form=await open('fillup.save');await page.waitForFunction(()=>!document.querySelector('#fm-apply-defaults').disabled&&document.querySelector('form[data-action="fillup.save"] [name=station]').value.includes('Station'));must(await page.locator('#fm-error').isHidden(),'Applying defaults finishes without a current-reference error');same(await form.locator('[name=odometer_series_id]').inputValue(),fixture.series,'Quick defaults use the current owned series');must(!(await workspace('history',fixture.vehicle)).records.length,'Applying defaults makes no fuel fact');
   });

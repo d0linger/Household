@@ -1,6 +1,6 @@
-<!doctype html><html lang="en" data-theme="light"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="description" content="Household design directions and comparable dialog guidelines."><title>Household: Design guideline</title><link rel="stylesheet" href="./laboratory.css"><link rel="stylesheet" href="./guideline.css"><link rel="icon" href="./mark.svg"></head><body><main class="guide"><a href="./">Zurück zum Designatelier</a><h1>Household design directions</h1>
+<!doctype html><html lang="en" data-theme="light"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="description" content="Household design directions and comparable dialog guidelines."><title>Household: Design guideline</title><link rel="stylesheet" href="./laboratory.css"><link rel="stylesheet" href="./guideline.css"><link rel="icon" href="./mark.svg"></head><body><main class="guide"><a href="./" hreflang="de">Back to the design gallery (German)</a><h1>Household design directions</h1>
 <p>This guideline governs Household&#39;s standalone design laboratory. The user requested <strong>100 different design concepts</strong>, not 100 component variations inside three styles. Every concept must work across the same household dialogs. The comparison is a design decision aid; it does not replace the application or change household records.</p>
-<p><span>PRODUCT.md</span> remains the authority for product behavior. <span>DESIGN.md</span> remains the production visual authority until the owner deliberately approves and implements a direction.</p>
+<p><code>PRODUCT.md</code> remains the authority for product behavior. <code>DESIGN.md</code> remains the production visual authority until the owner deliberately approves and implements a direction.</p>
 <h2>1. Purpose and boundaries</h2>
 <p><strong>Audience:</strong> household members evaluating daily mobile workflows, and the owner selecting a coherent visual direction for Household.</p>
 <p><strong>Mode:</strong> Operate. Visitors browse design concepts, shortlist candidates, compare equivalent dialogs, try the controls and export a decision. The workbench stays predictable so differences between concepts are easy to judge.</p>
@@ -10,7 +10,7 @@
 <h2>2. The 100-design contract</h2>
 <p>The catalog contains exactly <strong>100 stable design IDs, DS-001 through DS-100</strong>. Each ID represents a visual system applicable to every comparison dialog. There is no longer a quota of 20 designs per category, and no restriction to Retro-Brutalist, Cyberpunk and Modern.</p>
 <p>Broad discovery tags such as editorial, nature, precision, culture, material or playful are filters, not parent templates that determine every result.</p>
-<div class="guide-table" tabindex="0" role="region" aria-label="Designregeln als Tabelle"><table><thead><tr><th scope="col">Property</th><th scope="col">Design responsibility</th></tr></thead><tbody>
+<div class="guide-table" tabindex="0" role="region" aria-label="2. The 100-design contract"><table><thead><tr><th scope="col">Property</th><th scope="col">Design responsibility</th></tr></thead><tbody>
 <tr><td>Name, thesis and signature</td><td>Explain the idea and its recognizable structural decision.</td></tr>
 <tr><td>Native hue and chroma</td><td>Give the design its own color world in Light and Dark.</td></tr>
 <tr><td>Typography</td><td>Choose a suitable local stack, heading voice and weight.</td></tr>
@@ -20,7 +20,7 @@
 <tr><td>Density and alignment</td><td>Define reading rhythm, grouping and breathing room.</td></tr>
 <tr><td>Navigation</td><td>Express orientation through top navigation, side context, an index or steps.</td></tr>
 </tbody></table></div>
-<p>The canonical definitions live in [designDirections.ts](../design-preview/designDirections.ts). Shared dialogs live in [dialog-fixtures.js](../design-preview/dialog-fixtures.js). Generated browser artifacts must match their sources.</p>
+<p>The canonical definitions live in <a href="./designDirections.ts">designDirections.ts</a>. Shared dialogs live in <a href="./dialog-fixtures.js">dialog-fixtures.js</a>. Generated browser artifacts must match their sources.</p>
 <h3>Distinction beyond recoloring</h3>
 <p>A new name, hue, radius or shadow alone is not a different design. Each direction needs an intentional combination of structure, type, density, navigation, control grammar and material, supported by a concise rationale.</p>
 <ol>
@@ -33,7 +33,7 @@
 </ol>
 <p>A unique configuration fingerprint is a structural check, not proof of good design. Reviewers must inspect rendered concepts. Shared renderers and reusable controls are desirable; the project does not claim 100 separately handwritten application implementations.</p>
 <h2>3. Color and Pink parity</h2>
-<div class="guide-table" tabindex="0" role="region" aria-label="Designregeln als Tabelle"><table><thead><tr><th scope="col">Mode</th><th scope="col">Palette source</th><th scope="col">What remains characteristic</th></tr></thead><tbody>
+<div class="guide-table" tabindex="0" role="region" aria-label="3. Color and Pink parity"><table><thead><tr><th scope="col">Mode</th><th scope="col">Palette source</th><th scope="col">What remains characteristic</th></tr></thead><tbody>
 <tr><td>Native Light</td><td>The direction&#39;s own light palette</td><td>Type, hierarchy, navigation, geometry and material</td></tr>
 <tr><td>Native Dark</td><td>The direction&#39;s own dark palette</td><td>The same identity with readable dark surfaces</td></tr>
 <tr><td>Pink Light</td><td>A common warm pink/plum semantic palette</td><td>The direction&#39;s structure and typography</td></tr>
@@ -46,7 +46,7 @@
 <p>Theme switching updates the gallery and open comparison. The same mode applies to every candidate, making both native-color and Pink comparisons fair. A decision export records the theme and direction.</p>
 <h2>4. Shared household dialogs</h2>
 <p>Every direction receives the same dialog definition, initial fixture values, field labels, requirements and validation bounds. Design changes presentation, not the facts being compared.</p>
-<div class="guide-table" tabindex="0" role="region" aria-label="Designregeln als Tabelle"><table><thead><tr><th scope="col">Dialog</th><th scope="col">Shared task</th><th scope="col">Important distinction</th></tr></thead><tbody>
+<div class="guide-table" tabindex="0" role="region" aria-label="4. Shared household dialogs"><table><thead><tr><th scope="col">Dialog</th><th scope="col">Shared task</th><th scope="col">Important distinction</th></tr></thead><tbody>
 <tr><td>Shopping</td><td>Add an example shopping item with quantity and unit</td><td>No application shopping entry is created.</td></tr>
 <tr><td>Chores</td><td>Prepare a task, responsibility and due date</td><td>Responsibility and completion are separate concepts.</td></tr>
 <tr><td>Inventory</td><td>Edit stock, minimum quantity and expiry</td><td>Stock, expiry and reorder intent remain distinguishable.</td></tr>
@@ -63,8 +63,8 @@
 <ol>
 <li><strong>Browse:</strong> show 100 concept names with their design idea and recognizable previews.</li>
 <li><strong>Narrow:</strong> search by name/ID and use broad design-group/favorite filters without erasing the shortlist.</li>
-<li><strong>Shortlist:</strong> add up to four directions. Favorites and comparison membership are separate states.</li>
-<li><strong>Compare:</strong> open a native dialog. Every selected direction renders the same active household dialog.</li>
+<li>Select two to four directions for the <strong>shortlist</strong>. Favorites and comparison membership are separate states.</li>
+<li>Open the <strong>comparison</strong> to try the selected designs together. The comparison action stays within reach further down the gallery and follows the last shortlist choice in the tab order. Open an individual card&#39;s dialog to try a single design.</li>
 <li><strong>Change the task:</strong> choose one of the ten shared dialogs; all candidates change together.</li>
 <li><strong>Change the palette:</strong> compare native Light/Dark, then Pink Light/Dark. A common Pink palette exposes structural differences.</li>
 <li><strong>Try controls:</strong> edit example values and exercise validation. Synchronized editing is available and on by default; switch it off for independent trial edits.</li>
@@ -99,7 +99,7 @@
 <p>Motion explains state changes. Use specific transform/opacity transitions, never a transition of every property, layout-property animation or an endlessly animated gallery. Reduced motion removes spatial movement while preserving feedback.</p>
 <h2>8. Forms, states and accessibility</h2>
 <p>The task compares usable interfaces, not decorative cards. Form semantics stay consistent across designs.</p>
-<div class="guide-table" tabindex="0" role="region" aria-label="Designregeln als Tabelle"><table><thead><tr><th scope="col">Situation</th><th scope="col">Required behavior</th></tr></thead><tbody>
+<div class="guide-table" tabindex="0" role="region" aria-label="8. Forms, states and accessibility"><table><thead><tr><th scope="col">Situation</th><th scope="col">Required behavior</th></tr></thead><tbody>
 <tr><td>Default fixture</td><td>Show the same valid example values for every design.</td></tr>
 <tr><td>Field edit</td><td>Preserve active input, selection and focus.</td></tr>
 <tr><td>Missing or out-of-range value</td><td>Expose validation clearly and associate the message with its field.</td></tr>
@@ -124,7 +124,7 @@
 <p>Avoid global listeners or animation timers per concept. Mount only necessary comparison forms and prefer ordinary browser controls over new dependencies. Bound verification processes and close temporary browser contexts; only the requested preview server remains.</p>
 <h2>10. Applying all Impeccable design commands</h2>
 <p>This maps all 23 commands to the task. It does not claim every CLI helper or contradictory redesign operation was executed. Actual checks belong in the validation record.</p>
-<div class="guide-table" tabindex="0" role="region" aria-label="Designregeln als Tabelle"><table><thead><tr><th scope="col">Command</th><th scope="col">Application</th></tr></thead><tbody>
+<div class="guide-table" tabindex="0" role="region" aria-label="10. Applying all Impeccable design commands"><table><thead><tr><th scope="col">Command</th><th scope="col">Application</th></tr></thead><tbody>
 <tr><td>craft</td><td>The ordinary build covers this deprecated alias; no duplicate build process.</td></tr>
 <tr><td>shape</td><td>Define 100 full directions, common dialogs and the browse/compare/choose task.</td></tr>
 <tr><td>init</td><td>Reuse PRODUCT.md instead of inventing claims or module behavior.</td></tr>

@@ -94,6 +94,22 @@ const _householdText_recipe_workspace_js = (source, ...args) => { const i18n = g
   }catch(failure){error(failure.message||_householdText_recipe_workspace_js("Ersatzvorschlag ist nicht mehr aktuell."));}
  }
  function conflict(){incoming=null;$('#recipe-comparison').hidden=true;$('#recipe-conflict').hidden=false;$('#recipe-compare').focus();}
+ function renderReading(bundle){
+  const reading=$('#recipe-reading');if(!reading)return;
+  const ingredients=$('#recipe-read-ingredients'),steps=$('#recipe-read-steps');
+  ingredients.replaceChildren();steps.replaceChildren();
+  for(const row of bundle.ingredients){
+   const item=document.createElement('li'),quantity=row.quantity==null?'':shownDecimal(row.quantity);
+   const unit={piece:_householdText_recipe_workspace_js("Stück")}[row.unit_code]||row.unit_code;
+   item.textContent=[quantity,unit,row.name].filter(Boolean).join(' ')+[row.section_name,row.quantity_note,row.preparation_note].filter(Boolean).map(note=>' · '+note).join('');
+   ingredients.append(item);
+  }
+  for(const row of bundle.steps){const item=document.createElement('li');item.textContent=row.instruction;steps.append(item);}
+  for(const [list,message] of [[ingredients,_householdText_recipe_workspace_js("Noch keine Zutaten erfasst.")],[steps,_householdText_recipe_workspace_js("Noch keine Schritte erfasst.")]]){
+   if(!list.children.length){const item=document.createElement('li');item.textContent=message;list.append(item);}
+  }
+  reading.hidden=false;
+ }
  function summary(bundle){const container=document.createElement('div');const p=document.createElement('p');p.textContent=shownDecimal(bundle.recipe.base_servings)+_householdText_recipe_workspace_js(" Portionen · ")+text(bundle.recipe.summary);container.append(p);for(const[title,rows]of [[_householdText_recipe_workspace_js("Zutaten"),bundle.ingredients],[_householdText_recipe_workspace_js("Zubereitung"),bundle.steps]]){const h=document.createElement('h4');h.textContent=title;container.append(h);const list=document.createElement('ol');for(const row of rows){const li=document.createElement('li');li.textContent=row.name?[row.section_name,row.quantity==null?'':shownDecimal(row.quantity),row.unit_code,row.name,row.quantity_note,row.preparation_note].filter(Boolean).join(' · '):row.instruction+(row.timer_seconds?_householdText_recipe_workspace_js(" · Timer ")+row.timer_seconds+_householdText_recipe_workspace_js(" s"):'');list.append(li);}container.append(list);}const notes=document.createElement('p');notes.textContent=[bundle.recipe.source_note,bundle.recipe.notes,_householdText_recipe_workspace_js("Tags: ")+bundle.tags.map(t=>t.name).join(', ')].filter(Boolean).join('\n');container.append(notes);return container;}
  function purgeDrafts(){try{for(const key of Object.keys(localStorage)){if(!key.startsWith(draftPrefix))continue;let draft;try{const raw=localStorage.getItem(key);if(new Blob([raw]).size<=524288)draft=JSON.parse(raw);}catch{}if(!validDraft(draft,owner,household,generation,Date.now()))localStorage.removeItem(key);}}catch{}}
  function savedDraft(){try{const raw=localStorage.getItem(draftKey);if(!raw||new Blob([raw]).size>524288)return null;const draft=JSON.parse(raw);return validDraft(draft,owner,household,generation,Date.now())?draft:null;}catch{return null;}}
@@ -125,5 +141,5 @@ const _householdText_recipe_workspace_js = (source, ...args) => { const i18n = g
  $('#recipe-load-draft').addEventListener('click',()=>{if(busy)return;const draft=savedDraft();if(!draft){error(_householdText_recipe_workspace_js("Geräteentwurf abgelaufen oder nicht verfügbar."));$('#recipe-local-draft').hidden=true;return;}switchDraft(_householdText_recipe_workspace_js("Der Geräteentwurf „")+draft.model.data.title+_householdText_recipe_workspace_js("“ mit ")+draft.model.ingredients.length+_householdText_recipe_workspace_js(" Zutaten soll deinen laufenden Entwurf ersetzen."),()=>{model=draft.model;saveID=draft.saveID;changed();render();if(saveID&&model.fingerprint!==source.fingerprint){source=draft.source;conflict();}status(_householdText_recipe_workspace_js("Geräteentwurf geladen. Vor dem Speichern prüfen."));});});
  $('#recipe-delete-draft').addEventListener('click',()=>{try{localStorage.removeItem(draftKey);$('#recipe-local-draft').hidden=true;status(_householdText_recipe_workspace_js("Geräteentwurf gelöscht; laufende Eingaben bleiben im Formular."));}catch(e){error(e.message);}});
  window.addEventListener('beforeunload',event=>{if(dirty){event.preventDefault();event.returnValue='';}});
- (async()=>{try{if(originalID)source=await api('/api/v1/recipes/'+originalID+'/workspace');model=modelFrom(source,uuid);render();purgeDrafts();$('#recipe-local-draft').hidden=!writable||!savedDraft();status(originalID?_householdText_recipe_workspace_js("Gespeicherter Stand geladen."):_householdText_recipe_workspace_js("Beginne mit Name und Portionen, ergänze Zutaten und Schritte."));if(originalID){await consumeSubstitution();await loadVersions();}}catch(e){error(e.message);status(_householdText_recipe_workspace_js("Rezept konnte nicht vollständig geladen werden. Seite erneut laden."));}})();
+ (async()=>{try{if(originalID){source=await api('/api/v1/recipes/'+originalID+'/workspace');renderReading(source);}model=modelFrom(source,uuid);render();purgeDrafts();$('#recipe-local-draft').hidden=!writable||!savedDraft();status(originalID?_householdText_recipe_workspace_js("Gespeicherter Stand geladen."):_householdText_recipe_workspace_js("Beginne mit Name und Portionen, ergänze Zutaten und Schritte."));if(originalID){await consumeSubstitution();await loadVersions();}}catch(e){error(e.message);status(_householdText_recipe_workspace_js("Rezept konnte nicht vollständig geladen werden. Seite erneut laden."));}})();
 })();

@@ -1,11 +1,12 @@
 {{define "pantry"}}
-<div class="page-heading"><div><p class="eyebrow">{{t "WAS ZU HAUSE IST"}}</p><h1>{{t "Vorratsbestand"}}</h1><p class="muted">{{t "Produkte, Lagerorte und Chargen im Überblick."}}</p></div></div>
+<div class="page-heading"><div><h1>{{t "Vorratsbestand"}}</h1><p class="muted">{{t "Produkte, Lagerorte und Chargen im Überblick."}}</p></div></div>
 {{template "workspace-nav" .}}
 <section class="panel pantry-board" id="pantry-board" aria-label="{{t "Vorratsübersicht"}}">
+<div id="pantry-first" tabindex="-1" hidden><h2>{{t "Noch keine Vorratsprodukte"}}</h2>{{if .User.CanWrite}}<p>{{t "Öffne die Produktliste und wähle „Hinzufügen“."}}</p><p><a class="button primary" href="/m/pantry/products">{{t "Produktliste öffnen"}}</a></p>{{else}}<p>{{t "Hier erscheinen die Produkte, die dein Haushalt anlegt."}}</p>{{end}}</div>
 <form id="pantry-filter" class="audit-filters"><label>{{t "Produkt suchen"}}<input type="search" name="q" maxlength="300" placeholder="{{t "Name des Produkts"}}"></label><label>{{t "Bestand am Tagesende"}}<input type="date" name="at" min="1900-01-01"><small>{{t "Leer lassen für den aktuellen Bestand."}}</small></label><button class="primary">{{t "Anzeigen"}}</button></form>
 <p id="pantry-status" role="status">{{t "Bestand wird geladen …"}}</p>
 <div id="pantry-summary"></div><p id="pantry-history-note" class="fine" hidden>{{t "Historische Mengen folgen dem gespeicherten Buchungszeitpunkt in der Haushaltszeitzone. Spätere Korrekturen werden getrennt genannt. Namen, Orte und Datumsangaben zeigen den heutigen beschreibenden Stand. Zeitversetzt gespeicherte Buchungen können einen älteren Stichtag ergänzen."}}</p>
-<div id="pantry-products" tabindex="-1" aria-label="{{t "Produktbestände"}}"></div>
+<section id="pantry-products" tabindex="-1" aria-label="{{t "Produktbestände"}}"></section>
 <div class="actions"><button type="button" id="pantry-previous" hidden>{{t "Vorherige Produkte"}}</button><button type="button" id="pantry-next" hidden>{{t "Weitere Produkte"}}</button><button type="button" id="pantry-refresh">{{t "Aktualisieren"}}</button></div>
 <noscript><p>{{t "Die Bestandsübersicht benötigt lokales JavaScript. Produkte und Buchungen sind über die Bereiche oben erreichbar."}}</p></noscript>
 </section><script nonce="{{.Nonce}}" src="{{index .Asset "pantry.js"}}" defer></script>

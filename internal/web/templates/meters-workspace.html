@@ -1,8 +1,8 @@
 {{define "meters-workspace"}}
 <link rel="stylesheet" href="{{index .Asset "meters.css"}}">
 <section id="meters-workspace" class="energy-workspace" data-pane="{{index .Extra "pane"}}" data-register="{{index .Extra "register_id"}}" data-generation="{{index .Extra "generation"}}" data-ha-available="{{index .Extra "ha_available"}}" data-mqtt-available="{{index .Extra "mqtt_available"}}" aria-busy="true">
- {{template "workspace-nav" .}}
  <div class="page-heading"><div><h1 id="energy-heading">{{t "Zähler & Energie"}}</h1><p id="energy-context" class="muted">{{t "Aktuellen Zählerstand laden …"}}</p></div></div>
+ {{template "workspace-nav" .}}
  <p id="energy-status" class="workspace-status" role="status">{{t "Messungen werden mit aktueller Berechtigung und Verbindung gespeichert."}}</p>
  <section id="energy-error" class="notice error" role="alert" tabindex="-1" hidden><h2>{{t "Bitte prüfen"}}</h2><p id="energy-error-text"></p><div class="actions"><button id="energy-retry" type="button" hidden>{{t "Unveränderten Vorgang erneut prüfen"}}</button><button id="energy-current" type="button">{{t "Aktuellen Stand daneben anzeigen"}}</button></div><div id="energy-conflict"></div></section>
  <div id="energy-selection"><label for="energy-register">{{t "Zählerregister"}}</label><select id="energy-register"><option value="">{{t "Register laden …"}}</option></select><p class="fine">{{t "Das gewählte Register bleibt beim Bereichswechsel erhalten."}} <a id="energy-selected-overview" href="/m/meters/workspace/overview" data-energy-pane="overview">{{t "Zur Zählerübersicht"}}</a></p></div>

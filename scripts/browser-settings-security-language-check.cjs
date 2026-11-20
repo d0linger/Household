@@ -125,6 +125,7 @@ async function language(page, locale) {
   if (await page.locator('html').getAttribute('data-locale') === locale) return;
   await page.locator('.language-control button[value=' + locale + ']').click();
   await page.waitForFunction(locale => document.documentElement.dataset.locale === locale, locale);
+  await page.waitForLoadState('load');
 }
 
 async function capture(page, name) {
@@ -140,6 +141,7 @@ async function axe(page, name) {
 }
 
 async function theme(page, family, mode) {
+  await page.waitForLoadState('load');
   await page.locator('.header-tools [data-open="appearance-dialog"]').click();
   await page.locator('#appearance-form [name=family]').selectOption(family);
   await page.locator('#appearance-form [name=mode][value=' + mode + ']').check();

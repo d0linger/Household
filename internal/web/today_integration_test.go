@@ -88,6 +88,12 @@ func TestTodayPersonalAuthorityAndReadOnlyHome(t *testing.T) {
 		if tc.token == readerToken && len(data.Tasks.Items) != 0 {
 			t.Fatal("another member task in mine", data.Tasks)
 		}
+		for module, section := range map[string]todaySection{"shopping": data.Shopping, "expenses": data.Finances} {
+			_, enabled := f.app.Store.State(module)
+			if !enabled && (section.State != "disabled" || len(section.Items) != 0) || enabled && section.State != "ready" {
+				t.Fatalf("unexpected %s section state for %s: %s", module, tc.want, section.State)
+			}
+		}
 		if _, enabled := f.app.Store.State("mealplan"); !enabled && data.Meals.State != "disabled" {
 			t.Fatal("disabled planning queried", data.Meals)
 		}

@@ -121,8 +121,18 @@
  function date(raw) { if(!raw)return tr('Unbekannt');return new Intl.DateTimeFormat(root.HouseholdI18n?.locale()||document.documentElement.lang,{dateStyle:'medium',timeStyle:'short'}).format(new Date(raw)); }
  function preferenceRow(initial,availability) {
   let current=initial,busy=false,shoppingControl=null;
-  const article=node('article',undefined,'notification-preference'),heading=node('div'),form=node('form',undefined,'notification-form'),result=status();
-  const title=node('h3',labels[initial.category]);title.id='notification-category-'+initial.category;form.setAttribute('aria-labelledby',title.id);heading.append(title);
+  const row=node('details',undefined,'notification-preference'),summary=node('summary'),title=node('h3');
+  const label=node('span',labels[initial.category]),state=node('span',undefined,'notification-category-state');
+  label.id='notification-category-'+initial.category;title.append(label,state);summary.append(title);
+  const content=node('div',undefined,'notification-preference-content'),heading=node('div'),form=node('form',undefined,'notification-form'),result=status();
+  form.setAttribute('aria-labelledby',label.id);row.append(summary,content);content.append(heading);
+  function savedState() {
+   state.dataset.enabled=String(availability.available&&current.enabled);
+   if(!availability.available)state.textContent=tr('Nicht verfügbar');
+   else if(current.category==='shopping'&&current.version===0)state.textContent=tr('Je Einkaufsliste');
+   else state.textContent=current.enabled?tr('Aktiviert'):tr('Deaktiviert');
+  }
+  savedState();
   const chores=initial.category.startsWith('chores_');
   if(chores) {
    heading.append(node('p',tr('Dein Aufgabenmodus, deine Zeitzone, Ruhezeiten und Eskalationsfreigaben bleiben maßgeblich. Im Modus Aus werden keine Aufgabenhinweise gesendet.'),'notification-description'));
@@ -185,7 +195,7 @@
   } else if(initial.category==='documents') {   const details=node('details');details.append(node('summary',tr('Fristen und persönliche Importprobleme')));   details.append(node('p',tr('Fristhinweise gehen nur an die ausdrücklich zugewiesene Person. Bestätigte Erinnerung und Haushaltszeitzone bleiben maßgeblich; verstrichene Hinweise werden nicht nachgeholt.')));   details.append(node('p',tr('Verarbeitungsfehler gehen nur an die anfragende Person, Importfehler nur an den weiterhin berechtigten Administrator des Eingangs. Wiederholte Fehler desselben Vorgangs erzeugen keine neue Meldung.')));   details.append(node('p',tr('Dokumenttitel, Dateinamen, Postfächer und Inhalte werden nicht übertragen. Konto und jedes Gerät brauchen eine eigene Freigabe.')));heading.append(details);   if(enabledModules.has('documents')){const link=node('a',tr('Bestätigte Dokumentfristen prüfen'));link.href='/m/documents/workspace/deadlines';heading.append(link);}  } else if(initial.category==='mealplan') {   const details=node('details');details.append(node('summary',tr('Bestätigte Zubereitung und Vorbereitung')));   details.append(node('p',tr('Nur ausdrücklich zugewiesene Personen erhalten Hinweise zu bestätigten Terminen. Teilnehmer und Ersteller werden nicht automatisch benachrichtigt.')));   details.append(node('p',tr('Termine werden im gespeicherten Mahlzeiteneditor bestätigt. Änderungen an der Mahlzeit erfordern eine erneute Bestätigung; Vorlagen, offene, gekochte und abgesagte Mahlzeiten senden keine Hinweise.')));   details.append(node('p',tr('Hinweise bleiben höchstens vier Stunden aktuell. Rezeptdauer und Tagesabschnitt erzeugen keine Uhrzeit; vergangene Termine werden nicht nachgeholt. Konto und jedes Gerät brauchen eine eigene Freigabe.')));heading.append(details);   if(enabledModules.has('mealplan')){const link=node('a',tr('Mahlzeiten und bestätigte Termine prüfen'));link.href='/m/mealplan/plans';heading.append(link);}  } else if(initial.category==='security') {   const details=node('details');details.append(node('summary',tr('Persönliche Änderungen an deinem Konto')));   details.append(node('p',tr('Hinweise betreffen nur dein eigenes Konto: Passwort, Anmeldefaktoren, Passkeys, Sitzungen und neu autorisierte Geräte. Andere Haushaltsmitglieder werden nicht benachrichtigt.')));   details.append(node('p',tr('Ein Gerätehinweis ist höchstens eine Stunde aktuell. Konto und Gerät müssen bereits vor dem Ereignis zugestimmt haben; spätere Freigaben holen keine Ereignisse nach.')));   details.append(node('p',tr('Die persönliche Meldung bleibt in deinem Posteingang, auch wenn eine Sicherheitsänderung alle Sitzungen beendet. Auf dem Sperrbildschirm erscheinen keine Namen, Kennwörter oder Gerätedetails.')));heading.append(details);   const link=node('a',tr('Kontosicherheit prüfen'));link.href='/settings/security';heading.append(link);  } else if(initial.category==='test') {
    heading.append(node('p',tr('Eine Testnachricht wird ausschließlich über deinen ausdrücklichen Testklick ausgelöst.'),'notification-description'));
   }
-  if(!availability.available){heading.append(node('p',tr('Gerätehinweise für diese Kategorie sind noch nicht verfügbar.'),'notification-description'));article.classList.add('notification-unavailable');article.append(heading);return article;}
+  if(!availability.available){heading.append(node('p',tr('Gerätehinweise für diese Kategorie sind noch nicht verfügbar.'),'notification-description'));row.classList.add('notification-unavailable');return row;}
   const allowed=check(tr('Gerätehinweise erlauben'),current.enabled);form.append(allowed.label);
   let zone,start,end;
   if(!chores) {
@@ -201,7 +211,7 @@
    shoppingControl.dataset.shoppingControl=current.version>0?'central':'legacy';
   }
   shoppingGuidance();
-  function apply(next) { current=preference(next);allowed.input.checked=current.enabled;if(zone){zone.input.value=current.timezone;start.input.value=clock(current.quiet_start);end.input.value=clock(current.quiet_end);}shoppingGuidance(); }
+  function apply(next) { current=preference(next);allowed.input.checked=current.enabled;if(zone){zone.input.value=current.timezone;start.input.value=clock(current.quiet_start);end.input.value=clock(current.quiet_end);}shoppingGuidance();savedState(); }
   form.addEventListener('submit',async event=>{
    event.preventDefault();if(busy||stopped||!availability.available||!form.reportValidity())return;
    let next;
@@ -222,7 +232,7 @@
     }else if(!stopped&&turn===epoch)message(result,failure(error),true);
    }finally{busy=false;--pending;enable(form,false,availability.available);refreshLock();}
   });
-  enable(form,false,availability.available);article.append(heading,form);return article;
+  enable(form,false,availability.available);content.append(form);return row;
  }
  function deviceCategory(device,initial,category) {
   let current=initial,busy=false;

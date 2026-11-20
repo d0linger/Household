@@ -40,6 +40,14 @@ func TestFinanceSupportBudgetCarryUsesActualAuthorizedMonthConsumption(t *testin
 		entry.OccurredOn = fact.on
 		financeNativeApply(t, f, "entries", "post", value.UUID(), 0, entry)
 	}
+	overview, err := f.store.FinanceView(f.ctx, f.identity, FinanceQuery{Pane: "overview", Month: "2026-10", Category: category})
+	if err != nil {
+		t.Fatal(err)
+	}
+	recent, ok := overview["recent_entries"].([]Record)
+	if !ok || len(recent) != 1 || recent[0]["amount_minor"] != "400" || recent[0]["day"] != "2026-10-15" {
+		t.Fatalf("recent expenses disagree with the selected category and month: %v", recent)
+	}
 	for _, tc := range []struct{ rule, octoberCarry, octoberAvailable, novemberAvailable string }{
 		{"all", "-500", "100", "1100"},
 		{"positive_only", "0", "600", "1600"},

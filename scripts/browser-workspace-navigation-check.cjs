@@ -74,6 +74,24 @@ const redact = text => secrets.reduce((value, secret) => secret ? value.split(se
       must(await nav().locator('.workspace-manage-link').count() === 0, role + ': Mealplan does not offer an empty management destination');
     }
     if (role === 'reader') must(await nav().locator('.workspace-actions').count() === 0, 'Reader receives no writing action strip');
+    const contextMenu = nav().locator('details.workspace-context-fold');
+    if (await contextMenu.count()) {
+      await page.setViewportSize({width: 390, height: 844});
+      const summary = contextMenu.locator('summary');
+      const firstLink = contextMenu.locator('nav a').first();
+      await summary.waitFor();
+      must(!(await firstLink.isVisible()), role + ': narrow screens collapse secondary links');
+      await summary.focus();
+      await page.keyboard.press('Enter');
+      await firstLink.waitFor();
+      await page.keyboard.press('Tab');
+      must(await firstLink.evaluate(a => document.activeElement === a), role + ': keyboard reaches the first secondary destination');
+      await summary.focus();
+      await page.keyboard.press('Enter');
+      await page.setViewportSize({width: 1440, height: 1000});
+      await firstLink.waitFor();
+      must(!(await summary.isVisible()), role + ': wide screens expose all secondary links');
+    }
     for (const link of primary) {
       await go(link.href);
       must(await nav().locator('.workspace-primary [aria-current="page"]').count() === 1, role + ': exactly one primary group active for ' + link.href);

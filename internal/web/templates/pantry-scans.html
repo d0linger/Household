@@ -1,7 +1,8 @@
 {{define "pantry-scans"}}
 <link rel="stylesheet" href="{{index .Asset "pantry-extensions.css"}}">
 <section id="pantry-scans" class="pantry-extension" data-public="{{if .User.UserID}}false{{else}}true{{end}}">
- {{template "workspace-nav" .}}<a class="back-link" href="/m/pantry/stock">{{t "Zum Vorrat"}}</a><h1>{{t "Scanentwürfe auf diesem Gerät"}}</h1>
+ <h1>{{t "Scanentwürfe auf diesem Gerät"}}</h1>
+ {{template "workspace-nav" .}}<a class="back-link" href="/m/pantry/stock">{{t "Zum Vorrat"}}</a>
  <p class="pe-intro">{{t "Codes erfassen, später aktuell zuordnen und bewusst prüfen. Ein Scan verändert keinen Bestand. Lokale Entwürfe sind nicht verschlüsselt. Die Entwürfe gelten höchstens sieben Tage. Abgelaufene Entwürfe können nicht übertragen werden."}}</p>
  <p id="ps-status" role="status">{{t "Gerätefreigabe wird geprüft …"}}</p><div id="ps-error" class="notice error" role="alert" tabindex="-1" hidden></div>
  <div class="pe-actions"><button id="ps-connect" type="button">{{t "Aktuelle Anmeldung prüfen"}}</button><button id="ps-open-local" type="button">{{t "Eigene lokale Entwürfe öffnen"}}</button><a class="button" href="/settings">{{t "Offline-Speicherung in Geräteeinstellungen"}}</a><button id="ps-reset" type="button" class="subtle">{{t "Alle lokalen Scandaten löschen"}}</button></div>

@@ -4,18 +4,15 @@
 <script nonce="{{.Nonce}}" src="{{index .Asset "shopping-repurchase.js"}}" defer></script>
 <script nonce="{{.Nonce}}" src="{{index .Asset "shopping-notifications.js"}}" defer></script><script nonce="{{.Nonce}}" src="{{index .Asset "shopping-offline.js"}}" defer></script>
 <section class="panel shopping-board" data-shopping-list="{{.Record.id}}" data-generation="{{with index .States "shopping"}}{{.Generation}}{{end}}" data-can-write="{{.User.CanWrite}}" data-is-admin="{{eq .User.Role "admin"}}">
-  <div class="section-heading"><h2 id="shopping-list-title">{{.Record.name}}</h2><label class="check-label"><input type="checkbox" id="shopping-mode">{{t "Einkaufsmodus"}}</label></div>
+  <div class="section-heading"><h2>{{t "Artikel"}}</h2><label class="check-label"><input type="checkbox" id="shopping-mode">{{t "Einkaufsmodus"}}</label></div>
   {{if .Record.is_template}}<p class="notice">{{t "Vorlage · Artikel hier vorbereiten."}} <a href="#shopping-copy-form">{{t "Neue Einkaufsliste erstellen"}}</a>{{t "; ihr Einkaufsverlauf bleibt unabhängig."}}</p>{{end}}
-  <p id="shopping-progress" role="status">{{t "Artikel werden geladen …"}}</p>
-  <progress id="shopping-progress-bar" value="0" max="1" aria-label="{{t "Einkaufsfortschritt"}}"></progress>
-  <div id="shopping-live-activity"><p id="shopping-shopper" role="status" hidden></p>
-    {{if and .User.CanWrite (not .Record.archived_at) (not .Record.is_template)}}<div class="shopping-activity"><button type="button" id="shopping-claim" aria-label="{{t "Ich kaufe jetzt ein · 30 Minuten"}}">{{t "Ich kaufe jetzt ein"}}</button><button type="button" id="shopping-release" aria-label="{{t "Einkaufsstatus freigeben"}}" hidden>{{t "Freigeben"}}</button></div>{{end}}
-  </div>
+  <div class="shopping-meter"><svg aria-hidden="true"><use href="{{icon .Asset "shopping-cart"}}"/></svg><div><p id="shopping-progress" role="status">{{t "Artikel werden geladen …"}}</p>
+  <progress id="shopping-progress-bar" value="0" max="1" aria-label="{{t "Einkaufsfortschritt"}}"></progress></div><strong id="shopping-percent"></strong></div>
   {{if and .User.CanWrite (not .Record.archived_at)}}
   <details id="shopping-entry" open><summary>{{t "Artikel ergänzen"}}</summary>
   <form id="shopping-quick-add" action="/api/v1/m/shopping/items" method="post">
     {{template "csrf" .}}<input type="hidden" name="list_id" value="{{.Record.id}}">
-    <div class="shopping-add-line"><label>{{t "Artikel hinzufügen"}}<input name="name" maxlength="200" required autocomplete="off" placeholder="{{t "Zum Beispiel 2 × 500 g Nudeln"}}"></label><button class="primary">{{t "Hinzufügen"}}</button></div>
+    <div class="shopping-add-line"><label><span class="shopping-name-label">{{t "Artikel hinzufügen"}}</span><input name="name" maxlength="200" required autocomplete="off" placeholder="{{t "Zum Beispiel 2 × 500 g Nudeln"}}"></label><button class="primary">{{t "Hinzufügen"}}</button></div>
     <details id="shopping-favorites"><summary>{{t "Aus Favoriten wählen"}}</summary><label>{{t "Favorit"}}<select id="shopping-favorite" data-reference="shopping/products" data-favorites="1"><option value="">{{t "Favorit auswählen"}}</option></select></label><button type="button" id="shopping-use-favorite">{{t "In Entwurf übernehmen"}}</button><p class="fine">{{t "Favoriten unter „Produkte“ festlegen. Die Auswahl füllt den Entwurf; erst „Hinzufügen“ speichert den Artikel."}}</p></details>
     <div id="shopping-parse" hidden><p></p><button type="button" id="shopping-apply-parse">{{t "Erkennung übernehmen"}}</button></div>
     <details id="shopping-details"><summary>{{t "Menge, Gruppe und Notiz"}}</summary><div class="form-grid">
@@ -34,6 +31,10 @@
   <div id="shopping-message" role="status"></div>
   <div id="shopping-conflict" class="notice" role="alert" tabindex="-1" hidden></div>
   <div id="shopping-items"></div>
+  <div id="shopping-live-activity"><p id="shopping-shopper" role="status" hidden></p>
+    {{if and .User.CanWrite (not .Record.archived_at) (not .Record.is_template)}}<div class="shopping-activity"><button type="button" id="shopping-claim" aria-label="{{t "Ich kaufe jetzt ein · 30 Minuten"}}">{{t "Ich kaufe jetzt ein"}}</button><button type="button" id="shopping-release" aria-label="{{t "Einkaufsstatus freigeben"}}" hidden>{{t "Freigeben"}}</button></div>{{end}}
+  </div>
+
   {{if and (not .Record.archived_at) (not .Record.is_template)}}<p><a class="button" href="/m/shopping/lists/{{.Record.id}}/barcode">{{t "Barcode lokal prüfen"}}</a></p>{{end}}
   {{if and (not .Record.archived_at) (not .Record.is_template)}}
   <details id="shopping-repurchase"><summary>{{t "Nachkauf anhand meines Einkaufsverlaufs prüfen"}}</summary>

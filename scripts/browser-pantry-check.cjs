@@ -20,6 +20,15 @@ const must=(value,name)=>{if(!value)throw Error(name);report.checks.push(name);}
   if(new URL(page.url()).pathname==='/change-password'){await page.locator('[name=current]').fill(process.env.HOUSEHOLD_BROWSER_PASSWORD||'Browser review only 1234');await page.locator('[name=next]').fill('Browser review only 1234');await Promise.all([page.waitForURL('**/login'),page.locator('form[action="/change-password"] button').click()]);await login('Browser review only 1234');}
   if(await page.locator('html').getAttribute('data-locale')!=='de'){await page.locator('.language-control button[value=de]').click();await page.waitForFunction(()=>document.documentElement.dataset.locale==='de');}
   must(await page.locator('html').getAttribute('data-locale')==='de','German acceptance copy is explicitly selected after authentication');
+  const stockRoute='**/api/v1/pantry/stock?**';
+  await page.route(stockRoute,route=>route.fulfill({json:{products:[],total:0,totals:[],next_cursor:'',timezone:'Europe/Vienna'}}));
+  await page.goto(base+'/m/pantry/stock');
+  const firstProduct=page.locator('#pantry-first'),setup=firstProduct.getByRole('link',{name:'Produktliste öffnen'});
+  await setup.waitFor();
+  must(await setup.getAttribute('href')==='/m/pantry/products'&&await page.locator('#pantry-summary').innerText()==='','A new pantry leads writers to product setup without a zero-stock summary');
+  await setup.click();await page.locator('.page-heading [data-open="create-dialog"]').click();
+  must(await page.locator('#create-dialog').isVisible(),'First-product guidance reaches the existing authorized creation dialog');
+  await page.keyboard.press('Escape');await page.unroute(stockRoute);
   const fixture=await page.evaluate(async()=>{
    const bootstrap=await fetch('/api/v1/core/bootstrap').then(r=>r.json()),csrf=document.querySelector('meta[name="csrf-token"]').content;
    if(bootstrap.states.pantry.state!=='enabled')throw Error('The isolated Pantry module must be enabled before this acceptance suite');
@@ -40,6 +49,7 @@ const must=(value,name)=>{if(!value)throw Error(name);report.checks.push(name);}
   must(await page.locator('[data-pantry-product]').count()===50,'Product page is bounded to 50 records');
   await page.getByRole('button',{name:'Weitere Produkte',exact:true}).click();await page.locator('#pantry-status').getByText(/4 von 54/).waitFor();
   must(await page.locator('#pantry-products').evaluate(el=>el===document.activeElement),'Product paging moves keyboard focus to results');
+  must(await page.getByRole('region',{name:'Produktbestände',exact:true}).count()===1,'Product results have a named region for assistive technology');
   await page.getByRole('button',{name:'Vorherige Produkte',exact:true}).click();await page.locator('#pantry-status').getByText(/50 von/).waitFor();
   await page.getByLabel('Produkt suchen').fill(fixture.group);await page.getByRole('button',{name:'Anzeigen',exact:true}).click();await page.locator('#pantry-status').getByText(/3 von 3/).waitFor();
   must(await page.locator('#pantry-summary').innerText().then(text=>text.includes('9007199254,741 g')&&text.includes('0 kg')&&text.includes('0 l')),'Exact total strings and separate quantity units are displayed');
@@ -66,7 +76,10 @@ const must=(value,name)=>{if(!value)throw Error(name);report.checks.push(name);}
   must(await page.locator('#pantry-history-note').innerText().then(text=>text.includes('heutigen beschreibenden Stand')&&text.includes('Buchungszeitpunkt')),'Historical metadata and booking-time limitations are visible');
   await capture('pantry-history-mobile-dark');
   await page.reload();await page.locator('#pantry-status').getByText(/3 von 3/).waitFor();must(await page.getByLabel('Produkt suchen').inputValue()===fixture.group&&await page.getByLabel('Bestand am Tagesende').inputValue()===fixture.today,'Reload preserves the chosen search and historical date');
-  await page.getByLabel('Produkt suchen').fill('Kein Treffer '+fixture.group);await page.getByRole('button',{name:'Anzeigen',exact:true}).click();await page.getByText('Keine Produkte gefunden. Suchbegriff oder Stichtag anpassen.',{exact:true}).waitFor();must(await page.locator('[data-pantry-product]').count()===0,'Empty search provides a clear next step');
+  await page.getByLabel('Produkt suchen').fill('Kein Treffer '+fixture.group);await page.getByRole('button',{name:'Anzeigen',exact:true}).click();await page.getByText('Keine Produkte gefunden. Suchbegriff oder Stichtag anpassen.',{exact:true}).waitFor();
+  must(await page.locator('[data-pantry-product]').count()===0&&await firstProduct.isHidden(),'Empty search is distinct from a new pantry');
+  await page.getByRole('link',{name:'Filter zurücksetzen'}).click();await page.locator('[data-pantry-product]').first().waitFor();
+  must(await page.getByLabel('Produkt suchen').inputValue()===''&&await page.getByLabel('Bestand am Tagesende').inputValue()==='','Reset clears both pantry filters and returns to current stock');
   must(!report.errors.length,'No pantry JavaScript errors');must(!report.externalRequests.length,'No external pantry requests');report.passed=true;
  }catch(error){report.passed=false;report.failure=String(error);throw error;}
  finally{await fs.writeFile(path.join(output,'browser-report.json'),JSON.stringify(report,null,2));await browser.close();}

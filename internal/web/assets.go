@@ -34,6 +34,8 @@ func (s *Server) asset(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
 	case strings.HasSuffix(name, ".svg"):
 		w.Header().Set("Content-Type", "image/svg+xml")
+	case strings.HasSuffix(name, ".webp"):
+		w.Header().Set("Content-Type", "image/webp")
 	case strings.HasSuffix(name, ".png"):
 		w.Header().Set("Content-Type", "image/png")
 	}
@@ -53,7 +55,7 @@ func (s *Server) manifest(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/manifest+json")
 	w.Header().Set("Cache-Control", "public,max-age=3600")
-	if err := json.NewEncoder(w).Encode(map[string]any{"id": "/", "name": "Household", "short_name": "Household", "lang": i18n.LanguageTag(locale), "start_url": "/", "scope": "/", "display": "standalone", "share_target": map[string]any{"action": "/share", "method": "POST", "enctype": "multipart/form-data", "params": map[string]any{"title": "title", "text": "text", "files": []map[string]any{{"name": "files", "accept": []string{"image/jpeg", "image/png", "application/pdf"}}}}}, "background_color": "#f4f8fe", "theme_color": "#075ca8", "icons": []map[string]string{{"src": s.assets["icon-192.png"], "sizes": "192x192", "type": "image/png", "purpose": "any maskable"}, {"src": s.assets["icon-512.png"], "sizes": "512x512", "type": "image/png", "purpose": "any maskable"}}}); err != nil {
+	if err := json.NewEncoder(w).Encode(map[string]any{"id": "/", "name": "Household", "short_name": "Household", "lang": i18n.LanguageTag(locale), "start_url": "/", "scope": "/", "display": "standalone", "share_target": map[string]any{"action": "/share", "method": "POST", "enctype": "multipart/form-data", "params": map[string]any{"title": "title", "text": "text", "files": []map[string]any{{"name": "files", "accept": []string{"image/jpeg", "image/png", "application/pdf"}}}}}, "background_color": "#faf5ee", "theme_color": "#241322", "icons": []map[string]string{{"src": s.assets["icon-192.png"], "sizes": "192x192", "type": "image/png", "purpose": "any maskable"}, {"src": s.assets["icon-512.png"], "sizes": "512x512", "type": "image/png", "purpose": "any maskable"}}}); err != nil {
 		s.Log.Debug("manifest response interrupted", "request_id", trace(r))
 	}
 }

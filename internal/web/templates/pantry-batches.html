@@ -1,8 +1,8 @@
 {{define "pantry-batches"}}
 <section id="pantry-batches" data-generation="{{with index .States "pantry"}}{{.Generation}}{{end}}" data-draft="{{.Record.draft}}" data-receipt="{{.Record.receipt}}" data-writable="{{.User.CanWrite}}">
+ <h1>{{t "Einlagern und Inventur"}}</h1>
  {{template "workspace-nav" .}}
  <a class="back-link" href="/m/pantry/stock">{{t "Zum Vorratsbestand"}}</a>
- <h1>{{t "Einlagern und Inventur"}}</h1>
  <div id="pb-error" class="notice error" role="alert" tabindex="-1" hidden></div>
  <button id="pb-retry" type="button" hidden>{{t "Dieselbe Anfrage erneut prüfen"}}</button>
  <p id="pb-introduction" class="muted">{{t "Mehrere neue Chargen aufnehmen oder ausgewählte Chargen eines Lagerorts zählen. Erst die Gesamtbestätigung bucht Bestand."}}</p>

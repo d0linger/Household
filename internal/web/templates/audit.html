@@ -19,7 +19,7 @@
   <summary class="audit-row">
     <time datetime="{{.CreatedAt.Format "2006-01-02T15:04:05Z07:00"}}">{{.TimeLabel}}</time>
     <span class="audit-actor">{{if .ActorUsername}}{{.ActorUsername}}{{if eq .ActorKind "legacy"}}<small>{{t "Früheres Protokoll"}}</small>{{end}}{{else}}{{t .ActorLabel}}{{end}}</span>
-    <span class="audit-action">{{t .ActionLabel}}{{if ne .Outcome "success"}}<small class="audit-outcome">{{if eq .Outcome "failure"}}{{t "Fehlgeschlagen"}}{{else}}{{t "Abweichendes Ergebnis"}}{{end}}</small>{{end}}</span>
+    <span class="audit-action"><span class="audit-action-chip">{{t .ActionLabel}}</span>{{if ne .Outcome "success"}}<small class="audit-outcome">{{if eq .Outcome "failure"}}{{t "Fehlgeschlagen"}}{{else}}{{t "Abweichendes Ergebnis"}}{{end}}</small>{{end}}</span>
     <span class="audit-record"><strong>{{if .TitleLabel}}{{t .Title}}{{else}}{{.Title}}{{end}}</strong><small>{{t .ModuleLabel}}{{if ne .Title .EntityLabel}} · {{t .EntityLabel}}{{end}}</small></span>
     <span class="audit-toggle">{{if eq .FieldCount 1}}{{t "1 Feldänderung"}}{{else if .FieldCount}}{{t "%d Feldänderungen" .FieldCount}}{{else}}{{t "Ereignisdetails"}}{{end}}<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg></span>
   </summary>

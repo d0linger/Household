@@ -115,8 +115,19 @@ func financeOverview(ctx context.Context, tx pgx.Tx, id auth.Identity, scope fin
 	if err != nil {
 		return nil, err
 	}
-	return Record{"rows": categories, "totals": Record{"posted_consumption_minor": posted, "draft_known_minor": draft, "draft_unknown_count": unknown},
-		"warnings": []string{"Summen berücksichtigen aktuell sichtbare Buchungen. Der Personenfilter umfasst alle Buchungen mit Beteiligung dieser Person; Kategorieanteile beziehen sich jeweils auf die ganze Buchung."}}, nil
+	result := Record{"rows": categories, "totals": Record{"posted_consumption_minor": posted, "draft_known_minor": draft, "draft_unknown_count": unknown},
+		"warnings": []string{"Summen berücksichtigen aktuell sichtbare Buchungen. Der Personenfilter umfasst alle Buchungen mit Beteiligung dieser Person; Kategorieanteile beziehen sich jeweils auf die ganze Buchung."}}
+	if q.Pane == "overview" {
+		// Reuse the overview selection and transaction for the five displayed amounts.
+		recent, err := financeSQLRecords(ctx, tx, `SELECT jsonb_build_object('description',t.description,'day',t.occurred_on::text,'state',t.state,
+ 'amount_minor',(`+financeConsumptionExpression()+`)::text) FROM expenses.entries t WHERE `+where+
+			` ORDER BY t.occurred_on DESC,t.created_at DESC,t.id LIMIT 5`, args, 5)
+		if err != nil {
+			return nil, err
+		}
+		result["recent_entries"] = recent
+	}
+	return result, nil
 }
 
 func financeReports(ctx context.Context, tx pgx.Tx, id auth.Identity, scope financialScope, q FinanceQuery) (Record, error) {

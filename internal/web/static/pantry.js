@@ -55,12 +55,18 @@ const _householdText_pantry_js = (source, ...args) => { const i18n = globalThis.
     details.addEventListener('toggle',()=>{if(details.open&&!loaded)load();});more.addEventListener('click',load);return details;
   }
   async function load(target,trail,focus=false){if(loading)return;loading=true;previous.disabled=next.disabled=refresh.disabled=true;form.querySelector('button').disabled=true;
-    const request=++sequence;status.textContent=_householdText_pantry_js("Bestand wird geladen …");container.setAttribute('aria-busy','true');
+    const request=++sequence;status.classList.remove('sr-only');status.textContent=_householdText_pantry_js("Bestand wird geladen …");container.setAttribute('aria-busy','true');
     try{const data=await get('/api/v1/pantry/stock?'+new URLSearchParams({q:query,at:day,cursor:target}));if(request!==sequence)return;
       cursor=target;history=trail;nextCursor=data.next_cursor;container.replaceChildren();summary.replaceChildren();
-      summary.append(node('h2',data.total+_householdText_pantry_js(" Produkte")+(day?' · '+date(day):_householdText_pantry_js(" · Aktuell"))));
-      const totals=node('p');totals.className='pantry-totals';totals.textContent=data.totals.length?_householdText_pantry_js("Gesamter gefilterter Bestand: ")+data.totals.map(t=>qty(t.quantity)+' '+unit(t.unit)).join(' · '):_householdText_pantry_js("Keine passenden Produkte.");summary.append(totals);
-      if(day){const note=node('p',_householdText_pantry_js("Bis zum Tagesende in ")+data.timezone+'.');note.className='fine';summary.append(note);}$('#pantry-history-note').hidden=!day;if(!day)summary.append(node('p',_householdText_pantry_js("Reservierungen gelten für konkrete Chargen. Freie Mengen zählen nur aktive Produkte und Lagerorte; Unterdeckung wird nicht automatisch aus anderen Chargen ausgeglichen.")));
+      const firstProduct=data.total===0&&!query&&!day;
+      $('#pantry-first').hidden=!firstProduct;
+      $('#pantry-history-note').hidden=!day||data.total===0;
+      if(data.total>0){
+        summary.append(node('h2',data.total+_householdText_pantry_js(" Produkte")+(day?' · '+date(day):_householdText_pantry_js(" · Aktuell"))));
+        const totals=node('p');totals.className='pantry-totals';totals.textContent=_householdText_pantry_js("Gesamter gefilterter Bestand: ")+data.totals.map(t=>qty(t.quantity)+' '+unit(t.unit)).join(' · ');summary.append(totals);
+        if(day){const note=node('p',_householdText_pantry_js("Bis zum Tagesende in ")+data.timezone+'.');note.className='fine';summary.append(note);}
+        else summary.append(node('p',_householdText_pantry_js("Reservierungen gelten für konkrete Chargen. Freie Mengen zählen nur aktive Produkte und Lagerorte; Unterdeckung wird nicht automatisch aus anderen Chargen ausgeglichen.")));
+      }
       for(const product of data.products){const article=node('article');article.className='pantry-product';article.dataset.pantryProduct=product.id;
         const top=node('div');top.className='section-heading';const title=node('h3');title.append(link(product.name,'/m/pantry/products/'+product.id));top.append(title,node('strong',qty(product.stock)+' '+unit(product.unit)));article.append(top);
         const locations=product.locations.join(', ')+(Number(product.location_count)>product.locations.length?' · '+product.location_count+_householdText_pantry_js(" Orte insgesamt"):'');
@@ -70,9 +76,15 @@ const _householdText_pantry_js = (source, ...args) => { const i18n = globalThis.
         if(product.archived)article.append(node('p',_householdText_pantry_js("Produkt archiviert")));if(Number(product.later_corrections)>0)article.append(node('p',product.later_corrections+_householdText_pantry_js(" spätere Korrekturbuchung(en); zuletzt ")+moment(product.latest_correction_at,data.timezone)+(_householdText_pantry_js(". Mengen hier bleiben am Stichtag."))));
         article.append(provenanceFor(product),lotsFor(product,day,query));container.append(article);
       }
-      if(!data.products.length)container.append(node('p',_householdText_pantry_js("Keine Produkte gefunden. Suchbegriff oder Stichtag anpassen.")));
-      previous.hidden=!history.length;next.hidden=!nextCursor;status.textContent=data.products.length+_householdText_pantry_js(" von ")+data.total+_householdText_pantry_js(" Produkten auf dieser Seite. Mengen werden nicht zwischen unterschiedlichen Einheiten addiert.");
-      const params=new URLSearchParams();if(query)params.set('q',query);if(day)params.set('at',day);window.history.replaceState(null,'',location.pathname+(params.size?'?'+params:''));if(focus)container.focus();
+      if(!data.products.length&&!firstProduct){
+        container.append(node('p',_householdText_pantry_js("Keine Produkte gefunden. Suchbegriff oder Stichtag anpassen.")));
+        if(query||day){const reset=link(_householdText_pantry_js("Filter zurücksetzen"),'/m/pantry/stock');reset.className='button';container.append(reset);}
+      }
+      previous.hidden=!history.length;next.hidden=!nextCursor;
+      status.classList.toggle('sr-only',data.total===0);
+      if(data.total>0)status.textContent=data.products.length+_householdText_pantry_js(" von ")+data.total+_householdText_pantry_js(" Produkten auf dieser Seite. Mengen werden nicht zwischen unterschiedlichen Einheiten addiert.");
+      else status.textContent=firstProduct?_householdText_pantry_js("Noch keine Vorratsprodukte"):_householdText_pantry_js("Keine passenden Produkte.");
+      const params=new URLSearchParams();if(query)params.set('q',query);if(day)params.set('at',day);window.history.replaceState(null,'',location.pathname+(params.size?'?'+params:''));if(focus)(firstProduct?$('#pantry-first'):container).focus();
     }catch(error){previous.hidden=next.hidden=true;status.textContent=error.message+_householdText_pantry_js(" Vorherige Anzeige bleibt erhalten. Mit Aktualisieren erneut versuchen.");}
     finally{loading=false;container.removeAttribute('aria-busy');previous.disabled=next.disabled=refresh.disabled=false;form.querySelector('button').disabled=false;}
   }

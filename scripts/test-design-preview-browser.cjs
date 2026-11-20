@@ -7,7 +7,8 @@ const {pathToFileURL}=require('node:url');
 const root=path.resolve(__dirname,'..');
 const round=process.argv.includes('--confirm')?'confirm':process.argv.includes('--functional')?'functional':'initial';
 const out=path.join(root,'outputs/design-directions-review',round+'-'+new Date().toISOString().replace(/[:.]/g,'-'));
-const url='http://localhost:8102/design-preview/';
+const origin='http://localhost:'+Number(process.env.HOUSEHOLD_DESIGN_PORT||8102);
+const url=origin+'/design-preview/';
 const themes=['light','dark','pink-light','pink-dark'];
 const report={round,checks:[],a11y:[],contrast:[],screens:[],errors:[],overflow:[],network:[],functionalIssues:[],thumbnails:[]};
 const check=(name,condition)=>{assert.ok(condition,name);report.checks.push(name);};
@@ -20,7 +21,7 @@ async function main(){
     context.setDefaultTimeout(10000);
     const page=await context.newPage();
     page.on('pageerror',error=>report.errors.push(error.message));
-    page.on('request',request=>{if(!request.url().startsWith('http://localhost:8102/')&&!request.url().startsWith('blob:'))report.network.push(request.url());});
+    page.on('request',request=>{if(!request.url().startsWith(origin+'/')&&!request.url().startsWith('blob:'))report.network.push(request.url());});
     await page.goto(url);await page.locator('.design-card').last().waitFor({state:'attached'});
     check('100 authored directions rendered',await page.locator('.design-card').count()===100);
     const identities=await page.locator('.design-card').evaluateAll(nodes=>nodes.map(node=>node.dataset.card));
@@ -39,7 +40,24 @@ async function main(){
     await page.click('#reset-filters');await page.check('#favorites-only');
     check('Favorites filter',await page.locator('.design-card').count()===1);await page.uncheck('#favorites-only');
     await page.fill('#query','nothing-by-this-name');await page.locator('#empty').waitFor({state:'visible'});check('Empty search state',await page.locator('#empty').isVisible());await page.click('#empty-reset');
-    for(const id of ['DS-001','DS-027','DS-061','DS-092'])await page.click(`[data-shortlist="${id}"]`);
+    check('Minimum and maximum comparison sizes are visible',await page.locator('.comparison-tray').innerText().then(text=>text.includes('zwei bis vier'))&&await page.locator('#compare').isDisabled());
+    await page.locator('[data-favorite="DS-001"]').focus();await page.keyboard.press('Tab');
+    check('Tab skips the miniature form to open a design',await page.locator('[data-preview="DS-001"]').evaluate(node=>node===document.activeElement));
+    await page.keyboard.press('Enter');
+    check('Single design opens an interactive form',await page.locator('#comparison-grid .world').count()===1&&await page.locator('#comparison-grid input').first().isEditable());
+    await page.keyboard.press('Escape');await page.keyboard.press('Tab');await page.keyboard.press('Enter');
+    check('One choice explains how to unlock comparison',await page.locator('#compare').isDisabled()&&await page.locator('#announcement').innerText().then(text=>text.includes('zweites')));
+    const quick=page.locator('#compare-quick');
+    for(const [count,id] of [[2,'DS-027'],[3,'DS-061'],[4,'DS-092']]){
+      await page.locator(`[data-shortlist="${id}"]`).focus();await page.keyboard.press('Enter');await page.keyboard.press('Tab');
+      check(count+' selected designs open on the next Tab',await quick.evaluate(node=>node===document.activeElement)&&await quick.innerText()===count+' Designs vergleichen');
+      await page.waitForFunction(()=>document.querySelector('#compare-quick.past-tray'));
+      const rect=await quick.boundingBox();
+      check('Comparison stays reachable after scrolling at '+count,rect.y>=0&&rect.y+rect.height<=page.viewportSize().height&&rect.x>=0);
+      await page.keyboard.press('Enter');
+      check('Shortcut opens exactly '+count+' designs',await page.locator('#comparison-grid .world').count()===count);
+      await page.keyboard.press('Escape');check('Shortcut regains focus at '+count,await quick.evaluate(node=>node===document.activeElement));
+    }
     check('Shortlist bounded to four',await page.locator('[data-shortlist="DS-003"]').isDisabled()&&await page.locator('#shortlist li').count()===4);
     await page.click('[data-remove="DS-092"]');check('Remove frees comparison slot',!(await page.locator('[data-shortlist="DS-003"]').isDisabled()));await page.click('[data-shortlist="DS-092"]');
     await page.click('#compare');check('Four actual comparison dialogs',await page.locator('#comparison-grid .world').count()===4);
@@ -161,7 +179,9 @@ async function main(){
     const pair=page.locator('#compare-dialog');await pair.evaluate(node=>{node.dataset.previousStyle=node.getAttribute('style')||'';node.style.maxHeight='none';node.style.height='auto';node.style.position='absolute';node.style.inset='0 auto auto 0';});
     await pair.screenshot({path:path.join(out,'1440-pink-light-DS004-vs-DS092-full.png')});report.screens.push('1440-pink-light-DS004-vs-DS092-full.png');await pair.evaluate(node=>{node.setAttribute('style',node.dataset.previousStyle);delete node.dataset.previousStyle;});await page.click('#close-compare');
     await page.emulateMedia({reducedMotion:'reduce'});check('Reduced motion removes transitions',await page.locator('[data-preview]').first().evaluate(node=>getComputedStyle(node).transitionDuration)==='0s');
-    await page.goto(url);await page.keyboard.press('Tab');check('Keyboard skip link receives focus',await page.locator('.skip-link').evaluate(node=>node===document.activeElement));await page.keyboard.press('Enter');check('Skip link focuses gallery',await page.locator('#gallery').evaluate(node=>node===document.activeElement));
+    await page.goto(url);await page.keyboard.press('Tab');check('Keyboard skip link receives focus',await page.locator('.skip-link[href="#gallery"]').evaluate(node=>node===document.activeElement));await page.keyboard.press('Enter');check('Skip link focuses gallery',await page.locator('#gallery').evaluate(node=>node===document.activeElement));
+    await page.goto(url);await page.keyboard.press('Tab');await page.keyboard.press('Tab');await page.keyboard.press('Enter');
+    check('Keyboard skip link reaches the final decision',await page.locator('#decision-title').evaluate(node=>node===document.activeElement));
     const noJS=await browser.newContext({javaScriptEnabled:false});const noJSPage=await noJS.newPage();await noJSPage.goto(url);check('No-JS explanation visible',await noJSPage.locator('noscript h2').isVisible());await noJSPage.goto(url+'guideline.html');check('Guideline readable without JavaScript',await noJSPage.locator('h1').isVisible());await noJS.close();
     const blocked=await browser.newContext();await blocked.addInitScript(()=>Object.defineProperty(window,'localStorage',{get(){throw new DOMException('Blocked','SecurityError');}}));const blockedPage=await blocked.newPage();await blockedPage.goto(url);await blockedPage.locator('.design-card').last().waitFor({state:'attached'});check('Blocked storage keeps 100 designs usable',await blockedPage.locator('.design-card').count()===100&&await blockedPage.locator('#storage-warning').isVisible());await blocked.close();
     const malformed=await browser.newContext();await malformed.addInitScript(()=>{localStorage.setItem('household.design-directions.v2','{invalid');localStorage.setItem('household.design-preview.v1','unchanged sentinel');});const malformedPage=await malformed.newPage();await malformedPage.goto(url);await malformedPage.locator('.design-card').last().waitFor({state:'attached'});check('Malformed V2 storage recovers',await malformedPage.locator('.design-card').count()===100);check('V1 storage preserved',await malformedPage.evaluate(()=>localStorage.getItem('household.design-preview.v1'))==='unchanged sentinel');await malformed.close();

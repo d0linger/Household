@@ -11,7 +11,7 @@ Mode: Operate. Precisely scoped extension of the approved weekly planning, deman
 
 THESIS: compare every active whole meal with physical stock and its attributable open purchase before applying exact changes once.
 
-OWN-WORLD: existing green actions, visible labels, native controls, bordered rows, local sans-serif and tabular exact quantities. No new identity or raster asset.
+OWN-WORLD: existing semantic actions, visible labels, native controls, bordered rows, local sans-serif and tabular exact quantities. No new identity or raster asset.
 
 STORY: optionally select additional whole meals, inspect the complete household scope, resolve changed source/item/reorder intent, review an open target, confirm exact effects, then inspect immutable evidence. End and detach remain reachable when modules are disabled or sources missing.
 

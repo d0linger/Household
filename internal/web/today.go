@@ -18,10 +18,14 @@ type todayItem struct {
 	Title string `json:"title"`
 	URL   string `json:"url"`
 	Meta  string `json:"meta,omitempty"`
+	Image string `json:"image,omitempty"`
+	Minor string `json:"minor,omitempty"`
 	Read  bool   `json:"read,omitempty"`
 }
 
 type todaySection struct {
+	Title string      `json:"title,omitempty"`
+	URL   string      `json:"url,omitempty"`
 	State string      `json:"state"`
 	Items []todayItem `json:"items"`
 	More  bool        `json:"more"`
@@ -33,6 +37,9 @@ type todayResponse struct {
 	Notifications todaySection `json:"notifications"`
 	Cooking       todaySection `json:"cooking"`
 	Meals         todaySection `json:"meals"`
+	Completed     todaySection `json:"completed"`
+	Shopping      todaySection `json:"shopping"`
+	Finances      todaySection `json:"finances"`
 	Tasks         todaySection `json:"tasks"`
 }
 
@@ -68,7 +75,31 @@ func (s *Server) todayAPI(w http.ResponseWriter, r *http.Request) {
 	if err == nil {
 		out.Notifications = todayNotices(notices)
 	}
+	out.Completed, out.Shopping, out.Finances = newTodaySection("disabled"), newTodaySection("disabled"), newTodaySection("disabled")
+	if _, enabled := s.Store.State("shopping"); enabled {
+		sectionCtx, stop := context.WithTimeout(ctx, 2*time.Second)
+		out.Shopping = s.todayShopping(sectionCtx, id, locale)
+		stop()
+	}
+	if _, enabled := s.Store.State("expenses"); enabled {
+		sectionCtx, stop := context.WithTimeout(ctx, 2*time.Second)
+		out.Finances = s.todayFinances(sectionCtx, id, locale, "")
+		stop()
+	}
 	if _, enabled := s.Store.State("chores"); enabled {
+		out.Completed.State = "error"
+		if out.Day != "" {
+			sectionCtx, stop := context.WithTimeout(ctx, 2*time.Second)
+			completed, readErr := s.Store.ChoreTasks(sectionCtx, id, store.ChoreQuery{Scope: "mine", State: "completed", From: out.Day, Through: out.Day, Limit: 6})
+			stop()
+			if readErr == nil {
+				out.Completed = todayTasks(completed, locale)
+				for i := range out.Completed.Items {
+					out.Completed.Items[i].Meta = i18n.Text(locale, "Erledigt")
+					out.Completed.Items[i].Read = true
+				}
+			}
+		}
 		out.Tasks.State = "error"
 		sectionCtx, stop := context.WithTimeout(ctx, 2*time.Second)
 		tasks, readErr := s.Store.ChoreTasks(sectionCtx, id, store.ChoreQuery{Scope: "mine", State: "open", Limit: 6})
@@ -91,10 +122,25 @@ func (s *Server) todayAPI(w http.ResponseWriter, r *http.Request) {
 		if out.Day != "" {
 			sectionCtx, stop := context.WithTimeout(ctx, 2*time.Second)
 			meals, readErr := s.Store.TodayMeals(sectionCtx, id, out.Day, 7)
-			stop()
 			if readErr == nil {
 				out.Meals = todayMeals(meals, out.Day, locale)
+				recipes := make([]string, 0, len(meals))
+				for _, meal := range meals {
+					if meal.RecipeID != "" {
+						recipes = append(recipes, meal.RecipeID)
+					}
+				}
+				covers := s.recipeCovers(sectionCtx, id, recipes)
+				for i := range out.Meals.Items {
+					for _, meal := range meals {
+						if out.Meals.Items[i].ID == meal.ID {
+							out.Meals.Items[i].Image = covers[meal.RecipeID]
+							break
+						}
+					}
+				}
 			}
+			stop()
 		}
 	}
 	writeJSON(w, http.StatusOK, out)
@@ -180,8 +226,13 @@ func todayTasks(data store.Record, locale string) todaySection {
 			break
 		}
 		meta := i18n.Text(locale, "Heute fällig")
-		if day := due.In(location).Format(time.DateOnly); day < store.String(data["today"]) {
-			meta = i18n.Text(locale, "Überfällig") + " · " + day
+		localDue := due.In(location)
+		if localDue.Format(time.DateOnly) < store.String(data["today"]) {
+			layout := "02.01.2006"
+			if i18n.Normalize(locale) == "en" {
+				layout = "2 Jan 2006"
+			}
+			meta = i18n.Text(locale, "Überfällig") + " · " + localDue.Format(layout)
 		}
 		if ready, ok := task["prerequisites_met"].(bool); ok && !ready {
 			meta += " · " + i18n.Text(locale, "Voraussetzung offen")
