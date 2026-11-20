@@ -122,12 +122,12 @@ func (s *Server) entityCSV(ctx context.Context, id auth.Identity, m module.Descr
 	if m.ID == "expenses" && (e.ID == "entries" || e.ID == "entry_lines") {
 		err = s.Store.ExportFinancial(ctx, id, e.ID, emit)
 	} else {
+		query := ""
+		if complete && m.ID == "shopping" && (e.ID == "lists" || e.ID == "items") {
+			query = "is:all"
+		}
 		for offset := 0; offset < 10000; offset += 100 {
 			var rows []store.Record
-			query := ""
-			if complete && m.ID == "shopping" && (e.ID == "lists" || e.ID == "items") {
-				query = "is:all"
-			}
 			rows, err = s.Store.List(ctx, id, m, e, query, 100, offset)
 			if err != nil {
 				break
@@ -139,7 +139,11 @@ func (s *Server) entityCSV(ctx context.Context, id auth.Identity, m module.Descr
 				break
 			}
 			if offset == 9900 {
-				err = store.Invalid{Message: "Export umfasst mehr als 10.000 Einträge; bitte über die Betreiber-Sicherung exportieren"}
+				// Exactly 10,000 records fit; refuse only when another one exists.
+				var more []store.Record
+				if more, err = s.Store.List(ctx, id, m, e, query, 1, 10000); err == nil && len(more) > 0 {
+					err = store.Invalid{Message: "Export umfasst mehr als 10.000 Einträge; bitte über die Betreiber-Sicherung exportieren"}
+				}
 			}
 		}
 	}

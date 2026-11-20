@@ -587,5 +587,9 @@
   "error pattern\ninternal/maintenance/restore.go\nrollback found an unexpected set of databases; inspect them before retrying": "Internal/operator diagnostic outside typed Invalid/Rejection and HTTP presentation boundaries; preserve diagnostic text.",
   "error pattern\ninternal/maintenance/restore.go\nsome kept restore databases have unexpected names and were left in place": "Internal/operator diagnostic outside typed Invalid/Rejection and HTTP presentation boundaries; preserve diagnostic text.",
   "error pattern\ninternal/maintenance/restore.go\nthe live database is not reachable": "Internal/operator diagnostic outside typed Invalid/Rejection and HTTP presentation boundaries; preserve diagnostic text.",
-  "error pattern\ninternal/maintenance/restore.go\nthe restore job is missing from the restored database": "Internal/operator diagnostic outside typed Invalid/Rejection and HTTP presentation boundaries; preserve diagnostic text."
+  "error pattern\ninternal/maintenance/restore.go\nthe restore job is missing from the restored database": "Internal/operator diagnostic outside typed Invalid/Rejection and HTTP presentation boundaries; preserve diagnostic text.",
+  "error pattern\ninternal/maintenance/backup.go\nlook up the latest snapshot: %w": "Internal/operator diagnostic outside typed Invalid/Rejection and HTTP presentation boundaries; preserve diagnostic text.",
+  "error pattern\ninternal/maintenance/backup.go\nno completed snapshot to check": "Internal/operator diagnostic outside typed Invalid/Rejection and HTTP presentation boundaries; preserve diagnostic text.",
+  "error pattern\ninternal/worker/worker.go\npaused by a live restore": "Internal/operator diagnostic outside typed Invalid/Rejection and HTTP presentation boundaries; preserve diagnostic text.",
+  "error pattern\ninternal/maintenance/restore.go\nremove kept uploads of %s: %w": "Internal/operator diagnostic outside typed Invalid/Rejection and HTTP presentation boundaries; preserve diagnostic text."
 }

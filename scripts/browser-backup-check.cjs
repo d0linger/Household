@@ -75,6 +75,16 @@ const must=(condition,message)=>{if(!condition)throw Error(message);report.check
   await page.locator('[data-share-missed]').waitFor();
   must(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),'Mobile share page has no horizontal overflow');
   await shot('share-mobile-dark');await axe('share page mobile dark');
+  // A parked shared photo becomes exactly one document through the real save flow.
+  await page.evaluate(async()=>{const boot=await fetch('/api/v1/core/bootstrap',{cache:'no-store'}).then(r=>r.json());if(boot.states.documents.state!=='enabled'){const result=await fetch('/settings/modules/documents',{method:'POST',body:new URLSearchParams({csrf:boot.csrf,enabled:'true',version:String(boot.states.documents.version)})});if(!result.ok)throw Error('Module enable failed');}});
+  const parked=await page.evaluate(async()=>{const canvas=document.createElement('canvas');canvas.width=9;canvas.height=5;const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/png'));
+   const key='/share/parked/'+crypto.randomUUID()+'-0';await (await caches.open('household-share-v1')).put(key,new Response(blob,{headers:{'Content-Type':'image/png','X-Share-Name':encodeURIComponent('beleg.png')}}));return key;});
+  await page.goto(base+'/share');
+  await page.getByRole('button',{name:'Als Dokument speichern',exact:true}).click();
+  await page.getByRole('link',{name:'Gespeichert. Dokument öffnen',exact:true}).waitFor({timeout:30000});
+  must(await page.evaluate(async key=>!(await (await caches.open('household-share-v1')).match(key)),parked),'Saved shared file leaves the device cache');
+  const documentsNamed=await page.evaluate(async()=>{const response=await fetch('/api/v1/m/documents/documents?q=beleg',{headers:{Accept:'application/json'}});const body=await response.json();return (body.records||body.items||body).filter?.(row=>(row.data?.title||row.title)==='beleg').length??-1;});
+  must(documentsNamed===1,'Shared file became exactly one document');
 
   await page.setViewportSize({width:1440,height:1000});
   await page.evaluate(()=>{localStorage.setItem('household-theme','light');document.documentElement.dataset.theme='light';});
