@@ -158,7 +158,7 @@ func run(log *slog.Logger) error {
 		}
 		backupCtx, cancel := context.WithTimeout(ctx, 30*time.Minute)
 		defer cancel()
-		result, err := maintenance.RunBackup(backupCtx, pool, cfg, maintenance.BackupOptions{Offsite: len(os.Args) == 3})
+		result, err := maintenance.RunOperatorBackup(backupCtx, pool, cfg, maintenance.BackupOptions{Offsite: len(os.Args) == 3})
 		if err != nil {
 			return err
 		}

@@ -40,6 +40,12 @@ UPDATE core.sessions s SET second_factor=true WHERE EXISTS(SELECT 1 FROM core.to
  WHERE t.user_id=s.user_id AND t.enabled_at IS NOT NULL AND t.enabled_at<=s.created_at);
 ALTER TABLE core.sessions ENABLE TRIGGER household_audit_change;
 
+-- Backup work records which repositories it used, so the history of a
+-- replaced repository never counts for the configured one. Only the backup
+-- service (owner) writes these columns.
+ALTER TABLE core.backup_jobs ADD COLUMN local_label text CHECK(length(local_label) BETWEEN 1 AND 512),
+ ADD COLUMN offsite_label text CHECK(length(offsite_label) BETWEEN 1 AND 512);
+
 -- Advance the exact Fuel pins on the Core version.
 DO $compatibility$
 DECLARE authority text;overview text;ready text;needle text='bool_and(version=43 AND NOT dirty)';old_hash text;

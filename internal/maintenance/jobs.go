@@ -31,6 +31,9 @@ type Service struct {
 	DrainTimeout time.Duration
 	// Alerts reports failures and restores to an optional external channel.
 	Alerts *alerts.Sender
+	// Recovered reports that NewService completed an interrupted restore or
+	// rollback before it could open the live database.
+	Recovered bool
 
 	mu   sync.Mutex
 	pool *pgxpool.Pool
@@ -59,6 +62,7 @@ func NewService(ctx context.Context, cfg config.Config, log *slog.Logger, superu
 		if recoverErr := service.RecoverRestore(ctx); recoverErr != nil {
 			return nil, errors.Join(err, recoverErr)
 		}
+		service.Recovered = true
 		if service.Pool() == nil {
 			if err = service.reopen(ctx); err != nil {
 				return nil, err
@@ -216,21 +220,30 @@ func (s *Service) reportLiveness(ctx context.Context) {
 	}
 }
 
+// repositoryLabels returns the nonsecret labels of the configured local and
+// offsite repositories; an unconfigured or invalid one is empty.
+func repositoryLabels() (string, string) {
+	local, err := config.LocalBackupTarget()
+	if err != nil {
+		return "", ""
+	}
+	offsiteLabel := ""
+	if offsite, offsiteErr := config.OffsiteBackupTarget(local); offsiteErr == nil && offsite != nil {
+		offsiteLabel = offsite.Label()
+	}
+	return local.Label(), offsiteLabel
+}
+
 // heartbeat lets the app show that the service runs and which repositories
 // it has, without ever giving the app their credentials.
 func (s *Service) heartbeat(ctx context.Context) error {
-	local, err := config.LocalBackupTarget()
-	localLabel := ""
-	if err == nil {
-		localLabel = local.Label()
+	localLabel, offsiteLabel := repositoryLabels()
+	// A live restore can close the pool at any moment; read it once.
+	pool := s.Pool()
+	if pool == nil {
+		return nil
 	}
-	offsiteLabel := ""
-	if err == nil {
-		if offsite, offsiteErr := config.OffsiteBackupTarget(local); offsiteErr == nil && offsite != nil {
-			offsiteLabel = offsite.Label()
-		}
-	}
-	_, err = s.Pool().Exec(ctx, `INSERT INTO core.backup_settings(household_id,service_seen_at,service_version,local_label,offsite_label)
+	_, err := pool.Exec(ctx, `INSERT INTO core.backup_settings(household_id,service_seen_at,service_version,local_label,offsite_label)
  SELECT id,now(),$1,nullif($2,''),nullif($3,'') FROM core.households WHERE singleton=1
  ON CONFLICT(household_id) DO UPDATE SET service_seen_at=excluded.service_seen_at,service_version=excluded.service_version,
   local_label=excluded.local_label,offsite_label=excluded.offsite_label`, buildinfo.Label(), localLabel, offsiteLabel)
@@ -305,7 +318,11 @@ func (s *Service) claim(ctx context.Context) (*Job, error) {
 	if job.Kind == "restore" {
 		state = "preparing"
 	}
-	if _, err = tx.Exec(ctx, "UPDATE core.backup_jobs SET state=$2,phase='started',started_at=now(),heartbeat_at=now() WHERE id=$1", job.ID, state); err != nil {
+	// The repository labels tie the attempt to the repositories it used, so a
+	// replaced repository's history never counts for the current one.
+	localLabel, offsiteLabel := repositoryLabels()
+	if _, err = tx.Exec(ctx, "UPDATE core.backup_jobs SET state=$2,phase='started',started_at=now(),heartbeat_at=now(),local_label=nullif($3,''),offsite_label=nullif($4,'') WHERE id=$1",
+		job.ID, state, localLabel, offsiteLabel); err != nil {
 		return nil, err
 	}
 	return &job, tx.Commit(ctx)
@@ -478,8 +495,9 @@ func (s *Service) RestoreNow(ctx context.Context, id, target, snapshot, confirma
 // history of requested and automatic work.
 func (s *Service) startScheduled(ctx context.Context, kind, target, snapshot string) (string, error) {
 	id := value.UUID()
-	_, err := s.Pool().Exec(ctx, `INSERT INTO core.backup_jobs(id,household_id,kind,target,snapshot_reference,state,phase,started_at,heartbeat_at)
- SELECT $1,id,$2,$3,nullif($4,''),'running','scheduled',now(),now() FROM core.households WHERE singleton=1`, id, kind, target, snapshot)
+	localLabel, offsiteLabel := repositoryLabels()
+	_, err := s.Pool().Exec(ctx, `INSERT INTO core.backup_jobs(id,household_id,kind,target,snapshot_reference,state,phase,started_at,heartbeat_at,local_label,offsite_label)
+ SELECT $1,id,$2,$3,nullif($4,''),'running','scheduled',now(),now(),nullif($5,''),nullif($6,'') FROM core.households WHERE singleton=1`, id, kind, target, snapshot, localLabel, offsiteLabel)
 	return id, err
 }
 
@@ -616,7 +634,8 @@ func lastAttempt(ctx context.Context, pool *pgxpool.Pool, kind, label string) (*
 	var last *time.Time
 	err := pool.QueryRow(ctx, `SELECT greatest(
  (SELECT max(started_at) FROM core.backup_runs WHERE repository_kind=$1 AND repository_reference=$2),
- (SELECT max(started_at) FROM core.backup_jobs WHERE kind='backup' AND started_at IS NOT NULL AND (target='both' OR $1='local')))`, kind, label).Scan(&last)
+ (SELECT max(started_at) FROM core.backup_jobs WHERE kind='backup' AND started_at IS NOT NULL AND (target='both' OR $1='local')
+  AND CASE WHEN $1='local' THEN local_label ELSE offsite_label END=$2))`, kind, label).Scan(&last)
 	return last, err
 }
 

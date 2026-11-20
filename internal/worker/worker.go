@@ -35,6 +35,24 @@ type Worker struct {
 	scan  directoryScan
 }
 
+// errPaused reports work skipped because a live restore pauses the app.
+var errPaused = errors.New("paused by a live restore")
+
+// admitted runs one database write as admitted work of the live restore
+// drain, or skips it with errPaused while the app is paused. Feed loops use
+// it per write, so a long-running consumer never blocks the drain.
+func (w *Worker) admitted(write func() error) error {
+	if w.Admit == nil {
+		return write()
+	}
+	release, ok := w.Admit()
+	if !ok {
+		return errPaused
+	}
+	defer release()
+	return write()
+}
+
 func (w *Worker) Run(ctx context.Context) {
 	defer func() {
 		if err := w.Close(); err != nil && w.Log != nil {

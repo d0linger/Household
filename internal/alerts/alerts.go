@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"mime"
+	"mime/quotedprintable"
 	"net"
 	"net/http"
 	"net/mail"
@@ -249,6 +250,7 @@ func (s *Sender) mail(ctx context.Context, title string, m Message) error {
 	if err = client.Mail(sender.Address); err != nil {
 		return errors.New("mail server refused the sender")
 	}
+	recipients := make([]string, 0, len(s.Config.SMTPTo))
 	for _, to := range s.Config.SMTPTo {
 		recipient, parseErr := mail.ParseAddress(to)
 		if parseErr != nil {
@@ -257,21 +259,60 @@ func (s *Sender) mail(ctx context.Context, title string, m Message) error {
 		if err = client.Rcpt(recipient.Address); err != nil {
 			return errors.New("mail server refused a recipient")
 		}
+		// String encodes a non-ASCII display name as RFC 2047 words.
+		recipients = append(recipients, recipient.String())
 	}
 	writer, err := client.Data()
 	if err != nil {
 		return errors.New("mail server refused the message")
 	}
-	header := fmt.Sprintf("From: %s\r\nTo: %s\r\nSubject: %s\r\nDate: %s\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Transfer-Encoding: 8bit\r\nAuto-Submitted: auto-generated\r\n\r\n",
-		s.Config.SMTPFrom, strings.Join(s.Config.SMTPTo, ", "), mimeHeader(title), time.Now().Format(time.RFC1123Z))
-	body := strings.ReplaceAll(strings.ReplaceAll(m.Body, "\r\n", "\n"), "\n", "\r\n")
-	if _, err = writer.Write([]byte(header + body + "\r\n")); err != nil {
+	message, err := composeMail(sender.String(), recipients, title, m.Body, time.Now())
+	if err == nil {
+		_, err = writer.Write(message)
+	}
+	if err != nil {
 		return errors.New("mail delivery interrupted")
 	}
 	if err = writer.Close(); err != nil {
 		return errors.New("mail server rejected the message")
 	}
 	return client.Quit()
+}
+
+// composeMail builds a 7-bit-safe message: encoded header words folded for
+// the 76-character line limit and a quoted-printable body, so a relay
+// without 8BITMIME or SMTPUTF8 accepts it.
+func composeMail(from string, to []string, title, text string, now time.Time) ([]byte, error) {
+	var b bytes.Buffer
+	fmt.Fprintf(&b, "From: %s\r\nTo: %s\r\n", from, strings.Join(to, ", "))
+	b.WriteString(foldHeader("Subject", mimeHeader(title)))
+	fmt.Fprintf(&b, "Date: %s\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Transfer-Encoding: quoted-printable\r\nAuto-Submitted: auto-generated\r\n\r\n",
+		now.Format(time.RFC1123Z))
+	body := quotedprintable.NewWriter(&b)
+	if _, err := body.Write([]byte(strings.ReplaceAll(strings.ReplaceAll(text, "\r\n", "\n"), "\n", "\r\n") + "\r\n")); err != nil {
+		return nil, err
+	}
+	if err := body.Close(); err != nil {
+		return nil, err
+	}
+	return b.Bytes(), nil
+}
+
+// foldHeader writes "Name: value" and folds it between the space-separated
+// words of value (encoded words included) so no line exceeds 76 characters.
+func foldHeader(name, value string) string {
+	var b strings.Builder
+	line := name + ":"
+	for _, word := range strings.Fields(value) {
+		// Folding may also follow the colon, when the first word is long.
+		if len(line)+1+len(word) > 76 {
+			b.WriteString(line + "\r\n")
+			line = ""
+		}
+		line += " " + word
+	}
+	b.WriteString(line + "\r\n")
+	return b.String()
 }
 
 // mimeHeader encodes a non-ASCII subject as RFC 2047 UTF-8; the standard

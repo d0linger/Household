@@ -133,7 +133,7 @@ repository_snapshots="$(docker exec "$backup" restic --no-cache snapshots --json
 previous="$(psql "SELECT datname FROM pg_database WHERE datname LIKE 'household_pre_restore_%'")"
 [[ -n "$previous" ]] || fail "previous database not kept"
 for _ in $(seq 1 30); do docker exec "$app" household healthcheck >/dev/null 2>&1 && break; sleep 2; done
-docker exec "$app" household healthcheck >/dev/null 2>&1 || fail "app did not resume after the restore"
+docker exec "$app" household healthcheck >/dev/null 2>&1 || { docker logs --tail 40 "$app" 2>&1 | grep -v '"http request"' || true; fail "app did not resume after the restore"; }
 docker logs "$app" 2>&1 | grep -q 'live restore: pausing the app' || fail "app never paused"
 
 log "rollback"
@@ -173,17 +173,18 @@ docker exec -i "$db" psql -U postgres -d postgres -v ON_ERROR_STOP=1 -Atqc "ALTE
 printf '{"job":"00000000-0000-4000-8000-000000000001","phase":"swapping","live":"household","stage":"household_restore_job_000000000001","previous":"%s","directory":"","moved":"","snapshot":"","target":"local","started":"2026-01-01T00:00:00Z"}' "$interrupted_previous" \
   | docker run --rm -i -v "$prefix-work:/work" --user 10001 --entrypoint sh "$image" -c 'cat > /work/restore-journal.json' || fail "write the interrupted journal"
 docker start "$backup" >/dev/null
-recovered=""
+recovered="" journal_left=""
+# Recovery is complete only when the live name is back and the journal is gone.
 for _ in $(seq 1 30); do
   recovered="$(docker exec -i "$db" psql -U postgres -d postgres -Atqc "SELECT count(*) FROM pg_database WHERE datname='household'" 2>/dev/null || true)"
-  [[ "$recovered" == "1" ]] && break; sleep 2
+  journal_left="$(docker run --rm -v "$prefix-work:/work" --user 10001 --entrypoint sh "$image" -c 'test -e /work/restore-journal.json && echo yes || echo no')"
+  [[ "$recovered" == "1" && "$journal_left" == "no" ]] && break; sleep 2
 done
 [[ "$recovered" == "1" ]] || { docker logs --tail 30 "$backup" 2>&1 | grep -v '"http request"' || true; fail "the live database name was not restored after the interruption"; }
+[[ "$journal_left" == "no" ]] || fail "the recovered journal was not removed"
 [[ "$(psql "SELECT name FROM core.households")" == "After backup" ]] || fail "recovered database lost its data"
 [[ -z "$(docker exec -i "$db" psql -U postgres -d postgres -Atqc "SELECT datname FROM pg_database WHERE datname='$interrupted_previous'")" ]] \
   || fail "the interrupted previous name still exists"
-journal_left="$(docker run --rm -v "$prefix-work:/work" --user 10001 --entrypoint sh "$image" -c 'test -e /work/restore-journal.json && echo yes || echo no')"
-[[ "$journal_left" == "no" ]] || fail "the recovered journal was not removed"
 
 mkdir -p "$report_dir"
 status="passed"; [[ $failures -eq 0 ]] || { status="failed"; docker logs --tail 60 "$backup" 2>&1 | grep -v '"http request"' || true; }

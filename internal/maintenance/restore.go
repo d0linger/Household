@@ -121,6 +121,13 @@ func readJournal() (*restoreJournal, error) {
 
 func removeJournal() { _ = os.Remove(journalPath()) }
 
+// PendingRestore reports whether an interrupted live restore or rollback
+// left its journal for recovery.
+func PendingRestore() (bool, error) {
+	j, err := readJournal()
+	return j != nil, err
+}
+
 func databaseName(raw string) (string, error) {
 	u, err := url.Parse(raw)
 	if err != nil {
@@ -281,7 +288,7 @@ func (s *Service) restoreLocked(ctx context.Context, job Job) (err error) {
 	if err = s.swap(ctx, conn, &journal); err != nil {
 		return err // swap undid itself or left the journal for recovery
 	}
-	return s.completeSwap(ctx, conn, journal, restored.Manifest)
+	return s.completeSwap(ctx, conn, journal, &restored.Manifest)
 }
 
 // prepareStage takes a safety backup, restores the snapshot into the stage
@@ -603,8 +610,32 @@ func (s *Service) undoSwap(ctx context.Context, conn *pgx.Conn, j restoreJournal
 }
 
 // completeSwap reconciles the uploads with the restored metadata and records
-// the outcome in the new live database. It is idempotent: recovery repeats it.
-func (s *Service) completeSwap(ctx context.Context, conn *pgx.Conn, j restoreJournal, manifest Manifest) error {
+// the outcome in the new live database. It is idempotent: recovery repeats
+// it. The job row marked complete in the same transaction as the
+// restore_completed event is the durable completion marker: once it exists,
+// only cleanup remains, and uploads are never reconciled again (the resumed
+// app may have accepted new files meanwhile). manifest is loaded from the
+// restored directory when nil and the restore is not complete yet.
+func (s *Service) completeSwap(ctx context.Context, conn *pgx.Conn, j restoreJournal, manifest *Manifest) error {
+	if err := s.reopen(ctx); err != nil {
+		return err
+	}
+	var committed bool
+	if err := s.Pool().QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM core.backup_jobs WHERE id=$1 AND kind='restore' AND state='complete'
+ AND previous_database IS NOT DISTINCT FROM nullif($2,''))`, j.Job, j.Previous).Scan(&committed); err != nil {
+		return err
+	}
+	if committed {
+		s.cleanupCompleted(j)
+		return nil
+	}
+	if manifest == nil {
+		loaded, err := restoredManifest(j.Directory)
+		if err != nil {
+			return err
+		}
+		manifest = &loaded
+	}
 	j.Phase = "uploads"
 	if err := writeJournal(j); err != nil {
 		return err
@@ -618,9 +649,6 @@ func (s *Service) completeSwap(ctx context.Context, conn *pgx.Conn, j restoreJou
 	}
 	j.Phase = "finishing"
 	if err = writeJournal(j); err != nil {
-		return err
-	}
-	if err = s.reopen(ctx); err != nil {
 		return err
 	}
 	pool := s.Pool()
@@ -640,17 +668,26 @@ func (s *Service) completeSwap(ctx context.Context, conn *pgx.Conn, j restoreJou
 	if err = tx.Commit(auditCtx); err != nil {
 		return err
 	}
-	// Record the commit before removing the material recovery would need
-	// otherwise: a restart after this point only cleans up.
-	j.Phase = "committed"
-	if err = writeJournal(j); err != nil {
-		return err
-	}
-	(&restoredSnapshot{Directory: j.Directory}).Remove()
-	removeJournal()
+	// The outcome is recorded; nothing after this point may report the
+	// restore as failed. A restart before the cleanup finds the marker.
+	s.cleanupCompleted(j)
 	s.Log.Info("live restore completed", "job", j.Job, "snapshot", j.Snapshot, "previous_database", j.Previous)
 	s.alert(ctx, Job{ID: j.Job, Kind: "restore", Target: j.Target}, nil)
 	return nil
+}
+
+// cleanupCompleted removes the restored snapshot directory and the journal of
+// a restore whose outcome the live database records. Failures are logged:
+// the restore itself succeeded, and a later start retries the cleanup.
+func (s *Service) cleanupCompleted(j restoreJournal) {
+	j.Phase = "committed"
+	if err := writeJournal(j); err != nil {
+		s.Log.Warn("restore journal could not be marked committed", "job", j.Job, "error", err)
+	}
+	if j.Directory != "" {
+		(&restoredSnapshot{Directory: j.Directory}).Remove()
+	}
+	removeJournal()
 }
 
 // reconcileUploads makes the upload folder match the restored metadata:
@@ -843,12 +880,8 @@ func (s *Service) recoverRestoreLocked(ctx context.Context) error {
 		if err = allowConnections(ctx, conn, j.Live, true); err != nil {
 			return err
 		}
-		manifest, err := restoredManifest(j.Directory)
-		if err != nil {
-			return err
-		}
 		s.Log.Warn("completing interrupted live restore", "job", j.Job)
-		return s.completeSwap(ctx, conn, *j, manifest)
+		return s.completeSwap(ctx, conn, *j, nil)
 	case !liveExists && previousExists:
 		s.Log.Warn("undoing interrupted live restore", "job", j.Job)
 	default:
@@ -911,6 +944,11 @@ func (s *Service) discardPreviousLocked(ctx context.Context) error {
 		return err
 	}
 	defer func() { _ = conn.Close(context.Background()) }()
+	// A previous attempt may have dropped a database but failed to clear its
+	// reference or remove its upload folder; reconcile both first.
+	if err = s.reconcileKeptState(ctx, conn); err != nil {
+		return err
+	}
 	// Stage databases are kept only by a rollback; no restore runs while
 	// this holds the restore lock, so every remaining stage is discardable.
 	// Bounded batches; references are cleared only for databases actually
@@ -934,10 +972,6 @@ func (s *Service) discardPreviousLocked(ctx context.Context) error {
 				return errors.Join(err, s.clearPrevious(ctx, dropped))
 			}
 			dropped = append(dropped, name)
-			if database.IsLiveRestorePrevious(name) {
-				folder := filepath.Join(workDirectory(), "pre_restore_"+strings.TrimPrefix(name, "household_pre_restore_"))
-				_ = os.RemoveAll(folder) // #nosec G703 -- derived from a validated reserved name
-			}
 		}
 		if err = s.clearPrevious(ctx, dropped); err != nil {
 			return err
@@ -946,10 +980,49 @@ func (s *Service) discardPreviousLocked(ctx context.Context) error {
 			if len(dropped) < len(names) {
 				return errors.New("some kept restore databases have unexpected names and were left in place")
 			}
-			return nil
+			// Folders are found by name on disk, so one whose removal failed
+			// is retried by the next discard although its database is gone.
+			return s.reconcileKeptState(ctx, conn)
 		}
 	}
 	return errors.New("kept restore databases remain after the discard limit; repeat the request")
+}
+
+// reconcileKeptState clears kept-state references to databases that no
+// longer exist and removes moved-upload folders whose database is gone.
+// Folder removal failures are reported; the folder stays discoverable.
+func (s *Service) reconcileKeptState(ctx context.Context, conn *pgx.Conn) error {
+	rows, err := conn.Query(ctx, "SELECT datname FROM pg_database WHERE starts_with(datname,'household_pre_restore_')")
+	if err != nil {
+		return err
+	}
+	existing, err := pgx.CollectRows(rows, pgx.RowTo[string])
+	if err != nil {
+		return err
+	}
+	if _, err = s.Pool().Exec(ctx, "UPDATE core.backup_jobs SET previous_database=NULL WHERE previous_database IS NOT NULL AND NOT previous_database=ANY($1::text[])", existing); err != nil {
+		return err
+	}
+	kept := make(map[string]bool, len(existing))
+	for _, name := range existing {
+		kept[name] = true
+	}
+	entries, err := os.ReadDir(workDirectory())
+	if err != nil {
+		return err
+	}
+	var failures []error
+	for _, entry := range entries {
+		suffix, ok := strings.CutPrefix(entry.Name(), "pre_restore_")
+		name := "household_pre_restore_" + suffix
+		if !ok || !entry.IsDir() || !database.IsLiveRestorePrevious(name) || kept[name] {
+			continue
+		}
+		if err = os.RemoveAll(filepath.Join(workDirectory(), entry.Name())); err != nil { // #nosec G703 -- validated reserved name below the work directory
+			failures = append(failures, fmt.Errorf("remove kept uploads of %s: %w", name, err))
+		}
+	}
+	return errors.Join(failures...)
 }
 
 func (s *Service) clearPrevious(ctx context.Context, dropped []string) error {

@@ -100,10 +100,36 @@ func (s *Server) maintenanceStatus(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]bool{"maintenance": s.maintenance.active.Load()})
 }
 
-// CheckRestoreOnce runs one restore check before the listener starts, so a
-// web process that starts during a live restore never serves restored
-// metadata before the restore finished its uploads.
-func (s *Server) CheckRestoreOnce(ctx context.Context) { s.checkRestore(ctx) }
+// CheckRestoreOnce runs before the listener starts, so a web process that
+// starts during a live restore never serves restored metadata before the
+// restore finished its uploads. It returns only after the restore state was
+// read successfully (an unreachable database during the switch is retried),
+// pausing the app first when a restore is active.
+func (s *Server) CheckRestoreOnce(ctx context.Context) {
+	for ctx.Err() == nil {
+		checkCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+		var id string
+		err := s.Pool.QueryRow(checkCtx, `SELECT id::text FROM core.backup_jobs WHERE kind='restore' AND state IN('awaiting_drain','swapping')
+ ORDER BY created_at DESC LIMIT 1`).Scan(&id)
+		cancel()
+		switch {
+		case errors.Is(err, pgx.ErrNoRows):
+			return
+		case err == nil:
+			s.maintenance.job.Store(id)
+			s.maintenance.since.Store(time.Now().Unix())
+			s.maintenance.active.Store(true)
+			s.Log.Warn("live restore: starting paused", "job", id)
+			s.drainForRestore(ctx, id)
+			return
+		}
+		s.Log.Warn("live restore: start-up state check failed; retrying", "error", err)
+		select {
+		case <-ctx.Done():
+		case <-time.After(2 * time.Second):
+		}
+	}
+}
 
 // WatchRestores runs until ctx ends and drives the pause for live restores.
 func (s *Server) WatchRestores(ctx context.Context) {
@@ -144,8 +170,13 @@ func (s *Server) checkRestore(ctx context.Context) {
 	case errors.Is(err, pgx.ErrNoRows):
 		// The restored database does not know the job yet: keep waiting.
 	case err != nil:
-		// The database is being switched; keep waiting.
+		// The database is being switched; its connections were ended. Drop
+		// them all, so the next check and the resumed app use fresh ones.
+		s.Pool.Reset()
 	case state == "complete" || state == "failed" || state == "cancelled" || state == "awaiting_drain" && stale:
+		// Connections opened before the switch may point at the replaced
+		// database's ended sessions; start the resumed app with fresh ones.
+		s.Pool.Reset()
 		s.maintenance.active.Store(false)
 		s.Log.Warn("live restore: resuming the app", "job", id, "state", state)
 	case state == "awaiting_drain":

@@ -72,8 +72,10 @@ func classifyResticOutput(stderr []byte) string {
 		return "repository_unreachable"
 	case strings.Contains(text, "no space left"):
 		return "disk_full"
+	// Only explicit not-found diagnostics; "unable to open config file" alone
+	// also covers access and transport failures.
 	case strings.Contains(text, "is there a repository at the following location") || strings.Contains(text, "repository does not exist") ||
-		strings.Contains(text, "unable to open config file") || strings.Contains(text, "config file not found"):
+		strings.Contains(text, "config file not found"):
 		return "repository_missing"
 	case strings.Contains(text, "repository contains errors") || strings.Contains(text, "check failed") || strings.Contains(text, "pack") && strings.Contains(text, "damaged"):
 		return "repository_damaged"
@@ -140,10 +142,12 @@ func restic(ctx context.Context, target config.BackupTarget, source *config.Back
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
 		}
+		// restic 0.17+ exits with 10 exactly when the repository does not exist;
+		// that structured result wins over text matches, which can come from
+		// the repository path itself.
 		code := classifyResticOutput(stderr)
-		// restic 0.17+ exits with 10 exactly when the repository does not exist.
 		var exit *exec.ExitError
-		if errors.As(err, &exit) && exit.ExitCode() == 10 && code == "tool_failed" {
+		if errors.As(err, &exit) && exit.ExitCode() == 10 {
 			code = "repository_missing"
 		}
 		return nil, &ToolError{Program: "restic", Code: code, err: err}

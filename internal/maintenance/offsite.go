@@ -61,9 +61,17 @@ func copyOffsiteLocked(ctx context.Context, pool *pgxpool.Pool, local, offsite c
 		return "", err
 	}
 	if existing := offsiteCopyOf(before, snapshot); existing != "" {
-		// Already offsite: no new restore point, so no new run that would make
-		// the target look freshly backed up. The rotating data check still runs.
-		return existing, checkOffsite(ctx, pool, offsite)
+		// Already offsite: no new restore point. The rotating data check still
+		// runs; a copy whose earlier run failed after `restic copy` (its check)
+		// is recorded now with its original time, and an interrupted retention
+		// is reconciled, so the copy becomes restorable without a new backup.
+		if err = checkOffsite(ctx, pool, offsite); err != nil {
+			return "", err
+		}
+		if err = recordExistingCopy(ctx, pool, offsite, before, existing, snapshot, schemas, jobID); err != nil {
+			return "", err
+		}
+		return existing, reconcileRuns(ctx, pool, offsite)
 	}
 	var sourceBytes *int64
 	if err = pool.QueryRow(ctx, "SELECT max(total_bytes) FROM core.backup_runs WHERE repository_kind='local' AND snapshot_reference=$1", snapshot).Scan(&sourceBytes); err != nil {
@@ -105,6 +113,27 @@ func copyOffsiteLocked(ctx context.Context, pool *pgxpool.Pool, local, offsite c
 		return copied, err
 	}
 	return copied, nil
+}
+
+// recordExistingCopy adds a complete offsite run for a verified copy that has
+// no run yet, keeping the copy's own snapshot time; recorded copies stay as
+// they are.
+func recordExistingCopy(ctx context.Context, pool *pgxpool.Pool, offsite config.BackupTarget, snapshots []resticSnapshot, copied, source string, schemas []byte, jobID string) error {
+	var recorded bool
+	if err := pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM core.backup_runs WHERE repository_kind='offsite' AND repository_reference=$1
+ AND snapshot_reference=$2 AND state IN('complete','retention_pending','expired'))`, offsite.Label(), copied).Scan(&recorded); err != nil || recorded {
+		return err
+	}
+	taken := time.Now()
+	for _, item := range snapshots {
+		if item.ID == copied && !item.Time.IsZero() {
+			taken = item.Time
+		}
+	}
+	_, err := audit.Exec(ctx, pool, `INSERT INTO core.backup_runs(id,state,application_version,repository_reference,repository_kind,job_id,started_at,finished_at,snapshot_reference,schema_manifest,total_bytes)
+ VALUES($1,'complete',$2,$3,'offsite',$4,$5,$5,$6,$7,(SELECT max(total_bytes) FROM core.backup_runs WHERE repository_kind='local' AND snapshot_reference=$8))`,
+		value.UUID(), buildinfo.Label(), offsite.Label(), nullableUUID(jobID), taken, copied, schemas, source)
+	return err
 }
 
 // offsiteCopyOf returns the offsite snapshot that copies the local snapshot.
@@ -157,6 +186,12 @@ func TestOffsite(ctx context.Context, pool *pgxpool.Pool) error {
 	if _, err = restic(ctx, *offsite, nil, "cat", "config"); err == nil {
 		// An existing target is only read.
 		_, err = listSnapshots(ctx, *offsite)
+		return err
+	}
+	// A wrong password, refused access or an unreachable target is the answer
+	// to the test; only a confirmed missing repository is created.
+	var tool *ToolError
+	if !errors.As(err, &tool) || tool.Code != "repository_missing" {
 		return err
 	}
 	// A new target takes the local chunker parameters, so the local

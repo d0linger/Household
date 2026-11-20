@@ -22,6 +22,9 @@ func (w *Worker) energyAdapterLoop(ctx context.Context) {
 		if ctx.Err() != nil {
 			return
 		}
+		if errors.Is(err, errPaused) {
+			handled, err = false, nil // a live restore pauses the app; retry later
+		}
 		if err != nil && w.Log != nil {
 			// Neither remote bodies nor database error details expose measurements or credentials.
 			attrs := []any{"reason", failureReason(err)}
@@ -71,7 +74,14 @@ func failureReason(err error) string {
 
 func (w *Worker) energyAdapterOnce(ctx context.Context) (bool, error) {
 	s := store.New(w.Pool, modules.Registry())
-	lease, err := s.ClaimEnergyAdapter(ctx)
+	// Every database write is admitted separately (see Worker.admitted); a
+	// write refused by a live restore pause ends the round, and the lease
+	// expires as after any other interruption.
+	var lease *store.EnergyAdapterLease
+	err := w.admitted(func() (err error) {
+		lease, err = s.ClaimEnergyAdapter(ctx)
+		return err
+	})
 	if err != nil || lease == nil {
 		return false, err
 	}
@@ -83,7 +93,10 @@ func (w *Worker) energyAdapterOnce(ctx context.Context) (bool, error) {
 		sample, err = meterfeed.FetchHA(ctx, w.Cfg.MeterFeeds, lease.Source)
 		if err == nil {
 			var inserted bool
-			inserted, err = s.IngestEnergySample(ctx, *lease, sample)
+			err = w.admitted(func() (err error) {
+				inserted, err = s.IngestEnergySample(ctx, *lease, sample)
+				return err
+			})
 			if err == nil {
 				if inserted {
 					stats.Inserted = 1
@@ -95,7 +108,11 @@ func (w *Worker) energyAdapterOnce(ctx context.Context) (bool, error) {
 	case "mqtt":
 		stats, err = meterfeed.ConsumeMQTT(ctx, w.Cfg.MeterFeeds, lease.Source,
 			func(ctx context.Context, sample meterfeed.Sample) (bool, error) {
-				inserted, err := s.IngestEnergySample(ctx, *lease, sample)
+				var inserted bool
+				err := w.admitted(func() (err error) {
+					inserted, err = s.IngestEnergySample(ctx, *lease, sample)
+					return err
+				})
 				var invalid store.Invalid
 				if errors.As(err, &invalid) {
 					return false, meterfeed.ErrMessage
@@ -103,13 +120,16 @@ func (w *Worker) energyAdapterOnce(ctx context.Context) (bool, error) {
 				return inserted, err
 			},
 			func(ctx context.Context, digest string) error {
-				return s.RejectEnergySample(ctx, *lease, digest)
+				return w.admitted(func() error { return s.RejectEnergySample(ctx, *lease, digest) })
 			})
 	default:
 		err = meterfeed.ErrConfiguration
 	}
 	if ctx.Err() != nil {
 		return true, ctx.Err()
+	}
+	if errors.Is(err, errPaused) {
+		return true, err // the lease expires; the next round after the pause resumes
 	}
 	if err != nil {
 		var invalid store.Invalid
@@ -124,5 +144,5 @@ func (w *Worker) energyAdapterOnce(ctx context.Context) (bool, error) {
 			code = "unavailable"
 		}
 	}
-	return true, s.FinishEnergyAdapter(ctx, *lease, code, stats)
+	return true, w.admitted(func() error { return s.FinishEnergyAdapter(ctx, *lease, code, stats) })
 }

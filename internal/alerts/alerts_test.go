@@ -1,15 +1,19 @@
 package alerts
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"io"
 	"mime"
+	"mime/quotedprintable"
 	"net/http"
 	"net/http/httptest"
+	"net/mail"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 func TestValidate(t *testing.T) {
@@ -74,6 +78,70 @@ func TestSendDeliversFixedTextToHTTPChannels(t *testing.T) {
 	}
 	if err := (*Sender)(nil).Send(context.Background(), Message{}); err != nil {
 		t.Fatal("nil sender must be a no-op")
+	}
+}
+
+// Both HTTP deliveries must be in flight at once: each handler waits until
+// the other one started. Sequential delivery fails on the bounded wait.
+func TestSendDeliversChannelsConcurrently(t *testing.T) {
+	started := make(chan struct{}, 2)
+	both := make(chan struct{})
+	go func() {
+		for range 2 {
+			<-started
+		}
+		close(both)
+	}()
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.Copy(io.Discard, r.Body)
+		started <- struct{}{}
+		select {
+		case <-both:
+		case <-time.After(3 * time.Second):
+			w.WriteHeader(http.StatusGatewayTimeout)
+		}
+	}))
+	defer server.Close()
+	sender := NewSender(Config{NtfyURL: server.URL + "/topic", WebhookURL: server.URL + "/hook", Installation: "Zuhause"})
+	sender.Client = server.Client()
+	if err := sender.Send(context.Background(), Message{Title: "Backup failed", Body: "Code: x"}); err != nil {
+		t.Fatalf("channels were not delivered concurrently: %v", err)
+	}
+}
+
+func TestComposeMailIsSevenBitAndFolded(t *testing.T) {
+	sender, _ := mail.ParseAddress("Jörg Haushalt <household@example.org>")
+	recipient, _ := mail.ParseAddress("Zoë <me@example.org>")
+	title := "Zuhause " + strings.Repeat("ü", 30) + ": Sicherung überfällig"
+	body := "Ziel: local\nGrund: wrong_password\nDetails stehen in der App unter Einstellungen → Sicherung."
+	raw, err := composeMail(sender.String(), []string{recipient.String()}, title, body, time.Date(2026, 11, 20, 3, 0, 0, 0, time.UTC))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for index, c := range raw {
+		if c > 127 {
+			t.Fatalf("8-bit byte at %d", index)
+		}
+	}
+	for _, line := range strings.Split(string(raw), "\r\n") {
+		if strings.Contains(line, "=?") && len(line) > 76 {
+			t.Fatalf("header line with encoded words longer than 76: %q", line)
+		}
+	}
+	message, err := mail.ReadMessage(bytes.NewReader(raw))
+	if err != nil {
+		t.Fatal(err)
+	}
+	decoder := new(mime.WordDecoder)
+	if subject, err := decoder.DecodeHeader(message.Header.Get("Subject")); err != nil || subject != title {
+		t.Fatalf("subject = %q, %v", subject, err)
+	}
+	if from, err := message.Header.AddressList("From"); err != nil || from[0].Name != "Jörg Haushalt" || from[0].Address != "household@example.org" {
+		t.Fatalf("from = %v, %v", from, err)
+	}
+	decoded, err := io.ReadAll(quotedprintable.NewReader(message.Body))
+	if want := strings.ReplaceAll(body, "\n", "\r\n") + "\r\n"; err != nil || string(decoded) != want {
+		t.Fatalf("body = %q, %v", decoded, err)
 	}
 }
 

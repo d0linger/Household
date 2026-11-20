@@ -204,6 +204,30 @@ type BackupResult struct {
 	OffsiteErr      error
 }
 
+// RunOperatorBackup is RunBackup for the `household backup` command. It holds
+// the restore lock for the whole backup, as the service's tick does, so an
+// operator backup can never finish between a live restore's state copy and
+// its database swap and leave its run in the replaced database. A busy lock
+// (a tick or a restore) is waited for up to five minutes.
+func RunOperatorBackup(ctx context.Context, pool *pgxpool.Pool, cfg config.Config, options BackupOptions) (BackupResult, error) {
+	deadline := time.Now().Add(5 * time.Minute)
+	for {
+		unlock, err := acquireRestoreLock()
+		if err == nil {
+			defer unlock()
+			return RunBackup(ctx, pool, cfg, options)
+		}
+		if !errors.Is(err, errRestoreBusy) || time.Now().After(deadline) {
+			return BackupResult{}, err
+		}
+		select {
+		case <-ctx.Done():
+			return BackupResult{}, ctx.Err()
+		case <-time.After(2 * time.Second):
+		}
+	}
+}
+
 // RunBackup creates a local snapshot and optionally copies it offsite.
 func RunBackup(ctx context.Context, pool *pgxpool.Pool, cfg config.Config, options BackupOptions) (BackupResult, error) {
 	ctx = audit.WithRequest(audit.WithSystem(ctx, "operator"), value.UUID())
@@ -453,6 +477,18 @@ func VerifyRestore(ctx context.Context, pool *pgxpool.Pool, cfg config.Config, t
 		return err
 	}
 	defer unlock()
+	// "latest" is resolved under the same lock, so retention cannot remove
+	// the chosen snapshot between choosing and checking it.
+	if snapshot == "latest" {
+		err = pool.QueryRow(ctx, `SELECT snapshot_reference FROM core.backup_runs WHERE repository_reference=$1 AND state='complete'
+ AND snapshot_reference IS NOT NULL ORDER BY started_at DESC LIMIT 1`, target.Label()).Scan(&snapshot)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return errors.New("no completed snapshot to check")
+		}
+		if err != nil {
+			return fmt.Errorf("look up the latest snapshot: %w", err)
+		}
+	}
 	return verifyRestoreLocked(ctx, pool, cfg, target, snapshot, targetURL)
 }
 

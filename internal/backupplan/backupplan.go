@@ -212,17 +212,26 @@ func Evaluate(now time.Time, zone *time.Location, localTime string, intervalHour
 // are runs and backup jobs together, ordered by when they ended, so a job
 // that failed before it created a run, or after its run (retention), counts.
 // Offsite failures carry the offsite_ prefix and do not fail the local target.
-const HealthQuery = `SELECT CASE WHEN $1='local' THEN (SELECT created_at FROM core.households WHERE singleton=1)
+//
+// Only history of the configured repository counts (the label the service
+// reports in core.backup_settings): a replaced repository starts from its
+// activation time. Before the service reported a label, all history counts.
+const HealthQuery = `WITH configured AS (SELECT (SELECT CASE WHEN $1='local' THEN local_label ELSE offsite_label END
+  FROM core.backup_settings LIMIT 1) AS label)
+SELECT CASE WHEN $1='local' THEN (SELECT created_at FROM core.households WHERE singleton=1)
   ELSE (SELECT updated_at FROM core.backup_settings LIMIT 1) END,
- (SELECT max(started_at) FROM core.backup_runs WHERE repository_kind=$1 AND state IN('complete','retention_pending')),
+ (SELECT max(r.started_at) FROM core.backup_runs r,configured c WHERE r.repository_kind=$1 AND r.state IN('complete','retention_pending')
+   AND (c.label IS NULL OR r.repository_reference=c.label)),
  coalesce(latest.failed,false),latest.ended
-FROM (SELECT 1) one LEFT JOIN LATERAL (SELECT ended,failed FROM (
-   SELECT coalesce(finished_at,started_at) AS ended,state='failed' AS failed FROM core.backup_runs
-    WHERE repository_kind=$1 AND state IN('complete','retention_pending','failed','expired')
+FROM configured c LEFT JOIN LATERAL (SELECT ended,failed FROM (
+   SELECT coalesce(r.finished_at,r.started_at) AS ended,r.state='failed' AS failed FROM core.backup_runs r
+    WHERE r.repository_kind=$1 AND r.state IN('complete','retention_pending','failed','expired')
+     AND (c.label IS NULL OR r.repository_reference=c.label)
    UNION ALL
-   SELECT finished_at,state='failed' FROM core.backup_jobs
-    WHERE kind='backup' AND state IN('complete','failed') AND finished_at IS NOT NULL
-     AND CASE WHEN $1='local' THEN coalesce(result_code,'') NOT LIKE 'offsite\_%' ELSE target='both' END
+   SELECT j.finished_at,j.state='failed' FROM core.backup_jobs j
+    WHERE j.kind='backup' AND j.state IN('complete','failed') AND j.finished_at IS NOT NULL
+     AND CASE WHEN $1='local' THEN coalesce(j.result_code,'') NOT LIKE 'offsite\_%' ELSE j.target='both' END
+     AND (c.label IS NULL OR c.label=CASE WHEN $1='local' THEN j.local_label ELSE j.offsite_label END)
   ) attempts ORDER BY ended DESC LIMIT 1) latest ON true`
 
 // ProbeStale reports whether the restore probe is older than its interval

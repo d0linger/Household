@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"log/slog"
 	"os"
 	"time"
@@ -14,7 +13,6 @@ import (
 	"household/internal/maintenance"
 	"household/internal/value"
 
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -45,16 +43,8 @@ func runRestoreCheck(ctx context.Context, pool *pgxpool.Pool, cfg config.Config,
 		}
 		target = *offsite
 	}
+	// "latest" is resolved by VerifyRestore under the repository lock.
 	snapshot := args[0]
-	if snapshot == "latest" {
-		if err = pool.QueryRow(ctx, `SELECT snapshot_reference FROM core.backup_runs WHERE repository_reference=$1 AND state='complete'
- AND snapshot_reference IS NOT NULL ORDER BY started_at DESC LIMIT 1`, target.Label()).Scan(&snapshot); err != nil {
-			if errors.Is(err, pgx.ErrNoRows) {
-				return errors.New("no completed snapshot to check")
-			}
-			return fmt.Errorf("look up the latest snapshot: %w", err)
-		}
-	}
 	superuser, err := config.Secret("POSTGRES_PASSWORD")
 	if err != nil {
 		return err
@@ -109,8 +99,21 @@ func runBackupService(ctx context.Context, log *slog.Logger, cfg config.Config, 
 		if len(args) != 0 {
 			return errors.New("usage: household restore-rollback")
 		}
-		if err = service.RecoverRestore(ctx); err != nil {
+		// One invocation either finishes an interrupted restore or rollback or
+		// starts one new rollback, never both: after a recovery the live
+		// database changed, and rolling back again would undo a second restore.
+		pending, err := maintenance.PendingRestore()
+		if err != nil {
 			return err
+		}
+		if service.Recovered || pending {
+			if pending {
+				if err = service.RecoverRestore(ctx); err != nil {
+					return err
+				}
+			}
+			log.Warn("an interrupted restore or rollback was completed; run restore-rollback again only if you still want to switch back")
+			return nil
 		}
 		return service.Rollback(ctx)
 	}
