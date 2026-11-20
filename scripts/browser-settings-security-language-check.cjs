@@ -253,10 +253,10 @@ function totp(secretValue) {
     must(state.controls.every(control => control.visible),
       'Navigation, language and appearance controls stay visible in the viewport: ' + state.width);
   }
-  const destinations = ['/settings', '/settings/modules', '/settings/security', '/settings/notifications', '/settings/users', '/settings/audit'];
+  const destinations = ['/settings', '/settings/modules', '/settings/security', '/settings/notifications', '/help', '/settings/users', '/settings/audit', '/settings/backup', '/settings/system'];
   for (const route of destinations) {
     await page.goto(origin.origin + route);
-    must(await page.locator('.settings-nav a').count() === 6, 'Administrator has all six settings destinations: ' + route);
+    must(await page.locator('.settings-nav a').count() === 9, 'Administrator has all nine settings destinations: ' + route);
     must(await page.locator('.settings-nav a[aria-current=page]').getAttribute('href') === route, 'Current settings section is identified: ' + route);
   }
 
@@ -465,7 +465,7 @@ function totp(secretValue) {
   await changeInitialPassword(reader, readerInitial, readerPassword);
   await login(reader, readerName, readerPassword);
   await reader.goto(origin.origin + '/settings/security');
-  must(await reader.locator('.settings-nav a').count() === 4 && await reader.locator('.settings-nav a[href="/settings/audit"], .settings-nav a[href="/settings/users"]').count() === 0,
+  must(await reader.locator('.settings-nav a').count() === 5 && await reader.locator('.settings-nav a[href="/settings/audit"], .settings-nav a[href="/settings/users"]').count() === 0,
     'Reader settings omit administrator destinations');
   must((await readerContext.request.get(origin.origin + '/api/v1/core/audit')).status() === 403, 'Reader cannot access audit data by direct API request');
   const saveOrder = (target, order) => target.evaluate(async module_order => {
