@@ -110,9 +110,31 @@ func mfaAllowedPath(path string) bool {
 		path == "/logout" || path == "/change-password" || path == "/settings/language" || path == "/api/v1/core/preferences"
 }
 
+// factorChangePath lists the requests that add, replace or remove a second
+// factor or recovery codes. Confirming the sign-in (reauth) is not one.
+func factorChangePath(path string) bool {
+	return strings.HasPrefix(path, "/settings/security/totp/") || strings.HasPrefix(path, "/settings/security/passkeys/") ||
+		strings.HasPrefix(path, "/api/v1/security/passkeys/register/")
+}
+
 // enforceSecurityPolicy answers a blocked request; it reports whether it did.
 func (s *Server) enforceSecurityPolicy(w http.ResponseWriter, r *http.Request, id auth.Identity) bool {
 	if mfaAllowedPath(r.URL.Path) {
+		// An account that already has a factor must confirm this sign-in with
+		// it before changing factors; otherwise a password alone could enroll
+		// a new factor and so satisfy the requirement. First-factor setup of
+		// an account without one stays reachable.
+		if r.Method == http.MethodPost && factorChangePath(r.URL.Path) {
+			required, enrolled, _, _, err := s.mfaState(r.Context(), id)
+			if err != nil {
+				s.fail(w, r, err)
+				return true
+			}
+			if required && enrolled {
+				s.fail(w, r, store.Invalid{Message: "Bestätige zuerst deine Anmeldung mit deinem vorhandenen zweiten Faktor oder Passkey"})
+				return true
+			}
+		}
 		return false
 	}
 	_, _, blocked, _, err := s.mfaState(r.Context(), id)

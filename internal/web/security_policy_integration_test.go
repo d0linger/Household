@@ -103,6 +103,11 @@ func TestSecurityPolicyRequiresSecondFactorAfterGrace(t *testing.T) {
 	if response, body, err = f.request("GET", "/api/v1/core/today", passwordOnly, "", "", nil, nil); err != nil || response.StatusCode != 403 || !strings.Contains(string(body), "mfa_required") {
 		t.Fatalf("password-only session of a passkey account: %v %s %v", response, body, err)
 	}
+	// Nor can that session enroll a new factor to satisfy the requirement.
+	response, body, err = f.request("POST", "/settings/security/totp/setup", passwordOnly, f.app.Auth.CSRF(passwordOnly, "session"), "application/x-www-form-urlencoded", strings.NewReader(""), nil)
+	if err != nil || response.StatusCode != 422 || !strings.Contains(string(body), "vorhandenen zweiten Faktor") {
+		t.Fatalf("password-only session enrolled a factor: %v %s %v", response, body, err)
+	}
 	if _, err = f.owner.Exec(f.ctx, "UPDATE core.sessions SET second_factor=true WHERE user_id=$1", passkeyUser); err != nil {
 		t.Fatal(err)
 	}

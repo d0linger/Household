@@ -575,8 +575,11 @@ func (s *Service) EnableTOTP(ctx context.Context, id Identity, code string) ([]s
 	if _, err = tx.Exec(ctx, "UPDATE core.totp_credentials SET enabled_at=now(),last_accepted_counter=$2 WHERE user_id=$1", id.UserID, counter); err != nil {
 		return nil, err
 	}
-	// The session that set up the factor has just proven it with a valid code.
-	if _, err = tx.Exec(ctx, "UPDATE core.sessions SET second_factor=true WHERE id=$1 AND user_id=$2", id.SessionID, id.UserID); err != nil {
+	// The session that set up the account's first factor has just proven it
+	// with a valid code. An account that already has a passkey keeps needing
+	// that passkey (or a later TOTP confirmation) to verify the session.
+	if _, err = tx.Exec(ctx, `UPDATE core.sessions SET second_factor=true WHERE id=$1 AND user_id=$2
+ AND NOT EXISTS(SELECT 1 FROM core.passkey_credentials WHERE user_id=$2)`, id.SessionID, id.UserID); err != nil {
 		return nil, err
 	}
 	codes := []string{}
