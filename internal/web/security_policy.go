@@ -41,16 +41,17 @@ func (p securityPolicy) Applies(role string) bool {
 const policyCacheTTL = 30 * time.Second
 
 type policyCache struct {
-	mu      sync.Mutex
-	loaded  time.Time
-	policy  securityPolicy
-	present bool
+	mu        sync.Mutex
+	loaded    time.Time
+	household string
+	policy    securityPolicy
+	present   bool
 }
 
 func (s *Server) securityPolicy(ctx context.Context, household string) (securityPolicy, error) {
 	s.policy.mu.Lock()
 	defer s.policy.mu.Unlock()
-	if s.policy.present && time.Since(s.policy.loaded) < policyCacheTTL {
+	if s.policy.present && s.policy.household == household && time.Since(s.policy.loaded) < policyCacheTTL {
 		return s.policy.policy, nil
 	}
 	var p securityPolicy
@@ -65,7 +66,7 @@ func (s *Server) securityPolicy(ctx context.Context, household string) (security
 		return securityPolicy{}, err
 	}
 	p.GraceDays = int(grace)
-	s.policy.policy, s.policy.loaded, s.policy.present = p, time.Now(), true
+	s.policy.policy, s.policy.loaded, s.policy.household, s.policy.present = p, time.Now(), household, true
 	return p, nil
 }
 
@@ -82,19 +83,24 @@ func (s *Server) hasSecondFactor(ctx context.Context, user string) (bool, error)
 	return has, err
 }
 
-// mfaState reports whether the identity must add a factor, and whether its
-// grace period is over so only the security settings remain reachable.
-func (s *Server) mfaState(ctx context.Context, id auth.Identity) (required, blocked bool, deadline time.Time, err error) {
+// mfaState reports whether the identity must add a factor or confirm this
+// session with one, and whether its grace period is over so only the
+// security settings remain reachable. An enrolled factor alone is not
+// enough: a password-only sign-in to a passkey-only account is not verified.
+func (s *Server) mfaState(ctx context.Context, id auth.Identity) (required, enrolled, blocked bool, deadline time.Time, err error) {
 	policy, err := s.securityPolicy(ctx, id.HouseholdID)
 	if err != nil || !policy.Applies(id.Role) {
-		return false, false, time.Time{}, err
+		return false, false, false, time.Time{}, err
 	}
-	has, err := s.hasSecondFactor(ctx, id.UserID)
-	if err != nil || has {
-		return false, false, time.Time{}, err
+	if id.SecondFactor {
+		return false, true, false, time.Time{}, nil
+	}
+	enrolled, err = s.hasSecondFactor(ctx, id.UserID)
+	if err != nil {
+		return false, false, false, time.Time{}, err
 	}
 	deadline = policy.Deadline()
-	return true, time.Now().After(deadline), deadline, nil
+	return true, enrolled, time.Now().After(deadline), deadline, nil
 }
 
 // mfaAllowedPath lists what an account blocked by the policy can still reach:
@@ -109,7 +115,7 @@ func (s *Server) enforceSecurityPolicy(w http.ResponseWriter, r *http.Request, i
 	if mfaAllowedPath(r.URL.Path) {
 		return false
 	}
-	_, blocked, _, err := s.mfaState(r.Context(), id)
+	_, _, blocked, _, err := s.mfaState(r.Context(), id)
 	if err != nil {
 		s.fail(w, r, err)
 		return true
@@ -127,9 +133,12 @@ func (s *Server) enforceSecurityPolicy(w http.ResponseWriter, r *http.Request, i
 
 // mfaNotice is the banner shown while a required factor is still missing.
 func (s *Server) mfaNotice(r *http.Request, id auth.Identity) string {
-	required, blocked, deadline, err := s.mfaState(r.Context(), id)
+	required, enrolled, blocked, deadline, err := s.mfaState(r.Context(), id)
 	if err != nil || !required {
 		return ""
+	}
+	if enrolled {
+		return i18n.Text(requestLocale(r), "Dein Haushalt verlangt einen zweiten Faktor. Bestätige diese Anmeldung unter Sicherheit mit deinem Code oder Passkey.")
 	}
 	if blocked {
 		return i18n.Text(requestLocale(r), "Dein Haushalt verlangt einen zweiten Faktor. Richte ihn jetzt ein, um Household weiter zu verwenden.")
@@ -161,16 +170,12 @@ func (s *Server) saveSecurityPolicy(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, store.Invalid{Message: "Bitte die Seite neu laden"})
 		return
 	}
-	if requireAdmin {
-		has, err := s.hasSecondFactor(r.Context(), id.UserID)
-		if err != nil {
-			s.fail(w, r, err)
-			return
-		}
-		if !has {
-			s.fail(w, r, store.Invalid{Message: "Richte zuerst selbst einen zweiten Faktor ein"})
-			return
-		}
+	// Any change, including switching the requirement off, needs a session
+	// that was confirmed with a second factor: an administrator the policy
+	// blocks can reach this page but must not weaken the policy without one.
+	if !id.SecondFactor {
+		s.fail(w, r, store.Invalid{Message: "Richte zuerst selbst einen zweiten Faktor ein und bestätige deine Anmeldung damit"})
+		return
 	}
 	tx, err := audit.Begin(r.Context(), s.Pool)
 	if err != nil {

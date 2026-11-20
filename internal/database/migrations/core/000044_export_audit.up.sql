@@ -1,6 +1,8 @@
 BEGIN;
 -- Downloads of the whole household's records and of the audit history are
 -- recorded as semantic audit events, so administrators see who took a copy.
+-- Sessions record whether their sign-in verified a second factor, so the
+-- second-factor policy can tell a passkey or TOTP sign-in from a password-only one.
 
 -- Freeze the exact Core43 definitions this migration replaces, so disposable
 -- upgrade fixtures can reconstruct the predecessor instead of bypassing guards.
@@ -26,6 +28,17 @@ BEGIN
  IF (length(body)-length(replace(body,needle,'')))/length(needle)<>1 THEN RAISE EXCEPTION 'Unreviewed Core43 audit event allowlist';END IF;
  EXECUTE replace(body,needle,'''restore_completed'',''restore_failed'',''security_policy_changed'',''household_exported'',''audit_exported'')');
 END $audit_event$;
+
+-- Existing sessions of accounts whose TOTP was already active when the session
+-- began passed it at sign-in; every other existing session counts as
+-- password-only until it is confirmed again with a factor or passkey.
+-- The backfill derives a new column from existing facts; it is no change by
+-- anyone, so it bypasses the row audit inside this transaction only.
+ALTER TABLE core.sessions ADD COLUMN second_factor boolean NOT NULL DEFAULT false;
+ALTER TABLE core.sessions DISABLE TRIGGER household_audit_change;
+UPDATE core.sessions s SET second_factor=true WHERE EXISTS(SELECT 1 FROM core.totp_credentials t
+ WHERE t.user_id=s.user_id AND t.enabled_at IS NOT NULL AND t.enabled_at<=s.created_at);
+ALTER TABLE core.sessions ENABLE TRIGGER household_audit_change;
 
 -- Advance the exact Fuel pins on the Core version.
 DO $compatibility$

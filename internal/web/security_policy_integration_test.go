@@ -51,6 +51,13 @@ func TestSecurityPolicyRequiresSecondFactorAfterGrace(t *testing.T) {
  VALUES($1,'\x00','v1',0,now(),1)`, f.identity.UserID); err != nil {
 		t.Fatal(err)
 	}
+	// An enrolled factor is not enough: this session signed in before it existed.
+	if status := policyForm(f, values); status != 422 {
+		t.Fatalf("policy from a password-only session: %d", status)
+	}
+	if _, err := f.owner.Exec(f.ctx, "UPDATE core.sessions SET second_factor=true WHERE id=$1", f.identity.SessionID); err != nil {
+		t.Fatal(err)
+	}
 	if status := policyForm(f, url.Values{"version": {"0"}, "require_editor_mfa": {"on"}, "grace_days": {"0"}}); status != 422 {
 		t.Fatalf("editor requirement without administrator requirement: %d", status)
 	}
@@ -80,6 +87,27 @@ func TestSecurityPolicyRequiresSecondFactorAfterGrace(t *testing.T) {
 	}
 	if response, _, err = f.request("GET", "/api/v1/core/today", f.token, "", "", nil, nil); err != nil || response.StatusCode != 200 {
 		t.Fatalf("administrator with factor: %v %v", response, err)
+	}
+	// A blocked administrator reaches the policy form but cannot switch it off.
+	disable := url.Values{"version": {"1"}, "grace_days": {"0"}}
+	response, _, err = f.request("POST", "/settings/security/policy", admin, f.app.Auth.CSRF(admin, "session"), "application/x-www-form-urlencoded", strings.NewReader(disable.Encode()), nil)
+	if err != nil || response.StatusCode != 422 {
+		t.Fatalf("blocked administrator disabled the policy: %v %v", response, err)
+	}
+	// A password-only sign-in to a passkey-only account is not a verified factor.
+	passkeyUser, passwordOnly := policyAccount(t, f, "policy-passkey", "admin", "Mozilla/5.0 (X11; Linux x86_64) Firefox/140.0")
+	if _, err = f.owner.Exec(f.ctx, `INSERT INTO core.passkey_credentials(user_id,credential_id,encrypted_credential,name,encryption_format,encryption_key_id)
+ VALUES($1,'\x01','\x00','Laptop',1,'v1')`, passkeyUser); err != nil {
+		t.Fatal(err)
+	}
+	if response, body, err = f.request("GET", "/api/v1/core/today", passwordOnly, "", "", nil, nil); err != nil || response.StatusCode != 403 || !strings.Contains(string(body), "mfa_required") {
+		t.Fatalf("password-only session of a passkey account: %v %s %v", response, body, err)
+	}
+	if _, err = f.owner.Exec(f.ctx, "UPDATE core.sessions SET second_factor=true WHERE user_id=$1", passkeyUser); err != nil {
+		t.Fatal(err)
+	}
+	if response, _, err = f.request("GET", "/api/v1/core/today", passwordOnly, "", "", nil, nil); err != nil || response.StatusCode != 200 {
+		t.Fatalf("passkey-confirmed session: %v %v", response, err)
 	}
 	// With a grace period the account keeps working and sees a notice.
 	if status := policyForm(f, url.Values{"version": {"1"}, "require_admin_mfa": {"on"}, "grace_days": {"14"}}); status != 200 {

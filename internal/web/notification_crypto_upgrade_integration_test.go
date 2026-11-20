@@ -111,6 +111,7 @@ func exportAuditRestore43(t *testing.T, f *integrationFixture) {
  RAISE EXCEPTION 'Export audit predecessor requires the unused isolated Core44 fixture';END IF;
  snapshot=core.export_audit_predecessor_catalog();
  IF (SELECT count(*) FROM jsonb_object_keys(snapshot))<>4 THEN RAISE EXCEPTION 'Missing frozen Core43 evidence';END IF;
+ ALTER TABLE core.sessions DROP COLUMN second_factor;
  FOR item IN SELECT key,value FROM jsonb_each(snapshot) ORDER BY key LOOP
  EXECUTE item.value->>'definition';END LOOP;
  DROP FUNCTION core.export_audit_predecessor_catalog();

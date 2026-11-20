@@ -53,6 +53,9 @@ type Identity struct {
 	AuthenticatedAt time.Time `json:"-"`
 	ExpiresAt       time.Time `json:"-"`
 	Renewed         bool      `json:"-"`
+	// SecondFactor reports that this session was established or re-confirmed
+	// with a second factor (TOTP, a recovery code or a passkey), not only a password.
+	SecondFactor bool `json:"-"`
 }
 
 func (i Identity) CanWrite() bool { return i.Role == "admin" || i.Role == "editor" }
@@ -319,13 +322,14 @@ func (s *Service) Login(ctx context.Context, username, password, code, ip, ua st
 	if err = s.factorBudget(ctx, tx, uid); err != nil {
 		return "", Identity{}, err
 	}
-	if err = s.verifyFactor(ctx, tx, uid, code); err != nil {
+	factored, err := s.verifyFactor(ctx, tx, uid, code)
+	if err != nil {
 		if errors.Is(err, ErrCredentials) {
 			s.failFactor(ctx, tx, uid)
 		}
 		return "", Identity{}, err
 	}
-	raw, err := s.createSession(ctx, tx, uid, ip, ua)
+	raw, err := s.createSession(ctx, tx, uid, ip, ua, factored)
 	if err != nil {
 		return "", Identity{}, err
 	}
@@ -357,7 +361,9 @@ func networkPrefix(ip string) string {
 	return prefix.String()
 }
 
-func (s *Service) createSession(ctx context.Context, tx pgx.Tx, uid, ip, ua string) (string, error) {
+// createSession starts a session; secondFactor records whether the sign-in
+// verified a second factor or a passkey.
+func (s *Service) createSession(ctx context.Context, tx pgx.Tx, uid, ip, ua string, secondFactor bool) (string, error) {
 	if len(ua) > 512 {
 		ua = ua[:512]
 	}
@@ -368,8 +374,8 @@ func (s *Service) createSession(ctx context.Context, tx pgx.Tx, uid, ip, ua stri
 	if network != nil {
 		prefix = network.String()
 	}
-	err := tx.QueryRow(ctx, `INSERT INTO core.sessions(user_id,token_hash,auth_version,idle_expires_at,absolute_expires_at,user_agent,ip_prefix)
-	 SELECT id,$2,auth_version,now()+make_interval(secs=>$3),now()+make_interval(secs=>$4),$5,nullif($6,'')::inet FROM core.users WHERE id=$1 AND disabled_at IS NULL RETURNING id`, uid, HashToken(raw), s.cfg.SessionIdle.Seconds(), s.cfg.SessionAbsolute.Seconds(), ua, prefix).Scan(&id)
+	err := tx.QueryRow(ctx, `INSERT INTO core.sessions(user_id,token_hash,auth_version,idle_expires_at,absolute_expires_at,user_agent,ip_prefix,second_factor)
+	 SELECT id,$2,auth_version,now()+make_interval(secs=>$3),now()+make_interval(secs=>$4),$5,nullif($6,'')::inet,$7 FROM core.users WHERE id=$1 AND disabled_at IS NULL RETURNING id`, uid, HashToken(raw), s.cfg.SessionIdle.Seconds(), s.cfg.SessionAbsolute.Seconds(), ua, prefix, secondFactor).Scan(&id)
 	if err != nil {
 		return "", fmt.Errorf("create session: %w", err)
 	}
@@ -382,10 +388,10 @@ func (s *Service) Resolve(ctx context.Context, raw string, renew bool) (Identity
 		return Identity{}, ErrSession
 	}
 	var i Identity
-	err := s.pool.QueryRow(ctx, `SELECT u.id,m.household_id,m.id,u.username,u.display_name,m.role,u.must_change_password,u.auth_version,s.id,s.created_at,s.idle_expires_at,s.reauthenticated_at
+	err := s.pool.QueryRow(ctx, `SELECT u.id,m.household_id,m.id,u.username,u.display_name,m.role,u.must_change_password,u.auth_version,s.id,s.created_at,s.idle_expires_at,s.reauthenticated_at,s.second_factor
 	 FROM core.sessions s JOIN core.users u ON u.id=s.user_id JOIN core.memberships m ON m.user_id=u.id
 	 WHERE s.token_hash=$1 AND s.revoked_at IS NULL AND s.idle_expires_at>now() AND s.absolute_expires_at>now()
-	 AND s.auth_version=u.auth_version AND u.disabled_at IS NULL AND m.inactive_at IS NULL`, HashToken(raw)).Scan(&i.UserID, &i.HouseholdID, &i.MembershipID, &i.Username, &i.DisplayName, &i.Role, &i.MustChange, &i.AuthVersion, &i.SessionID, &i.CreatedAt, &i.ExpiresAt, &i.AuthenticatedAt)
+	 AND s.auth_version=u.auth_version AND u.disabled_at IS NULL AND m.inactive_at IS NULL`, HashToken(raw)).Scan(&i.UserID, &i.HouseholdID, &i.MembershipID, &i.Username, &i.DisplayName, &i.Role, &i.MustChange, &i.AuthVersion, &i.SessionID, &i.CreatedAt, &i.ExpiresAt, &i.AuthenticatedAt, &i.SecondFactor)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Identity{}, ErrSession
 	}
@@ -418,7 +424,11 @@ func (s *Service) Logout(ctx context.Context, id Identity) error {
 	return s.RevokeSession(ctx, id, id.SessionID, "logout")
 }
 
-func (s *Service) ChangePassword(ctx context.Context, id Identity, current, next string) error {
+// ChangePassword replaces the password after the change budget and the
+// current password passed. checks run then, before the new hash is stored,
+// so an outside lookup (the breach check) costs the same budget and never
+// answers for a caller who does not know the current password.
+func (s *Service) ChangePassword(ctx context.Context, id Identity, current, next string, checks ...func(context.Context, string) error) error {
 	ctx = audit.WithActor(ctx, id.UserID, id.HouseholdID)
 	if err := s.Limit(ctx, "password-change", id.UserID, 10, time.Hour); err != nil {
 		return err
@@ -438,6 +448,11 @@ func (s *Service) ChangePassword(ctx context.Context, id Identity, current, next
 	}
 	if len(current) > 72 || bcrypt.CompareHashAndPassword([]byte(old), []byte(current)) != nil {
 		return ErrCredentials
+	}
+	for _, check := range checks {
+		if err := check(ctx, next); err != nil {
+			return err
+		}
 	}
 	hash, err := bcrypt.GenerateFromPassword([]byte(next), 12)
 	if err != nil {
@@ -560,6 +575,10 @@ func (s *Service) EnableTOTP(ctx context.Context, id Identity, code string) ([]s
 	if _, err = tx.Exec(ctx, "UPDATE core.totp_credentials SET enabled_at=now(),last_accepted_counter=$2 WHERE user_id=$1", id.UserID, counter); err != nil {
 		return nil, err
 	}
+	// The session that set up the factor has just proven it with a valid code.
+	if _, err = tx.Exec(ctx, "UPDATE core.sessions SET second_factor=true WHERE id=$1 AND user_id=$2", id.SessionID, id.UserID); err != nil {
+		return nil, err
+	}
 	codes := []string{}
 	for range 8 {
 		code := hex.EncodeToString(HashToken(RandomToken())[:10])
@@ -598,19 +617,21 @@ func factorCounter(secret, code string, now time.Time) (int64, bool) {
 	return 0, false
 }
 
-func (s *Service) verifyFactor(ctx context.Context, tx pgx.Tx, user, code string) error {
+// verifyFactor checks the second factor of an account that has one. It reports
+// whether a factor was verified; an account without one passes unverified.
+func (s *Service) verifyFactor(ctx context.Context, tx pgx.Tx, user, code string) (bool, error) {
 	var encrypted secretbox.Stored
 	var last *int64
 	err := tx.QueryRow(ctx, "SELECT CASE WHEN octet_length(encrypted_secret)<=4096 THEN encrypted_secret END,encryption_key_id,encryption_format,last_accepted_counter FROM core.totp_credentials WHERE user_id=$1 AND enabled_at IS NOT NULL FOR UPDATE", user).Scan(&encrypted.Ciphertext, &encrypted.KeyID, &encrypted.Format, &last)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return nil
+		return false, nil
 	}
 	if err != nil {
-		return err
+		return false, err
 	}
 	secret, err := s.OpenRecord(secretbox.Binding{Purpose: "totp", UserID: user, RecordID: user}, encrypted)
 	if err != nil {
-		return fmt.Errorf("decrypt second factor: %w", err)
+		return false, fmt.Errorf("decrypt second factor: %w", err)
 	}
 	counter, valid := factorCounter(string(secret), code, time.Now())
 	if valid && (last == nil || counter > *last) {
@@ -619,7 +640,7 @@ func (s *Service) verifyFactor(ctx context.Context, tx pgx.Tx, user, code string
 		var used string
 		err = tx.QueryRow(ctx, "UPDATE core.recovery_codes SET consumed_at=now() WHERE user_id=$1 AND code_hash=$2 AND consumed_at IS NULL RETURNING id", user, HashToken(strings.ToLower(strings.TrimSpace(code)))).Scan(&used)
 		if errors.Is(err, pgx.ErrNoRows) {
-			return ErrCredentials
+			return false, ErrCredentials
 		}
 		if err == nil {
 			err = audit.Event(ctx, tx, "core", "users", user, "recovery_code_used", nil)
@@ -629,9 +650,9 @@ func (s *Service) verifyFactor(ctx context.Context, tx pgx.Tx, user, code string
 		}
 	}
 	if err != nil {
-		return err
+		return false, err
 	}
-	return nil
+	return true, nil
 }
 
 // LockSession linearizes account, membership, and session changes with mutations.

@@ -72,13 +72,7 @@ func (s *Server) passwordPage(w http.ResponseWriter, r *http.Request) {
 	s.render(w, r, p)
 }
 func (s *Server) password(w http.ResponseWriter, r *http.Request) {
-	if auth.PasswordValid(r.FormValue("next")) {
-		if err := s.rejectBreachedPassword(r.Context(), r.FormValue("next")); err != nil {
-			s.fail(w, r, err)
-			return
-		}
-	}
-	if err := s.Auth.ChangePassword(r.Context(), identity(r), r.FormValue("current"), r.FormValue("next")); err != nil {
+	if err := s.Auth.ChangePassword(r.Context(), identity(r), r.FormValue("current"), r.FormValue("next"), s.rejectBreachedPassword); err != nil {
 		s.fail(w, r, err)
 		return
 	}
