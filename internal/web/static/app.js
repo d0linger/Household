@@ -1,5 +1,27 @@
 const _householdText_app_js = (source, ...args) => { const i18n = globalThis.HouseholdI18n; if (i18n) return i18n.t(source, ...args); let index = 0; return args.length ? source.replace(/%%|%[sdv]/g, token => token === '%%' ? '%' : String(args[index++] ?? '')) : source; };
 /* Household uses only bundled assets. Private pages are never service-worker cached. */
+// Report script errors of signed-in pages without personal data: the error
+// class (never its message, which can quote user input), script file and
+// position only, at most five per page load.
+(() => {
+  'use strict';
+  const csrf = document.querySelector('meta[name="csrf-token"]')?.content;
+  if (!csrf || !document.body?.dataset.user) return;
+  // Error class names (not user-visible copy); the server keeps the same list.
+  const classes = {Error: 1, TypeError: 1, ReferenceError: 1, RangeError: 1, SyntaxError: 1, URIError: 1, EvalError: 1, AggregateError: 1,
+    DOMException: 1, AbortError: 1, NetworkError: 1, QuotaExceededError: 1, SecurityError: 1, NotAllowedError: 1, InvalidStateError: 1};
+  const errorClass = value => typeof value?.name === 'string' && Object.hasOwn(classes, value.name) ? value.name : 'other';
+  let sent = 0;
+  const report = (kind, name, source, line, column) => {
+    if (sent >= 5) return;
+    sent += 1;
+    fetch('/api/v1/core/client-errors', {method: 'POST', credentials: 'same-origin', keepalive: true,
+      headers: {'Content-Type': 'application/json', 'X-CSRF-Token': csrf},
+      body: JSON.stringify({kind, name, source: String(source || '').slice(0, 300), line: Number(line) || 0, column: Number(column) || 0})}).catch(() => {});
+  };
+  addEventListener('error', event => { if (event.message) report('error', errorClass(event.error), event.filename, event.lineno, event.colno); });
+  addEventListener('unhandledrejection', event => report('rejection', errorClass(event.reason), '', 0, 0));
+})();
 (() => {
   'use strict';
   const $ = (s, root = document) => root.querySelector(s);
@@ -19,7 +41,9 @@ const _householdText_app_js = (source, ...args) => { const i18n = globalThis.Hou
   function toast(message) {const box = $('#toast'); box.textContent = message; box.hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => box.hidden = true, 6000);}
   async function clearPrivateDeviceData(includePush=false){
     const reset=device=>{try{return device&&typeof device.reset==='function'?Promise.resolve(device.reset()):Promise.reject(Error((_householdText_app_js('Gerätebereinigung ist nicht verfügbar.'))));}catch(error){return Promise.reject(error);}};
-    const pending=[clearQueue(),reset(window.HouseholdPantryDevice),reset(window.HouseholdShoppingDevice),Promise.resolve().then(()=>window.HouseholdRecipeDevice?.clear?.())];
+    const pending=[clearQueue(),reset(window.HouseholdPantryDevice),reset(window.HouseholdShoppingDevice),Promise.resolve().then(()=>window.HouseholdRecipeDevice?.clear?.()),
+      // Files shared from other apps stay private to the signed-in account.
+      Promise.resolve().then(()=>globalThis.caches?.delete('household-share-v1'))];
     if(includePush)pending.push(reset(window.HouseholdPushDevice));
     const bounded=promise=>{let timer;return Promise.race([Promise.resolve(promise),new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error((_householdText_app_js('Gerätebereinigung wurde nicht rechtzeitig bestätigt.')))),6500);})]).finally(()=>clearTimeout(timer));};
     const settled=await Promise.allSettled(pending.map(bounded));

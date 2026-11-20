@@ -86,12 +86,15 @@ END $check$;`)
 	}
 }
 
+// notificationLegacySnapshot captures predecessor facts. Session
+// second_factor first exists in Core44; the reconstruction removes it, and
+// its backfill is covered by the Core44 upgrade itself.
 func notificationLegacySnapshot(t *testing.T, f *integrationFixture) string {
 	t.Helper()
 	var snapshot string
 	err := f.owner.QueryRow(f.ctx, `SELECT jsonb_build_object(
  'users',(SELECT jsonb_agg(to_jsonb(r) ORDER BY id) FROM core.users r),
- 'sessions',(SELECT jsonb_agg(to_jsonb(r) ORDER BY id) FROM core.sessions r),
+ 'sessions',(SELECT jsonb_agg(to_jsonb(r)-'second_factor' ORDER BY id) FROM core.sessions r),
  'preferences',(SELECT jsonb_agg(to_jsonb(r) ORDER BY household_id,user_id) FROM core.user_preferences r),
  'push',(SELECT jsonb_agg(to_jsonb(r)-'encryption_format' ORDER BY id) FROM core.push_subscriptions r),
  'jobs',(SELECT jsonb_agg(to_jsonb(r) ORDER BY id) FROM core.jobs r),

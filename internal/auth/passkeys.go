@@ -533,9 +533,9 @@ func (s *Service) FinishPasskey(ctx context.Context, id Identity, purpose, bindi
 	rawToken := ""
 	switch purpose {
 	case "login":
-		rawToken, err = s.createSession(ctx, tx, uid, ip, ua)
+		rawToken, err = s.createSession(ctx, tx, uid, ip, ua, true)
 	case "reauth":
-		_, err = tx.Exec(ctx, "UPDATE core.sessions SET reauthenticated_at=clock_timestamp() WHERE id=$1", id.SessionID)
+		_, err = tx.Exec(ctx, "UPDATE core.sessions SET reauthenticated_at=clock_timestamp(),second_factor=true WHERE id=$1", id.SessionID)
 	}
 	if err != nil {
 		return "", Identity{}, err

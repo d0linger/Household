@@ -1,0 +1,113 @@
+{{define "backup-state"}}{{if eq . "ok"}}<span class="badge active">{{t "Aktuell"}}</span>{{else if eq . "never"}}<span class="badge">{{t "Noch nie"}}</span>{{else if eq . "failed"}}<span class="badge backup-bad">{{t "Fehlgeschlagen"}}</span>{{else if eq . "overdue"}}<span class="badge backup-bad">{{t "Überfällig"}}</span>{{else}}<span class="badge">{{t "Ausgeschaltet"}}</span>{{end}}{{end}}
+
+{{define "backup-kind"}}{{if eq .Kind "backup"}}{{if eq .Target "both"}}{{t "Sicherung lokal und extern"}}{{else}}{{t "Lokale Sicherung"}}{{end}}{{else if eq .Kind "verify"}}{{if eq .Target "offsite"}}{{t "Probewiederherstellung extern"}}{{else}}{{t "Probewiederherstellung lokal"}}{{end}}{{else if eq .Kind "restore"}}{{if eq .Target "offsite"}}{{t "Wiederherstellung aus externer Sicherung"}}{{else}}{{t "Wiederherstellung aus lokaler Sicherung"}}{{end}}{{else if eq .Kind "offsite_test"}}{{t "Verbindungstest extern"}}{{else}}{{t "Früheren Stand verwerfen"}}{{end}}{{end}}
+
+{{define "backup-job-state"}}{{if eq .State "complete"}}<span class="badge active">{{t "Erledigt"}}</span>{{else if eq .State "failed"}}<span class="badge backup-bad">{{t "Fehlgeschlagen"}}</span>{{else if eq .State "cancelled"}}<span class="badge">{{t "Abgebrochen"}}</span>{{else if eq .State "requested"}}<span class="badge backup-waiting">{{t "Wartet"}}</span>{{else}}<span class="badge backup-running">{{t "Läuft"}}</span>{{end}}{{end}}
+
+{{define "backup-phase"}}{{if eq . "safety_backup"}}{{t "Aktueller Stand wird gesichert"}}{{else if eq . "restoring"}}{{t "Sicherung wird in eine Prüfdatenbank geladen"}}{{else if eq . "checking"}}{{t "Wiederhergestellte Daten werden geprüft"}}{{else if eq . "pausing_app"}}{{t "Household pausiert"}}{{else if eq . "switching"}}{{t "Daten werden umgeschaltet"}}{{else if eq . "scheduled"}}{{t "Geplanter Lauf"}}{{else if .}}{{t "Läuft"}}{{end}}{{end}}
+
+{{define "backup-result"}}{{if eq . "ok"}}{{else if eq . "cancelled"}}{{t "Vom Administrator abgebrochen."}}{{else if eq . "expired"}}{{t "Der Auftrag wurde nicht innerhalb von 30 Minuten übernommen. Läuft der Sicherungsdienst?"}}{{else if eq . "requester_not_admin"}}{{t "Der Antragsteller ist kein aktiver Administrator mehr."}}{{else if eq . "reauthentication_required"}}{{t "Die Anmeldung war nicht mehr frisch genug. Bitte erneut bestätigen."}}{{else if eq . "confirmation_mismatch"}}{{t "Die Bestätigung passte nicht zum Wiederherstellungspunkt."}}{{else if eq . "snapshot_incompatible"}}{{t "Der Wiederherstellungspunkt stammt von einer anderen Version."}}{{else if eq . "live_key_missing"}}{{t "Die aktuellen Schlüssel können diese Sicherung nicht lesen. Prüfe den Schlüsselring in der .env."}}{{else if eq . "disk_full"}}{{t "Zu wenig freier Speicher."}}{{else if eq . "drain_timeout"}}{{t "Household konnte nicht rechtzeitig pausieren. Es wurde nichts verändert."}}{{else if eq . "superuser_missing"}}{{t "Dem Sicherungsdienst fehlt das Datenbank-Superuser-Passwort."}}{{else if eq . "wrong_password"}}{{t "Das Repository-Passwort ist falsch."}}{{else if eq . "repository_missing"}}{{t "Das Repository wurde nicht gefunden."}}{{else if eq . "bucket_missing"}}{{t "Der Bucket existiert nicht."}}{{else if eq . "access_denied"}}{{t "Zugriff verweigert. Prüfe Zugangsschlüssel und Berechtigungen."}}{{else if eq . "repository_unreachable"}}{{t "Das Ziel ist nicht erreichbar. Prüfe Adresse, Netzwerk und Zertifikat."}}{{else if eq . "repository_damaged"}}{{t "Die Prüfung hat Fehler im Repository gefunden."}}{{else if eq . "repository_locked"}}{{t "Das Repository ist von einem anderen Vorgang gesperrt."}}{{else if eq . "interrupted"}}{{t "Unterbrochen, weil der Sicherungsdienst neu gestartet wurde."}}{{else if eq . "timeout"}}{{t "Zeitlimit überschritten."}}{{else if eq . "rolled_back"}}{{t "Per Wartungsbefehl auf den früheren Stand zurückgesetzt."}}{{else if eq . "restore_busy"}}{{t "Ein anderer Wiederherstellungsvorgang läuft gerade."}}{{else if eq . "database_settings_differ"}}{{t "Die Datenbankeinstellungen weichen ab. Siehe Betriebsanleitung."}}{{else if hasPrefix . "offsite_"}}{{t "Lokal gesichert, aber die externe Kopie ist fehlgeschlagen."}}{{else if .}}{{t "Fehlgeschlagen. Details stehen im Protokoll des Sicherungsdienstes."}}{{end}}{{end}}
+
+{{define "backup-snapshots"}}{{$page:=index . 0}}{{$list:=index . 1}}{{$target:=index . 2}}
+{{if $list}}<div class="backup-snapshots">{{range $list}}<article class="backup-snapshot">
+<div><h3>{{$page.At .Started}}</h3><p class="fine"><span class="backup-id">{{.Short}}</span> · {{t "Version"}} {{.Version}}{{if .TotalBytes}} · {{$page.Size .TotalBytes}}{{end}}</p>
+<p class="fine">{{if .Verified}}<span class="badge active">{{t "Geprüft"}}</span> {{$page.When .Verified}}{{else}}<span class="badge">{{t "Ungeprüft"}}</span>{{end}}</p></div>
+<div class="backup-snapshot-actions">
+<button type="button" data-copy="{{.Snapshot}}">{{t "ID kopieren"}}</button>
+{{if .Compatible}}<form method="post" action="/settings/backup/jobs" data-security-form>{{template "csrf" $page.Page}}<input type="hidden" name="kind" value="verify"><input type="hidden" name="target" value="{{$target}}"><input type="hidden" name="snapshot" value="{{.Snapshot}}"><button>{{t "Prüfen"}}</button></form>
+<button type="button" class="danger" data-restore-open data-snapshot="{{.Snapshot}}" data-target="{{$target}}" data-when="{{$page.At .Started}}" data-confirmation="{{.Confirmation}}">{{t "Wiederherstellen"}}</button>
+{{else}}<p class="fine">{{t "Andere Version: nur mit dieser Version per Wartungsbefehl."}}</p>{{end}}
+</div></article>{{end}}</div>
+{{else}}<p class="fine">{{t "Noch keine Wiederherstellungspunkte."}}</p>{{end}}{{end}}
+
+{{define "backup"}}
+<link rel="stylesheet" href="{{index .Asset "backup.css"}}">
+{{$d:=.Extra}}{{$o:=$d.Overview}}{{$page:=$d.WithPage .}}
+<div class="page-heading"><div><h1>{{t "Sicherung"}}</h1><p class="muted">{{t "Verschlüsselte Sicherungen deines Haushalts, lokal und auf Wunsch extern."}}</p></div></div>
+{{if not $o.ServiceOnline}}<div class="notice error" role="alert">{{t "Der Sicherungsdienst meldet sich nicht. Aufträge werden erst ausgeführt, wenn der Dienst backup läuft."}}</div>{{end}}
+{{if $o.ActiveRestore}}<div class="notice backup-progress" role="status" data-backup-active="{{$o.ActiveRestore.ID}}"><strong>{{t "Wiederherstellung läuft"}}</strong> <span data-backup-phase>{{template "backup-phase" $o.ActiveRestore.Phase}}</span><p class="fine">{{t "Household pausiert kurz, sobald die Daten umgeschaltet werden. Danach melden sich alle erneut an."}}</p></div>{{end}}
+
+<div class="backup-layout">
+<section class="panel" aria-labelledby="backup-status-heading"><h2 id="backup-status-heading">{{t "Zustand"}}</h2>
+<div class="backup-targets">
+<article class="backup-target"><h3>{{t "Lokal"}}</h3><p>{{template "backup-state" (print $o.Local.State)}}</p>
+<p class="fine">{{if $o.Local.LastSuccess}}{{t "Letzte Sicherung"}} {{$d.When $o.Local.LastSuccess}}{{else}}{{t "Noch keine Sicherung"}}{{end}}</p>
+{{if $o.Local.NextDue}}<p class="fine">{{t "Nächste geplant"}} {{$d.When $o.Local.NextDue}}</p>{{end}}
+{{if $o.LocalLabel}}<p class="fine break">{{$o.LocalLabel}}</p>{{end}}</article>
+<article class="backup-target"><h3>{{t "Extern"}}</h3>{{if $o.OffsiteConfigured}}<p>{{template "backup-state" (print $o.Offsite.State)}}</p>
+<p class="fine">{{if $o.Offsite.LastSuccess}}{{t "Letzte Kopie"}} {{$d.When $o.Offsite.LastSuccess}}{{else}}{{t "Noch keine Kopie"}}{{end}}</p>
+<p class="fine break">{{$o.OffsiteLabel}}</p>{{else}}<p><span class="badge">{{t "Nicht eingerichtet"}}</span></p><p class="fine">{{t "Ohne externes Ziel schützt die Sicherung nicht vor Diebstahl, Brand oder einem Plattenausfall."}}</p>{{end}}</article>
+<article class="backup-target"><h3>{{t "Wiederherstellung geprüft"}}</h3><p>{{if $o.ProbeStale}}<span class="badge backup-bad">{{t "Veraltet"}}</span>{{else}}<span class="badge active">{{t "Aktuell"}}</span>{{end}}</p>
+<p class="fine">{{if $o.LastVerified}}{{t "Zuletzt"}} {{$d.When $o.LastVerified}}{{else}}{{t "Noch nie geprüft"}}{{end}}</p></article>
+</div>
+<div class="actions backup-actions">
+<form method="post" action="/settings/backup/jobs" data-security-form>{{template "csrf" .}}<input type="hidden" name="kind" value="backup"><input type="hidden" name="target" value="local"><button class="primary">{{t "Jetzt sichern"}}</button></form>
+{{if $o.OffsiteConfigured}}<form method="post" action="/settings/backup/jobs" data-security-form>{{template "csrf" .}}<input type="hidden" name="kind" value="backup"><input type="hidden" name="target" value="both"><button>{{t "Lokal und extern sichern"}}</button></form>
+<form method="post" action="/settings/backup/jobs" data-security-form>{{template "csrf" .}}<input type="hidden" name="kind" value="offsite_test"><input type="hidden" name="target" value="offsite"><button>{{t "Externe Verbindung testen"}}</button></form>{{end}}
+</div></section>
+
+<section class="panel" aria-labelledby="backup-schedule-heading"><h2 id="backup-schedule-heading">{{t "Zeitplan und Aufbewahrung"}}</h2>
+<form method="post" action="/settings/backup/settings" data-security-form class="backup-schedule">{{template "csrf" .}}<input type="hidden" name="version" value="{{$o.SettingsVersion}}">
+<fieldset><legend>{{t "Lokale Sicherung"}}</legend><div class="form-grid">
+<label>{{t "Startzeit"}}<input type="time" name="local_time" value="{{$o.Settings.LocalTime}}" required></label>
+<label>{{t "Wiederholen"}}<select name="local_interval_hours">{{range $h := (list 24 12 8 6 4 3 2 1)}}<option value="{{$h}}" {{if eq $h $o.Settings.LocalIntervalHours}}selected{{end}}>{{if eq $h 24}}{{t "Täglich"}}{{else if eq $h 1}}{{t "Stündlich"}}{{else}}{{t "Alle %d Stunden" $h}}{{end}}</option>{{end}}</select></label>
+<label>{{t "Tägliche behalten"}}<input type="number" name="keep_daily" min="1" max="90" value="{{$o.Settings.KeepDaily}}" required></label>
+<label>{{t "Wöchentliche behalten"}}<input type="number" name="keep_weekly" min="0" max="104" value="{{$o.Settings.KeepWeekly}}" required></label>
+<label>{{t "Monatliche behalten"}}<input type="number" name="keep_monthly" min="0" max="120" value="{{$o.Settings.KeepMonthly}}" required></label>
+</div></fieldset>
+<fieldset><legend>{{t "Externe Kopie"}}</legend>{{if not $o.OffsiteConfigured}}<p class="fine">{{t "Richte zuerst ein externes Ziel in der .env ein (siehe unten)."}}</p>{{end}}<div class="form-grid">
+<label class="check-label"><input type="checkbox" name="offsite_enabled" {{if $o.Settings.OffsiteEnabled}}checked{{end}}>{{t "Automatisch extern kopieren"}}</label>
+<label>{{t "Wiederholen"}}<select name="offsite_interval_hours">{{range $h := (list 24 12 8 6 4 3 2 1 48 168)}}<option value="{{$h}}" {{if eq $h $o.Settings.OffsiteIntervalHours}}selected{{end}}>{{if eq $h 24}}{{t "Täglich"}}{{else if eq $h 48}}{{t "Alle zwei Tage"}}{{else if eq $h 168}}{{t "Wöchentlich"}}{{else if eq $h 1}}{{t "Stündlich"}}{{else}}{{t "Alle %d Stunden" $h}}{{end}}</option>{{end}}</select></label>
+<label>{{t "Tägliche behalten"}}<input type="number" name="offsite_keep_daily" min="1" max="90" value="{{$o.Settings.OffsiteKeepDaily}}" required></label>
+<label>{{t "Wöchentliche behalten"}}<input type="number" name="offsite_keep_weekly" min="0" max="104" value="{{$o.Settings.OffsiteKeepWeekly}}" required></label>
+<label>{{t "Monatliche behalten"}}<input type="number" name="offsite_keep_monthly" min="0" max="120" value="{{$o.Settings.OffsiteKeepMonthly}}" required></label>
+</div></fieldset>
+<fieldset><legend>{{t "Probewiederherstellung"}}</legend><div class="form-grid">
+<label>{{t "Automatisch prüfen"}}<select name="probe_interval_days">{{range $n := (list 7 1 14 30 0)}}<option value="{{$n}}" {{if eq $n $o.Settings.ProbeIntervalDays}}selected{{end}}>{{if eq $n 0}}{{t "Nie"}}{{else if eq $n 1}}{{t "Täglich"}}{{else if eq $n 7}}{{t "Wöchentlich"}}{{else}}{{t "Alle %d Tage" $n}}{{end}}</option>{{end}}</select></label>
+<label>{{t "Ziel"}}<select name="probe_target"><option value="local" {{if eq $o.Settings.ProbeTarget "local"}}selected{{end}}>{{t "Lokal"}}</option><option value="offsite" {{if eq $o.Settings.ProbeTarget "offsite"}}selected{{end}}>{{t "Extern"}}</option></select></label>
+</div><p class="fine">{{t "Die Probe stellt die neueste Sicherung in eine eigene Prüfdatenbank wieder her, prüft alle Daten und Dateien und löscht die Prüfdatenbank danach."}}</p></fieldset>
+<div class="actions"><button class="primary">{{t "Zeitplan speichern"}}</button></div>
+<p class="fine">{{t "Zeiten gelten in der Zeitzone des Haushalts:"}} {{$o.Zone}}</p>
+</form></section>
+
+<section class="panel backup-wide" aria-labelledby="backup-local-heading"><h2 id="backup-local-heading">{{t "Lokale Wiederherstellungspunkte"}}</h2>
+{{template "backup-snapshots" (list $page $o.LocalSnapshots "local")}}</section>
+
+{{if $o.OffsiteConfigured}}<section class="panel backup-wide" aria-labelledby="backup-offsite-heading"><h2 id="backup-offsite-heading">{{t "Externe Wiederherstellungspunkte"}}</h2>
+{{template "backup-snapshots" (list $page $o.OffsiteSnapshots "offsite")}}</section>{{end}}
+
+{{if $o.Retained}}<section class="panel backup-wide" aria-labelledby="backup-previous-heading"><h2 id="backup-previous-heading">{{t "Früherer Stand"}}</h2>
+{{if $o.Previous}}<p>{{t "Die letzte Wiederherstellung hat den vorherigen Stand aufbewahrt. Prüfe die wiederhergestellten Daten und verwirf ihn danach, um Speicher freizugeben."}}</p>
+<p class="fine">{{t "Zurück zum früheren Stand: App stoppen und den Wartungsbefehl restore-rollback ausführen (siehe Betriebsanleitung)."}}</p>
+{{else}}<p>{{t "Eine zurückgenommene Wiederherstellung ist noch aufbewahrt. Verwirf sie, um Speicher freizugeben."}}</p>{{end}}
+<form method="post" action="/settings/backup/jobs" data-security-form>{{template "csrf" .}}<input type="hidden" name="kind" value="discard_previous"><input type="hidden" name="target" value="local"><label class="check-label"><input type="checkbox" name="confirm" required>{{t "Früheren Stand endgültig löschen"}}</label><button class="danger">{{t "Verwerfen"}}</button></form></section>{{end}}
+
+<section class="panel backup-wide" aria-labelledby="backup-export-heading"><h2 id="backup-export-heading">{{t "Datenexport"}}</h2>
+<p>{{t "Lade alle Einträge deines Haushalts als ZIP-Datei mit einer CSV-Tabelle je Bereich herunter, etwa für einen Umzug. Dateien und Dokumente enthält der Export nicht; dafür gibt es den Dokumente-Export und die Sicherung."}}</p>
+<form method="get" action="/api/v1/core/export.zip" data-security-form data-security-document><button>{{t "Alle Daten exportieren"}}</button></form></section>
+
+<section class="panel backup-wide" aria-labelledby="backup-history-heading"><h2 id="backup-history-heading">{{t "Verlauf"}}</h2>
+{{if $o.Jobs}}<div class="backup-history">{{range $o.Jobs}}<article class="backup-job">
+<div><h3>{{template "backup-kind" .}}</h3><p class="fine">{{$d.At .Created}}{{if .Requester}} · {{.Requester}}{{else}} · {{t "Zeitplan"}}{{end}}{{if .Snapshot}} · <span class="backup-id">{{slice .Snapshot 0 8}}</span>{{end}}</p>
+{{if .Active}}<p class="fine">{{template "backup-phase" .Phase}}</p>{{end}}{{if .Result}}<p class="fine">{{template "backup-result" .Result}}</p>{{end}}</div>
+<div class="backup-job-state">{{template "backup-job-state" .}}{{if eq .State "requested"}}<form method="post" action="/settings/backup/jobs/{{.ID}}/cancel" data-security-form>{{template "csrf" $page.Page}}<button>{{t "Abbrechen"}}</button></form>{{end}}</div>
+</article>{{end}}</div>{{else}}<p class="fine">{{t "Noch keine Aufträge."}}</p>{{end}}</section>
+
+{{if not $o.OffsiteConfigured}}<section class="panel backup-wide" aria-labelledby="backup-offsite-setup"><h2 id="backup-offsite-setup">{{t "Externes Ziel einrichten"}}</h2>
+<p>{{t "Trage das Ziel in die .env ein und starte die Dienste neu. Die Zugangsdaten erhält nur der Sicherungsdienst, nie die App."}}</p>
+<pre class="backup-env" tabindex="0" aria-label="{{t "Beispiel für die .env"}}">HOUSEHOLD_BACKUP_OFFSITE_REPOSITORY=s3:https://s3.eu-central-1.amazonaws.com/mein-bucket/household
+HOUSEHOLD_BACKUP_OFFSITE_PASSWORD=…
+HOUSEHOLD_BACKUP_S3_ACCESS_KEY_ID=…
+HOUSEHOLD_BACKUP_S3_SECRET_ACCESS_KEY=…</pre>
+<p class="fine">{{t "Unterstützt werden S3-kompatible Speicher (AWS, Backblaze B2, Wasabi, Hetzner, MinIO), ein restic-REST-Server oder ein eingebundener Pfad wie ein NAS."}}</p></section>{{end}}
+</div>
+
+<dialog id="backup-restore" aria-labelledby="backup-restore-title"><div class="dialog-heading"><h2 id="backup-restore-title">{{t "Aus Sicherung wiederherstellen"}}</h2><button type="button" data-restore-close aria-label="{{t "Schließen"}}">×</button></div>
+<p>{{t "Wiederherzustellender Stand:"}} <strong data-restore-when></strong></p>
+<p>{{t "Alle Daten und Dateien werden auf diesen Stand zurückgesetzt. Zuvor wird der aktuelle Stand gesichert und aufbewahrt."}}</p>
+<ul class="fine"><li>{{t "Household pausiert während der Umschaltung."}}</li><li>{{t "Alle Benutzer werden abgemeldet."}}</li><li>{{t "Änderungen nach dem gewählten Zeitpunkt sind danach nur im aufbewahrten früheren Stand enthalten."}}</li></ul>
+<form method="post" action="/settings/backup/jobs" data-security-form data-restore-form>{{template "csrf" .}}<input type="hidden" name="kind" value="restore"><input type="hidden" name="target" value=""><input type="hidden" name="snapshot" value="">
+<label>{{t "Zur Bestätigung eingeben:"}} <strong class="backup-id" data-restore-phrase></strong><input name="confirmation" autocomplete="off" spellcheck="false" maxlength="64" required></label>
+<div class="actions"><button type="button" data-restore-close>{{t "Abbrechen"}}</button><button class="danger">{{t "Wiederherstellen"}}</button></div></form></dialog>
+{{template "security-reauth-dialog" .}}<script nonce="{{.Nonce}}" src="{{index .Asset "security.js"}}" defer></script><script nonce="{{.Nonce}}" src="{{index .Asset "backup.js"}}" defer></script>
+{{end}}

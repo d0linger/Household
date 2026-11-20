@@ -1,0 +1,78 @@
+# Example Prometheus alert rules for Household. Scrape /metrics with the
+# X-Metrics-Token header and the configured origin as Host; see
+# docs/monitoring/README.md. Thresholds are starting points for one household.
+groups:
+  - name: household
+    rules:
+      - alert: HouseholdDown
+        expr: up{job="household"} == 0
+        for: 5m
+        labels: {severity: critical}
+        annotations:
+          summary: Household metrics are unreachable
+          description: The scrape of /metrics failed for five minutes. Check the app container and reverse proxy.
+      - alert: HouseholdBackupOverdue
+        expr: household_backup_healthy{target="local"} == 0
+        for: 30m
+        labels: {severity: critical}
+        annotations:
+          summary: Local backup failed or is overdue
+          description: The last local backup failed or no backup ran on schedule. See Settings → Backup.
+      - alert: HouseholdOffsiteBackupOverdue
+        expr: household_backup_healthy{target="offsite"} == 0
+        for: 1h
+        labels: {severity: warning}
+        annotations:
+          summary: Offsite backup copy failed or is overdue
+      - alert: HouseholdRestoreTestStale
+        expr: time() - household_backup_last_verified_timestamp_seconds > 8 * 86400
+        for: 1h
+        labels: {severity: warning}
+        annotations:
+          summary: No backup was restore-tested for eight days
+          description: Module purge requires a backup verified within seven days.
+      - alert: HouseholdBackupServiceSilent
+        expr: time() - household_backup_service_seen_timestamp_seconds > 900
+        for: 5m
+        labels: {severity: critical}
+        annotations:
+          summary: The backup service stopped reporting
+      - alert: HouseholdHighErrorRate
+        expr: sum(rate(household_http_requests_total{status="5xx"}[10m])) / clamp_min(sum(rate(household_http_requests_total[10m])), 0.001) > 0.05
+        for: 10m
+        labels: {severity: warning}
+        annotations:
+          summary: More than 5 % of requests fail with a server error
+      - alert: HouseholdSlowRequests
+        expr: histogram_quantile(0.95, sum by (le) (rate(household_http_request_duration_seconds_bucket[10m]))) > 2.5
+        for: 15m
+        labels: {severity: warning}
+        annotations:
+          summary: 95th percentile request duration above 2.5 seconds
+      - alert: HouseholdPanics
+        expr: increase(household_http_panics_total[15m]) > 0
+        labels: {severity: warning}
+        annotations:
+          summary: A request panicked; see the app log for its request ID
+      - alert: HouseholdSignInAttack
+        expr: increase(household_login_failures_total[15m]) > 50
+        labels: {severity: warning}
+        annotations:
+          summary: Many failed sign-ins within 15 minutes
+      - alert: HouseholdWorkerFailing
+        expr: increase(household_worker_step_failures_total[30m]) > 10
+        labels: {severity: warning}
+        annotations:
+          summary: Background work keeps failing; see the app log
+      - alert: HouseholdMaintenance
+        expr: household_maintenance == 1
+        for: 30m
+        labels: {severity: warning}
+        annotations:
+          summary: Household has been paused for a live restore for 30 minutes
+      - alert: HouseholdDatabasePoolExhausted
+        expr: household_db_acquired_connections >= household_db_total_connections and household_db_total_connections > 0
+        for: 10m
+        labels: {severity: warning}
+        annotations:
+          summary: All database connections are in use

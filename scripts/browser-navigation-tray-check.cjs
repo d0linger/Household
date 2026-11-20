@@ -139,9 +139,9 @@ async function checkModuleOrder(target, context) {
   must(await page.locator('.sidebar-menu,#header-logout,.header-logout,.mobile-nav button').count() === 0, 'Removed sidebar/menu/logout duplicates and mobile More button');
   must(await page.locator('form[action="/logout"]').count() === 1 && await page.locator('#more-dialog form[action="/logout"]').count() === 1, 'Only the settings tray contains logout');
   must(await page.locator('main .settings-nav').count() === 0, 'Settings tabs have been removed from the page content');
-  for (const route of ['/settings', '/settings/modules', '/settings/security', '/settings/notifications', '/settings/users', '/settings/audit']) {
+  for (const route of ['/settings', '/settings/modules', '/settings/security', '/settings/notifications', '/help', '/settings/users', '/settings/audit', '/settings/backup', '/settings/system']) {
     await open();
-    must(await page.locator('#more-dialog .settings-nav a').count() === 6, 'Six independent administrator destinations');
+    must(await page.locator('#more-dialog .settings-nav a').count() === 9, 'Nine independent administrator destinations');
     await page.locator('#more-dialog .settings-nav a[href="' + route + '"]').click();
     await page.waitForURL(base + route);
     must(await page.locator('#more-dialog .settings-nav [aria-current=page]').getAttribute('href') === route, 'Direct tray route and active state: ' + route);

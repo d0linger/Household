@@ -32,12 +32,13 @@ services:
     ports: ['127.0.0.1:${HOUSEHOLD_PORT:-8100}:8080']
     depends_on: {db: {condition: service_healthy}}
 
-  backup:                                    # tägliches Backup um 03:00, auch für Wartungsbefehle
+  backup:                                    # Sicherungsdienst: Zeitplan und Aufträge aus der App, auch für Wartungsbefehle
     <<: *household
     command: backup-loop
     environment: {HOUSEHOLD_DATABASE_USER: household_owner, HOUSEHOLD_DATABASE_PASSWORD: '${HOUSEHOLD_OWNER_PASSWORD}'}
-    volumes: [uploads:/data/uploads:ro, backups:/data/backups, backup_work:/work]
-    healthcheck: {disable: true}
+    # Schreibzugriff auf uploads nur für die Wiederherstellung aus einer Sicherung.
+    volumes: [uploads:/data/uploads, backups:/data/backups, backup_work:/work]
+    healthcheck: {test: [CMD, household, backup-health], interval: 5m, timeout: 30s, start_period: 2m, retries: 1}
     depends_on: {app: {condition: service_healthy}}
 
 volumes: {postgres: {}, uploads: {}, backups: {}, backup_work: {}}

@@ -244,6 +244,10 @@ func (s *Store) List(ctx context.Context, id auth.Identity, m module.Descriptor,
 			where = " AND archived_at IS NOT NULL"
 			query = ""
 		}
+		// The household export reads active, template and archived lists alike.
+		if query == "is:all" {
+			where, query = "", ""
+		}
 		order = "sort_order,name,id"
 	}
 	if m.ID == "shopping" && e.ID == "products" && query == "is:favorite" {
@@ -252,6 +256,9 @@ func (s *Store) List(ctx context.Context, id auth.Identity, m module.Descriptor,
 	}
 	if m.ID == "shopping" && e.ID == "items" {
 		where = " AND EXISTS(SELECT 1 FROM shopping.lists l WHERE l.id=t.list_id AND l.household_id=t.household_id AND l.archived_at IS NULL)"
+		if query == "is:all" {
+			where, query = "", ""
+		}
 		order = "checked_at NULLS FIRST,group_name,sort_order,name,id"
 	}
 	if m.ID == "recipes" && e.ID == "recipes" && strings.HasPrefix(query, "#") {

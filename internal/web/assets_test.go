@@ -39,7 +39,7 @@ func serviceWorkerTestServer(t *testing.T) *Server {
 	}
 	// Helpers outside the public shells only need to exist while parsing.
 	funcs := template.FuncMap{"dict": dict, "icon": func(assets map[string]string, name string) string { return assets["icons.svg"] + "#" + name }}
-	for _, name := range []string{"text", "qty", "choice", "prev", "next", "integer", "money", "formValue", "isTrue", "selected", "enabled", "moduleURL", "recordURL"} {
+	for _, name := range []string{"text", "qty", "choice", "prev", "next", "integer", "money", "formValue", "isTrue", "selected", "enabled", "moduleURL", "recordURL", "list", "hasPrefix"} {
 		funcs[name] = func(...any) any { return nil }
 	}
 	s.templates, err = template.New("household").Funcs(funcs).Funcs(localizedTemplateFuncs("de")).ParseFS(files, "templates/*.html")

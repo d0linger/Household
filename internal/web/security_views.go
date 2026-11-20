@@ -12,6 +12,7 @@ import (
 func (s *Server) registerSecurityRoutes(mux *http.ServeMux) {
 	mux.Handle("GET /settings/security/reauth", s.require(s.reauthPage))
 	mux.Handle("POST /settings/security/reauth", s.require(s.reauthenticate))
+	mux.Handle("POST /settings/security/policy", s.require(s.saveSecurityPolicy))
 	mux.Handle("POST /settings/security/totp/disable", s.require(s.disableTOTP))
 	mux.Handle("POST /settings/security/totp/recovery", s.require(s.regenerateRecovery))
 	mux.Handle("POST /settings/security/sessions/revoke-others", s.require(s.revokeOtherSessions))

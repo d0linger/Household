@@ -1,0 +1,21 @@
+{
+  "Zur Sicherheit": "Go to security",
+  "Anmelderichtlinie": "Sign-in policy",
+  "Verlange einen zweiten Faktor (Authenticator-Code oder Passkey) für Konten mit erweiterten Rechten. Betroffene Konten sehen bis zum Ende der Übergangsfrist einen Hinweis und können danach nur noch ihre Sicherheitseinstellungen öffnen.": "Require a second factor (authenticator code or passkey) for accounts with extended rights. Affected accounts see a notice until the grace period ends and can afterwards open only their security settings.",
+  "Für Administratoren verlangen": "Require for administrators",
+  "Auch für Bearbeiter verlangen": "Also require for editors",
+  "Übergangsfrist": "Grace period",
+  "Sofort": "Immediately",
+  "%d Tage": "%d days",
+  "Du brauchst selbst einen zweiten Faktor, bevor du ihn verlangst. Notausgang für vergessene Faktoren: der Wartungsbefehl recover mit --reset-mfa.": "You need a second factor yourself before you require one. The way out for a lost factor is the recover maintenance command with --reset-mfa.",
+  "Richtlinie speichern": "Save policy",
+  "Bitte die Angaben zur Anmelderichtlinie prüfen": "Please check the sign-in policy values",
+  "Dein Haushalt verlangt einen zweiten Faktor. Richte ihn bis %s ein.": "Your household requires a second factor. Set it up by %s.",
+  "Dein Haushalt verlangt einen zweiten Faktor. Richte ihn jetzt ein, um Household weiter zu verwenden.": "Your household requires a second factor. Set it up now to keep using Household.",
+  "Neue Anmeldung mit einem Browser oder Gerät, das du bisher nicht verwendet hast.": "New sign-in from a browser or device you have not used before.",
+  "Richte zuerst einen zweiten Faktor ein.": "Set up a second factor first.",
+  "Bestätige zuerst deine Anmeldung mit deinem vorhandenen zweiten Faktor oder Passkey": "First confirm your sign-in with your existing second factor or passkey",
+  "Richte zuerst selbst einen zweiten Faktor ein und bestätige deine Anmeldung damit":"Set up a second factor for yourself first and confirm your sign-in with it",
+  "Dein Haushalt verlangt einen zweiten Faktor. Bestätige diese Anmeldung unter Sicherheit mit deinem Code oder Passkey.": "Your household requires a second factor. Confirm this sign-in under Security with your code or passkey.",
+  "Anmelderichtlinie gespeichert.": "Sign-in policy saved."
+}

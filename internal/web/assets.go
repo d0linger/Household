@@ -37,6 +37,13 @@ func (s *Server) asset(w http.ResponseWriter, r *http.Request) {
 	case strings.HasSuffix(name, ".png"):
 		w.Header().Set("Content-Type", "image/png")
 	}
+	// Static text assets are compressed once and served compressed to clients
+	// that accept gzip. They hold no secrets, so compression leaks nothing.
+	w.Header().Add("Vary", "Accept-Encoding")
+	if compressed := compressedAsset(name, data); compressed != nil && acceptsGzip(r) {
+		w.Header().Set("Content-Encoding", "gzip")
+		data = compressed
+	}
 	s.writeBytes(w, r, data)
 }
 func (s *Server) manifest(w http.ResponseWriter, r *http.Request) {
@@ -46,7 +53,7 @@ func (s *Server) manifest(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/manifest+json")
 	w.Header().Set("Cache-Control", "public,max-age=3600")
-	if err := json.NewEncoder(w).Encode(map[string]any{"id": "/", "name": "Household", "short_name": "Household", "lang": i18n.LanguageTag(locale), "start_url": "/", "scope": "/", "display": "standalone", "background_color": "#f4f8fe", "theme_color": "#075ca8", "icons": []map[string]string{{"src": s.assets["icon-192.png"], "sizes": "192x192", "type": "image/png", "purpose": "any maskable"}, {"src": s.assets["icon-512.png"], "sizes": "512x512", "type": "image/png", "purpose": "any maskable"}}}); err != nil {
+	if err := json.NewEncoder(w).Encode(map[string]any{"id": "/", "name": "Household", "short_name": "Household", "lang": i18n.LanguageTag(locale), "start_url": "/", "scope": "/", "display": "standalone", "share_target": map[string]any{"action": "/share", "method": "POST", "enctype": "multipart/form-data", "params": map[string]any{"title": "title", "text": "text", "files": []map[string]any{{"name": "files", "accept": []string{"image/jpeg", "image/png", "application/pdf"}}}}}, "background_color": "#f4f8fe", "theme_color": "#075ca8", "icons": []map[string]string{{"src": s.assets["icon-192.png"], "sizes": "192x192", "type": "image/png", "purpose": "any maskable"}, {"src": s.assets["icon-512.png"], "sizes": "512x512", "type": "image/png", "purpose": "any maskable"}}}); err != nil {
 		s.Log.Debug("manifest response interrupted", "request_id", trace(r))
 	}
 }
@@ -96,11 +103,17 @@ var offlineShellAssets = [...]string{
 }
 
 const serviceWorkerRuntime = `const STATIC_ASSETS=new Set(ASSETS.filter(path=>path.startsWith('/assets/')));
+const SHARE_CACHE='household-share-v1';
+self.addEventListener('fetch',event=>{const url=new URL(event.request.url);if(event.request.method!=='POST'||url.origin!==self.location.origin||url.pathname!=='/share')return;
+event.respondWith((async()=>{let failed=false;try{const form=await event.request.formData(),cache=await caches.open(SHARE_CACHE),share=crypto.randomUUID();let index=0;
+for(const file of form.getAll('files')){if(!(file instanceof File)||index>=10||file.size<1||file.size>10485760||!['image/jpeg','image/png','application/pdf'].includes(file.type))continue;
+try{await cache.put('/share/parked/'+share+'-'+index,new Response(file,{headers:{'Content-Type':file.type,'X-Share-Name':encodeURIComponent(String(file.name||'').slice(0,200))}}));index++;}catch{failed=true;}}}catch{failed=true;}
+return Response.redirect(failed?'/share?failed=1':'/share',303);})());});
 const PREFERENCE_CACHE='household-public-preferences-v1',LOCALE_KEY='/__household_public_locale';
 self.householdLocale=async()=>{try{const response=await(await caches.open(PREFERENCE_CACHE)).match(LOCALE_KEY);const value=response?await response.text():'';return value==='en'?'en':'de';}catch{return 'de';}};
 self.addEventListener('install',event=>event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(PRECACHE))));
 self.addEventListener('message',event=>{if(event.data?.type==='ACTIVATE'){self.skipWaiting();return;}if(event.data?.type!=='SET_LOCALE'||!['de','en'].includes(event.data.locale))return;try{if(!event.source?.url||new URL(event.source.url).origin!==self.location.origin)return;}catch{return;}event.waitUntil(caches.open(PREFERENCE_CACHE).then(cache=>cache.put(LOCALE_KEY,new Response(event.data.locale,{headers:{'Content-Type':'text/plain'}}))).catch(()=>{}));});
-self.addEventListener('activate',event=>event.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(key=>key.startsWith('household-')&&key!==CACHE&&key!==PREFERENCE_CACHE).map(key=>caches.delete(key)))).then(()=>self.clients.claim())));
+self.addEventListener('activate',event=>event.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(key=>key.startsWith('household-')&&key!==CACHE&&key!==PREFERENCE_CACHE&&key!==SHARE_CACHE).map(key=>caches.delete(key)))).then(()=>self.clients.claim())));
 self.addEventListener('fetch',event=>{const url=new URL(event.request.url);if(event.request.method!=='GET'||url.origin!==self.location.origin)return;
 if(url.pathname.startsWith('/calendar/')||url.pathname.endsWith('/calendar.ics'))return;
 if(STATIC_ASSETS.has(url.pathname)&&!url.search){event.respondWith((async()=>{

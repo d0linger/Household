@@ -68,13 +68,15 @@ func (s *Service) Reauthenticate(ctx context.Context, id Identity, password, cod
 	if err = s.factorBudget(ctx, tx, id.UserID); err != nil {
 		return err
 	}
-	if err = s.verifyFactor(ctx, tx, id.UserID, code); err != nil {
+	factored, err := s.verifyFactor(ctx, tx, id.UserID, code)
+	if err != nil {
 		if errors.Is(err, ErrCredentials) {
 			s.failFactor(ctx, tx, id.UserID)
 		}
 		return err
 	}
-	if _, err = tx.Exec(ctx, "UPDATE core.sessions SET reauthenticated_at=clock_timestamp() WHERE id=$1", id.SessionID); err != nil {
+	// A confirmation with a second factor upgrades the session; it never downgrades.
+	if _, err = tx.Exec(ctx, "UPDATE core.sessions SET reauthenticated_at=clock_timestamp(),second_factor=second_factor OR $2 WHERE id=$1", id.SessionID, factored); err != nil {
 		return err
 	}
 	if err = audit.Event(ctx, tx, "core", "reauthentication", id.UserID, "login_success", nil); err != nil {
