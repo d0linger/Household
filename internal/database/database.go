@@ -178,7 +178,8 @@ func Migrate(ctx context.Context, dsn string) error {
 		{"meters", 2}, {"core", 33}, {"fuel", 10}, {"pantry", 16}, {"mealplan", 11},
 		{"documents", 2}, {"core", 34}, {"fuel", 11}, {"pantry", 17}, {"mealplan", 12},
 		{"core", 35}, {"core", 36}, {"core", 37}, {"core", 38}, {"pantry", 18}, {"fuel", 12},
-		{"core", 39}, {"expenses", 6}, {"meters", 3}, {"documents", 3}, {"mealplan", 13}, {"core", 40}, {"core", 41}, {"meters", 4}} {
+		{"core", 39}, {"expenses", 6}, {"meters", 3}, {"documents", 3}, {"mealplan", 13}, {"core", 40}, {"core", 41}, {"meters", 4},
+		{"core", 42}, {"core", 43}, {"core", 44}} {
 		if err = migrateSchema(stage.schema, &stage.version); err != nil {
 			return err
 		}

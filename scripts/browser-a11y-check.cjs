@@ -56,6 +56,11 @@ module.exports = async function checkAccessibilityHardening(page, report = {chec
       animations: dialog.getAnimations({subtree: true}).map(animation => ({name: animation.animationName || animation.constructor.name, state: animation.playState, currentTime: animation.currentTime, duration: animation.effect.getComputedTiming().duration}))
     }));
     const before = await inspect();
+    // The pointer still rests where the opener was clicked; once an entering
+    // dialog reaches its place, an element under it can start hover
+    // transitions at a random moment. Park the pointer outside the dialog
+    // first, so the settled state below never depends on pointer position.
+    await page.mouse.move(0, 0);
     await page.locator(selector).evaluate(async dialog => {
       await Promise.allSettled(dialog.getAnimations({subtree: true}).map(animation => animation.finished));
     });

@@ -154,7 +154,7 @@ func TestBackupRejectsInvalidConnectionBeforeLock(t *testing.T) {
 func TestVerifyRestoreRejectsInvalidTargetBeforeLock(t *testing.T) {
 	t.Parallel()
 	cfg := config.Config{DatabaseURL: "postgres://owner@db:5432/household"}
-	if err := VerifyRestore(t.Context(), nil, cfg, "unused", "postgres://owner@db:5432/household"); err == nil {
+	if err := VerifyRestore(t.Context(), nil, cfg, config.BackupTarget{}, "unused", "postgres://owner@db:5432/household"); err == nil {
 		t.Fatal("non-disposable target accepted")
 	}
 }

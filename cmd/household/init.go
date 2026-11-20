@@ -190,6 +190,25 @@ HOUSEHOLD_ADMIN_USERNAME=admin
 # HOUSEHOLD_METERS_MQTT_PASSWORD=
 # Kontakt für Push-Dienste; leer verwendet die Adresse aus Abschnitt 1.
 # HOUSEHOLD_WEB_PUSH_VAPID_CONTACT=mailto:ich@example.org
+# Externe Sicherung (S3-kompatibel, restic-REST oder eingebundener Pfad), nur für den Sicherungsdienst.
+# Eigenes, langes Passwort wählen und getrennt vom Server aufbewahren.
+# HOUSEHOLD_BACKUP_OFFSITE_REPOSITORY=s3:https://s3.eu-central-1.amazonaws.com/mein-bucket/household
+# HOUSEHOLD_BACKUP_OFFSITE_PASSWORD=
+# HOUSEHOLD_BACKUP_S3_ACCESS_KEY_ID=
+# HOUSEHOLD_BACKUP_S3_SECRET_ACCESS_KEY=
+# HOUSEHOLD_BACKUP_S3_REGION=eu-central-1
+# Warnungen des Sicherungsdienstes nach außen (ntfy, Webhook oder E-Mail über TLS):
+# HOUSEHOLD_ALERT_NTFY_URL=https://ntfy.sh/mein-geheimes-thema
+# HOUSEHOLD_ALERT_NTFY_TOKEN=
+# HOUSEHOLD_ALERT_WEBHOOK_URL=https://example.org/hook
+# HOUSEHOLD_ALERT_SMTP_ADDRESS=mail.example.org:587
+# HOUSEHOLD_ALERT_SMTP_USER=household@example.org
+# HOUSEHOLD_ALERT_SMTP_PASSWORD=
+# HOUSEHOLD_ALERT_SMTP_FROM=household@example.org
+# HOUSEHOLD_ALERT_SMTP_TO=ich@example.org
+# Optionale Prüfungen mit Verbindung nach außen (standardmäßig aus):
+# HOUSEHOLD_UPDATE_CHECK=true
+# HOUSEHOLD_PASSWORD_BREACH_CHECK=true
 `)
 	return b.String(), nil
 }

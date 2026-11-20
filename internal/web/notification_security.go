@@ -2,6 +2,27 @@ package web
 
 import "household/internal/i18n"
 
+// backupNoticeTitle localizes operational backup notices for administrators.
+func backupNoticeTitle(locale, kind, stored string) string {
+	switch kind {
+	case "backup_failed":
+		return i18n.Text(locale, "Die letzte Sicherung ist fehlgeschlagen.")
+	case "backup_overdue":
+		return i18n.Text(locale, "Die Sicherung ist überfällig.")
+	case "backup_offsite_failed":
+		return i18n.Text(locale, "Die externe Sicherungskopie ist fehlgeschlagen.")
+	case "backup_service_missing":
+		return i18n.Text(locale, "Der Sicherungsdienst meldet sich nicht.")
+	case "backup_probe_stale":
+		return i18n.Text(locale, "Keine Sicherung wurde kürzlich durch eine Probewiederherstellung geprüft.")
+	case "backup_restore_complete":
+		return i18n.Text(locale, "Household wurde aus einer Sicherung wiederhergestellt.")
+	case "backup_restore_failed":
+		return i18n.Text(locale, "Eine Wiederherstellung ist fehlgeschlagen. Details stehen auf der Sicherungsseite.")
+	}
+	return stored
+}
+
 func securityNoticeTitle(locale, kind string) string {
 	switch kind {
 	case "security_password_changed":
@@ -22,6 +43,8 @@ func securityNoticeTitle(locale, kind string) string {
 		return i18n.Text(locale, "Angemeldete Sitzungen wurden beendet.")
 	case "security_account_changed":
 		return i18n.Text(locale, "Die Berechtigungen oder der Status deines Kontos wurden geändert.")
+	case "security_sign_in_new_device":
+		return i18n.Text(locale, "Neue Anmeldung mit einem Browser oder Gerät, das du bisher nicht verwendet hast.")
 	case "security_device_authorized":
 		return i18n.Text(locale, "Ein Gerät wurde für Benachrichtigungen freigegeben.")
 	default:

@@ -12,7 +12,9 @@ import (
 
 	"household/internal/audit"
 	"household/internal/auth"
+	"household/internal/buildinfo"
 	"household/internal/i18n"
+	"household/internal/metrics"
 	"household/internal/module"
 	"household/internal/store"
 	"household/internal/value"
@@ -42,6 +44,12 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 	}
 	raw, id, err := s.Auth.Login(r.Context(), r.FormValue("username"), r.FormValue("password"), r.FormValue("code"), s.clientIP(r), r.UserAgent())
 	if err != nil {
+		switch {
+		case errors.Is(err, auth.ErrLimited):
+			metrics.Default.Inc("household_login_limited_total")
+		case errors.Is(err, auth.ErrCredentials):
+			metrics.Default.Inc("household_login_failures_total")
+		}
 		s.fail(w, r, err)
 		return
 	}
@@ -64,7 +72,7 @@ func (s *Server) passwordPage(w http.ResponseWriter, r *http.Request) {
 	s.render(w, r, p)
 }
 func (s *Server) password(w http.ResponseWriter, r *http.Request) {
-	if err := s.Auth.ChangePassword(r.Context(), identity(r), r.FormValue("current"), r.FormValue("next")); err != nil {
+	if err := s.Auth.ChangePassword(r.Context(), identity(r), r.FormValue("current"), r.FormValue("next"), s.rejectBreachedPassword); err != nil {
 		s.fail(w, r, err)
 		return
 	}
@@ -408,7 +416,7 @@ func (s *Server) referencesAPI(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, records)
 }
 func (s *Server) bootstrap(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, 200, map[string]any{"user": identity(r), "modules": localizedModules(requestLocale(r), orderedModules(s.Store.Modules, requestModuleOrder(r))), "states": s.Store.States(), "csrf": r.Context().Value(csrfKey), "version": "0.1.0", "locale": requestLocale(r)})
+	writeJSON(w, 200, map[string]any{"user": identity(r), "modules": localizedModules(requestLocale(r), orderedModules(s.Store.Modules, requestModuleOrder(r))), "states": s.Store.States(), "csrf": r.Context().Value(csrfKey), "version": buildinfo.Release(), "locale": requestLocale(r)})
 }
 func (s *Server) settings(w http.ResponseWriter, r *http.Request) {
 	p := s.page(r, "Einstellungen")
@@ -570,6 +578,14 @@ func (s *Server) notificationRecords(ctx context.Context, id auth.Identity, loca
 		if strings.HasPrefix(notice.kind, "security_") {
 			notice.title = securityNoticeTitle(locale, notice.kind)
 			notice.target = "/settings/security"
+		}
+		if strings.HasPrefix(notice.kind, "backup_") {
+			// Operational notices belong to administrators only.
+			if id.Role != "admin" {
+				continue
+			}
+			notice.title = backupNoticeTitle(locale, notice.kind, notice.title)
+			notice.target = "/settings/backup"
 		}
 		if notice.kind == "shopping_list_changed_v1" {
 			projection, projectionErr := s.Store.ShoppingNotificationProjection(ctx, id, notice.id)

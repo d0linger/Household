@@ -13,6 +13,7 @@ import (
 
 	"household/internal/audit"
 	"household/internal/config"
+	"household/internal/metrics"
 	"household/internal/modules"
 	"household/internal/store"
 	"household/internal/value"
@@ -27,7 +28,29 @@ type Worker struct {
 	Log  *slog.Logger
 	Cfg  config.Config
 	Push *webpush.Service
-	scan directoryScan
+	// Admit takes part in the live restore drain: a tick runs only when
+	// admitted and releases its admission when it ends, so the web process
+	// confirms a pause only after the running tick stopped writing.
+	Admit func() (func(), bool)
+	scan  directoryScan
+}
+
+// errPaused reports work skipped because a live restore pauses the app.
+var errPaused = errors.New("paused by a live restore")
+
+// admitted runs one database write as admitted work of the live restore
+// drain, or skips it with errPaused while the app is paused. Feed loops use
+// it per write, so a long-running consumer never blocks the drain.
+func (w *Worker) admitted(write func() error) error {
+	if w.Admit == nil {
+		return write()
+	}
+	release, ok := w.Admit()
+	if !ok {
+		return errPaused
+	}
+	defer release()
+	return write()
 }
 
 func (w *Worker) Run(ctx context.Context) {
@@ -87,6 +110,13 @@ func (w *Worker) Close() error {
 }
 
 func (w *Worker) Tick(ctx context.Context) error {
+	if w.Admit != nil {
+		release, ok := w.Admit()
+		if !ok {
+			return nil
+		}
+		defer release()
+	}
 	ctx = audit.WithRequest(audit.WithSystem(ctx, "worker"), value.UUID())
 	// An unreachable database would fail every step; report it once instead.
 	if err := w.Pool.Ping(ctx); err != nil {
@@ -96,6 +126,7 @@ func (w *Worker) Tick(ctx context.Context) error {
 	return runSteps(ctx, []step{
 		{"housekeeping schedule", w.scheduleHousekeeping},
 		{"reminders", w.deliver},
+		{"backup notices", w.BackupNotices},
 		{"low stock", w.lowStock},
 		{"outbox", w.outbox},
 		{"shopping notifications", w.shoppingNotifications},
@@ -162,9 +193,11 @@ func runSteps(ctx context.Context, steps []step) error {
 			return errors.Join(append(failures, err)...)
 		}
 		if err := guarded(ctx, st.run); err != nil {
+			metrics.Default.Inc("household_worker_step_failures_total")
 			failures = append(failures, fmt.Errorf("%s: %w", st.name, err))
 		}
 	}
+	metrics.Default.Inc("household_worker_ticks_total")
 	return errors.Join(failures...)
 }
 

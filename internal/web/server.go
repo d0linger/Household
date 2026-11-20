@@ -26,10 +26,12 @@ import (
 
 	"household/internal/audit"
 	"household/internal/auth"
+	"household/internal/buildinfo"
 	"household/internal/config"
 	"household/internal/database"
 	"household/internal/foodfacts"
 	"household/internal/i18n"
+	"household/internal/metrics"
 	"household/internal/module"
 	"household/internal/recipeimport"
 	"household/internal/store"
@@ -61,6 +63,9 @@ type Server struct {
 	templatesEN   *template.Template
 	assets        map[string]string
 	shutting      atomic.Bool
+	maintenance   maintenanceState
+	policy        policyCache
+	checks        optionalChecks
 	readiness     readinessCache
 	imageSlots    chan struct{}
 	recipeFetcher *recipeimport.Fetcher
@@ -90,6 +95,7 @@ type Page struct {
 	Page         int
 	Query        string
 	Extra        any
+	MFANotice    string
 	Related      []Related
 }
 type Related struct {
@@ -130,6 +136,7 @@ func New(ctx context.Context, pool *pgxpool.Pool, cfg config.Config, mods []modu
 		return nil, err
 	}
 	s := &Server{Cfg: cfg, Pool: pool, Auth: a, Store: records, Push: push, Log: log, assets: map[string]string{}, imageSlots: make(chan struct{}, 2), recipeFetcher: recipeimport.NewFetcher()}
+	s.configureOptionalChecks()
 	s.Store.FuelOCREnabled = cfg.OCREnabled
 	s.Store.FoodFacts = provider
 	if err = s.Store.LoadStates(ctx); err != nil {
@@ -167,7 +174,7 @@ func New(ctx context.Context, pool *pgxpool.Pool, cfg config.Config, mods []modu
 			return "/m/meters/workspace/overview"
 		}
 		return "/m/" + m.ID + "/" + m.Entities[0].ID
-	}, "dict": dict, "icon": func(asset map[string]string, name string) string { return asset["icons.svg"] + "#" + name }}).Funcs(localizedTemplateFuncs("de")).ParseFS(files, "templates/*.html")
+	}, "dict": dict, "list": func(values ...any) []any { return values }, "hasPrefix": strings.HasPrefix, "icon": func(asset map[string]string, name string) string { return asset["icons.svg"] + "#" + name }}).Funcs(localizedTemplateFuncs("de")).ParseFS(files, "templates/*.html")
 	if err != nil {
 		return nil, err
 	}
@@ -404,7 +411,10 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /attachments/{id}/preview", s.require(s.download))
 	mux.Handle("GET /capture/{id}", s.require(s.capturePage))
 	mux.Handle("POST /capture/{id}/confirm", s.require(s.confirmCapture))
-	return s.middleware(mux)
+	s.registerBackupRoutes(mux)
+	s.registerExportRoutes(mux)
+	mux.HandleFunc("GET /maintenance/status", s.maintenanceStatus)
+	return s.middleware(s.maintenanceGate(mux))
 }
 
 func (s *Server) Stop() { s.shutting.Store(true) }
@@ -462,20 +472,22 @@ func (s *Server) databaseReady(ctx context.Context) bool {
 
 func (s *Server) ready(w http.ResponseWriter, r *http.Request) {
 	// Shutdown can begin while the database inspection runs: check it again.
-	if s.shutting.Load() || !s.databaseReady(r.Context()) || s.shutting.Load() {
+	if s.shutting.Load() || s.maintenance.active.Load() || !s.databaseReady(r.Context()) || s.shutting.Load() {
 		writeJSON(w, 503, map[string]string{"status": "unavailable"})
 		return
 	}
-	writeJSON(w, 200, map[string]string{"status": "ready", "version": "0.1.0"})
+	// The public probe names only the release, never the source revision.
+	writeJSON(w, 200, map[string]string{"status": "ready", "version": buildinfo.Release()})
 }
 func (s *Server) metrics(w http.ResponseWriter, r *http.Request) {
 	if s.Cfg.MetricsToken == "" || !hmac.Equal([]byte(s.Cfg.MetricsToken), []byte(r.Header.Get("X-Metrics-Token"))) {
 		http.NotFound(w, r)
 		return
 	}
-	stats := s.Pool.Stat()
 	w.Header().Set("Content-Type", "text/plain; version=0.0.4")
-	s.writeBytes(w, r, []byte(fmt.Sprintf("household_db_acquired_connections %d\nhousehold_db_total_connections %d\n", stats.AcquiredConns(), stats.TotalConns())))
+	if err := metrics.Default.Write(w, s.metricGauges(r.Context())); err != nil {
+		s.Log.Debug("metrics response interrupted", "request_id", trace(r))
+	}
 }
 
 func (s *Server) middleware(next http.Handler) http.Handler {
@@ -511,11 +523,13 @@ func (s *Server) middleware(next http.Handler) http.Handler {
 				}
 				// The panic value may hold request data; log only its type and call path.
 				s.Log.Error("request panic", "request_id", requestID, "route", r.Pattern, "panic_type", fmt.Sprintf("%T", recovered), "call_path", callPath())
+				metrics.Default.Inc("household_http_panics_total")
 				if !recorder.wrote {
 					http.Error(recorder, i18n.Text(requestLocale(r), "Interner Fehler"), 500)
 				}
 			}
 			s.Log.Info("http request", "request_id", requestID, "method", r.Method, "route", r.Pattern, "status", recorder.status, "duration_ms", time.Since(started).Milliseconds())
+			metrics.Default.ObserveRequest(r.Method, r.Pattern, recorder.status, time.Since(started))
 		}()
 		if !strings.HasPrefix(r.URL.Path, "/health/") {
 			origin, _ := url.Parse(s.Cfg.Origin)
@@ -528,7 +542,9 @@ func (s *Server) middleware(next http.Handler) http.Handler {
 				return
 			}
 		}
-		if r.Method != "GET" && r.Method != "HEAD" {
+		// A share from another app arrives as a browser-made POST /share with no
+		// page origin; its fallback handler reads nothing and only redirects.
+		if r.Method != "GET" && r.Method != "HEAD" && r.URL.Path != "/share" {
 			if origin := r.Header.Get("Origin"); origin != "" && origin != s.Cfg.Origin {
 				http.Error(recorder, i18n.Text(requestLocale(r), "Ungültiger Ursprung"), http.StatusForbidden)
 				return
@@ -692,6 +708,9 @@ func (s *Server) require(next http.HandlerFunc) http.Handler {
 			}
 			return
 		}
+		if s.enforceSecurityPolicy(w, r, id) {
+			return
+		}
 		if r.Method != "GET" && r.Method != "HEAD" {
 			token := r.Header.Get("X-CSRF-Token")
 			if token == "" && !strings.Contains(r.Header.Get("Content-Type"), "application/json") {
@@ -704,6 +723,7 @@ func (s *Server) require(next http.HandlerFunc) http.Handler {
 				token = r.FormValue("csrf")
 			}
 			if !s.Auth.ValidCSRF(cookie.Value, "session", token) {
+				metrics.Default.Inc("household_csrf_rejections_total")
 				s.fail(w, r, store.ErrForbidden)
 				return
 			}
@@ -726,6 +746,9 @@ func (s *Server) page(r *http.Request, title string) Page {
 }
 func (s *Server) render(w http.ResponseWriter, r *http.Request, p Page) {
 	p.Workspace = workspaceNavigation(r, p)
+	if p.User.UserID != "" && !p.OfflineShell {
+		p.MFANotice = s.mfaNotice(r, p.User)
+	}
 	p.Locale, p.LanguageTag = requestLocale(r), i18n.LanguageTag(requestLocale(r))
 	p.Title, p.Error, p.Success = i18n.Text(p.Locale, p.Title), s.localizedError(p.Locale, p.Error), i18n.Message(p.Locale, p.Success)
 	p.Modules, p.Module, p.Entity = localizedModules(p.Locale, p.Modules), localizedModule(p.Locale, p.Module), localizedEntity(p.Locale, p.Entity)
