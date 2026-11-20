@@ -8,7 +8,7 @@ Mode: Operate. Extend the established Household interface and the approved modul
 
 THESIS: Make a household measurement understandable before asking for another one. Reading quality, physical device and time interval stay beside the value. Rows, labelled forms and explicit decisions carry the workflow.
 
-OWN-WORLD: Inherit DESIGN.md, the semantic accent, system sans, 44px controls and existing desktop sidebar/mobile bottom navigation. The reviewed current Chores desktop/light and mobile/dark captures establish the incumbent visual truth. Keep data in readable rows; use no metric-card wall or decorative chart.
+OWN-WORLD: Inherit DESIGN.md, the green accent, system sans, 44px controls and existing desktop sidebar/mobile bottom navigation. The reviewed current Chores desktop/light and mobile/dark captures establish the incumbent visual truth. Keep data in readable rows; use no metric-card wall or decorative chart.
 
 STORY: Find a register, understand its last measurement and whether an actual interval is known, then record a new reading. Costs explain missing coverage and estimates. Configuration remains secondary to everyday capture.
 

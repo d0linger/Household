@@ -13,7 +13,7 @@ Mode: Operate. EX02 extends the existing Expenses module under the approved all-
 
 THESIS: edit one shared household entry and its category lines together, with a visible exact remainder and an explicit final posting decision.
 
-OWN-WORLD: preserve Household's existing Warm Midnight/Pink palette, local system typography, labelled native controls, restrained panels and 44px actions. Keep the module navigation and light/dark/system modes. No new fonts, libraries or illustrations.
+OWN-WORLD: preserve Household's existing sage/forest palette, local system typography, labelled native controls, restrained panels and 44px actions. Keep the module navigation and light/dark/system modes. No new fonts, libraries or illustrations.
 
 STORY: open or create a draft; enter exact EUR and a known or explicitly unknown payer; add, reorder or explicitly remove category lines; see the live remainder; save an incomplete draft or review an exactly allocated posting. Posted records stay readable and immutable. Household sharing remains explicit; selected visibility is unavailable.
 

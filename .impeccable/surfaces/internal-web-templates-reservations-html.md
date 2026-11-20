@@ -13,7 +13,7 @@ Mode: Operate. Extend Household's planning and Pantry review workflow. Members i
 
 THESIS: make a meal's soft stock claims understandable before saving; physical stock, free stock and undercoverage remain distinct.
 
-OWN-WORLD: inherit the existing semantic actions, quiet bordered workspace, local sans-serif, tabular amounts and labelled native controls. No new visual system or shipping raster asset.
+OWN-WORLD: inherit the existing green actions, quiet bordered workspace, local sans-serif, tabular amounts and labelled native controls. No new visual system or shipping raster asset.
 
 STORY: identify the meal and expiry, choose a named lot, compare physical/own/other/free amounts, add an exact quantity, review every line and explicitly save or release.
 

@@ -26,7 +26,7 @@ Keep configuration in the existing Pantry product and add a new migration withou
 
 THESIS: explain one product's physical shortage and whole-pack purchase before confirmation. This extends the Pantry product/stock workflow; it is not a dashboard redesign.
 
-OWN-WORLD: preserve DESIGN.md, existing local sans-serif, semantic actions, quiet panel borders, rows, native labelled controls and light/dark tokens. No new shipping raster assets.
+OWN-WORLD: preserve DESIGN.md, existing local sans-serif, green actions, quiet panel borders, rows, native labelled controls and light/dark tokens. No new shipping raster assets.
 
 STORY: read current stock and the minimum trigger, understand the effective target, choose an optional pack, inspect exact quantity/surplus, then explicitly select a Shopping list and confirm.
 
