@@ -46,6 +46,39 @@ func TestTodayPersonalAuthorityAndReadOnlyHome(t *testing.T) {
 	if _, err = f.app.Store.SaveChoreSeries(f.ctx, f.identity, value.UUID(), value.UUID(), series); err != nil {
 		t.Fatal(err)
 	}
+	// The owner captures two historical completions with opposite due and completion days.
+	templateID, completedToday, completedEarlier := value.UUID(), value.UUID(), value.UUID()
+	tx, err := f.owner.Begin(f.ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = tx.Rollback(f.ctx) }()
+	if _, err = tx.Exec(f.ctx, `INSERT INTO chores.task_templates(id,household_id,title,created_by)
+ VALUES($1,$2,'Completion dates',$3)`, templateID, f.identity.HouseholdID, f.identity.UserID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = tx.Exec(f.ctx, `INSERT INTO chores.task_occurrences(id,household_id,template_id,occurrence_key,due_at,completed_at,state,assignee_id,created_by)
+ SELECT dates.id,h.id,$2,dates.id::text,(dates.due+time '12:00') AT TIME ZONE h.timezone,
+ (dates.done+time '12:00') AT TIME ZONE h.timezone,'completed',$3,$4
+ FROM core.households h CROSS JOIN (VALUES ($5::uuid,$7::date-1,$7::date),($6::uuid,$7::date,$7::date-1)) AS dates(id,due,done)
+ WHERE h.id=$1`, f.identity.HouseholdID, templateID, f.identity.MembershipID, f.identity.UserID, completedToday, completedEarlier, day); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = tx.Exec(f.ctx, `INSERT INTO chores.completions(household_id,occurrence_id,template_id,template_version_id,completed_at,snapshot,legacy_capture,created_by)
+ SELECT o.household_id,o.id,o.template_id,d.template_version_id,o.completed_at,'{}',true,o.created_by
+ FROM chores.task_occurrences o JOIN chores.occurrence_details d ON d.occurrence_id=o.id WHERE o.template_id=$1`, templateID); err != nil {
+		t.Fatal(err)
+	}
+	if err = tx.Commit(f.ctx); err != nil {
+		t.Fatal(err)
+	}
+	due, err := f.app.Store.ChoreTasks(f.ctx, f.identity, store.ChoreQuery{State: "completed", From: day, Through: day})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if items := todayTasks(due, "en").Items; len(items) != 1 || items[0].ID != completedEarlier {
+		t.Fatal("the task workspace must retain its due-date filter", items)
+	}
 	for _, row := range []struct{ user, module, title, key string }{
 		{f.identity.UserID, "", "Personal today notice", "today-admin"},
 		{reader.UserID, "", "Other account notice", "today-reader"},
@@ -87,6 +120,12 @@ func TestTodayPersonalAuthorityAndReadOnlyHome(t *testing.T) {
 		}
 		if tc.token == readerToken && len(data.Tasks.Items) != 0 {
 			t.Fatal("another member task in mine", data.Tasks)
+		}
+		if tc.token == f.token && (len(data.Completed.Items) != 1 || data.Completed.Items[0].ID != completedToday || !data.Completed.Items[0].Read) {
+			t.Fatal("Today must select the actual completion day", data.Completed)
+		}
+		if tc.token == readerToken && len(data.Completed.Items) != 0 {
+			t.Fatal("another member's completion in Today", data.Completed)
 		}
 		for module, section := range map[string]todaySection{"shopping": data.Shopping, "expenses": data.Finances} {
 			_, enabled := f.app.Store.State(module)

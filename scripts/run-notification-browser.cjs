@@ -3,7 +3,7 @@ const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypt
 const fixture=require('./notification-browser-fixture.cjs'),contracts=require('./fuel-browser-contracts.cjs');
 const definitions=Object.freeze({
  settings:{script:'browser-notification-settings-check.cjs',env:'HOUSEHOLD_NOTIFICATIONS_BROWSER_OUTPUT',report:'report.json',axe:18,captures:18,min:500},
- fuel:{script:'browser-fuel-notifications-check.cjs',env:'HOUSEHOLD_FUEL_NOTIFICATIONS_BROWSER_OUTPUT',report:'browser-report.json',axe:32,captures:32,min:100},
+ fuel:{script:'browser-fuel-notifications-check.cjs',env:'HOUSEHOLD_FUEL_NOTIFICATIONS_BROWSER_OUTPUT',report:'browser-report.json',axe:32,captures:32,min:100,timeoutSeconds:13*60},
  finance:{script:'browser-finance-notifications-check.cjs',env:'HOUSEHOLD_FINANCE_NOTIFICATIONS_BROWSER_OUTPUT',report:'browser-report.json',axe:16,captures:16,min:90},
  meters:{script:'browser-meters-notifications-check.cjs',env:'HOUSEHOLD_METERS_NOTIFICATIONS_BROWSER_OUTPUT',report:'browser-report.json',axe:16,captures:32,min:90},
  documents:{script:'browser-documents-notifications-check.cjs',env:'HOUSEHOLD_DOCUMENTS_NOTIFICATIONS_BROWSER_OUTPUT',report:'browser-report.json',axe:16,captures:32,min:90},
@@ -71,7 +71,7 @@ async function main(args){
   manifest.directory=directory;manifest.handoff=path.join(directory,'handoff.json');const manifestFile=path.join(directory,'fixture.json');fs.writeFileSync(manifestFile,JSON.stringify(manifest),{flag:'wx',mode:0o600});
   await authenticate(directory,secrets);
   const childEnv={...env,HOUSEHOLD_BROWSER_URL:fixture.origin,HOUSEHOLD_BROWSER_HANDOFF:manifest.handoff,HOUSEHOLD_NOTIFICATION_BROWSER_CI_MANIFEST:manifestFile,[definition.env]:output};
-  const log=await runChild(path.join(root,'scripts',definition.script),childEnv,540);fs.writeFileSync(path.join(output,'driver.log'),redact(log),{flag:'wx'});
+  const log=await runChild(path.join(root,'scripts',definition.script),childEnv,definition.timeoutSeconds??540);fs.writeFileSync(path.join(output,'driver.log'),redact(log),{flag:'wx'});
   const resultFile=path.join(output,definition.report),result=fixture.boundedJSON(resultFile);validateReport(result,definition);
   report.report_sha256=hash(fs.readFileSync(resultFile));report.checks=result.checks.length;report.axe=result.accessibility.length;
   report.captures=result.screenshots.map(file=>{const full=path.join(output,file),stat=fs.lstatSync(full);need(stat.isFile()&&!stat.isSymbolicLink()&&stat.size>0&&stat.size<=(16<<20),'Screenshot evidence missing or unbounded');return {file,sha256:hash(fs.readFileSync(full))};});

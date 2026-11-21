@@ -90,7 +90,7 @@ func (s *Server) todayAPI(w http.ResponseWriter, r *http.Request) {
 		out.Completed.State = "error"
 		if out.Day != "" {
 			sectionCtx, stop := context.WithTimeout(ctx, 2*time.Second)
-			completed, readErr := s.Store.ChoreTasks(sectionCtx, id, store.ChoreQuery{Scope: "mine", State: "completed", From: out.Day, Through: out.Day, Limit: 6})
+			completed, readErr := s.Store.TodayCompletedTasks(sectionCtx, id, out.Day)
 			stop()
 			if readErr == nil {
 				out.Completed = todayTasks(completed, locale)
