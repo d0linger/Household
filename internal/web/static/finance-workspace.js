@@ -187,7 +187,7 @@ const _householdText_finance_workspace_js = (source, ...args) => { const i18n = 
    recent.append(node('h2',_householdText_finance_workspace_js("Letzte Ausgaben")));
    if(!S.view.recent_entries.length)recent.append(node('p',_householdText_finance_workspace_js("Keine Ausgaben in dieser Auswahl."),'fine'));
    for(const row of S.view.recent_entries){
-    const line=node('div',undefined,'finance-recent-row'),detail=node('div');detail.append(node('strong',row.description),node('small',row.day+' · '+(row.state==='draft'?_householdText_finance_workspace_js("Entwurf"):_householdText_finance_workspace_js("Gebucht"))));line.append(detail,node('strong',V.money(row.amount_minor,'EUR',2)));recent.append(line);
+    const line=node('div',undefined,'finance-recent-row'),detail=node('div');detail.append(node('strong',row.description),node('small',display(row.day,'occurred_on')+' · '+(row.state==='draft'?_householdText_finance_workspace_js("Entwurf"):_householdText_finance_workspace_js("Gebucht"))));line.append(detail,node('strong',V.money(row.amount_minor,'EUR',2)));recent.append(line);
    }
    recent.hidden=false;
   }

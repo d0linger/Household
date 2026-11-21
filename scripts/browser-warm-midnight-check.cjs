@@ -31,6 +31,29 @@ async function visit(page, route) {
   must(response.status()===200 && new URL(page.url()).pathname===route.split('?')[0], 'Authorized route '+route);
   await page.waitForFunction(()=>!document.querySelector('main [aria-busy=true]'),{},{timeout:15000});
 }
+async function checkRecipeRefresh(page, id, locale) {
+  const endpoint = origin + '/api/v1/recipes/' + id + '/workspace';
+  let release;
+  const gate = new Promise(resolve => {release = resolve;});
+  const laterRevision = async route => {
+    const response = await route.fetch();
+    const bundle = await response.json();
+    Object.assign(bundle.recipe, {base_servings: '4.500000', prep_minutes: 0, cook_minutes: 27, summary: 'Updated recipe summary'});
+    await gate;
+    await route.fulfill({response, json:bundle});
+  };
+  await page.route(endpoint, laterRevision);
+  try {
+    await page.goto(origin+'/m/recipes/recipes/'+id+'/workspace', {waitUntil:'domcontentloaded'});
+    const facts = page.locator('.recipe-facts li');
+    must(await facts.count() > 0 && await page.locator('#recipe-reading').isHidden(), 'Server recipe facts available before API response '+locale);
+    release();
+    await page.locator('#recipe-reading').waitFor();
+    const expected = locale === 'de' ? ['4,5 Portionen','Kochzeit · 27 Minuten'] : ['4.5 Servings','Cooking time · 27 minutes'];
+    must(JSON.stringify(await facts.allTextContents()) === JSON.stringify(expected), 'Current fractional servings, cooking time and absent prep time '+locale);
+    must(await page.locator('.recipe-deck').textContent() === 'Updated recipe summary', 'Recipe summary and reading view share the same revision '+locale);
+  } finally {release(); await page.unroute(endpoint, laterRevision);}
+}
 async function reflow(page, label) {
   const state=await page.evaluate(()=>({overflow:document.documentElement.scrollWidth>innerWidth+1,right:document.querySelector('main').getBoundingClientRect().right,width:innerWidth}));
   must(!state.overflow && state.right<=state.width+1,'Contained page '+label);
@@ -54,6 +77,7 @@ async function reflow(page, label) {
   report.routes=routes;
   for(const locale of ['de','en']){
     await setBrowserLocale(page,locale);
+    await check('Recipe revision '+locale,()=>checkRecipeRefresh(page,records.recipes.records[0].id,locale));
     for(const item of routes) await check(locale+' '+item.name,async()=>{
       await visit(page,item.route);
       must(await page.locator('html').getAttribute('data-locale')===locale,'Actual locale '+locale+' '+item.name);

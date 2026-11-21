@@ -1,6 +1,7 @@
 'use strict';
 const fs=require('node:fs/promises'),path=require('node:path'),crypto=require('node:crypto');
 const {chromium}=require('playwright'),AxeBuilder=require('@axe-core/playwright').default;
+const {setBrowserLocale}=require('./browser-locale-helper.cjs');
 const origin=new URL(process.env.HOUSEHOLD_BROWSER_URL||'http://127.0.0.1:8101'),base=origin.origin+'/';
 if(!['localhost','127.0.0.1'].includes(origin.hostname)||origin.port!=='8101'||origin.pathname!=='/'||origin.search||origin.hash)throw Error('Finance browser requires the isolated Household review server8101');
 const workspace=path.resolve(__dirname,'..'),output=path.resolve(workspace,process.env.HOUSEHOLD_FINANCE_BROWSER_OUTPUT||'outputs/finance-workspace-review');
@@ -87,6 +88,18 @@ function mark(name){process.stdout.write(JSON.stringify({finance_step:name,elaps
   async function get(query){return page.evaluate(async({api,query})=>{const response=await fetch(api+'/view?'+new URLSearchParams(query),{cache:'no-store'});if(!response.ok)throw Error('Authorized verification read failed: HTTP '+response.status);return response.json();},{api,query});}
   const posted=await get({pane:'entries',id:entry.resource_id});must(posted.detail.record.state==='posted'&&posted.detail.record.money.minor==='1000','Posted detail returns actual exact original money and immutable state');
   const adjustmentAccountBefore=await get({pane:'accounts',id:first.resource_id}),adjustmentConsumptionBefore=await get({pane:'overview',month:'2026-10'});await pane('accounts');await action('Manuelle Kontokorrektur prüfen');await choose('account_id',first.resource_id,fixture.prefix+' Account A');await field('occurred_on').fill('2026-10-13');await field('description').fill(fixture.prefix+' reviewed manual cash repair');await field('native_minor').fill('5,00');await reviewApply(genericPreview);const adjustmentAccountAfter=await get({pane:'accounts',id:first.resource_id}),adjustmentConsumptionAfter=await get({pane:'overview',month:'2026-10'});must(BigInt(adjustmentAccountAfter.detail.record.visible_balance_minor)===BigInt(adjustmentAccountBefore.detail.record.visible_balance_minor)+500n&&adjustmentConsumptionAfter.totals.posted_consumption_minor===adjustmentConsumptionBefore.totals.posted_consumption_minor,'EX06 explicit signed manual account correction changes visible cash exactly and never invents category consumption');
+  await page.goto(base+'m/expenses/workspace/overview?account='+first.resource_id);
+  for(const locale of ['en','de']){
+   await setBrowserLocale(page,locale);
+   await page.waitForFunction(()=>document.querySelector('#finance-workspace').getAttribute('aria-busy')==='false');
+   const filters=page.locator('#finance-filters');
+   await filters.locator('[name=month]').fill('2026-10');
+   await filters.locator('button[type=submit]').click();
+   const date=page.locator('.finance-recent-row').filter({hasText:fixture.prefix+' shared complete entry'}).locator('small');
+   await date.waitFor();
+   const expected=new Intl.DateTimeFormat(locale==='de'?'de-AT':'en-GB',{dateStyle:'medium',timeZone:'UTC'}).format(new Date('2026-10-10T00:00:00Z'));
+   must((await date.innerText()).split(' · ')[0]===expected,'Recent expense preserves its civil date in '+locale);
+  }
   await pane('overview');const overview=await get({pane:'overview',month:'2026-10'});must(typeof overview.totals.posted_consumption_minor==='string'&&typeof overview.totals.draft_known_minor==='string','EX01 posted consumption and drafts are separate complete server aggregates');
   await page.locator('#finance-extra-filters > summary').click();
   await page.getByRole('button',{name:'Ansicht persönlich speichern',exact:true}).click();await field('name').fill(fixture.prefix+' own view');await reviewApply(genericPreview);must(true,'EX04 personal saved criteria use real preview/apply rather than local storage');
