@@ -5,6 +5,7 @@ package web
 import (
 	"encoding/json"
 	"net/http"
+	"path"
 	"regexp"
 	"strings"
 	"testing"
@@ -114,26 +115,33 @@ func TestPantryExtensionsServiceWorkerCachesOnlyNeutralScanShell(t *testing.T) {
 		{"/offline/shopping", "data-shopping-offline"},
 		{"/offline/recipes", `<section id="recipe-offline"`},
 	}
-	expected := make(map[string]bool, 8)
+	expected := make(map[string]bool)
 	for _, shell := range shells {
 		for _, locale := range []string{"de", "en"} {
 			expected[shell.path+"?lang="+locale] = false
 		}
 	}
+	for _, name := range []string{"copper-branch.webp", "market-bag.webp"} {
+		url, ok := f.app.assets[name]
+		if !ok {
+			t.Fatalf("bundled artwork missing: %s", name)
+		}
+		expected[url] = false
+	}
 	assetPath := regexp.MustCompile(`^/assets/[a-f0-9]{12}/[a-z0-9][a-z0-9.-]*\.(js|css|svg|png)$`)
-	for _, path := range paths {
-		if seen, exists := expected[path]; exists {
+	for _, url := range paths {
+		if seen, exists := expected[url]; exists {
 			if seen {
-				t.Fatal("duplicate locale-qualified public shell", path)
+				t.Fatal("duplicate public cache entry", url)
 			}
-			expected[path] = true
-		} else if !assetPath.MatchString(path) {
-			t.Fatal("private data entered public asset cache", path)
+			expected[url] = true
+		} else if !assetPath.MatchString(url) || url != f.app.assets[path.Base(url)] {
+			t.Fatal("private or unversioned content entered public asset cache", url)
 		}
 	}
-	for path, seen := range expected {
+	for url, seen := range expected {
 		if !seen {
-			t.Fatal("offline restart lacks an exact locale-qualified neutral document", path)
+			t.Fatal("public cache inventory lacks a neutral document or bundled artwork", url)
 		}
 	}
 	for _, caller := range []struct {
