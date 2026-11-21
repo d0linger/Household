@@ -13,6 +13,17 @@ const report = {passed:false, checks:[], accessibility:[], screenshots:[], error
   zoomScope:'200% desktop reflow equivalent: 720×450 CSS viewport at DPR 2 (1440×900 physical pixels); OS/browser-menu zoom is not automated.'};
 let browser;
 function must(value, label) {if (!value) throw Error(label); report.checks.push(label);}
+async function observedPage(context){
+  await context.route('**/*',route=>{
+    const url=new URL(route.request().url());
+    if(url.origin===origin)return route.continue();
+    report.errors.push('External request '+url.origin);
+    return route.abort();
+  });
+  const page=await context.newPage();
+  page.on('pageerror',error=>report.errors.push(error.message));
+  return page;
+}
 async function capture(page, name) {await page.screenshot({path:path.join(output,name+'.png'),animations:'disabled'});report.screenshots.push(name+'.png');}
 async function check(label, fn) {try {await fn();} catch(error) {report.failures.push({label,message:error.message});}}
 async function visit(page, route) {
@@ -29,8 +40,7 @@ async function reflow(page, label) {
   const secrets=[],state=fixtureState(root,secrets,{pinned:false});
   browser=await chromium.launch({headless:true,...(process.platform==='win32'?{channel:'msedge'}:{})});
   const context=await browser.newContext({storageState:state,viewport:{width:1440,height:900},serviceWorkers:'block',reducedMotion:'reduce'});
-  await context.route('**/*',route=>{const url=new URL(route.request().url());if(url.origin!==origin){report.errors.push('External request '+url.origin);return route.abort();}return route.continue();});
-  const page=await context.newPage();page.on('pageerror',error=>report.errors.push(error.message));
+  const page=await observedPage(context);
   await visit(page,'/');const initialLocale=await page.locator('html').getAttribute('data-locale');await setBrowserLocale(page,'de');
   const modules=await page.locator('.sidebar a[data-module-id]').evaluateAll(links=>links.map(link=>({name:link.dataset.moduleId,route:link.getAttribute('href')})));
   must(modules.length===9,'All nine fixture modules available');
@@ -84,7 +94,7 @@ async function reflow(page, label) {
     await page.keyboard.press('Escape');await reflow(page,'forced colors');await capture(page,'forced-colors');
   });
   const zoom=await browser.newContext({storageState:await context.storageState(),viewport:{width:720,height:450},deviceScaleFactor:2,serviceWorkers:'block',reducedMotion:'reduce'});
-  const zoomPage=await zoom.newPage();
+  const zoomPage=await observedPage(zoom);
   for(const item of routes)await check('200% reflow '+item.name,async()=>{await visit(zoomPage,item.route);await reflow(zoomPage,'200% '+item.name);});
   await capture(zoomPage,'zoom-reflow-200');await zoom.close();await setBrowserLocale(page,initialLocale);await context.close();
   must(!report.errors.length,'No page errors or external requests');report.passed=!report.failures.length;

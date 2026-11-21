@@ -98,6 +98,7 @@ const must=(value,name)=>{if(!value)throw Error(name);report.checks.push(name);}
   await page.goto(base+'/m/shopping/lists/'+big.id);await page.locator('#shopping-more').click();await page.waitForFunction(()=>document.querySelectorAll('[data-shopping-item]').length===1);
   let releaseCheck,checkArrived;const checkGate=new Promise(resolve=>releaseCheck=resolve),checkHeld=new Promise(resolve=>checkArrived=resolve);
   const delayedCheck=async route=>{checkArrived();await checkGate;await route.continue();};await page.route('**/api/v1/m/shopping/items/*/actions/check',delayedCheck);
+  if(!await page.locator('#shopping-filter').isVisible())await page.locator('#shopping-filter-panel>summary').click();
   await page.locator('[data-shopping-check]').click();await checkHeld;await page.locator('#shopping-filter').fill('Prüfartikel 100');await page.waitForTimeout(350);releaseCheck();
   await page.getByRole('link',{name:'Prüfartikel 100',exact:true}).waitFor();must(await page.locator('[data-shopping-item]').count()===1,'Filter changed during slow POST resets the previous page cursor');await page.unroute('**/api/v1/m/shopping/items/*/actions/check',delayedCheck);
   must(report.errors.length===0,'No JavaScript exceptions');must(report.externalRequests.length===0,'No external frontend requests');report.passed=true;

@@ -83,13 +83,13 @@ func financeOverview(ctx context.Context, tx pgx.Tx, id auth.Identity, scope fin
 	if err != nil {
 		return nil, err
 	}
-	var posted, draft string
+	var posted, draft, from, to string
 	var unknown int64
 	err = tx.QueryRow(ctx, `SELECT
  coalesce(sum(`+financeConsumptionExpression()+`) FILTER(WHERE t.state='posted'),0)::text,
  coalesce(sum(`+financeConsumptionExpression()+`) FILTER(WHERE t.state='draft' AND t.amount_minor IS NOT NULL),0)::text,
- count(*) FILTER(WHERE t.state='draft' AND t.amount_minor IS NULL)
- FROM expenses.entries t WHERE `+where, args...).Scan(&posted, &draft, &unknown)
+ count(*) FILTER(WHERE t.state='draft' AND t.amount_minor IS NULL),$2::date::text,$3::date::text
+ FROM expenses.entries t WHERE `+where, args...).Scan(&posted, &draft, &unknown, &from, &to)
 	if err != nil {
 		return nil, err
 	}
@@ -126,6 +126,7 @@ func financeOverview(ctx context.Context, tx pgx.Tx, id auth.Identity, scope fin
 			return nil, err
 		}
 		result["recent_entries"] = recent
+		result["from"], result["to"] = from, to
 	}
 	return result, nil
 }

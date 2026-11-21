@@ -78,6 +78,7 @@ const _householdText_today_js=(source,...args)=>{
     }
     const shop=$('today-shop-link');
     if(shop&&data.shopping?.state==='ready'&&data.shopping.title&&data.shopping.url){shop.href=safeURL(data.shopping.url);shop.textContent=data.shopping.title+' →';}
+    return done.state!=='error';
   }
   async function load(){
     if(active)active.abort();const controller=new AbortController();active=controller;const request=++sequence;
@@ -90,7 +91,8 @@ const _householdText_today_js=(source,...args)=>{
       const data=await response.json();if(request!==sequence)return;
       const label=dayLabel(data.day,document.documentElement.lang||'de');$('today-date').textContent=label?label+' · '+String(data.timezone||''):tr('Der Haushaltstag ist gerade nicht verfügbar.');
       let complete=Boolean(label);for(const name of Object.keys(descriptions))if(!renderSection(name,data[name]))complete=false;
-      renderProgress(data);status.classList.toggle('sr-only',complete);
+      if(!renderProgress(data))complete=false;
+      status.classList.toggle('sr-only',complete);
       status.textContent=complete?tr('Aktueller Stand geladen.'):tr('Ein Teil der Übersicht ist nicht verfügbar. Die übrigen Bereiche sind aktuell.');
     }catch{if(request!==sequence)return;clearSections(tr('Keine aktuellen Daten geladen.'));$('today-date').textContent=tr('Der Haushaltstag ist gerade nicht verfügbar.');error.hidden=false;status.textContent=tr('Die Übersicht konnte nicht aktualisiert werden.');}
     finally{clearTimeout(timer);if(request===sequence){refresh.disabled=false;active=null;}}

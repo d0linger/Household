@@ -139,7 +139,7 @@ const _householdText_finance_workspace_js = (source, ...args) => { const i18n = 
   }
  }
  function updateAccountLinks(account){
-  for(const link of root.querySelectorAll('.workspace-navigation a[data-finance-pane]')){
+  for(const link of root.querySelectorAll('.workspace-navigation a[data-finance-pane],.finance-destinations a')){
    link.dataset.financeBaseHref ||= link.getAttribute('href');
    link.setAttribute('href',accountNavigationHref(link.dataset.financeBaseHref,account));
   }
@@ -195,8 +195,11 @@ const _householdText_finance_workspace_js = (source, ...args) => { const i18n = 
   if(S.pane==='overview'&&typeof value.posted_consumption_minor==='string'){
    const hero=node('div',undefined,'finance-month-hero');
    const ring=node('div',undefined,'finance-month-amount');ring.append(node('strong',V.money(value.posted_consumption_minor,'EUR',2)),node('span',_householdText_finance_workspace_js("Gebuchte Ausgaben")));
-   const stats=node('div',undefined,'finance-month-stats');stats.append(node('h2',_householdText_finance_workspace_js("Monatsübersicht")));
-   const month=node('span',S.view.month,'fine');stats.append(month);
+   const stats=node('div',undefined,'finance-month-stats');
+   const customPeriod=Boolean(S.query.from||S.query.to);
+   stats.append(node('h2',customPeriod?_householdText_finance_workspace_js("Zeitraum"):_householdText_finance_workspace_js("Monatsübersicht")));
+   const period=customPeriod?display(S.view.from,'occurred_on')+' – '+display(S.view.to,'occurred_on'):S.view.month;
+   stats.append(node('span',period,'fine'));
    const amounts=[[_householdText_finance_workspace_js("Gebuchte Ausgaben"),value.posted_consumption_minor],[_householdText_finance_workspace_js("Entwürfe mit Betrag"),value.draft_known_minor]];
    const max=amounts.reduce((a,[,n])=>{const v=V.integer(n,{bounded:false});return v>a?v:a;},0n);
    for(const [label,amount] of amounts){const row=node('div',undefined,'finance-month-row');row.append(node('span',label),node('strong',V.money(amount,'EUR',2)));

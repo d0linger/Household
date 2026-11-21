@@ -45,10 +45,17 @@ module.exports = async function assertPublicCache(page) {
           requireValue(shell.documentElement.lang === (locale === 'en' ? 'en-GB' : 'de-AT') && shell.documentElement.dataset.locale === locale, 'shell language matches its cache key');
           continue;
         }
-        requireValue(!url.search && /^\/assets\/[a-f0-9]{12}\/[a-z0-9][a-z0-9.-]*\.(?:js|css|svg|png)$/.test(url.pathname), 'only hashed asset URLs without query');
+        const artwork = /^\/assets\/([a-f0-9]{12})\/(?:copper-branch|market-bag)\.webp$/.exec(url.pathname);
+        const publicAsset = /^\/assets\/[a-f0-9]{12}\/[a-z0-9][a-z0-9.-]*\.(?:js|css|svg|png)$/.test(url.pathname);
+        requireValue(!url.search && (publicAsset || artwork), 'only hashed asset URLs without query');
         requireValue(response.headers.get('cache-control') === 'public,max-age=31536000,immutable', 'immutable public asset response');
-        const expectedType = {js: 'text/javascript', css: 'text/css', svg: 'image/svg+xml', png: 'image/png'}[url.pathname.split('.').at(-1)];
+        const expectedType = {js: 'text/javascript', css: 'text/css', svg: 'image/svg+xml', png: 'image/png', webp: 'image/webp'}[url.pathname.split('.').at(-1)];
         requireValue(contentType.split(';')[0] === expectedType, 'asset MIME type excludes private HTML and JSON responses');
+        if (artwork) {
+          const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', await response.arrayBuffer()));
+          const fingerprint = Array.from(digest.slice(0, 6), byte => byte.toString(16).padStart(2, '0')).join('');
+          requireValue(fingerprint === artwork[1], 'cached Household artwork matches its content hash');
+        }
         assetPaths.push(url.pathname);
       }
     }

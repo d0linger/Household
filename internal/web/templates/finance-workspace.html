@@ -15,9 +15,9 @@
  <section id="finance-summary" class="panel finance-summary" aria-label="{{t "Vollständige autorisierte Auswertung"}}"></section>
  <section id="finance-chart" class="panel" aria-label="{{t "Auswertung als Diagramm"}}" aria-describedby="finance-chart-scroll-help" tabindex="0" hidden></section>
  {{if eq (index .Extra "pane") "overview"}}<nav class="finance-destinations" aria-label="{{t "Finanzbereiche"}}">
-  <a href="/m/expenses/workspace/accounts"><svg aria-hidden="true"><use href="{{icon .Asset "wallet"}}"/></svg>{{t "Konten"}} →</a>
-  <a href="/m/expenses/workspace/entries"><svg aria-hidden="true"><use href="{{icon .Asset "list"}}"/></svg>{{t "Buchungen"}} →</a>
-  <a href="/m/expenses/workspace/planning"><svg aria-hidden="true"><use href="{{icon .Asset "gauge"}}"/></svg>{{t "Budgets"}} →</a>
+  <a href="/m/expenses/workspace/accounts" data-finance-context-link><svg aria-hidden="true"><use href="{{icon .Asset "wallet"}}"/></svg>{{t "Konten"}} →</a>
+  <a href="/m/expenses/workspace/entries" data-finance-context-link><svg aria-hidden="true"><use href="{{icon .Asset "list"}}"/></svg>{{t "Buchungen"}} →</a>
+  <a href="/m/expenses/workspace/planning" data-finance-context-link><svg aria-hidden="true"><use href="{{icon .Asset "gauge"}}"/></svg>{{t "Budgets"}} →</a>
  </nav>{{end}}
  <section id="finance-recent" class="finance-recent" hidden></section>
  {{if eq (index .Extra "pane") "overview"}}{{template "workspace-nav" .}}{{end}}

@@ -3,9 +3,13 @@ import {dialogs} from './dialog-fixtures.js';
 import {escapeHTML as e,defaultValues,dialogMarkup,bindDialog} from './dialog-components.js';
 const $=selector=>document.querySelector(selector);
 const quickCompare=$('#compare-quick');
-new IntersectionObserver(([entry])=>{
-  quickCompare.classList.toggle('past-tray',entry.boundingClientRect.bottom<=0);
-}).observe($('.comparison-tray'));
+const comparisonTray=$('.comparison-tray');
+function updateComparePosition(){
+  quickCompare.classList.toggle('past-tray',comparisonTray.getBoundingClientRect().bottom<=0);
+}
+new IntersectionObserver(updateComparePosition).observe(comparisonTray);
+window.addEventListener('scroll',updateComparePosition,{passive:true});
+window.addEventListener('resize',updateComparePosition);
 const designs=new Map(designDirections.map(d=>[d.id,d]));
 const fixtures=new Map(dialogs.map(d=>[d.id,d]));
 const storageKey='household.design-directions.v2';
