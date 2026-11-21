@@ -246,4 +246,17 @@ test('standalone server exposes only the read-only laboratory on loopback', asyn
   await t.test('guideline download is the requested public design document',async()=>{
     const r=await request(server,'/design-guideline.md');assert.equal(r.status,200);assert.ok(r.headers['content-type'].startsWith('text/markdown'));assert.equal(r.body.toString(),fs.readFileSync(path.join(root,'docs/design-preview-guideline.md'),'utf8'));
   });
+  await t.test('guideline renders English navigation and working local source links',async()=>{
+    const html=(await request(server,'/design-preview/guideline.html')).body.toString();
+    assert.match(html,/<html lang="en"/);
+    assert.match(html,/<a href="\.\/" hreflang="de">Back to the design gallery \(German\)<\/a>/);
+    assert.doesNotMatch(html,/\[[^\]]+\]\([^)]+\)|Designregeln als Tabelle/);
+    for(const file of ['designDirections.ts','dialog-fixtures.js']){
+      assert.ok(html.includes(`<a href="./${file}">${file}</a>`));
+      const response=await request(server,'/design-preview/'+file);
+      assert.equal(response.status,200);
+      assert.equal(response.body.toString(),read(file));
+    }
+    assert.ok(html.includes('<code>PRODUCT.md</code>')&&html.includes('<code>DESIGN.md</code>'));
+  });
 });

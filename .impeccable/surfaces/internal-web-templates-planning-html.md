@@ -11,7 +11,7 @@ Mode: Operate. Extend the approved weekly planning editor for MP06. Preserve PRO
 
 THESIS: make the people behind a meal's portions visible while keeping every recipe component's effective quantity an explicit choice.
 
-OWN-WORLD: inherited sage/forest surfaces, local sans-serif, labelled native controls, exact quantities, established green actions and44px touch targets. Reuse the existing planning rows and form groups. No new font, icon system, dependency or illustration.
+OWN-WORLD: inherited Warm Midnight/Pink surfaces, local sans-serif, labelled native controls, exact quantities, established semantic actions and 44px touch targets. Reuse the existing planning rows and form groups. No new font, icon system, dependency or illustration.
 
 STORY: open a meal, select household members, record anonymous guests, choose derived or manual meal portions, explicitly link selected components or keep independent amounts, compare the draft against saved state, and save one versioned transaction. Stock reservation and procurement remain separate reviewed workflows.
 

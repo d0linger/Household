@@ -18,8 +18,8 @@ const secrets=[];let browser,page,context,watchdog;
 const redact=value=>secrets.reduce((text,secret)=>secret?text.split(secret).join('[redacted]'):text,String(value));
 const must=(condition,label)=>{if(!condition)throw Error(label);report.checks.push(label);};
 const clone=value=>JSON.parse(JSON.stringify(value));
-const row=()=>page.locator('.notification-preference').filter({has:page.locator('#notification-category-test')});
-const form=()=>row().locator('form');
+const categoryRow=category=>page.locator('.notification-preference').filter({has:page.locator('#notification-category-'+category)});
+const form=()=>categoryRow('test').locator('form');
 const savedState=()=>page.evaluate(async()=>{const r=await fetch('/api/v1/core/notification-preferences',{cache:'no-store'});if(!r.ok)throw Error('Cannot read fixture notification preferences');return r.json();});
 
 async function fixtureState(){return readFixtureState(workspace,secrets,{pinned:false});}
@@ -29,6 +29,11 @@ async function ready(){
  await page.waitForFunction(()=>document.querySelector('[data-notification-refresh]')?.disabled===false);
 }
 async function refresh(){await page.locator('[data-notification-refresh]').click();await ready();}
+async function openCategory(category){
+ const row=categoryRow(category);
+ if(await row.getAttribute('open')===null){await row.locator(':scope > summary').focus();await page.keyboard.press('Enter');}
+ return row;
+}
 async function post(route,body){
  return page.evaluate(async({route,body})=>{
   const r=await fetch(route,{method:'POST',cache:'no-store',headers:{'Content-Type':'application/json','X-CSRF-Token':document.querySelector('meta[name="csrf-token"]').content},body:JSON.stringify(body)});
@@ -39,7 +44,7 @@ async function saveCategory(expected=200){
  const response=page.waitForResponse(r=>new URL(r.url()).pathname==='/api/v1/core/notification-preferences'&&r.request().method()==='POST');
  await form().locator('button[type=submit]').focus();await page.keyboard.press('Enter');
  must((await response).status()===expected,'Real notification preference save returns '+expected);
- await page.waitForFunction(()=>document.querySelector('#notification-category-test')?.closest('article')?.querySelector('form')?.getAttribute('aria-busy')==='false');
+ await page.waitForFunction(()=>document.querySelector('#notification-category-test')?.closest('details')?.querySelector('form')?.getAttribute('aria-busy')==='false');
 }
 async function locale(value){
  if(await page.locator('html').getAttribute('data-locale')!==value){await page.locator('.language-control button[value='+value+']').click();await page.waitForFunction(value=>document.documentElement.dataset.locale===value,value);}
@@ -61,6 +66,7 @@ async function actualPreferences(){
  await page.goto(origin.origin+'/settings/notifications');await ready();await locale('de');
  const choreState=await page.evaluate(async()=>(await fetch('/api/v1/core/bootstrap',{cache:'no-store'})).json().then(boot=>boot.states.chores.state));
  if(choreState!=='enabled'){
+  for(const category of ['chores_due','chores_digest','chores_escalation'])await openCategory(category);
   must(await page.getByRole('link',{name:'Aufgabeneinstellungen öffnen',exact:true}).count()===0,'Disabled task module exposes no unusable settings link');
   await page.evaluate(async()=>{
    const boot=await fetch('/api/v1/core/bootstrap',{cache:'no-store'}).then(r=>r.json());
@@ -84,15 +90,21 @@ async function actualPreferences(){
  must(await tray.locator('a[href="/settings/notifications"]').getAttribute('aria-current')==='page','Settings tray contains the current notifications page');
  await tray.locator('a[href="/settings/notifications"]').focus();await Promise.all([page.waitForNavigation({waitUntil:'domcontentloaded'}),page.keyboard.press('Enter')]);await ready();
  must(await page.locator('main h1').innerText()==='Benachrichtigungen','Keyboard tray navigation opens the actual notification page');
- must(await page.locator('[data-notification-preferences] article').count()===13,'All thirteen categories are represented once');
- must(await page.locator('[data-notification-preferences] > article h3').first().getAttribute('id')==='notification-category-chores_due','Available categories retain their established order');
+ const rows=page.locator('[data-notification-preferences] > details.notification-preference');
+ must(await rows.count()===13,'All thirteen categories are represented once');
+ must(await rows.first().locator(':scope > summary [id]').getAttribute('id')==='notification-category-chores_due','Available categories retain their established order');
+ must(await page.locator('.notification-preference[open]').count()===0,'All personal categories start collapsed');
+ await page.getByRole('navigation',{name:'Auf dieser Seite'}).getByRole('link',{name:'Eigene Geräte'}).click();
+ must(await page.locator('#notification-devices-heading').evaluate(heading=>document.activeElement===heading),'Section jump focuses the owned devices heading');
+ await page.getByRole('navigation',{name:'Auf dieser Seite'}).getByRole('link',{name:'Kategorien'}).click();
+ must(await page.locator('#notification-categories-heading').evaluate(heading=>document.activeElement===heading),'Section jump focuses the personal categories heading');
  const upcoming=page.locator('.notification-upcoming');
  must(await upcoming.count()===0,'All implemented categories are directly available without an empty future-category disclosure');
- const securityRow=page.locator('.notification-preference').filter({has:page.locator('#notification-category-security')});
+ const securityRow=await openCategory('security');
  must(await securityRow.locator('form').count()===1,'Account security exposes an explicit available account-consent form');
  must(await securityRow.locator('form input[type=checkbox]').isEnabled(),'Security account consent is an operable explicit choice');
  must(!(await securityRow.locator('form input[type=checkbox]').isChecked()),'New security category does not implicitly opt the account in');
- must(await page.locator('.notification-preference').filter({has:page.locator('#notification-category-mealplan')}).locator('form').count()===1,'Mealplan exposes an explicit available account-consent form');
+ must(await categoryRow('mealplan').locator('form').count()===1,'Mealplan exposes an explicit available account-consent form');
  const securityDetails=securityRow.locator('details').first();
  await securityDetails.locator('summary').focus();await page.keyboard.press('Enter');
  must(await securityDetails.getAttribute('open')!==null,'Security guidance can be expanded using the keyboard');
@@ -101,28 +113,35 @@ async function actualPreferences(){
  must(await page.locator('.notification-unavailable form').count()===0,'Unavailable adapters expose no misleading active permission form');
  const original=await savedState(),originalTest=original.preferences.find(p=>p.category==='test');
  must(original.categories.filter(c=>c.available).map(c=>c.category).join(',')==='chores_due,chores_digest,chores_escalation,cooking_timer,shopping,pantry,fuel,expenses,meters,documents,mealplan,security,test','Exactly thirteen implemented adapters, including personal security, are available');
+ const testRow=await openCategory('test'),testState=testRow.locator('.notification-category-state');
+ must(await securityRow.locator('form').isVisible(),'Opening another personal category keeps the first category expanded');
  const allowed=form().locator('input[type=checkbox]');
  await allowed.check();await form().locator('summary').click();
+ must(await testState.innerText()===(originalTest.enabled?'Aktiviert':'Deaktiviert'),'An unsaved checkbox leaves the saved state in the summary');
  const times=form().locator('input[type=time]');await times.nth(0).fill('23:00');await times.nth(1).fill('');
  let writes=0;const countWrites=request=>{if(new URL(request.url()).pathname==='/api/v1/core/notification-preferences'&&request.method()==='POST')writes++;};page.on('request',countWrites);
  const before=writes;await form().locator('button[type=submit]').click();
- await page.waitForFunction(()=>/Fülle beide Ruhezeiten/.test(document.querySelector('#notification-category-test')?.closest('article')?.querySelector('[role=status]')?.textContent||''));
+ await page.waitForFunction(()=>/Fülle beide Ruhezeiten/.test(document.querySelector('#notification-category-test')?.closest('details')?.querySelector('[role=status]')?.textContent||''));
  must(writes===before,'Incomplete quiet hours are rejected before a server mutation');
  await times.nth(1).fill('07:00');await form().locator('input[type=text]').fill('Europe/Vienna');await saveCategory();
  let current=(await savedState()).preferences.find(p=>p.category==='test');
  must(current.enabled&&current.quiet_start===1380&&current.quiet_end===420,'Real database retains enabled consent and overnight quiet hours');
+ must(await testState.innerText()==='Aktiviert','A confirmed save updates the summary');
  must(await form().locator('button[type=submit]').isEnabled(),'Successful preference save leaves a keyboard-operable action');
  const untouched=original.preferences.filter(p=>p.category!=='test');
  must(JSON.stringify((await savedState()).preferences.filter(p=>p.category!=='test'))===JSON.stringify(untouched),'Saving test category preserves every other category');
  await page.reload();await ready();
+ must(await testState.isVisible()&&await testState.innerText()==='Aktiviert','Collapsed category exposes its persisted status after reload');
+ await openCategory('test');
  must(await form().locator('input[type=checkbox]').isChecked(),'Real consent survives a full reload');
  await form().locator('summary').click();
  must(await form().locator('input[type=time]').nth(0).inputValue()==='23:00'&&await form().locator('input[type=time]').nth(1).inputValue()==='07:00','Quiet hours survive reload without a midnight conversion');
  const competing=await post('/api/v1/core/notification-preferences',{category:'test',enabled:false,timezone:'UTC',quiet_start:null,quiet_end:null,version:current.version});
  must(competing.status===200,'Independent real update advances the same category version (HTTP '+competing.status+', '+String(competing.body.error||'ok')+')');
  await saveCategory(409);
- await page.waitForFunction(()=>/inzwischen geändert/.test(document.querySelector('#notification-category-test')?.closest('article')?.querySelector('[role=status]')?.textContent||''));
+ await page.waitForFunction(()=>/inzwischen geändert/.test(document.querySelector('#notification-category-test')?.closest('details')?.querySelector('[role=status]')?.textContent||''));
  must(!(await form().locator('input[type=checkbox]').isChecked())&&await form().locator('input[type=text]').inputValue()==='UTC','Conflict reloads the changed row instead of claiming the draft was saved');
+ must(await testState.innerText()==='Deaktiviert'&&await testRow.locator('form').isVisible(),'Conflicting consent updates the summary and keeps the form open for review');
  current=(await savedState()).preferences.find(p=>p.category==='test');
  must(current.version===competing.body.version&&!current.enabled,'Rejected stale write leaves the committed competing preference unchanged');
  await saveCategory();
@@ -130,7 +149,7 @@ async function actualPreferences(){
  must(restore.status===200,'Synthetic category settings restored after real mutation checks');page.off('request',countWrites);await refresh();
  for(const category of ['chores_due','chores_digest','chores_escalation']){
   const before=(await savedState()).preferences.find(p=>p.category===category);
-  const article=page.locator('article').filter({has:page.locator('#notification-category-'+category)}),choreForm=article.locator('form');
+  const choreRow=await openCategory(category),choreForm=choreRow.locator('form');
   must(await choreForm.locator('input[type=time],input[type=text]').count()===0,'Task-owned quiet hours have no competing core editor: '+category);
   await choreForm.locator('input[type=checkbox]').check();
   const [response]=await Promise.all([page.waitForResponse(r=>new URL(r.url()).pathname==='/api/v1/core/notification-preferences'&&r.request().method()==='POST'),choreForm.locator('button[type=submit]').click()]);
@@ -141,10 +160,11 @@ async function actualPreferences(){
   must(reset.status===200,'Synthetic chore opt-in restored after check: '+category);
  }
  await refresh();
- const shoppingRow=page.locator('.notification-preference').filter({has:page.locator('#notification-category-shopping')}),shoppingForm=shoppingRow.locator('form');
+ const shoppingRow=await openCategory('shopping'),shoppingForm=shoppingRow.locator('form');
  const shoppingBefore=(await savedState()).preferences.find(p=>p.category==='shopping');
  report.shoppingFirstCentralSaveTested=shoppingBefore.version===0;
  if(shoppingBefore.version===0){
+  must(await shoppingRow.locator('.notification-category-state').innerText()==='Je Einkaufsliste','Shopping summary identifies legacy per-list delivery before the first save');
   must(await shoppingRow.locator('[data-shopping-control=legacy]').isVisible(),'Before the first Shopping save, the permanent replacement of list device delivery is visible');
   must((await shoppingRow.locator('[data-shopping-control]').innerText()).includes('auch, wenn du die Kategorie ausgeschaltet speicherst'),'First-save explanation explicitly includes saving Shopping as off');
  }else must(await shoppingRow.locator('[data-shopping-control=central]').isVisible(),'An existing Shopping preference is shown as central even when disabled');
@@ -156,18 +176,19 @@ async function actualPreferences(){
   await shoppingForm.locator('input[type=checkbox]').setChecked(enabled);
   const [response]=await Promise.all([page.waitForResponse(r=>new URL(r.url()).pathname==='/api/v1/core/notification-preferences'&&r.request().method()==='POST'),shoppingForm.locator('button[type=submit]').click()]);
   must(response.status()===200,'Actual Shopping category save accepted with enabled='+enabled);
-  await page.waitForFunction(()=>document.querySelector('#notification-category-shopping')?.closest('article')?.querySelector('form')?.getAttribute('aria-busy')==='false');
+  await page.waitForFunction(()=>document.querySelector('#notification-category-shopping')?.closest('details')?.querySelector('form')?.getAttribute('aria-busy')==='false');
   const saved=(await savedState()).preferences.find(p=>p.category==='shopping');
   must(saved.enabled===enabled&&saved.version>0,'Shopping consent persists with a real central-control version');
   must(await shoppingRow.locator('[data-shopping-control=central]').isVisible(),'A committed save immediately shows central Shopping control');
+  must(await shoppingRow.locator('.notification-category-state').innerText()===(enabled?'Aktiviert':'Deaktiviert'),'Committed shopping consent is reflected in the disclosure');
   return saved;
  }
  const disabled=await saveShopping(false);
- await page.reload();await ready();
+ await page.reload();await ready();await openCategory('shopping');
  let shoppingSaved=(await savedState()).preferences.find(p=>p.category==='shopping');
  must(shoppingSaved.version===disabled.version&&!shoppingSaved.enabled&&await shoppingRow.locator('[data-shopping-control=central]').isVisible(),'Saving Shopping as off retains explicit central control after reload');
  await saveShopping(true);shoppingSaved=await saveShopping(false);
- await page.reload();await ready();
+ await page.reload();await ready();await openCategory('shopping');
  const shoppingFinal=(await savedState()).preferences.find(p=>p.category==='shopping');
  must(!shoppingFinal.enabled&&shoppingFinal.version===shoppingSaved.version&&shoppingFinal.version>disabled.version,'Opt-in then disable persists without restoring the legacy default');
  must((await shoppingRow.locator('[data-shopping-control]').innerText()).includes('frühere Listenversand aus'),'Disabled central Shopping clearly keeps the previous list delivery off');
@@ -178,7 +199,7 @@ async function actualPreferences(){
   must(await page.locator('[data-watch-overview-load]').isVisible(),'Personal list-permissions action is available at the linked destination');
   await page.goto(origin.origin+'/settings/notifications');await ready();
  }
- const pantryRow=page.locator('.notification-preference').filter({has:page.locator('#notification-category-pantry')}),pantryForm=pantryRow.locator('form');
+ const pantryRow=await openCategory('pantry'),pantryForm=pantryRow.locator('form');
  must((await pantryRow.innerText()).includes('Bestehende Geräte werden nicht automatisch freigegeben.'),'Pantry account opt-in explicitly preserves independent device consent');
  const pantryDetails=pantryRow.locator('details').first();
  must(await pantryDetails.getAttribute('open')===null,'Detailed stock and expiry rules stay in a compact native disclosure');
@@ -190,8 +211,8 @@ async function actualPreferences(){
   await pantryForm.locator('input[type=checkbox]').setChecked(enabled);
   const [response]=await Promise.all([page.waitForResponse(r=>new URL(r.url()).pathname==='/api/v1/core/notification-preferences'&&r.request().method()==='POST'),pantryForm.locator('button[type=submit]').click()]);
   must(response.status()===200,'Actual Pantry category save accepted with enabled='+enabled);
-  await page.waitForFunction(()=>document.querySelector('#notification-category-pantry')?.closest('article')?.querySelector('form')?.getAttribute('aria-busy')==='false');
-  await page.reload();await ready();
+  await page.waitForFunction(()=>document.querySelector('#notification-category-pantry')?.closest('details')?.querySelector('form')?.getAttribute('aria-busy')==='false');
+  await page.reload();await ready();await openCategory('pantry');
   const after=(await savedState()).preferences.find(p=>p.category==='pantry');
   must(after.enabled===enabled&&after.version===before.version+1&&await pantryForm.locator('input[type=checkbox]').isChecked()===enabled,'Pantry consent and version survive reload with enabled='+enabled);
  }
@@ -206,22 +227,22 @@ async function actualPreferences(){
    const current=await fetch('/api/v1/core/bootstrap',{cache:'no-store'}).then(r=>r.json());
    if(current.states.pantry.state!=='enabled')throw Error('Pantry-module enable was not committed');
   });
-  await page.reload();await ready();
+  await page.reload();await ready();await openCategory('pantry');
  }
  const pantryLink=pantryRow.getByRole('link',{name:'Vorrat und Ablaufdaten prüfen',exact:true});
  must(await pantryLink.getAttribute('href')==='/m/pantry/stock','Pantry guidance links to the canonical stock overview');
  await pantryLink.focus();await page.keyboard.press('Enter');await page.locator('#pantry-board').waitFor();
  must(new URL(page.url()).pathname==='/m/pantry/stock'&&await page.locator('#pantry-filter').isVisible(),'Pantry guidance opens the actual stock overview through keyboard navigation');
  await page.goto(origin.origin+'/settings/notifications');await ready();
- const fuelRow=page.locator('.notification-preference').filter({has:page.locator('#notification-category-fuel')}),fuelForm=fuelRow.locator('form');
+ const fuelRow=await openCategory('fuel'),fuelForm=fuelRow.locator('form');
  const otherBeforeFuel=(await savedState()).preferences.filter(p=>p.category!=='fuel');
  for(const enabled of [false,true,false]){
   const before=(await savedState()).preferences.find(p=>p.category==='fuel');
   await fuelForm.locator('input[type=checkbox]').setChecked(enabled);
   const [response]=await Promise.all([page.waitForResponse(r=>new URL(r.url()).pathname==='/api/v1/core/notification-preferences'&&r.request().method()==='POST'),fuelForm.locator('button[type=submit]').click()]);
   must(response.status()===200,'Actual Fuel category save accepted with enabled='+enabled);
-  await page.waitForFunction(()=>document.querySelector('#notification-category-fuel')?.closest('article')?.querySelector('form')?.getAttribute('aria-busy')==='false');
-  await page.reload();await ready();const after=(await savedState()).preferences.find(p=>p.category==='fuel');
+  await page.waitForFunction(()=>document.querySelector('#notification-category-fuel')?.closest('details')?.querySelector('form')?.getAttribute('aria-busy')==='false');
+  await page.reload();await ready();await openCategory('fuel');const after=(await savedState()).preferences.find(p=>p.category==='fuel');
   must(after.enabled===enabled&&after.version===before.version+1&&await fuelForm.locator('input[type=checkbox]').isChecked()===enabled,'Fuel consent and version survive reload with enabled='+enabled);
  }
  must(JSON.stringify((await savedState()).preferences.filter(p=>p.category!=='fuel'))===JSON.stringify(otherBeforeFuel),'Fuel saves preserve all other account categories');
@@ -236,19 +257,20 @@ async function actualPreferences(){
   });await page.reload();await ready();
  }
  for(const [name,route]of [['Fahrzeugtermine und Zuständigkeit prüfen','overview'],['Wartungspläne prüfen','maintenance']]){
+  await openCategory('fuel');
   const link=fuelRow.getByRole('link',{name,exact:true});must(await link.getAttribute('href')==='/m/fuel/workspace/'+route,'Fuel guidance points to '+route);
   await link.focus();await page.keyboard.press('Enter');await page.waitForFunction(()=>document.querySelector('#fm-summary')?.getAttribute('aria-busy')==='false');
   must(await page.locator('#fm-error').isHidden(),'Actual Fuel '+route+' workflow loads without error');
   await page.getByRole('link',{name:'Gerätehinweise für Fahrzeuge verwalten',exact:true}).click();await ready();
   must(new URL(page.url()).pathname==='/settings/notifications','Fuel '+route+' returns through its explicit notification settings link');
  }
- const financeRow=page.locator('.notification-preference').filter({has:page.locator('#notification-category-expenses')}),financeForm=financeRow.locator('form');
+ const financeRow=await openCategory('expenses'),financeForm=financeRow.locator('form');
  const otherBeforeFinance=(await savedState()).preferences.filter(p=>p.category!=='expenses');
  for(const enabled of [false,true,false]){
   const before=(await savedState()).preferences.find(p=>p.category==='expenses');await financeForm.locator('input[type=checkbox]').setChecked(enabled);
   const [response]=await Promise.all([page.waitForResponse(r=>new URL(r.url()).pathname==='/api/v1/core/notification-preferences'&&r.request().method()==='POST'),financeForm.locator('button[type=submit]').click()]);
-  must(response.status()===200,'Explicit Finance consent save succeeds');await page.waitForFunction(()=>document.querySelector('#notification-category-expenses')?.closest('article')?.querySelector('form')?.getAttribute('aria-busy')==='false');
-  await page.reload();await ready();const after=(await savedState()).preferences.find(p=>p.category==='expenses');
+  must(response.status()===200,'Explicit Finance consent save succeeds');await page.waitForFunction(()=>document.querySelector('#notification-category-expenses')?.closest('details')?.querySelector('form')?.getAttribute('aria-busy')==='false');
+  await page.reload();await ready();await openCategory('expenses');const after=(await savedState()).preferences.find(p=>p.category==='expenses');
   must(after.enabled===enabled&&after.version===before.version+1&&await financeForm.locator('input[type=checkbox]').isChecked()===enabled,'Finance consent and version survive reload: '+enabled);
  }
  must(JSON.stringify((await savedState()).preferences.filter(p=>p.category!=='expenses'))===JSON.stringify(otherBeforeFinance),'Finance saves preserve all other categories');
@@ -258,12 +280,13 @@ async function actualPreferences(){
   await page.evaluate(async()=>{const boot=await fetch('/api/v1/core/bootstrap',{cache:'no-store'}).then(r=>r.json());const r=await fetch('/settings/modules/expenses',{method:'POST',body:new URLSearchParams({csrf:boot.csrf,enabled:'true',version:String(boot.states.expenses.version)})});if(!r.ok)throw Error('Actual isolated Finance enable failed');});await page.reload();await ready();
  }
  for(const [name,route]of [['Buchungen und Zahlungserinnerungen prüfen','entries'],['Aktuelle Budgets prüfen','planning?section=budgets']]){
+  await openCategory('expenses');
   const link=financeRow.getByRole('link',{name,exact:true});must(await link.getAttribute('href')==='/m/expenses/workspace/'+route,'Finance guidance points to '+route);
   await link.focus();await page.keyboard.press('Enter');await page.waitForFunction(()=>document.querySelector('#finance-workspace')?.getAttribute('aria-busy')==='false');
   must(await page.locator('#finance-error').isHidden(),'Actual Finance '+route+' loads without error');
   await page.getByRole('link',{name:'Finanzhinweise auf Geräten verwalten',exact:true}).click();await ready();
  }
- await page.locator('#notification-category-chores_due').locator('..').getByRole('link',{name:'Aufgabeneinstellungen öffnen',exact:true}).click();
+ const dueRow=await openCategory('chores_due');await dueRow.getByRole('link',{name:'Aufgabeneinstellungen öffnen',exact:true}).click();
  await page.waitForFunction(()=>document.querySelector('#chores-workspace')?.getAttribute('aria-busy')==='false');
  must(await page.locator('#chores-error').isHidden(),'Actual chore notification settings load without error');
  must((await page.locator('#chores-workspace').innerText()).includes('Im Modus Aus werden keine Aufgabenhinweise gesendet.'),'Task settings explain the authoritative off mode and local-time policy');
@@ -343,7 +366,7 @@ async function controlledDevices(){
  deviceState='registered';devicePreference.name='<img src=x onerror=alert(1)>';await refresh();
  must(await device().locator('h3').innerText()===devicePreference.name&&await device().locator('img').count()===0,'Device names are rendered as text rather than executable markup');
  devicePreference.name='Fixture kitchen';testState={id:deliveryID,state:'accepted',safe_code:'user_confirmed',accepted_at:now,updated_at:now};await refresh();
- const colors=new Map();
+ const colors=new Map(),available=(await savedState()).categories.filter(c=>c.available);
  for(const language of ['de','en']){
   await locale(language);
   for(const width of [1440,320]){
@@ -354,28 +377,29 @@ async function controlledDevices(){
     const summary=device().locator('summary');if(await device().locator('details').getAttribute('open')===null)await summary.click();
     const ground=await page.evaluate(()=>getComputedStyle(document.documentElement).getPropertyValue('--ground').trim());colors.set(mode,ground);
     must((await page.locator('main h1').innerText())===(language==='en'?'Notifications':'Benachrichtigungen'),'Notification heading matches '+language+'/'+mode+'/'+width);
-    const pantryRow=page.locator('.notification-preference').filter({has:page.locator('#notification-category-pantry')});
-    must(await pantryRow.locator('h3').innerText()===(language==='en'?'Pantry':'Vorrat'),'Pantry category name matches '+language+'/'+mode+'/'+width);
+    const pantryRow=await openCategory('pantry');
+    must(await pantryRow.locator('#notification-category-pantry').innerText()===(language==='en'?'Pantry':'Vorrat'),'Pantry category name matches '+language+'/'+mode+'/'+width);
+    must(await pantryRow.locator('.notification-category-state').innerText()===(language==='en'?'Disabled':'Deaktiviert'),'Saved Pantry state is localized: '+language+'/'+mode+'/'+width);
     const pantryDetails=pantryRow.locator('details').first(),pantrySummary=pantryDetails.locator('summary');
     must(await pantrySummary.innerText()===(language==='en'?'When you receive pantry alerts':'Wann du Vorratshinweise erhältst'),'Pantry guidance summary matches '+language+'/'+mode+'/'+width);
     if(await pantryDetails.getAttribute('open')===null){await pantrySummary.focus();await page.keyboard.press('Enter');}
     must((await pantryDetails.innerText()).includes(language==='en'?'A brief shortage between checks':'zwischen zwei Prüfungen'),'Expanded Pantry guidance is localized: '+language+'/'+mode+'/'+width);
     must(await pantryRow.getByRole('link',{name:language==='en'?'Review pantry stock and expiry dates':'Vorrat und Ablaufdaten prüfen',exact:true}).count()===1,'Pantry stock link is localized: '+language+'/'+mode+'/'+width);
-    const fuelRow=page.locator('.notification-preference').filter({has:page.locator('#notification-category-fuel')}),fuelDetails=fuelRow.locator('details').first();
-    must(await fuelRow.locator('h3').innerText()===(language==='en'?'Vehicles':'Fahrzeuge'),'Fuel category name matches '+language+'/'+mode+'/'+width);
+    const fuelRow=await openCategory('fuel'),fuelDetails=fuelRow.locator('details').first();
+    must(await fuelRow.locator('#notification-category-fuel').innerText()===(language==='en'?'Vehicles':'Fahrzeuge'),'Fuel category name matches '+language+'/'+mode+'/'+width);
     must(await fuelDetails.locator('summary').innerText()===(language==='en'?'Rules for deadlines and mileage targets':'Regeln für Termine und Kilometerziele'),'Fuel rule summary is localized: '+language+'/'+mode+'/'+width);
     if(await fuelDetails.getAttribute('open')===null){await fuelDetails.locator('summary').focus();await page.keyboard.press('Enter');}
     must((await fuelDetails.innerText()).includes(language==='en'?'30 calendar days':'30 Kalendertage'),'Fuel freshness guidance is localized: '+language+'/'+mode+'/'+width);
     must(await fuelRow.getByRole('link',{name:language==='en'?'Review maintenance plans':'Wartungspläne prüfen',exact:true}).count()===1,'Fuel maintenance link is localized: '+language+'/'+mode+'/'+width);
-    const financeRow=page.locator('.notification-preference').filter({has:page.locator('#notification-category-expenses')}),financeDetails=financeRow.locator('details').first();
-    must(await financeRow.locator('h3').innerText()===(language==='en'?'Finances':'Finanzen'),'Finance category matches '+language+'/'+mode+'/'+width);
+    const financeRow=await openCategory('expenses'),financeDetails=financeRow.locator('details').first();
+    must(await financeRow.locator('#notification-category-expenses').innerText()===(language==='en'?'Finances':'Finanzen'),'Finance category matches '+language+'/'+mode+'/'+width);
     must(await financeDetails.locator('summary').innerText()===(language==='en'?'Payment deadlines and budget thresholds':'Zahlungsfristen und Budgetschwellen'),'Finance rules are localized');
     if(await financeDetails.getAttribute('open')===null){await financeDetails.locator('summary').focus();await page.keyboard.press('Enter');}
     must((await financeDetails.innerText()).includes(language==='en'?'75% or 95%':'75 % beziehungsweise 95 %'),'Finance hysteresis guidance matches '+language+'/'+mode+'/'+width);
     must(await financeRow.getByRole('link',{name:language==='en'?'Review current budgets':'Aktuelle Budgets prüfen',exact:true}).count()===1,'Finance budget link is localized');
 
-    const securityRow=page.locator('.notification-preference').filter({has:page.locator('#notification-category-security')}),securityDetails=securityRow.locator('details').first();
-    must(await securityRow.locator('h3').innerText()===(language==='en'?'Account security':'Kontosicherheit'),'Security category matches '+language+'/'+mode+'/'+width);
+    const securityRow=await openCategory('security'),securityDetails=securityRow.locator('details').first();
+    must(await securityRow.locator('#notification-category-security').innerText()===(language==='en'?'Account security':'Kontosicherheit'),'Security category matches '+language+'/'+mode+'/'+width);
     must(await securityDetails.locator('summary').innerText()===(language==='en'?'Personal changes to your account':'Persönliche Änderungen an deinem Konto'),'Security guidance summary is localized: '+language+'/'+mode+'/'+width);
     if(await securityDetails.getAttribute('open')===null){await securityDetails.locator('summary').focus();await page.keyboard.press('Enter');}
     const securityCopy=await securityDetails.innerText();
@@ -386,6 +410,7 @@ async function controlledDevices(){
 
     must((await page.locator('.notification-test-result').innerText()).includes(language==='en'?'You confirmed':'Von dir'),'Controlled seen state is localized: '+language+'/'+mode+'/'+width);
     if(width===1440){const buttonBox=await deviceForm().locator('button[type=submit]').boundingBox();must(buttonBox&&buttonBox.height>=44&&buttonBox.height<=60,'Desktop device save keeps a compact accessible height: '+language+'/'+mode);}
+    for(const category of available)await openCategory(category.category);
     await accessibility('controlled-'+language+'-'+mode+'-'+width);await capture('controlled-'+language+'-'+mode+'-'+width);
    }
   }

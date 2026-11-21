@@ -63,6 +63,25 @@ func TestShoppingListDetailKeepsPrimaryNavigationWithoutCollectionFilters(t *tes
 	}
 }
 
+func TestWorkspaceActionsSkipOnlyTheCurrentDestination(t *testing.T) {
+	const vehicle = "02e532e4-6c04-4e12-8f31-86fe8072202b"
+	p := Page{Module: module.Descriptor{ID: "fuel"}, User: auth.Identity{Role: "editor"}}
+	for _, tc := range []struct {
+		path string
+		want int
+	}{
+		{"/m/fuel/workspace/capture", 0},
+		{"/m/fuel/workspace/capture?vehicle=" + vehicle, 0},
+		{"/m/fuel/workspace/history?vehicle=" + vehicle, 1},
+		{"/m/fuel/workspace/capture?vehicle=" + vehicle + "&entity=fillups&record=" + vehicle, 1},
+	} {
+		n := workspaceNavigation(httptest.NewRequest("GET", tc.path, nil), p)
+		if len(n.Actions) != tc.want {
+			t.Errorf("%s: got %d shortcuts, want %d", tc.path, len(n.Actions), tc.want)
+		}
+	}
+}
+
 func TestWorkspaceNavigationScopesAndRoles(t *testing.T) {
 	const vehicle = "02e532e4-6c04-4e12-8f31-86fe8072202b"
 	p := Page{Module: module.Descriptor{ID: "fuel"}, User: auth.Identity{Role: "editor"}}

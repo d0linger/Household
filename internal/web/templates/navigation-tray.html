@@ -1,6 +1,6 @@
 {{define "navigation-tray"}}
 <dialog id="more-dialog" class="navigation-tray" aria-labelledby="more-dialog-title">
-  <div class="tray-heading">
+  <div class="tray-heading"><img class="tray-sprig" src="{{index .Asset "botanical-sprig.svg"}}" alt="" width="190" height="290">
     <div><h2 id="more-dialog-title" class="sr-only">{{t "Navigation"}}</h2><p class="tray-account">{{.User.DisplayName}}</p><p class="tray-role">{{if eq .User.Role "admin"}}{{t "Administrator"}}{{else if eq .User.Role "editor"}}{{t "Bearbeiter"}}{{else}}{{t "Leser"}}{{end}}</p></div>
     <button type="button" class="tray-close" data-close autofocus aria-label="{{t "Schließen"}}"><svg aria-hidden="true"><use href="{{icon .Asset "x"}}"/></svg></button>
   </div>

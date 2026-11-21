@@ -314,7 +314,7 @@ test('device cleanup errors remain visible after a preference save', async () =>
   assert.equal(f.status.hidden, true); assert.equal(f.save.disabled, false);
 });
 
-function navigationFixture({moduleCount = 7, currentModule = 6, tabWidth = 300, activeLeft = 390, activeWidth = 80, asyncCurrent = false} = {}) {
+function navigationFixture({moduleCount = 7, currentModule = 6, tabWidth = 300, activeLeft = 390, activeWidth = 80, asyncCurrent = false, compact = false} = {}) {
   const app = fs.readFileSync(path.join(__dirname, '../internal/web/static/app.js'), 'utf8');
   const start = app.indexOf("  const nav = $('.mobile-nav');"), end = app.indexOf("  all('[data-open]')", start);
   assert.ok(start >= 0 && end > start);
@@ -327,6 +327,9 @@ function navigationFixture({moduleCount = 7, currentModule = 6, tabWidth = 300, 
   if (links[currentModule]) links[currentModule].setAttribute('aria-current', 'page');
   const nav = {hidden:false, clientWidth:300, clientLeft:0, scrollLeft:0, getBoundingClientRect: () => ({left:0})};
   const currentLink = links[currentModule];
+  const disclosure = {open:true};
+  let onBreakpoint;
+  const media = {matches:compact, addEventListener(event, fn) { assert.equal(event, "change"); onBreakpoint = fn; }};
   if (currentLink) Object.assign(currentLink, {getBoundingClientRect: () => ({left: currentModule * 80 - nav.scrollLeft, right: (currentModule + 1) * 80 - nav.scrollLeft, width:80}), closest: () => nav});
   const windowEvents = new Map(), frames = new Map(), observed = [], geometry = {activeLeft, activeWidth};
   let frameID = 0, mutations, active = !asyncCurrent, disconnected = false;
@@ -335,6 +338,7 @@ function navigationFixture({moduleCount = 7, currentModule = 6, tabWidth = 300, 
   vm.runInNewContext(app.slice(0, app.indexOf('\n')) + '\n' + app.slice(start, end), {
     $: (selector, root) => {
       if (selector === '.mobile-nav') return nav;
+      if (selector === '.workspace-context-fold') return disclosure;
       if (root === nav) {assert.ok(selector.startsWith('a')); return currentLink || null;}
       assert.equal(root, tabs); assert.ok(selector.startsWith('a'));
       return active ? tab : null;
@@ -343,6 +347,7 @@ function navigationFixture({moduleCount = 7, currentModule = 6, tabWidth = 300, 
       if (selector === 'a') {assert.equal(root, nav); return links;}
       assert.deepEqual(selector.split(',').map(value => value.trim()).sort(), ['.entity-tabs', '.mobile-nav']); return [tabs, nav];
     },
+    matchMedia(query) { assert.equal(query, '(max-width:600px)'); return media; },
     document: {createElement: () => element()},
     MutationObserver: class {
       constructor(callback) {mutations = callback;}
@@ -355,13 +360,23 @@ function navigationFixture({moduleCount = 7, currentModule = 6, tabWidth = 300, 
     removeEventListener(name) {windowEvents.delete(name);}
   });
   return {
-    links, tabs, nav, observed, frames, geometry,
+    links, tabs, nav, observed, frames, geometry, disclosure,
+    breakpoint(narrow) { media.matches = narrow; onBreakpoint(); },
     get disconnected() {return disconnected;},
     flush() {const callbacks = [...frames.values()]; frames.clear(); callbacks.forEach(callback => callback());},
     activate() {active = true; mutations([{target:tab}, {target:tab}]);},
     event(name, event = {}) {windowEvents.get(name)?.(event);}
   };
 }
+
+test('secondary workspace navigation follows its breakpoint and retains a manual choice on ordinary resize', () => {
+  const f = navigationFixture({compact:true});
+  assert.equal(f.disclosure.open, false);
+  f.disclosure.open = true; f.event('resize');
+  assert.equal(f.disclosure.open, true);
+  f.breakpoint(false); assert.equal(f.disclosure.open, true);
+  f.breakpoint(true); assert.equal(f.disclosure.open, false);
+});
 
 test('mobile module rail keeps every enabled destination and reveals the current one without hiding links', () => {
   const f = navigationFixture();

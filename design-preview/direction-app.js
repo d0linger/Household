@@ -2,6 +2,14 @@ import {designDirections,directionGroups,directionThemes} from './designDirectio
 import {dialogs} from './dialog-fixtures.js';
 import {escapeHTML as e,defaultValues,dialogMarkup,bindDialog} from './dialog-components.js';
 const $=selector=>document.querySelector(selector);
+const quickCompare=$('#compare-quick');
+const comparisonTray=$('.comparison-tray');
+function updateComparePosition(){
+  quickCompare.classList.toggle('past-tray',comparisonTray.getBoundingClientRect().bottom<=0);
+}
+new IntersectionObserver(updateComparePosition).observe(comparisonTray);
+window.addEventListener('scroll',updateComparePosition,{passive:true});
+window.addEventListener('resize',updateComparePosition);
 const designs=new Map(designDirections.map(d=>[d.id,d]));
 const fixtures=new Map(dialogs.map(d=>[d.id,d]));
 const storageKey='household.design-directions.v2';
@@ -36,20 +44,17 @@ function syncURL(){
   history.replaceState(null,'',`${location.pathname}?${params}${location.hash}`);
 }
 function theme(){document.documentElement.dataset.theme=state.theme;$('#theme').value=state.theme;$('#compare-theme').value=state.theme;}
-function miniMarkup(design,fixture){
-  return dialogMarkup(design,fixture,'mini').replace('class="world"','class="world world--mini" inert aria-hidden="true"');
-}
 function renderGallery(){
   const query=$('#query').value.trim().toLocaleLowerCase('de'),group=$('#group').value;
   const visible=designDirections.filter(d=>(group==='all'||d.group===group)&&(!$('#favorites-only').checked||state.favorites.includes(d.id))&&`${d.id} ${d.name} ${d.group} ${d.thesis} ${d.signature}`.toLocaleLowerCase('de').includes(query));
   const fixture=fixtures.get(state.fixture);
-  $('#gallery').innerHTML=visible.map(d=>`<article class="design-card" data-card="${d.id}" aria-labelledby="card-${d.id}"><div class="design-meta"><div><h3 id="card-${d.id}">${e(d.name)}</h3><p>${d.id} / ${e(d.group)}</p></div><button type="button" class="favorite" data-favorite="${d.id}" aria-label="${e(d.name)} als Favorit" aria-pressed="${state.favorites.includes(d.id)}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h12v18l-6-4-6 4Z"/></svg></button></div>${miniMarkup(d,fixture)}<div class="design-actions"><button type="button" data-preview="${d.id}">Dialog öffnen</button><button type="button" data-shortlist="${d.id}" aria-pressed="${state.shortlist.includes(d.id)}">${state.shortlist.includes(d.id)?'Im Vergleich':'Vergleichen'}</button></div><p class="design-thesis">${e(d.thesis)}</p><p class="design-signature">${e(d.signature)}</p></article>`).join('');
+  $('#gallery').innerHTML=visible.map(d=>`<article class="design-card" data-card="${d.id}" aria-labelledby="card-${d.id}"><div class="design-meta"><div><h3 id="card-${d.id}">${e(d.name)}</h3><p>${d.id} / ${e(d.group)}</p></div><button type="button" class="favorite" data-favorite="${d.id}" aria-label="${e(d.name)} als Favorit" aria-pressed="${state.favorites.includes(d.id)}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h12v18l-6-4-6 4Z"/></svg></button></div>${dialogMarkup(d,fixture,'mini')}<div class="design-actions"><button type="button" data-preview="${d.id}">Dialog öffnen</button><button type="button" data-shortlist="${d.id}" aria-pressed="${state.shortlist.includes(d.id)}">${state.shortlist.includes(d.id)?'Im Vergleich':'Vergleichen'}</button></div><p class="design-thesis">${e(d.thesis)}</p><p class="design-signature">${e(d.signature)}</p></article>`).join('');
   $('#results-title').textContent=`${visible.length} ${visible.length===1?'Designrichtung':'Designrichtungen'}`;
   $('#result-description').textContent=`Gemeinsamer Beispieldialog: ${fixture.title}. Jedes Design kann alle zehn Dialoge darstellen.`;
   $('#empty').hidden=visible.length!==0;$('#fixture').value=state.fixture;$('#compare-fixture').value=state.fixture;
   updateChoiceControls();syncURL();
 }
-function updateChoiceControls(){
+function updateChoiceControls(shortlistButton){
   document.querySelectorAll('[data-shortlist]').forEach(button=>{
     const picked=state.shortlist.includes(button.dataset.shortlist);
     button.setAttribute('aria-pressed',String(picked));button.disabled=!picked&&state.shortlist.length===4;
@@ -57,6 +62,13 @@ function updateChoiceControls(){
   });
   $('#shortlist').innerHTML=state.shortlist.length?state.shortlist.map(id=>`<li><button type="button" data-remove="${id}" aria-label="${e(designs.get(id).name)} aus Vergleich entfernen">${e(designs.get(id).name)} <span aria-hidden="true">×</span></button></li>`).join(''):'<li class="empty-slot">Noch keine Designs ausgewählt.</li>';
   $('#compare').disabled=state.shortlist.length<2;$('#compare').textContent=state.shortlist.length>1?`${state.shortlist.length} Designs vergleichen`:'Dialogvergleich öffnen';
+  quickCompare.hidden=$('#compare').disabled;
+  if (!quickCompare.hidden) {
+    quickCompare.textContent=$('#compare').textContent;
+    // Keep the floating action next in the tab order after choosing a design.
+    const card=shortlistButton?.closest('.design-card') || $(`[data-card="${state.shortlist.at(-1)}"]`) || $('#gallery');
+    if (card.nextElementSibling!==quickCompare) card.after(quickCompare);
+  }
   $('#final-choice').textContent=state.final?`${designs.get(state.final.id).name} (${state.final.id}), gewählt im Modus ${state.final.theme}.`:'Noch keine endgültige Richtung gewählt.';
   $('#clear-final').disabled=!state.final;
   for(const id of ['export-choice','export-final'])$('#'+id).disabled=!state.final&&!state.shortlist.length&&!state.favorites.length;
@@ -99,13 +111,13 @@ async function exportCode(id,button){
 document.addEventListener('click',event=>{
   const button=event.target.closest('button');if(!button)return;
   if(button.dataset.favorite){const id=button.dataset.favorite;state.favorites=state.favorites.includes(id)?state.favorites.filter(value=>value!==id):[...state.favorites,id];save();button.setAttribute('aria-pressed',String(state.favorites.includes(id)));if($('#favorites-only').checked){renderGallery();$('#favorites-only').focus();}updateChoiceControls();}
-  if(button.dataset.shortlist){const id=button.dataset.shortlist;if(state.shortlist.includes(id))state.shortlist=state.shortlist.filter(value=>value!==id);else if(state.shortlist.length<4)state.shortlist.push(id);save();updateChoiceControls();announce(`${state.shortlist.length} von vier Vergleichsplätzen belegt.`);}
+  if(button.dataset.shortlist){const id=button.dataset.shortlist;if(state.shortlist.includes(id))state.shortlist=state.shortlist.filter(value=>value!==id);else if(state.shortlist.length<4)state.shortlist.push(id);save();updateChoiceControls(button);announce(state.shortlist.length===1?'Ein Design ausgewählt. Wähle ein zweites für den Vergleich.':`${state.shortlist.length} von vier Vergleichsplätzen belegt.`);}
   if(button.dataset.remove){state.shortlist=state.shortlist.filter(value=>value!==button.dataset.remove);save();updateChoiceControls();$('#tray-title').setAttribute('tabindex','-1');$('#tray-title').focus();}
   if(button.dataset.preview)openComparison([button.dataset.preview],button);
   if(button.dataset.final){previousFinal=null;$('#clear-final').textContent='Entscheidung zurücknehmen';state.final={id:button.dataset.final,theme:state.theme};save();updateChoiceControls();announce(`${designs.get(button.dataset.final).name} als bevorzugte Richtung gewählt.`);}
   if(button.dataset.code)exportCode(button.dataset.code,button);
 });
-$('#compare').addEventListener('click',event=>openComparison(state.shortlist,event.currentTarget));
+for(const button of [$('#compare'),quickCompare])button.addEventListener('click',()=>openComparison(state.shortlist,button));
 $('#close-compare').addEventListener('click',closeComparison);
 $('#compare-dialog').addEventListener('cancel',event=>{event.preventDefault();closeComparison();});
 $('#compare-fixture').addEventListener('change',event=>setFixture(event.target.value));

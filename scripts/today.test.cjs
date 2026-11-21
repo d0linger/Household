@@ -21,3 +21,17 @@ test('Today displays the server household civil day without device-timezone drif
  assert.match(dayLabel('2026-10-25','de'),/Sonntag.*25/);
  for(const value of ['',null,'2026-02-30','2026-11-11T23:00:00Z','2026-1-01'])assert.equal(dayLabel(value,'de'),'');
 });
+
+test('Progress only describes a complete, authorized set of due tasks',()=>{
+ const {taskProgress}=require('../internal/web/static/today.js'),rows=n=>({state:'ready',items:Array(n),more:false});
+ assert.deepEqual(taskProgress(rows(3),rows(1)),{done:1,total:4,percent:25});
+ for(const pair of [[rows(0),rows(0)],[rows(1),{...rows(1),more:true}],[{state:'disabled'},rows(1)],[rows(1),{state:'error'}]])assert.equal(taskProgress(...pair),null);
+});
+
+test('Today displays only authorized local preview routes and retains exact minor-unit strings',()=>{
+ const base={title:'Lunch',url:'/m/recipes/recipes',minor:'9007199254740993'};
+ const model=image=>sectionModel({state:'ready',items:[{...base,image}]},1).items[0];
+ assert.equal(model('/attachments/0b422a51-7ed0-4026-9ac3-258942d990a9/preview').minor,base.minor);
+ assert.match(model('/attachments/0b422a51-7ed0-4026-9ac3-258942d990a9/preview').image,/^\/attachments\//);
+ for(const url of ['//other.invalid/pic','data:image/png,sample','/attachments/private/original'])assert.equal(model(url).image,'');
+});

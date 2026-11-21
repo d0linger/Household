@@ -1,8 +1,8 @@
 {{define "recipe-find"}}
 <link rel="stylesheet" href="{{index .Asset "recipe-find.css"}}">
 <section id="recipe-find" class="recipe-surface" data-generation="{{with index .States "recipes"}}{{.Generation}}{{end}}">
- {{template "workspace-nav" .}}
  <div class="page-heading"><div><h1>{{t "Rezepte finden"}}</h1><p class="muted">{{t "Dauer, Zutaten und Kochverlauf gemeinsam eingrenzen."}}</p></div></div>
+ {{template "workspace-nav" .}}
  <p id="rf-status" role="status" aria-live="polite">{{t "Filter bereit."}}</p><div id="rf-error" class="notice error" role="alert" tabindex="-1" hidden></div>
  <form id="rf-form" class="panel" novalidate><div class="recipe-filter-top"><label>{{t "Rezeptname"}}<input name="q" type="search" maxlength="100" autocomplete="off" placeholder="{{t "Name durchsuchen"}}"></label><button class="primary" type="submit">{{t "Rezepte anzeigen"}}</button></div>
   <details id="rf-more"><summary>{{t "Weitere Filter"}}</summary><div class="form-grid">

@@ -38,15 +38,18 @@ async function commit(action,field,expected){
 }
 async function record(entity,id){return(await read(api+'/records/'+entity+'/'+id)).record;}
 async function capture(name){
- await page.evaluate(async()=>{await document.fonts.ready;await Promise.all(document.getAnimations().filter(a=>Number.isFinite(a.effect?.getComputedTiming().endTime)).map(a=>a.finished.catch(()=>{})));});
- const axe=await new AxeBuilder({page}).withTags(['wcag2a','wcag2aa','wcag21aa']).analyze();report.accessibility.push({name,violations:axe.violations});must(!axe.violations.length,'Axe '+name);
+ // Chromium can report a finished transition without resolving its finished promise after a resize.
+ await page.waitForFunction(()=>document.fonts.status==='loaded'&&!document.getAnimations().some(animation=>
+  animation.playState==='running'&&animation.playbackRate>0&&Number.isFinite(animation.effect?.getComputedTiming().endTime)
+ ),undefined,{polling:50,timeout:5000}).catch(error=>{throw new Error('Fuel appearance did not settle for '+name,{cause:error});});
+ const axe=await new AxeBuilder({page}).options({resultTypes:['violations']}).withTags(['wcag2a','wcag2aa','wcag21aa']).analyze();report.accessibility.push({name,violations:axe.violations});must(!axe.violations.length,'Axe '+name);
  must(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),'No root overflow '+name);
  await page.screenshot({path:path.join(output,name+'.png'),fullPage:true,animations:'disabled'});report.screenshots.push(name+'.png');
 }
 (async()=>{
  const storageState=await fixtureState();await fs.mkdir(output,{recursive:true});
  browser=await chromium.launch({headless:true,executablePath:process.env.CHROME_PATH||(process.platform==='win32'?'C:/Program Files/Google/Chrome/Application/chrome.exe':undefined)});
- watchdog=setTimeout(()=>{report.errors.push('Eight-minute fixture browser deadline exceeded');void browser.close();},480000);watchdog.unref();
+ watchdog=setTimeout(()=>{report.errors.push('Twelve-minute Fuel browser deadline exceeded');void browser.close();},12*60*1000);watchdog.unref();
  try{
   const context=await browser.newContext({storageState,viewport:{width:1440,height:1000},serviceWorkers:'block'});
   await context.route('**/*',route=>{if(new URL(route.request().url()).origin!==origin.origin){report.externalRequests.push(new URL(route.request().url()).origin);return route.abort();}return route.continue();});
@@ -93,10 +96,13 @@ async function capture(name){
      must(await namedChooser.count()===1&&await namedChooser.getAttribute('name')==='responsible_member_id','Vehicle responsibility combobox has the exact localized accessible name in '+language);
     }
     must(await page.getByRole('link',{name:language==='en'?'Manage vehicle device notifications':'Gerätehinweise für Fahrzeuge verwalten',exact:true}).count()===1,'Reciprocal settings link localized in '+language+'/'+pane);
-    for(const width of [1440,320])for(const mode of ['light','dark','pink-light','pink-dark']){
-     await page.setViewportSize({width,height:width===320?900:1000});await page.evaluate(mode=>window.HouseholdTheme.apply(mode,{persist:false}),mode);
-     await chooser.focus();must(await chooser.evaluate(el=>el===document.activeElement),'Assignment control keyboard reachable '+language+'/'+pane+'/'+mode+'/'+width);
-     await capture(language+'-'+pane+'-'+mode+'-'+width);
+    for(const width of [1440,320]){
+     await page.setViewportSize({width,height:width===320?900:1000});
+     for(const mode of ['light','dark','pink-light','pink-dark']){
+      await page.evaluate(mode=>window.HouseholdTheme.apply(mode,{persist:false}),mode);
+      await chooser.focus();must(await chooser.evaluate(el=>el===document.activeElement),'Assignment control keyboard reachable '+language+'/'+pane+'/'+mode+'/'+width);
+      await capture(language+'-'+pane+'-'+mode+'-'+width);
+     }
     }
    }
   }

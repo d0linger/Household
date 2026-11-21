@@ -1,8 +1,8 @@
 {{define "pantry-waste"}}
 <link rel="stylesheet" href="{{index .Asset "pantry-waste.css"}}">
 <section id="pantry-waste" data-lot="{{.Record.lot}}" data-movement="{{.Record.movement}}" data-writable="{{.User.CanWrite}}">
- {{template "pantry-daily-nav" .}}
  <div class="page-heading"><div><p class="eyebrow">{{t "BEWUSST MIT VORRÄTEN UMGEHEN"}}</p><h1>{{.Title}}</h1><p class="muted">{{t "Verluste verstehen und Mengen nachvollziehen."}}</p></div><a class="button" href="/m/pantry/priority">{{t "Charge auswählen"}}</a></div>
+ {{template "pantry-daily-nav" .}}
  <p id="waste-status" role="status">{{t "Daten werden geladen …"}}</p><div id="waste-error" class="notice error" role="alert" tabindex="-1" hidden></div>
  <div class="actions"><button type="button" id="waste-refresh">{{t "Aktuellen Stand laden"}}</button><button type="button" id="waste-retry" hidden>{{t "Dieselbe Buchung erneut prüfen"}}</button></div>
  {{if .Record.lot}}

@@ -90,6 +90,18 @@ func choreQueryNormalize(query ChoreQuery, today string) (ChoreQuery, error) {
 }
 
 func (s *Store) ChoreTasks(ctx context.Context, id auth.Identity, input ChoreQuery) (Record, error) {
+	return s.choreTasks(ctx, id, input, false)
+}
+
+// TodayCompletedTasks keeps the personal task scope while selecting actual completions on the household day.
+func (s *Store) TodayCompletedTasks(ctx context.Context, id auth.Identity, day string) (Record, error) {
+	if day == "" {
+		return nil, ErrNotFound
+	}
+	return s.choreTasks(ctx, id, ChoreQuery{Scope: "mine", State: "completed", From: day, Through: day, Limit: 6}, true)
+}
+
+func (s *Store) choreTasks(ctx context.Context, id auth.Identity, input ChoreQuery, byCompletion bool) (Record, error) {
 	scope, err := s.choreRead(ctx, id)
 	if err != nil {
 		return nil, err
@@ -145,8 +157,9 @@ func (s *Store) ChoreTasks(ctx context.Context, id auth.Identity, input ChoreQue
 		}
 	}
 	rows, err := choreRows(scope.ctx, scope.tx, query.Limit+1, "SELECT "+choreTaskSummary+choreTaskJoins+`
- WHERE o.household_id=$1 AND ($2='all' OR o.state=$2) AND o.due_at<$3
- AND ($4::timestamptz IS NULL OR o.due_at>=$4::timestamptz)
+ WHERE o.household_id=$1 AND ($2='all' OR o.state=$2)
+ AND (($15::boolean AND o.completed_at >= $4::timestamptz AND o.completed_at < $3::timestamptz)
+  OR (NOT $15 AND o.due_at < $3 AND ($4::timestamptz IS NULL OR o.due_at >= $4)))
  AND ($5::timestamptz IS NULL OR(o.due_at,o.id)>($5::timestamptz,$6::uuid))
  AND ($7='' OR v.area_id::text=$7) AND ($8='' OR o.template_id::text=$8)
  AND ($9='' OR position(lower($9) in lower(coalesce(d.overrides->>'title',v.title)))>0)
@@ -155,7 +168,7 @@ func (s *Store) ChoreTasks(ctx context.Context, id auth.Identity, input ChoreQue
  AND ($13::boolean OR NOT profile.paused OR o.due_at<=profile.paused_at)
  AND ($14::boolean OR template.active)
  ORDER BY o.due_at,o.id LIMIT $12`, id.HouseholdID, query.State, end, from, cursorDue, cursorID,
-		query.AreaID, query.TemplateID, query.Search, query.Scope, id.MembershipID, query.Limit+1, query.IncludePaused, query.IncludeArchived)
+		query.AreaID, query.TemplateID, query.Search, query.Scope, id.MembershipID, query.Limit+1, query.IncludePaused, query.IncludeArchived, byCompletion)
 	if err != nil {
 		return nil, err
 	}

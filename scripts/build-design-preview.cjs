@@ -5,20 +5,28 @@ const root = path.resolve(__dirname,'..');
 const target = path.join(root,'design-preview');
 const source = fs.readFileSync(path.join(target,'designDirections.ts'),'utf8');
 const escape = value => value.replace(/[&<>"']/g,c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const publicSources = new Map([
+  ['../design-preview/designDirections.ts','./designDirections.ts'],
+  ['../design-preview/dialog-fixtures.js','./dialog-fixtures.js']
+]);
 function inline(value) {
-  return escape(value).replace(/`([^`]+)`/g,'<code>$1</code>').replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>').replace(/\[([^\]]+)\]\((https:\/\/[^ )]+|[^: )]+\.md(?:#[^ )]*)?)\)/g,(_,label,url) => `<span>${label}</span>`);
+  return escape(value).replace(/`([^`]+)`/g,'<code>$1</code>').replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>')
+    .replace(/\[([^\]]+)\]\(([^ )]+)\)/g,(_,label,url) => {
+      const href=publicSources.get(url);
+      return href ? `<a href="${href}">${label}</a>` : `<code>${label}</code>`;
+    });
 }
 function markdown(markdown) {
-  const lines = markdown.split(/\r?\n/), out = []; let list = '';
+  const lines = markdown.split(/\r?\n/), out = []; let list = '', section = '';
   const closeList = () => { if (list) {out.push(`</${list}>`);list='';} };
   for (let i=0;i<lines.length;i++) {
     const line=lines[i];
     if (!line.trim()) {closeList();continue;}
     const heading=line.match(/^(#{1,4}) (.+)$/);
-    if (heading) {closeList();out.push(`<h${heading[1].length}>${inline(heading[2])}</h${heading[1].length}>`);continue;}
+    if (heading) {closeList();section=heading[2];out.push(`<h${heading[1].length}>${inline(section)}</h${heading[1].length}>`);continue;}
     if (line.startsWith('|') && lines[i+1]?.match(/^\|[\s:|-]+\|$/)) {
       closeList(); const cells=text => text.trim().slice(1,-1).split('|').map(cell=>inline(cell.trim()));
-      out.push('<div class="guide-table" tabindex="0" role="region" aria-label="Designregeln als Tabelle"><table><thead><tr>'+cells(line).map(c=>`<th scope="col">${c}</th>`).join('')+'</tr></thead><tbody>');i++;
+      out.push(`<div class="guide-table" tabindex="0" role="region" aria-label="${escape(section)}"><table><thead><tr>`+cells(line).map(c=>`<th scope="col">${c}</th>`).join('')+'</tr></thead><tbody>');i++;
       while(lines[i+1]?.startsWith('|')) out.push('<tr>'+cells(lines[++i]).map(c=>`<td>${c}</td>`).join('')+'</tr>');
       out.push('</tbody></table></div>');continue;
     }
@@ -29,7 +37,7 @@ function markdown(markdown) {
   closeList();return out.join('\n');
 }
 const guide=fs.readFileSync(path.join(root,'docs/design-preview-guideline.md'),'utf8');
-const html=`<!doctype html><html lang="en" data-theme="light"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="description" content="Household design directions and comparable dialog guidelines."><title>Household: Design guideline</title><link rel="stylesheet" href="./laboratory.css"><link rel="stylesheet" href="./guideline.css"><link rel="icon" href="./mark.svg"></head><body><main class="guide"><a href="./">Zurück zum Designatelier</a>${markdown(guide)}<p><a href="/design-guideline.md" download>Download Markdown guideline</a></p></main></body></html>\n`;
+const html=`<!doctype html><html lang="en" data-theme="light"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="description" content="Household design directions and comparable dialog guidelines."><title>Household: Design guideline</title><link rel="stylesheet" href="./laboratory.css"><link rel="stylesheet" href="./guideline.css"><link rel="icon" href="./mark.svg"></head><body><main class="guide"><a href="./" hreflang="de">Back to the design gallery (German)</a>${markdown(guide)}<p><a href="/design-guideline.md" download>Download Markdown guideline</a></p></main></body></html>\n`;
 function hsl(h,s,l){
   s/=100;l/=100;const a=s*Math.min(l,1-l);
   return '#'+[0,8,4].map(n=>{const k=(n+h/30)%12;return Math.round(255*(l-a*Math.max(-1,Math.min(k-3,9-k,1)))).toString(16).padStart(2,'0');}).join('');

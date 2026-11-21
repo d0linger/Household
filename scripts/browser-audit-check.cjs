@@ -18,6 +18,7 @@ const must=(condition,message)=>{if(!condition)throw Error(message);report.check
   const page=await context.newPage();page.on('pageerror',error=>report.errors.push(String(error)));
   await page.goto(base+'/login');await page.locator('[name=username]').fill('bootstrap');await page.locator('[name=password]').fill(process.env.HOUSEHOLD_BROWSER_PASSWORD||'Browser review only 1234');
   await Promise.all([page.waitForURL(url=>url.pathname!=='/login'),page.getByRole('button',{name:/^Anmelden/}).click()]);
+  await require('./browser-locale-helper.cjs').setBrowserLocale(page);
   const fixture=await page.evaluate(async()=>{
    const csrf=document.querySelector('meta[name="csrf-token"]').content;
    const bootstrap=await fetch('/api/v1/core/bootstrap').then(r=>r.json());

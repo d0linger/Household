@@ -80,7 +80,7 @@ async function shoppingController(options={}){
  const panel={querySelector(selector){return nodes[selector.match(/^\[data-notification-(.+)\]$/)?.[1]];},querySelectorAll(){return [];}};
  const category=options.category||'shopping';
  let saved={...pref(),category,version:options.version||0},mode='save';const writes=[],reads=[];
- const projection=()=>({preferences:[{...saved}],categories:[{category,available:true}]});
+ const projection=()=>({preferences:[{...saved}],categories:[{category,available:options.available!==false}]});
  const raw=async(url,input)=>{
   reads.push(url);
   if(url==='/api/v1/core/bootstrap')return {user:{id,household_id:id},states:{[category]:{state:options.disabledModule?'disabled':'enabled'}}};
@@ -96,14 +96,15 @@ async function shoppingController(options={}){
  vm.runInNewContext(fs.readFileSync(require.resolve('../internal/web/static/notification-settings.js'),'utf8'),sandbox);
  for(let turn=0;turn<10&&!nodes.status.textContent.includes('Aktueller Stand geladen');turn++)await new Promise(resolve=>setImmediate(resolve));
  assert.match(nodes.status.textContent,/Aktueller Stand geladen/);
- const all=node=>[node,...(node.children||[]).flatMap(all)],article=nodes.preferences.children[0],form=all(article).find(node=>node.tag==='form');
- return {writes,reads,article,form,all,control:()=>all(article).find(node=>Object.hasOwn(node.dataset,'shoppingControl')),checkbox:()=>all(form).find(node=>node.tag==='input'&&node.type==='checkbox'),setMode(value){mode=value;},get saved(){return saved;},submit:()=>form.listeners.get('submit')({preventDefault(){}})};
+ const all=node=>[node,...(node.children||[]).flatMap(all)],article=all(nodes.preferences).find(node=>node.className==='notification-preference'),form=all(article).find(node=>node.tag==='form');
+ return {writes,reads,article,form,all,state:article.children[0].querySelectorAll('span').find(node=>node.className==='notification-category-state'),control:()=>all(article).find(node=>Object.hasOwn(node.dataset,'shoppingControl')),checkbox:()=>all(form).find(node=>node.tag==='input'&&node.type==='checkbox'),setMode(value){mode=value;},get saved(){return saved;},submit:()=>form.listeners.get('submit')({preventDefault(){}})};
 }
 test('first explicit Shopping save as off selects central control without opting devices in',async()=>{
  const f=await shoppingController();assert.equal(f.control().dataset.shoppingControl,'legacy');assert.match(f.control().textContent,/auch, wenn du die Kategorie ausgeschaltet speicherst/);
+ assert.equal(f.state.textContent,'Je Einkaufsliste');
  assert.equal(f.writes.length,0,'merely opening the row must not migrate consent');
  await f.submit();assert.deepEqual(f.writes.map(row=>[row.enabled,row.version]),[[false,0]]);assert.equal(f.control().dataset.shoppingControl,'central');
- assert.equal(f.saved.enabled,false);assert.equal(f.saved.version,1);assert.match(f.control().textContent,/frühere Listenversand aus/);
+ assert.equal(f.saved.enabled,false);assert.equal(f.saved.version,1);assert.match(f.control().textContent,/frühere Listenversand aus/);assert.equal(f.state.textContent,'Deaktiviert');
  assert.ok(f.reads.every(url=>!url.includes('/subscriptions/')),'category save must not create or migrate device permissions');
  f.checkbox().checked=true;await f.submit();f.checkbox().checked=false;await f.submit();assert.equal(f.saved.enabled,false);assert.equal(f.saved.version,3);assert.equal(f.control().dataset.shoppingControl,'central');
 });
@@ -135,8 +136,23 @@ test('Pantry failed save retains the explicit draft and conflict reload does not
  f.setMode('conflict');await f.submit();assert.equal(f.checkbox().checked,false);assert.equal(f.saved.version,3);assert.equal(f.writes.length,2);
 });
 
+test('personal disclosure reports committed consent after save, failure and conflict',async()=>{
+ const f=await shoppingController({category:'pantry'});
+ assert.equal(f.article.tag,'details');assert.equal(f.article.children[0].tag,'summary');assert.equal(f.state.textContent,'Deaktiviert');
+ f.checkbox().checked=true;assert.equal(f.state.textContent,'Deaktiviert');
+ f.setMode('fail');await f.submit();assert.equal(f.state.textContent,'Deaktiviert');
+ f.setMode('save');await f.submit();assert.equal(f.state.textContent,'Aktiviert');
+ f.setMode('conflict');await f.submit();assert.equal(f.state.textContent,'Deaktiviert');assert.equal(f.checkbox().checked,false);
+});
+
+test('unavailable category retains guidance and has no consent form',async()=>{
+ const f=await shoppingController({category:'shopping',available:false});
+ assert.equal(f.state.textContent,'Nicht verfügbar');assert.equal(f.form,undefined);
+ assert.match(f.article.textContent,/für diese Kategorie sind noch nicht verfügbar/);assert.equal(f.writes.length,0);
+});
+
 test('Pantry explains daily grouping and observation limits before consent without claiming retroactive alarms',async()=>{
- const f=await shoppingController({category:'pantry'}),details=f.all(f.article).find(node=>node.tag==='details');
+ const f=await shoppingController({category:'pantry'}),details=f.article.querySelectorAll('details')[0];
  assert.match(f.article.textContent,/höchstens eine allgemeine Nachricht pro Tag/);assert.match(f.article.textContent,/ursprünglichen Ablauf/);
  assert.match(details.textContent,/Nach deiner Freigabe muss zuerst ein ausreichender Bestand erkannt werden/);
  assert.match(details.textContent,/Bestehende Engpässe|bestehende Engpässe/);assert.match(details.textContent,/zwischen zwei Prüfungen/);
@@ -162,7 +178,7 @@ test('Fuel failed save keeps draft and conflicting consent reloads server state 
 });
 
 test('Fuel guidance distinguishes recipients, freshness, initial mileage baseline and independent task alerts',async()=>{
- const f=await shoppingController({category:'fuel'}),details=f.all(f.article).find(node=>node.tag==='details');
+ const f=await shoppingController({category:'fuel'}),details=f.article.querySelectorAll('details')[0];
  assert.match(f.article.textContent,/Wartungspläne verwenden ausschließlich ihre eigene Zuständigkeit/);
  for(const phrase of ['sieben Tage vorher','09:00 Uhr in der Haushaltszeitzone','24 Stunden','30 Kalendertage','beim ersten Prüfen bleibt ohne Hinweis','Archivierte Fahrzeuge','beide Hinweise erscheinen'])assert.ok(details.textContent.includes(phrase),phrase);
 });
@@ -184,7 +200,7 @@ test('Finance failed consent preserves draft and conflict reloads without retry'
 });
 
 test('Finance guidance distinguishes actual payment, private scope, no-history and budget hysteresis',async()=>{
- const f=await shoppingController({category:'expenses'}),details=f.all(f.article).find(node=>node.tag==='details');
+ const f=await shoppingController({category:'expenses'}),details=f.article.querySelectorAll('details')[0];
  for(const text of ['keine Beträge, Kontonamen','80 % und 100 %','75 % beziehungsweise 95 %','nicht nachgemeldet','vollständige Monat','einschließlich Übertrag','null oder weniger','gebuchte Ausgabe allein'])assert.ok(f.article.textContent.includes(text),text);
  assert.match(details.textContent,/sieben Tage vorher/);assert.match(details.textContent,/24 Stunden/);assert.match(details.textContent,/geschützten Quellen/);
 });

@@ -40,6 +40,22 @@ func TestFinanceSupportBudgetCarryUsesActualAuthorizedMonthConsumption(t *testin
 		entry.OccurredOn = fact.on
 		financeNativeApply(t, f, "entries", "post", value.UUID(), 0, entry)
 	}
+	overview, err := f.store.FinanceView(f.ctx, f.identity, FinanceQuery{Pane: "overview", Month: "2026-10", Category: category})
+	if err != nil {
+		t.Fatal(err)
+	}
+	recent, ok := overview["recent_entries"].([]Record)
+	if !ok || len(recent) != 1 || recent[0]["amount_minor"] != "400" || recent[0]["day"] != "2026-10-15" {
+		t.Fatalf("recent expenses disagree with the selected category and month: %v", recent)
+	}
+	if overview["from"] != "2026-10-01" || overview["to"] != "2026-10-31" {
+		t.Fatal("overview did not return the effective month")
+	}
+	period, err := f.store.FinanceView(f.ctx, f.identity, FinanceQuery{Pane: "overview", Month: "2026-10", From: "2026-09-10", Category: category})
+	totals, ok := period["totals"].(Record)
+	if err != nil || !ok || period["from"] != "2026-09-10" || period["to"] != "2026-10-31" || totals["posted_consumption_minor"] != "2000" {
+		t.Fatalf("overview range does not describe both selected bookings: %v, %v", period, err)
+	}
 	for _, tc := range []struct{ rule, octoberCarry, octoberAvailable, novemberAvailable string }{
 		{"all", "-500", "100", "1100"},
 		{"positive_only", "0", "600", "1600"},

@@ -67,8 +67,11 @@ func TestTodayTasksUsesHouseholdCivilDayAndBoundedOwnedContract(t *testing.T) {
 		{"title": "Today across UTC midnight", "occurrence": map[string]any{"id": taskID, "due_at": "2026-03-28T23:30:00Z"}, "prerequisites_met": true},
 	}}
 	out := todayTasks(data, "de")
-	if len(out.Items) != 2 || !out.More || out.Items[0].Meta != "Überfällig · 2026-03-28 · Voraussetzung offen" || out.Items[1].Meta != "Heute fällig" {
+	if len(out.Items) != 2 || !out.More || out.Items[0].Meta != "Überfällig · 28.03.2026 · Voraussetzung offen" || out.Items[1].Meta != "Heute fällig" {
 		t.Fatalf("household due-date projection: %#v", out)
+	}
+	if got := todayTasks(data, "en").Items[0].Meta; got != "Overdue · 28 Mar 2026 · Prerequisite pending" {
+		t.Fatalf("English overdue date: %s", got)
 	}
 	if out.Items[0].URL != "/m/chores/workspace/work/"+taskID {
 		t.Fatal("task did not retain its authorized work identity")

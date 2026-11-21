@@ -3,6 +3,7 @@ package web
 import (
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"time"
 
@@ -226,6 +227,8 @@ func workspaceNavigation(r *http.Request, p Page) WorkspaceNavigation {
 			}
 		}
 	}
+	currentURL := r.URL.RequestURI()
+	n.Actions = slices.DeleteFunc(n.Actions, func(action WorkspaceLink) bool { return action.Href == currentURL })
 	for _, links := range [][]WorkspaceLink{n.Primary, n.Context, n.Actions, n.Manage, n.Data} {
 		for i := range links {
 			links[i].ModuleID = p.Module.ID

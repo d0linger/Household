@@ -1,7 +1,7 @@
 {{define "cooking"}}
 <section id="cooking" data-kind="{{.Record.kind}}" data-id="{{.Record.id}}" data-generation="{{with index .States "recipes"}}{{.Generation}}{{end}}" data-writable="{{.User.CanWrite}}">
- {{template "workspace-nav" .}}
- <h1 id="cooking-title">{{t "Kochen"}}</h1><p id="cooking-status" role="status">{{t "Kochdaten werden geladen …"}}</p>
+ <h1 id="cooking-title">{{t "Kochen"}}</h1>
+ {{template "workspace-nav" .}}<p id="cooking-status" role="status">{{t "Kochdaten werden geladen …"}}</p>
  <div id="cooking-error" class="notice error" role="alert" tabindex="-1" hidden></div>
  <button type="button" id="cooking-refresh" hidden>{{t "Gespeicherten Stand laden und prüfen"}}</button>
  <div id="cooking-start-recovery" class="notice" hidden><p>{{t "Der Start wurde möglicherweise bereits gespeichert. Erneutes Prüfen verwendet dieselbe Anfrage und erzeugt keine zweite Sitzung."}}</p><button type="button" id="cooking-retry-start">{{t "Start erneut prüfen"}}</button><a class="button subtle" href="/m/recipes/cooking">{{t "Meine offenen Sitzungen ansehen"}}</a></div>

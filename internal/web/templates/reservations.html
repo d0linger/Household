@@ -1,7 +1,7 @@
 {{define "reservations"}}
 <div id="reservation-board" data-plan="{{.Record.plan_id}}" data-meal="{{.Record.meal_id}}" data-writable="{{.User.CanWrite}}">
-<nav class="entity-tabs" aria-label="{{t "Mahlzeiten"}}"><a href="/m/mealplan/workspace/{{.Record.plan_id}}?meal={{.Record.meal_id}}">{{t "Zur Mahlzeitenplanung"}}</a><a href="/m/pantry/stock">{{t "Vorratsbestand"}}</a></nav>
-<h1>{{t "Vorrat reservieren"}}</h1><p id="reservation-meal-name">{{.Record.title}}</p><p id="reservation-status" role="status">{{t "Reservierung wird geladen …"}}</p>
+<h1>{{t "Vorrat reservieren"}}</h1>
+<nav class="entity-tabs" aria-label="{{t "Mahlzeiten"}}"><a href="/m/mealplan/workspace/{{.Record.plan_id}}?meal={{.Record.meal_id}}">{{t "Zur Mahlzeitenplanung"}}</a><a href="/m/pantry/stock">{{t "Vorratsbestand"}}</a></nav><p id="reservation-meal-name">{{.Record.title}}</p><p id="reservation-status" role="status">{{t "Reservierung wird geladen …"}}</p>
 <div id="reservation-error" class="notice error" role="alert" tabindex="-1" hidden></div>
 <div class="actions"><button type="button" id="reservation-refresh">{{t "Aktuellen Stand prüfen"}}</button></div>
 <section class="panel" aria-labelledby="reservation-source-title"><h2 id="reservation-source-title">{{t "Mahlzeit und Reservierung"}}</h2><div id="reservation-source"></div><p class="fine">{{t "Die Reservierung merkt vorhandene Chargen für diese Mahlzeit vor. Sie bucht keinen Verbrauch und berechnet keinen Rezeptbedarf. Tatsächlicher Verbrauch bleibt möglich; ein späterer Fehlbestand wird als Unterdeckung ausgewiesen."}}</p><div id="reservation-current"></div>

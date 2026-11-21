@@ -122,6 +122,16 @@ func (s *Server) modulePage(w http.ResponseWriter, r *http.Request) {
 	p := s.page(r, m.Title)
 	p.Module = m
 	p.Entity = e
+	if m.ID == "recipes" && e.ID == "recipes" {
+		ids := make([]string, 0, len(rows))
+		for _, row := range rows {
+			ids = append(ids, store.String(row["id"]))
+		}
+		covers := s.recipeCovers(r.Context(), identity(r), ids)
+		for _, row := range rows {
+			row["cover"] = covers[store.String(row["id"])]
+		}
+	}
 	p.Records = rows
 	p.View = "module"
 	p.Page = page

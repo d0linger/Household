@@ -11,6 +11,7 @@ const _householdText_shopping_js = (source, ...args) => { const i18n = globalThi
   const more = $('#shopping-more'), refresh = $('#shopping-refresh');
   const previous = document.createElement('button'); previous.type = 'button'; previous.textContent = _householdText_shopping_js("Vorherige Artikel"); previous.hidden = true; more.before(previous);
   let records = [], page = null, cursor = '', nextCursor = '', history = [], busy = false, loading = false;
+  if(window.matchMedia('(max-width:760px)').matches)$('#shopping-filter-panel').open=false;
   let poll, delay = 15000, queryTimer, revision = 0, controller, previousSignature = '', undo, completedOpen = true, resetRequested = false;
   const node = (tag, text, className) => {const el = document.createElement(tag); if(text !== undefined) el.textContent = text; if(className) el.className = className; return el;};
   const unit = code => code === 'piece' ? _householdText_shopping_js("Stück") : code || '';
@@ -45,7 +46,7 @@ const _householdText_shopping_js = (source, ...args) => { const i18n = globalThi
     const position = focusPosition();
     container.replaceChildren();
     board.classList.toggle('shopping-mode', mode.checked);
-    $('#shopping-list-title').textContent=page.list.name;
+    document.getElementById('shopping-list-title').textContent=page.list.name;
     const ordered = records;
     const open = ordered.filter(row => !row.checked_at), done = ordered.filter(row => row.checked_at);
     function groups(rows, target) {
@@ -75,6 +76,7 @@ const _householdText_shopping_js = (source, ...args) => { const i18n = globalThi
     updateMergeChoices(open);
     if(done.length){const completed=node('details',undefined,'shopping-completed');completed.open=completedOpen;const summary=node('summary',done.length+_householdText_shopping_js(" erledigt auf dieser Seite"));summary.setAttribute('data-shopping-summary','');completed.append(summary);completed.addEventListener('toggle',()=>{if(completed.isConnected)completedOpen=completed.open;});groups(done,completed);container.append(completed);}
     if(!ordered.length)container.append(node('p',filter.value.trim()?_householdText_shopping_js("Keine passenden Artikel. Suche ändern oder leeren."):_householdText_shopping_js("Noch keine Artikel. Füge deinen ersten Artikel hinzu."),'muted'));
+    $('#shopping-percent').textContent=page.total?Math.round(page.completed*100/page.total)+'%':'';
     $('#shopping-progress').textContent=page.completed+_householdText_shopping_js(" von ")+page.total+_householdText_shopping_js(" Artikeln erledigt");
     $('#shopping-progress-bar').max=Math.max(1,page.total);$('#shopping-progress-bar').value=page.completed;
     $('#shopping-page-note').textContent=records.length+_householdText_shopping_js(" Artikel auf dieser Seite. Die Suche durchsucht die ganze Liste; der Fortschritt zählt auch ausgeblendete Artikel.");

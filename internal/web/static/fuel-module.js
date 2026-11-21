@@ -46,6 +46,10 @@ function fuelWorkspaceUnsaved(pending,receipt,uploadUncertain,dirtyForms){
   'settings.save':{title:_householdText_fuel_module_js("Persönliche Vorgaben speichern"),noVehicle:true,fields:[pick('default_vehicle_id',_householdText_fuel_module_js("Bevorzugtes Fahrzeug"),'fuel/vehicles'),pick('default_series_id',_householdText_fuel_module_js("Bevorzugte Zählerreihe"),'fuel/odometer_series'),field('default_station',_householdText_fuel_module_js("Bevorzugte Tankstelle"),'text',{max:200}),field('plausibility_unit',_householdText_fuel_module_js("Mengeneinheit der persönlichen Grenzen"),'select',{options:[['',_householdText_fuel_module_js("Keine Mengengrenze festgelegt")],...units]}),field('plausibility_currency_code',_householdText_fuel_module_js("Währung der Preisgrenze"),'currency'),qty('minimum_consumption',_householdText_fuel_module_js("Verbrauchshinweis unter diesem Wert je 100 km")),qty('maximum_consumption',_householdText_fuel_module_js("Verbrauchshinweis über diesem Wert je 100 km")),qty('maximum_fill_quantity',_householdText_fuel_module_js("Hinweis ab dieser Tankmenge in der gewählten Einheit")),qty('maximum_daily_distance',_householdText_fuel_module_js("Hinweis ab dokumentierter Tagesstrecke in km")),qty('maximum_unit_price',_householdText_fuel_module_js("Hinweis ab diesem Preis je Einheit in der gewählten Währung"))]},
   'segments.rebuild':{title:_householdText_fuel_module_js("Abgeleitete Abschnitte neu berechnen"),fields:[]}
  };
+ if(pane==='capture'){
+  const fields=registry['fillup.save'].fields, amounts=['quantity','quantity_unit','unit_price','total_minor'];
+  registry['fillup.save'].fields=[...amounts.map(name=>fields.find(field=>field.name===name)),...fields.filter(field=>!amounts.includes(field.name))];
+ }
  labels.responsible_member_id=_householdText_fuel_module_js("Verantwortlich für Fahrzeugtermine");
  labels.responsible_since=labels.assignee_since=_householdText_fuel_module_js("Zuständig seit");
  registry['vehicle.save'].fields.splice(6,0,pick('responsible_member_id',_householdText_fuel_module_js("Verantwortliches Haushaltsmitglied für Fahrzeugtermine · optional"),'core/memberships'));
@@ -82,6 +86,16 @@ function fuelWorkspaceUnsaved(pending,receipt,uploadUncertain,dirtyForms){
  function unlocked(){return phase==='editing'&&!pending&&!receipt&&!authChanged&&scopeConfirmed;}
  function locks(){
   const blocked=busy||!unlocked();$('#fm-filter-fields').disabled=busy;for(const fieldset of root.querySelectorAll('[data-fm-owned-fields]'))fieldset.disabled=blocked||fieldset.dataset.blocked==='true'||!view?.context.can_write;for(const id of['refresh','filter-submit','export'])$('#fm-'+id).disabled=busy;
+  const addVehicle=$('#fm-add-vehicle'),startCapture=$('#fm-start-capture');
+  if(addVehicle){
+   addVehicle.hidden=!scopeConfirmed||!view?.context.can_write||view.options?.vehicles?.length!==0||view.records.length!==0||Boolean($('#fm-vehicle').value);
+   addVehicle.disabled=blocked;
+  }
+  if(startCapture){
+   startCapture.hidden=!scopeConfirmed||!view?.context.can_write;
+   startCapture.disabled=blocked;
+   startCapture.textContent=!$('#fm-vehicle').value&&view?.options?.vehicles?.length===0?_householdText_fuel_module_js("Zur Fahrzeugübersicht"):_householdText_fuel_module_js("Tankdaten eingeben");
+  }
   $('#fm-next').disabled=busy||dirty;$('#fm-previous').disabled=busy||dirty;const acknowledged=pending?.command?.data?.acknowledged_warnings||[],missingAck=(pending?.requiredWarningCodes||[]).some(code=>!acknowledged.includes(code))||[...$('#fm-review-warnings').querySelectorAll('input[data-warning]')].some(input=>!input.checked);$('#fm-review-confirm').disabled=busy||phase!=='review'||!pending||missingAck;
   $('#fm-review-cancel').disabled=busy||phase!=='review';$('#fm-review-ack').disabled=busy;$('#fm-retry').disabled=busy||phase!=='uncertain'||!pending||!pending.review||Date.now()>=pending.expires*1000;$('#fm-operation-status').disabled=busy||!pending;$('#fm-abandon').disabled=busy||!pending;$('#fm-check-history').disabled=busy;$('#fm-new-operation').disabled=busy||!receipt;
   const older=Boolean(pending&&scopeConfirmed&&!authChanged&&view?.context.generation>pending.command.generation);$('#fm-generation-discard').hidden=!older;$('#fm-generation-discard').disabled=busy||!older;
@@ -191,7 +205,7 @@ function fuelWorkspaceUnsaved(pending,receipt,uploadUncertain,dirtyForms){
  }
 
  function attachReferenceSearch(select,source,labelText){
-  const label=select.closest('label'),wrapper=node('div'),tools=node('div',undefined,'fm-select-tools'),search=node('input'),find=node('button',_householdText_fuel_module_js("Suchen")),nextButton=node('button',_householdText_fuel_module_js("Weitere Treffer")),status=node('small');search.type='search';search.maxLength=100;search.setAttribute('aria-label',labelText+_householdText_fuel_module_js(" durchsuchen"));find.type=nextButton.type='button';nextButton.hidden=true;label.replaceWith(wrapper);wrapper.append(label,tools,status);tools.append(search,find,nextButton);referenceState.set(select,{source,loading:false,next:'',query:'',tools,status,nextButton});find.addEventListener('click',()=>run(()=>referencePicker(select,source,search.value.trim())));nextButton.addEventListener('click',()=>{const state=referenceState.get(select);if(state.next)void run(()=>referencePicker(select,source,state.query,state.next));});search.addEventListener('keydown',e=>{if(e.key==="Enter"){e.preventDefault();find.click();}});return wrapper;
+  const label=select.closest('label'),wrapper=node('div'),tools=node('div',undefined,'fm-select-tools'),search=node('input'),find=node('button',_householdText_fuel_module_js("Suchen")),nextButton=node('button',_householdText_fuel_module_js("Weitere Treffer")),status=node('small');search.type='search';search.maxLength=100;search.placeholder=labelText+_householdText_fuel_module_js(" durchsuchen");search.setAttribute('aria-label',search.placeholder);find.type=nextButton.type='button';nextButton.hidden=true;label.replaceWith(wrapper);wrapper.append(label,tools,status);tools.append(search,find,nextButton);referenceState.set(select,{source,loading:false,next:'',query:'',tools,status,nextButton});find.addEventListener('click',()=>run(()=>referencePicker(select,source,search.value.trim())));nextButton.addEventListener('click',()=>{const state=referenceState.get(select);if(state.next)void run(()=>referencePicker(select,source,state.query,state.next));});search.addEventListener('keydown',e=>{if(e.key==="Enter"){e.preventDefault();find.click();}});return wrapper;
  }
  function makeField(def,form){
   const label=node('label',def.label),id='fm-'+form.dataset.action.replaceAll('.','-')+'-'+def.name.replaceAll('.','-');let input;
@@ -365,12 +379,29 @@ function fuelWorkspaceUnsaved(pending,receipt,uploadUncertain,dirtyForms){
  $('#fm-title').textContent=titles[pane]?.[0]||_householdText_fuel_module_js("Fahrzeuge & Tanken");$('#fm-description').textContent=titles[pane]?.[1]||'';
  if(['overview','maintenance','settings'].includes(pane)){
   const guidance=node('p',pane==='maintenance'?_householdText_fuel_module_js("Gerätehinweise verwenden nur die Zuständigkeit dieses Wartungsplans. Die Fahrzeugzuständigkeit wird nicht übernommen; eine Aufgabenverknüpfung hat eigene Hinweise."):_householdText_fuel_module_js("Für Service-, Prüfungs- und Versicherungstermine wählst du am Fahrzeug eine zuständige Person. Diese muss Gerätehinweise zusätzlich persönlich und je Gerät erlauben."),'fine'),link=node('a',_householdText_fuel_module_js("Gerätehinweise für Fahrzeuge verwalten"));
-  link.href='/settings/notifications';link.dataset.fuelNotificationLink='';guidance.append(document.createTextNode(' '),link);$('#fm-description').parentElement.append(guidance);
+  link.href='/settings/notifications';link.dataset.fuelNotificationLink='';guidance.append(document.createTextNode(' '),link);($('#fm-overview-guidance')||$('#fm-description').parentElement).append(guidance);
  }
  function navigationSelection(){for(const a of root.querySelectorAll('a[data-pane],a.workspace-manage-link')){try{a.href=fuelWorkspaceHref(a.dataset.pane||'manage',$('#fm-vehicle').value);a.removeAttribute('aria-disabled');}catch{a.removeAttribute('href');a.setAttribute('aria-disabled','true');}}}
  for(const a of root.querySelectorAll('a[data-pane],a.workspace-manage-link'))a.addEventListener('click',event=>{const selection=$('#fm-vehicle');if(selection.disabled||selection.dataset.referenceState==='error'){event.preventDefault();setError(Error(_householdText_fuel_module_js("Gewähltes Fahrzeug zuerst aktuell suchen. Eine fehlende Referenz wird nicht als „alle Fahrzeuge“ behandelt.")));return;}try{a.href=fuelWorkspaceHref(a.dataset.pane||'manage',selection.value);}catch(error){event.preventDefault();setError(error);}});
  window.addEventListener('beforeunload',event=>{if(fuelWorkspaceUnsaved(pending,receipt,uploadUncertain,[...formState.values()].some(state=>state.form.dataset.dirty==='true'))){event.preventDefault();event.returnValue='';}});
  makeForms();attachReferenceSearch($('#fm-vehicle'),'fuel/vehicles',_householdText_fuel_module_js("Fahrzeug"));paneFilters();reportKindSelector();restorePending();
+ $('#fm-add-vehicle')?.addEventListener('click',()=>{
+  const entry=formState.get('vehicle.save');
+  entry.details.open=true;
+  entry.form.elements.namedItem('name').focus();
+ });
+ $('#fm-start-capture')?.addEventListener('click',()=>{
+  const vehicle=$('#fm-vehicle');
+  if(!vehicle.value){
+   if(view.options.vehicles.length===0)location.assign(fuelWorkspaceHref('overview'));
+   else vehicle.focus();
+   return;
+  }
+  if(dirty){$('#fm-filter-submit').focus();return;}
+  const entry=formState.get('fillup.save');
+  entry.details.open=true;
+  entry.form.elements.namedItem('quantity').focus();
+ });
  if(root.dataset.vehicle){const option=node('option',_householdText_fuel_module_js("Ausgewähltes Fahrzeug · aktuellen Zugriff prüfen"));option.value=root.dataset.vehicle;$('#fm-vehicle').append(option);$('#fm-vehicle').value=root.dataset.vehicle;}
  let initialLinkError=null;try{initialFilterLink();}catch(e){initialLinkError=e;}
  navigationSelection();$('#fm-vehicle').addEventListener('change',navigationSelection);

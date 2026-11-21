@@ -90,8 +90,8 @@ These dialogs stress-test short inputs, long text, numeric values, dates, select
 
 1. **Browse:** show 100 concept names with their design idea and recognizable previews.
 2. **Narrow:** search by name/ID and use broad design-group/favorite filters without erasing the shortlist.
-3. **Shortlist:** add up to four directions. Favorites and comparison membership are separate states.
-4. **Compare:** open a native dialog. Every selected direction renders the same active household dialog.
+3. Select two to four directions for the **shortlist**. Favorites and comparison membership are separate states.
+4. Open the **comparison** to try the selected designs together. The comparison action stays within reach further down the gallery and follows the last shortlist choice in the tab order. Open an individual card's dialog to try a single design.
 5. **Change the task:** choose one of the ten shared dialogs; all candidates change together.
 6. **Change the palette:** compare native Light/Dark, then Pink Light/Dark. A common Pink palette exposes structural differences.
 7. **Try controls:** edit example values and exercise validation. Synchronized editing is available and on by default; switch it off for independent trial edits.

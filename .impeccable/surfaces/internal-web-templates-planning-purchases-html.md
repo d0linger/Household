@@ -7,11 +7,11 @@ related_targets: ["internal/web/static/planning-purchases.js","internal/web/stat
 
 # Complete planning purchases
 
-Mode: Operate. Precisely scoped extension of the approved weekly planning, demand comparison and checkout workflows. The user authorized all180 improvements in the preferred order. The established visual system, whole-source review and explicit lifecycle contract are settled; preserve PRODUCT.md and DESIGN.md.
+Mode: Operate. Precisely scoped extension of the approved weekly planning, demand comparison and checkout workflows. The user authorized all 180 improvements in the preferred order. The established visual system, whole-source review and explicit lifecycle contract are settled; preserve PRODUCT.md and DESIGN.md.
 
 THESIS: compare every active whole meal with physical stock and its attributable open purchase before applying exact changes once.
 
-OWN-WORLD: existing green actions, visible labels, native controls, bordered rows, local sans-serif and tabular exact quantities. No new identity or raster asset.
+OWN-WORLD: existing semantic actions, visible labels, native controls, bordered rows, local sans-serif and tabular exact quantities. No new identity or raster asset.
 
 STORY: optionally select additional whole meals, inspect the complete household scope, resolve changed source/item/reorder intent, review an open target, confirm exact effects, then inspect immutable evidence. End and detach remain reachable when modules are disabled or sources missing.
 

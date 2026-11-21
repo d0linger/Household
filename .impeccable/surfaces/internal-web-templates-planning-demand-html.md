@@ -13,7 +13,7 @@ Mode: Operate. Precisely scoped extension of the approved weekly planning and st
 
 THESIS: select whole meals, confirm each frozen ingredient's product identity, then compare grouped demand with actual eligible stock and own/other claims.
 
-OWN-WORLD: existing quiet green actions, labelled native controls, bordered rows, local sans-serif and tabular exact amounts; no new visual system or raster asset.
+OWN-WORLD: existing quiet semantic actions, labelled native controls, bordered rows, local sans-serif and tabular exact amounts; no new visual system or raster asset.
 
 STORY: select meals from a week, inspect completeness and product totals, resolve ingredient mappings deliberately, refresh current stock. Unknown is never zero. Pending Shopping coverage remains explicitly unlinked until MP17 is implemented.
 

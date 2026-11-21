@@ -70,6 +70,10 @@ async function ready(page){await page.locator('#today').waitFor();await page.wai
    must(await page.locator('#today-meals .today-partial').count()===1,'Controlled partial meal error is explicit');must(await page.locator('#today-cooking').innerText()==='The cookbook is not enabled in this household.','Controlled disabled module is explicit');
    must(await page.locator('#today-tasks').innerText()==='You have no open tasks due today.','Controlled empty assigned task state is explicit');
    must((await page.locator('#today-status').innerText()).includes('Part of the overview'),'Controlled partial status retains healthy sections');report.controlledFixtures.push('Partial/empty/disabled projection with literal malicious title and unsafe URL');
+   const empty={state:'ready',items:[],more:false};
+   Object.assign(fixture,{completed:{state:'error',items:[],more:false},shopping:empty,finances:empty,meals:empty});
+   await page.locator('#today-refresh').click();await ready(page);
+   must((await page.locator('#today-status').innerText()).includes('Part of the overview')&&await page.locator('#today-notifications a').isVisible(),'A completed-tasks error alone keeps the other sections and announces a partial load');
    await page.unroute('**/api/v1/core/today',projected);
    const unavailable=route=>route.fulfill({status:503,body:'Unavailable'});await page.route('**/api/v1/core/today',unavailable);await page.locator('#today-refresh').click();await ready(page);
    must(await page.locator('#today-error').isVisible(),'Controlled HTTP error visible');must(await page.locator('#today .today-list').count()===0,'Failed refresh removes previous private values');report.controlledFixtures.push('HTTP503 retry clears prior data');

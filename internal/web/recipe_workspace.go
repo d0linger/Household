@@ -28,6 +28,7 @@ func (s *Server) recipeWorkspacePage(w http.ResponseWriter, r *http.Request) {
 			s.fail(w, r, err)
 			return
 		}
+		record["cover"] = s.recipeCovers(r.Context(), identity(r), []string{r.PathValue("id")})[r.PathValue("id")]
 		p.Record = record
 	}
 	s.render(w, r, p)

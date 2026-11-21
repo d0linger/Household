@@ -40,7 +40,7 @@ Original reference: `C:/Users/admin/Downloads/Household Modulsystem.html`. Revie
 
 ## Accessibility & Inclusion
 
-Target WCAG 2.2 AA, keyboard access, visible focus, reduced motion, responsive layouts, and useful validation errors. Ocean and Pink each support Light, Dark and Automatic appearance. Automatic follows the operating system while retaining the selected family. Each settings area is directly accessible from the side tray through a single menu button at the far upper right. Logout is available inside that tray; modules remain in the desktop sidebar and horizontally scrollable mobile rail. Personal ordering supports pointer dragging, arrow buttons and keyboard movement with save/failure feedback. Understated appearance and DE/EN controls retain accessible names and touch targets.
+Target WCAG 2.2 AA, keyboard access, visible focus, reduced motion, responsive layouts, and useful validation errors. Warm Midnight and Pink each support Light, Dark and Automatic appearance. Automatic follows the operating system while retaining the selected family. Each settings area is directly accessible from the side tray through a single menu button at the far upper right. Logout is available inside that tray; modules remain in the desktop sidebar and horizontally scrollable mobile rail. Personal ordering supports pointer dragging, arrow buttons and keyboard movement with save/failure feedback. Understated appearance and DE/EN controls retain accessible names and touch targets.
 
 ## Daily navigation
 

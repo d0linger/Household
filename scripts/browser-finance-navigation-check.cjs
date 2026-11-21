@@ -34,6 +34,13 @@ const api='/api/v1/expenses/finance';
  const key=accepted.request().headers()['idempotency-key'];const receipt=await page.evaluate(async target=>{const r=await fetch(target,{cache:'no-store'});if(!r.ok)throw Error('Actual operation receipt unavailable');return r.json();},api+'/operations/'+key);const account=receipt.resource_id;must(/^[0-9a-f-]{36}$/.test(account),'Actual durable account identity returned');
  await page.locator('#finance-operation-finish').click();await page.locator('#finance-operation').waitFor({state:'hidden'});
  const requests=[];page.on('request',request=>{const url=new URL(request.url());if(url.pathname.startsWith(api))requests.push({path:url.pathname,query:url.searchParams});});
+ await go('overview','account='+account);
+ const cards=page.locator('.finance-destinations a[data-finance-context-link]');
+ must(await cards.count()===3,'All three overview destinations use guarded navigation');
+ for(const card of await cards.all()){
+  const dest=new URL(await card.getAttribute('href'),origin);
+  must(dest.searchParams.get('account')===(dest.pathname.endsWith('/planning')?null:account),'Overview destination preserves its supported account scope: '+dest.pathname);
+ }
  await go('entries','account='+account);
  const first=requests.find(r=>r.path===api+'/view'&&r.query.get('pane')==='entries');
  must(first?.query.get('account')===account,'First actual entries view is explicitly account-filtered');
