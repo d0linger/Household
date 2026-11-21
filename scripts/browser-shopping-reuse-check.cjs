@@ -69,9 +69,15 @@ const must=(value,name)=>{if(!value)throw Error(name);report.checks.push(name);}
   await capture('reuse-desktop');await page.setViewportSize({width:390,height:844});await page.evaluate(()=>document.documentElement.dataset.theme='dark');await capture('reuse-mobile-dark');
   await page.locator('.workspace-primary').getByRole('link',{name:'Listen',exact:true}).click();
   must(new URL(page.url()).pathname==='/m/shopping/lists'&&!new URL(page.url()).search,'Primary Lists navigation returns from a list detail to its collection');
-  await page.getByRole('link',{name:'Vorlagen',exact:true}).click();
+  async function openContext(label){
+    await page.waitForLoadState('load');
+    const fold=page.locator('.workspace-context-fold');
+    if(await fold.count()&&!await fold.evaluate(details=>details.open))await fold.locator('summary').click();
+    await page.locator('.workspace-context').getByRole('link',{name:label,exact:true}).click();
+  }
+  await openContext('Vorlagen');
   must(new URL(page.url()).pathname==='/m/shopping/lists'&&new URL(page.url()).searchParams.get('q')==='is:template','Collection template filter opens the reusable-list overview');
-  await page.goto(base+'/m/shopping/products/'+fixture.product.id);await page.getByRole('link',{name:'Favoriten',exact:true}).click();
+  await page.goto(base+'/m/shopping/products/'+fixture.product.id);await openContext('Favoriten');
   must(new URL(page.url()).pathname==='/m/shopping/products'&&new URL(page.url()).searchParams.get('q')==='is:favorite','Favorite tab leaves a product detail for the filtered overview');
   await page.waitForLoadState('networkidle');await page.evaluate(()=>Promise.all(document.getAnimations().map(animation=>animation.finished.catch(()=>{}))));
   const fits=await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1);
