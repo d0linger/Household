@@ -38,7 +38,10 @@ async function commit(action,field,expected){
 }
 async function record(entity,id){return(await read(api+'/records/'+entity+'/'+id)).record;}
 async function capture(name){
- await page.evaluate(async()=>{await document.fonts.ready;await Promise.all(document.getAnimations().filter(a=>Number.isFinite(a.effect?.getComputedTiming().endTime)).map(a=>a.finished.catch(()=>{})));});
+ // Chromium can report a finished transition without resolving its finished promise after a resize.
+ await page.waitForFunction(()=>document.fonts.status==='loaded'&&!document.getAnimations().some(animation=>
+  animation.playState==='running'&&animation.playbackRate>0&&Number.isFinite(animation.effect?.getComputedTiming().endTime)
+ ),undefined,{polling:50,timeout:5000}).catch(error=>{throw new Error('Fuel appearance did not settle for '+name,{cause:error});});
  const axe=await new AxeBuilder({page}).options({resultTypes:['violations']}).withTags(['wcag2a','wcag2aa','wcag21aa']).analyze();report.accessibility.push({name,violations:axe.violations});must(!axe.violations.length,'Axe '+name);
  must(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),'No root overflow '+name);
  await page.screenshot({path:path.join(output,name+'.png'),fullPage:true,animations:'disabled'});report.screenshots.push(name+'.png');

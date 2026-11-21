@@ -2214,3 +2214,5 @@ The GUI was reconciled with the previously released system, backup and security 
 - [x] Confirmed the second review's budget issue on the prior image and tested its fix against the same synthetic account. With additional filters hidden, the visible reset action now restores the current household month through the real Finance endpoint.
 
 The hosted Fuel notification browser hit its eight-minute watchdog after 28 of 32 accessibility scans. The driver still requires every scan and capture across both languages, both widths, both pages and four themes. Axe retains all violation details, each width is set once, and the bounded Fuel-only driver budget is now twelve minutes within the twenty-minute CI job.
+
+At `cb8d372` the PR Fuel job passed 185 checks and all 32 scans, while the push job stalled on a desktop-to-mobile change. Chromium reproduced a finished animation whose `finished` promise stayed unresolved. Fuel now polls the observed animation state, as in the meal-planning acceptance test. The same browser check verified that finished and paused animations allow capture and a genuinely running finite animation fails the five-second deadline.
