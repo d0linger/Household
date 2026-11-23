@@ -160,7 +160,7 @@ test('modal confirmation resumes the original protected form only after checking
  assert.deepEqual(f.destinations,[]);assert.equal(f.reloads,0);assert.equal(f.original.getAttribute('aria-busy'),'false');
 });
 
-function backupFixture({htmlFailure = 0, detailStatuses = []} = {}) {
+function backupFixture({htmlFailure = 0, detailStatuses = [], readDetail} = {}) {
   const historySelector = '[data-backup-history]';
   const activeSelector = '.backup-running, .backup-waiting, [data-backup-active]';
   const feedback = {dataset: {}};
@@ -218,7 +218,10 @@ function backupFixture({htmlFailure = 0, detailStatuses = []} = {}) {
       const response = detailStatuses[detailRequests++];
       const status = typeof response === 'function' ? await response() : response;
       const id = url.split('/').at(-1);
-      return {status, ok: status === 200, json: async () => ({id, state: 'complete'})};
+      return {status, ok: status === 200, json: async () => {
+        await readDetail?.(id);
+        return {id, state: 'complete'};
+      }};
     }
     assert.equal(url, '/settings/backup');
     htmlRequests++;
@@ -312,4 +315,27 @@ test('a stale missing-job response cannot clear a more recently submitted backup
   await f.poll();
   assert.equal(f.detailRequests, 2);
   assert.equal(f.feedback.textContent, 'Sicherungsauftrag abgeschlossen.');
+});
+
+test('backup follows a newly submitted job when the previous detail body is still being read', async () => {
+  let reading = false;
+  let finishOldBody;
+  const oldBody = new Promise(resolve => { finishOldBody = resolve; });
+  const f = backupFixture({detailStatuses: [200, 200], readDetail(id) {
+    if (id !== 'fixture-job') return;
+    reading = true;
+    return oldBody;
+  }});
+  f.saveJob();
+  const polling = f.poll();
+  await settled(() => reading);
+  f.saveJob('newer-job');
+  if (f.scheduled) await f.poll();
+  finishOldBody();
+  await polling;
+  assert.equal(f.feedback.textContent, 'Sicherungsauftrag aktualisiert.');
+  await f.poll();
+  assert.equal(f.detailRequests, 2);
+  assert.equal(f.feedback.textContent, 'Sicherungsauftrag abgeschlossen.');
+  assert.equal(f.scheduled, false);
 });

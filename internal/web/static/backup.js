@@ -9,6 +9,7 @@
   let opener = null;
   let timer = 0;
   let inFlight = false;
+  let pollAgain = false;
   let dirty = false;
   let failures = 0;
   let lastJob = '';
@@ -106,12 +107,13 @@
       if (response.status === 503) { schedule(5000); return; }
       if (!response.ok) throw new Error(String(response.status));
       const data = await response.json();
+      if (pollAgain) return;
       const jobs = data.jobs || [];
       const trackedID = lastJob;
       let job = jobs.find(entry => entry.id === trackedID);
       if (!job && trackedID) {
         const detail = await fetch('/api/v1/core/backup/jobs/' + encodeURIComponent(trackedID), { credentials: 'same-origin', signal: AbortSignal.timeout(10000) });
-        if (trackedID !== lastJob) { schedule(0); return; }
+        if (pollAgain) return;
         if (detail.status === 401) { location.assign('/login'); return; }
         if (detail.status === 404) {
           lastJob = '';
@@ -119,6 +121,7 @@
         } else {
           if (!detail.ok) throw new Error(String(detail.status));
           job = await detail.json();
+          if (pollAgain) return;
         }
       }
       const next = signature(data, job);
@@ -132,6 +135,7 @@
         }
         known = next;
       }
+      if (pollAgain) return;
       if (job?.id === lastJob && job.state !== lastResult) {
         lastResult = job.state;
         if (job.state === 'requested') announce(t('Sicherungsauftrag eingereiht.'));
@@ -143,11 +147,16 @@
       failures = 0;
       if (dirty || jobs.some(entry => activeStates.has(entry.state)) || (job && activeStates.has(job.state))) schedule(4000);
     } catch {
+      if (pollAgain) return;
       failures += 1;
       if (failures === 2) announce(t('Der Sicherungsstatus konnte noch nicht aktualisiert werden. Household versucht es erneut.'), 'error');
       schedule(Math.min(30000, 4000 * failures));
     } finally {
       inFlight = false;
+      if (pollAgain) {
+        pollAgain = false;
+        schedule(0);
+      }
     }
   }
 
@@ -159,7 +168,8 @@
     dirty = true;
     if (dialog?.open) dialog.close();
     announce(t('Sicherungsauftrag aktualisiert.'));
-    schedule(0);
+    if (inFlight) pollAgain = true;
+    else schedule(0);
   });
   document.addEventListener('household:security-failed', event => {
     if (!event.target.matches('form[action^="/settings/backup/jobs"]') || dialog?.open) return;
