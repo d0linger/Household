@@ -11,6 +11,7 @@
     output.textContent = text;
     output.hidden = false;
     output.classList.toggle('security-error', error);
+    return output;
   };
   const busy = (scope, value) => {
     scope.setAttribute('aria-busy', String(value));
@@ -70,9 +71,12 @@
       return;
     }
     const body = new URLSearchParams(new FormData(form));
-    busy(form, true); status(form, t('Wird gespeichert …'));
+    busy(form, true);
+    const activity = status(form, t('Wird gespeichert …'));
     try {
       const result = await request(form.action, { method: 'POST', body });
+      activity.textContent = '';
+      activity.hidden = true;
       if (!form.dispatchEvent(new CustomEvent('household:security-saved', { bubbles: true, cancelable: true, detail: result }))) return;
       location.reload();
     } catch (error) {

@@ -105,7 +105,12 @@
       const next = signature(jobs);
       if (dirty || next !== known) {
         dirty = false;
-        await updateSections();
+        try {
+          await updateSections();
+        } catch (error) {
+          dirty = true;
+          throw error;
+        }
         known = next;
       }
       let job = jobs.find(entry => entry.id === lastJob);

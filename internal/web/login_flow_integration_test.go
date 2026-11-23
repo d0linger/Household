@@ -47,8 +47,8 @@ func TestBrowserEmailLoginWithSecondFactor(t *testing.T) {
 		t.Fatal(err)
 	}
 	codes, err := f.app.Auth.EnableTOTP(f.ctx, member, code)
-	if err != nil || len(codes) == 0 {
-		t.Fatalf("enable fixture MFA: %v", err)
+	if err != nil || len(codes) < 2 || codes[0] == codes[1] {
+		t.Fatalf("enable fixture MFA with distinct recovery codes: %v", err)
 	}
 
 	browser := func() *http.Cookie {
@@ -66,19 +66,18 @@ func TestBrowserEmailLoginWithSecondFactor(t *testing.T) {
 		t.Fatal("login binding missing")
 		return nil
 	}
-	submit := func(cookie *http.Cookie, form url.Values, want int, authenticated bool) string {
-		t.Helper()
+	doSubmit := func(cookie *http.Cookie, form url.Values) (int, bool, string, error) {
 		form.Set("csrf", f.app.Auth.CSRF(cookie.Value, "login"))
 		request, err := http.NewRequestWithContext(f.ctx, http.MethodPost, f.server.URL+"/login", strings.NewReader(form.Encode()))
 		if err != nil {
-			t.Fatal(err)
+			return 0, false, "", err
 		}
 		request.AddCookie(cookie)
 		request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		request.Header.Set("Origin", f.app.Cfg.Origin)
 		response, err := f.client.Do(request)
 		if err != nil {
-			t.Fatal(err)
+			return 0, false, "", err
 		}
 		defer func() { _ = response.Body.Close() }()
 		var session bool
@@ -86,10 +85,15 @@ func TestBrowserEmailLoginWithSecondFactor(t *testing.T) {
 			session = session || c.Name == f.app.cookieName() && c.MaxAge > 0
 		}
 		body, err := io.ReadAll(response.Body)
-		if err != nil || response.StatusCode != want || session != authenticated {
-			t.Fatalf("login step: got status %d, session %v, error %v; want status %d, session %v", response.StatusCode, session, err, want, authenticated)
+		return response.StatusCode, session, string(body), err
+	}
+	submit := func(cookie *http.Cookie, form url.Values, want int, authenticated bool) string {
+		t.Helper()
+		status, session, body, err := doSubmit(cookie, form)
+		if err != nil || status != want || session != authenticated {
+			t.Fatalf("login step: got status %d, session %v, error %v; want status %d, session %v", status, session, err, want, authenticated)
 		}
-		return string(body)
+		return body
 	}
 	binding := browser()
 	first := url.Values{"username": {username}, "password": {"wrong"}}
@@ -107,7 +111,49 @@ func TestBrowserEmailLoginWithSecondFactor(t *testing.T) {
 	if html = submit(binding, factor, http.StatusUnauthorized, false); !strings.Contains(html, `autocomplete="one-time-code"`) {
 		t.Fatal("invalid code must allow retry in the same challenge")
 	}
+	sessionCount := func() int {
+		t.Helper()
+		var count int
+		if err := f.owner.QueryRow(f.ctx, "SELECT count(*) FROM core.sessions WHERE user_id=$1", member.UserID).Scan(&count); err != nil {
+			t.Fatal(err)
+		}
+		return count
+	}
+	before := sessionCount()
+	type submission struct {
+		status  int
+		session bool
+		err     error
+	}
+	ready, start := make(chan struct{}, 2), make(chan struct{})
+	results := make(chan submission, 2)
+	for _, code := range codes[:2] {
+		go func() {
+			ready <- struct{}{}
+			<-start
+			form := url.Values{"factor": {tokenField[1]}, "code": {code}}
+			status, session, _, err := doSubmit(binding, form)
+			results <- submission{status: status, session: session, err: err}
+		}()
+	}
+	<-ready
+	<-ready
+	close(start)
+	accepted := 0
+	for range 2 {
+		result := <-results
+		switch {
+		case result.err != nil:
+			t.Fatal(result.err)
+		case result.status == http.StatusSeeOther && result.session:
+			accepted++
+		case result.status != http.StatusUnauthorized || result.session:
+			t.Fatalf("unexpected concurrent MFA result: status %d, session %v", result.status, result.session)
+		}
+	}
+	if after := sessionCount(); accepted != 1 || after != before+1 {
+		t.Fatalf("concurrent MFA redemption accepted %d requests and created %d sessions, want one of each", accepted, after-before)
+	}
 	factor.Set("code", codes[0])
-	submit(binding, factor, http.StatusSeeOther, true)
 	submit(binding, factor, http.StatusUnauthorized, false)
 }
