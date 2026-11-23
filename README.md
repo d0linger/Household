@@ -291,8 +291,10 @@ Migrations run automatically at start. They are embedded, checksum-checked,
 forward-only and versioned per schema; there are no automatic down migrations.
 
 - Read the release notes first and keep the last verified backup until the new
-  version runs. To control updates exactly, replace `:production` in `compose.yaml`
-  with a fixed digest.
+  version runs. To control updates exactly, pin the image by digest: set
+  `HOUSEHOLD_IMAGE=ghcr.io/d0linger/household@sha256:…` in `.env`. `compose.yaml`
+  uses that value instead of its `:production` default, also when `.env` already
+  overrides the image.
 - For incompatible maintenance, follow the
   [upgrade and rollback procedure](docs/operations.md#upgrades-and-rollback): take a
   final backup with the old release, verify it, and migrate a restored copy with the
