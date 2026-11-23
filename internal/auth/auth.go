@@ -114,6 +114,9 @@ func (s *Service) Bootstrap(ctx context.Context, modules []string, enabled map[s
 		return fmt.Errorf("inspect bootstrap: %w", err)
 	}
 	if count == 0 {
+		if !UsernameValid(s.cfg.AdminUsername) {
+			return errors.New("initial admin username must be a valid handle or email address")
+		}
 		if !PasswordValid(s.cfg.AdminPassword) {
 			return errors.New("initial admin password requires 14 characters and at most 72 bytes")
 		}
@@ -249,7 +252,17 @@ func (s *Service) limit(ctx context.Context, q rowQuerier, scope, subject string
 	return nil
 }
 
-func (s *Service) Login(ctx context.Context, username, password, code, ip, ua string) (token string, result Identity, loginErr error) {
+func (s *Service) Login(ctx context.Context, username, password, code, ip, ua string) (string, Identity, error) {
+	return s.login(ctx, username, password, code, ip, ua, "")
+}
+
+// LoginBrowser starts password sign-in and returns a SecondFactorRequired error
+// when the browser needs to ask for a code from a verified account.
+func (s *Service) LoginBrowser(ctx context.Context, username, password, code, ip, ua, binding string) (string, Identity, error) {
+	return s.login(ctx, username, password, code, ip, ua, binding)
+}
+
+func (s *Service) login(ctx context.Context, username, password, code, ip, ua, binding string) (token string, result Identity, loginErr error) {
 	if err := s.Limit(ctx, "login-network", ip, 100, 15*time.Minute); err != nil {
 		return "", Identity{}, err
 	}
@@ -301,23 +314,28 @@ func (s *Service) Login(ctx context.Context, username, password, code, ip, ua st
 		return "", Identity{}, err
 	}
 	defer rollback(ctx, tx)
-	var household string
-	if err = tx.QueryRow(ctx, "SELECT h.id FROM core.households h JOIN core.memberships m ON m.household_id=h.id WHERE m.user_id=$1 AND m.inactive_at IS NULL FOR SHARE OF h", uid).Scan(&household); err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return "", Identity{}, ErrCredentials
-		}
-		return "", Identity{}, fmt.Errorf("load login household: %w", err)
-	}
-	ctx = audit.WithActor(ctx, uid, household)
-	if err = audit.Bind(ctx, tx); err != nil {
+	ctx, currentHash, version, err := lockLoginAccount(ctx, tx, uid)
+	if err != nil {
 		return "", Identity{}, err
-	}
-	var currentHash string
-	if err = tx.QueryRow(ctx, "SELECT password_hash FROM core.users WHERE id=$1 AND disabled_at IS NULL FOR UPDATE", uid).Scan(&currentHash); err != nil {
-		return "", Identity{}, ErrCredentials
 	}
 	if !hmac.Equal([]byte(hash), []byte(currentHash)) {
 		return "", Identity{}, ErrCredentials
+	}
+	if binding != "" && strings.TrimSpace(code) == "" {
+		var enabled bool
+		if err = tx.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM core.totp_credentials WHERE user_id=$1 AND enabled_at IS NOT NULL)", uid).Scan(&enabled); err != nil {
+			return "", Identity{}, err
+		}
+		if enabled {
+			token, err := startLoginFactor(ctx, tx, uid, version, binding)
+			if err != nil {
+				return "", Identity{}, err
+			}
+			if err = tx.Commit(ctx); err != nil {
+				return "", Identity{}, err
+			}
+			return "", Identity{}, SecondFactorRequired{Token: token}
+		}
 	}
 	if err = s.factorBudget(ctx, tx, uid); err != nil {
 		return "", Identity{}, err
@@ -329,6 +347,10 @@ func (s *Service) Login(ctx context.Context, username, password, code, ip, ua st
 		}
 		return "", Identity{}, err
 	}
+	return s.commitPasswordLogin(ctx, tx, uid, ip, ua, factored)
+}
+
+func (s *Service) commitPasswordLogin(ctx context.Context, tx pgx.Tx, uid, ip, ua string, factored bool) (string, Identity, error) {
 	raw, err := s.createSession(ctx, tx, uid, ip, ua, factored)
 	if err != nil {
 		return "", Identity{}, err

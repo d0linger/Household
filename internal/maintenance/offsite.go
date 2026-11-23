@@ -53,10 +53,13 @@ func loadSettings(ctx context.Context, q querier) (backupplan.Settings, *time.Lo
 // checks a rotating sixth of its data, records the run and applies the
 // offsite retention. The repository lock is held by the caller.
 func copyOffsiteLocked(ctx context.Context, pool *pgxpool.Pool, local, offsite config.BackupTarget, settings backupplan.Settings, snapshot string, schemas []byte, jobID string) (string, error) {
-	if err := ensureRepository(ctx, offsite, &local); err != nil {
+	opening, cancel := context.WithTimeout(ctx, offsiteProbeTimeout)
+	if err := ensureRepository(opening, offsite, &local); err != nil {
+		cancel()
 		return "", err
 	}
-	before, err := listSnapshots(ctx, offsite)
+	before, err := listSnapshots(opening, offsite)
+	cancel()
 	if err != nil {
 		return "", err
 	}
@@ -165,13 +168,12 @@ func checkOffsite(ctx context.Context, pool *pgxpool.Pool, offsite config.Backup
 	return err
 }
 
-// TestOffsite opens (or initializes) the offsite repository without copying data.
+const offsiteProbeTimeout = 90 * time.Second
+
+// TestOffsite checks the configured target without creating a repository or uploading data.
 func TestOffsite(ctx context.Context, pool *pgxpool.Pool) error {
-	unlock, err := lockRepository(ctx, pool)
-	if err != nil {
-		return err
-	}
-	defer unlock()
+	ctx, cancel := context.WithTimeout(ctx, offsiteProbeTimeout)
+	defer cancel()
 	local, err := config.LocalBackupTarget()
 	if err != nil {
 		return err
@@ -183,25 +185,14 @@ func TestOffsite(ctx context.Context, pool *pgxpool.Pool) error {
 	if offsite == nil {
 		return ErrOffsiteUnconfigured
 	}
-	if _, err = restic(ctx, *offsite, nil, "cat", "config"); err == nil {
-		// An existing target is only read.
-		_, err = listSnapshots(ctx, *offsite)
+	if connection, ok := offsite.S3Connection(); ok {
+		return testS3Bucket(ctx, connection)
+	}
+	unlock, err := lockRepository(ctx, pool)
+	if err != nil {
 		return err
 	}
-	// A wrong password, refused access or an unreachable target is the answer
-	// to the test; only a confirmed missing repository is created.
-	var tool *ToolError
-	if !errors.As(err, &tool) || tool.Code != "repository_missing" {
-		return err
-	}
-	// A new target takes the local chunker parameters, so the local
-	// repository must exist first, also before the very first backup.
-	if err = ensureRepository(ctx, local, nil); err != nil {
-		return err
-	}
-	if err = ensureRepository(ctx, *offsite, &local); err != nil {
-		return err
-	}
+	defer unlock()
 	_, err = listSnapshots(ctx, *offsite)
 	return err
 }

@@ -25,5 +25,5 @@
   "Notification": "Browser global API name checked for feature availability.",
   "PushManager": "Browser global API name checked for feature availability.",
   "Text enthält: ": "Typed server rule-explanation prefix used only to separate authored copy from the unchanged user pattern.",
-  "HOUSEHOLD_BACKUP_OFFSITE_REPOSITORY=s3:https://s3.eu-central-1.amazonaws.com/mein-bucket/household\nHOUSEHOLD_BACKUP_OFFSITE_PASSWORD=…\nHOUSEHOLD_BACKUP_S3_ACCESS_KEY_ID=…\nHOUSEHOLD_BACKUP_S3_SECRET_ACCESS_KEY=…": "Literal .env configuration example; variable names and the example URL are language-independent."
+  "HOUSEHOLD_S3_ENDPOINT=s3.example.org\nHOUSEHOLD_S3_BUCKET=s3-dp\nHOUSEHOLD_S3_PREFIX=household\nHOUSEHOLD_S3_REGION=us-east-1\nHOUSEHOLD_S3_ACCESS_KEY=…\nHOUSEHOLD_S3_SECRET_KEY=…\nHOUSEHOLD_BACKUP_OFFSITE_PASSWORD=…": "Literal deployment variables and example values; this configuration block is language invariant."
 }

@@ -19,3 +19,22 @@
 @media (max-width:860px){.help-terms{grid-template-columns:1fr}}
 .share-list{display:grid;gap:16px;margin:16px 0}.share-item{display:flex;gap:20px;align-items:flex-start;border-bottom:1px solid var(--line);padding:16px 0}.share-item img{width:120px;max-width:30%;height:auto;border-radius:var(--radius);border:1px solid var(--line)}.share-fields{flex:1;min-width:0}
 @media (max-width:860px){.share-item{flex-direction:column}.share-item img{max-width:100%}}
+
+.backup-feedback {
+  position: sticky;
+  top: 80px;
+  z-index: 2;
+  margin-block: 0 16px;
+  padding: 12px 16px;
+  border: 1px solid var(--line);
+  border-inline-start: 4px solid var(--accent);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: var(--shadow);
+}
+.backup-feedback[data-tone="error"] { border-inline-start-color: var(--danger); }
+.backup-job-detail { margin-top: 6px; color: var(--ink); font-size: 14px; }
+.backup-job-error { color: var(--danger); }
+.backup-job-state .badge { font-size: 12px; padding: 4px 9px; }
+.backup-waiting { background: var(--soft); color: var(--ink); }

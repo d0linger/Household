@@ -28,12 +28,16 @@ function fixture({target='/settings/security',modal=false,protectedForm=false,re
    return null;
   }
   querySelectorAll(selector){return selector==='button'?[this.submitButton]:[];}
+  matches(selector){return this.attributes.has(selector.slice(1,-1));}
+  submit(){this.nativeSubmits++;}
   reset(){this.resets++;this.password.value='';}
   contains(element){return element===this.submitButton||element===this.password;}
  }
  const language=new Form('/settings/language','/settings/security/reauth');
  const reauth=new Form('/settings/security/reauth',target);
  const original=new Form('/settings/users',null);original.attributes.set('data-security-document','');original.draft='Pending new user draft';
+ if(protectedForm)original.attributes.set('data-security-form','');
+ const documentEvents=new Map();
  const trigger=new Element(),freshness=new Element(),passkeyScope=new Form('',null),passkey=new Element();passkey.parentElement=passkeyScope;
  passkeyScope.querySelectorAll=selector=>selector==='button'?[passkey]:[];
  let dialog=null;
@@ -46,7 +50,7 @@ function fixture({target='/settings/security',modal=false,protectedForm=false,re
  }
  // The language form precedes the standalone reauth form in the real shared
  // header. An unscoped return_to query deliberately resolves to the wrong one.
- document={activeElement:trigger,createElement:()=>new Element(),
+ document={activeElement:trigger,createElement:()=>new Element(),addEventListener:(name,callback)=>documentEvents.set(name,callback),
   querySelector(selector){
    if(selector==='#security-reauth')return dialog;
    if(selector==='[data-reauth-page]')return modal?null:reauth;
@@ -57,7 +61,6 @@ function fixture({target='/settings/security',modal=false,protectedForm=false,re
   querySelectorAll(selector){
    if(selector==='[data-reauth-form], [data-reauth-page]')return [reauth];
    if(selector==='[data-open-reauth]')return modal?[trigger]:[];
-   if(selector==='[data-security-form]')return protectedForm?[original]:[];
    if(selector==='[data-passkey-reauth]')return [passkey];
    if(selector==='.security-freshness p')return [freshness];
    return [];
@@ -74,9 +77,8 @@ function fixture({target='/settings/security',modal=false,protectedForm=false,re
   return {ok,headers:{get:()=> 'application/json'},json:async()=>data};
  };
  class FormData {constructor(form){this.entries=[['csrf','unit-fixture-csrf'],['password',form.password.value]];if(form.target)this.entries.push(['return_to',form.target.value]);}[Symbol.iterator](){return this.entries[Symbol.iterator]();}}
- class HTMLFormElement {submit(){this.nativeSubmits++;}}
  const PublicKeyCredential={parseRequestOptionsFromJSON:options=>options};
- const sandbox={document,fetch,FormData,HTMLFormElement,URLSearchParams,AbortController,setTimeout,clearTimeout,Uint8Array,PublicKeyCredential,
+ const sandbox={document,fetch,FormData,HTMLFormElement:Form,URLSearchParams,AbortController,setTimeout,clearTimeout,Uint8Array,PublicKeyCredential,
   navigator:{credentials:{async get(){credentialGets++;return {toJSON:()=>({id:'fixture-credential'})};}}},
   location:{assign:url=>destinations.push(url),reload:()=>reloads++}};
  sandbox.window={isSecureContext:true,PublicKeyCredential};
@@ -85,7 +87,7 @@ function fixture({target='/settings/security',modal=false,protectedForm=false,re
  return {language,reauth,original,dialog,trigger,freshness,calls,destinations,document,get reloads(){return reloads;},get credentialGets(){return credentialGets;},
   async confirm(){const e=event();await reauth.listeners.get('submit')(e);assert.equal(e.prevented,true);},
   startModal(){const e=event();trigger.listeners.get('click')(e);assert.equal(e.prevented,true);},
-  startProtected(){const e=event();original.listeners.get('submit')(e);assert.equal(e.prevented,true);},
+  startProtected(){const e=event();e.target=original;documentEvents.get('submit')(e);assert.equal(e.prevented,true);},
   startPasskey(){passkey.listeners.get('click')();}};
 }
 async function settled(predicate){for(let turn=0;turn<20&&!predicate();turn++)await new Promise(resolve=>setImmediate(resolve));assert.equal(Boolean(predicate()),true,'controller work settled within the bounded unit loop');}

@@ -72,14 +72,21 @@
     const body = new URLSearchParams(new FormData(form));
     busy(form, true); status(form, t('Wird gespeichert …'));
     try {
-      await request(form.action, { method: 'POST', body });
+      const result = await request(form.action, { method: 'POST', body });
+      if (!form.dispatchEvent(new CustomEvent('household:security-saved', { bubbles: true, cancelable: true, detail: result }))) return;
       location.reload();
     } catch (error) {
       status(form, error.message, true);
       if (error.code === 'reauth_required') openConfirmation(() => submitForm(form), returnFocus);
+      else form.dispatchEvent(new CustomEvent('household:security-failed', { bubbles: true, detail: error.message }));
     } finally { busy(form, false); }
   };
-  document.querySelectorAll('[data-security-form]').forEach(form => form.addEventListener('submit', event => { event.preventDefault(); void submitForm(form); }));
+  document.addEventListener('submit', event => {
+    const form = event.target;
+    if (!(form instanceof HTMLFormElement) || !form.matches('[data-security-form]')) return;
+    event.preventDefault();
+    void submitForm(form);
+  });
   document.querySelectorAll('[data-reauth-form], [data-reauth-page]').forEach(form => form.addEventListener('submit', async event => {
     event.preventDefault();
     if (form.getAttribute('aria-busy') === 'true') return;

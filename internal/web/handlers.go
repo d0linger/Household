@@ -23,39 +23,71 @@ import (
 func (s *Server) loginPage(w http.ResponseWriter, r *http.Request) {
 	raw := auth.RandomToken()
 	http.SetCookie(w, s.cookie("household_login", raw, 600, time.Time{}))
+	s.renderLogin(w, r, raw, "", "", "", http.StatusOK)
+}
+
+func (s *Server) renderLogin(w http.ResponseWriter, r *http.Request, binding, username, factor, message string, status int) {
 	p := s.page(r, "Anmelden")
 	p.View = "login"
-	p.CSRF = s.Auth.CSRF(raw, "login")
+	p.CSRF = s.Auth.CSRF(binding, "login")
+	p.LoginName = username
+	p.LoginFactor = factor
+	p.Error = message
+	if status != http.StatusOK {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Header().Set("Content-Language", i18n.LanguageTag(requestLocale(r)))
+		w.WriteHeader(status)
+	}
 	s.render(w, r, p)
 }
+
 func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
 		s.fail(w, r, store.Invalid{Message: "ungültiges Formular"})
 		return
 	}
 	challenge, err := r.Cookie("household_login")
-	if err != nil || !s.Auth.ValidCSRF(challenge.Value, "login", r.FormValue("csrf")) {
+	if err != nil || len(challenge.Value) != 43 || !s.Auth.ValidCSRF(challenge.Value, "login", r.FormValue("csrf")) {
 		s.fail(w, r, store.ErrForbidden)
 		return
 	}
-	if len(r.FormValue("username")) > 64 || len(r.FormValue("password")) > 72 || len(r.FormValue("code")) > 64 {
-		s.fail(w, r, auth.ErrCredentials)
+	username := strings.TrimSpace(r.FormValue("username"))
+	password, code, factor := r.FormValue("password"), r.FormValue("code"), r.FormValue("factor")
+	if len(username) > auth.MaxUsernameLength || len(password) > 72 || len(code) > 64 {
+		s.renderLogin(w, r, challenge.Value, "", "", auth.ErrCredentials.Error(), http.StatusUnauthorized)
 		return
 	}
-	raw, id, err := s.Auth.Login(r.Context(), r.FormValue("username"), r.FormValue("password"), r.FormValue("code"), s.clientIP(r), r.UserAgent())
-	if err != nil {
-		switch {
-		case errors.Is(err, auth.ErrLimited):
-			metrics.Default.Inc("household_login_limited_total")
-		case errors.Is(err, auth.ErrCredentials):
-			metrics.Default.Inc("household_login_failures_total")
+	var raw string
+	var id auth.Identity
+	if factor == "" {
+		raw, id, err = s.Auth.LoginBrowser(r.Context(), username, password, code, s.clientIP(r), r.UserAgent(), challenge.Value)
+	} else {
+		raw, id, err = s.Auth.FinishLoginFactor(r.Context(), challenge.Value, factor, code, s.clientIP(r), r.UserAgent())
+	}
+	var required auth.SecondFactorRequired
+	switch {
+	case errors.As(err, &required):
+		s.renderLogin(w, r, challenge.Value, "", required.Token, "", http.StatusOK)
+	case errors.Is(err, auth.ErrLimited):
+		w.Header().Set("Retry-After", "900")
+		metrics.Default.Inc("household_login_limited_total")
+		s.renderLogin(w, r, challenge.Value, username, factor, err.Error(), http.StatusTooManyRequests)
+	case errors.Is(err, auth.ErrCredentials):
+		metrics.Default.Inc("household_login_failures_total")
+		message := auth.ErrCredentials.Error()
+		if factor != "" {
+			message = "Der Sicherheitscode ist ungültig oder wurde bereits verwendet."
 		}
+		s.renderLogin(w, r, challenge.Value, username, factor, message, http.StatusUnauthorized)
+	case errors.Is(err, auth.ErrLoginChallenge):
+		s.renderLogin(w, r, challenge.Value, "", "", "Anmeldebestätigung abgelaufen. Bitte melde dich erneut an.", http.StatusUnauthorized)
+	case err != nil:
 		s.fail(w, r, err)
-		return
+	default:
+		s.setCookie(w, raw, id)
+		http.SetCookie(w, s.cookie("household_login", "", -1, time.Time{}))
+		http.Redirect(w, r, "/", http.StatusSeeOther)
 	}
-	s.setCookie(w, raw, id)
-	http.SetCookie(w, s.cookie("household_login", "", -1, time.Time{}))
-	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
 func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
 	if err := s.Auth.Logout(r.Context(), identity(r)); err != nil {

@@ -142,12 +142,11 @@ func restic(ctx context.Context, target config.BackupTarget, source *config.Back
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
 		}
-		// restic 0.17+ exits with 10 exactly when the repository does not exist;
-		// that structured result wins over text matches, which can come from
-		// the repository path itself.
+		// Exit 10 is a missing repository unless the tool reported a concrete
+		// authorization or transport failure. Never initialize on those failures.
 		code := classifyResticOutput(stderr)
 		var exit *exec.ExitError
-		if errors.As(err, &exit) && exit.ExitCode() == 10 {
+		if code == "tool_failed" && errors.As(err, &exit) && exit.ExitCode() == 10 {
 			code = "repository_missing"
 		}
 		return nil, &ToolError{Program: "restic", Code: code, err: err}
@@ -192,8 +191,9 @@ func ensureRepository(ctx context.Context, target config.BackupTarget, chunkerSo
 		args = append(args, "--copy-chunker-params")
 	}
 	if _, initErr := restic(ctx, target, chunkerSource, args...); initErr != nil {
-		// The original error explains the repository better than a refused init.
-		return errors.Join(err, initErr)
+		// The probe already established that the repository is missing. The
+		// failed initialization explains why the operator still cannot use it.
+		return initErr
 	}
 	return nil
 }

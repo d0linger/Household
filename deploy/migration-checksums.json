@@ -50,6 +50,7 @@
   "core/000043_security_policy.up.sql": "0306a786efc8290056c96db4c56c610a42b2ddbe3777be389635963ca99fbe42",
   "core/000042_backup_operations.up.sql":"a03d2d8f001aadc542e7b061de4aa93fe1f77b40005f2f9ddb4c0b66d4d86fc1",
   "core/000044_export_audit.up.sql": "9f5a4789c74e44bd4941efe142c4266eae463d9250215f94467032f0d5fe5387",
+  "core/000045_email_usernames.up.sql": "d47321f6176a65253976ccf6b7b3714c956572e29b6612ba2a943fd037e2a479",
   "documents/000001_init.up.sql": "6a33d06f5655f4c7968cb4cdd29a4ae7720a7e7e4b43ef7fdc944932e2cc9c3f",
   "documents/000002_document_workspace.up.sql": "625e64a359223df1c4374417fcdfe260036b0f8332058e0dfa634bb3b145f6da",
   "documents/000003_notification_sources.up.sql": "a31298d0301353ef27b71c91dacf810b0726fbbdac9e2270e3654be23079b999",

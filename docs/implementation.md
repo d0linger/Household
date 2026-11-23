@@ -2238,3 +2238,51 @@ At `cb8d372` the PR Fuel job passed 185 checks and all 32 scans, while the push 
 - [x] Passed the Go web package and all 48 service-worker tests. Windows Edge rendered the sign-in mark in Warm Light, Warm Dark, Pink Light and Pink Dark. The live sprite, favicon and both manifest icons matched the source files after the local Docker rebuild.
 - [ ] Physical-device icon refresh and push delivery.
 - [x] Centered the sign-in mark (76–96px) above a 22–26px heading and centered a 64px mark in the signed-in sidebar. Edge before/after captures in outputs/staffel-layout cover four sign-in widths and themes and two authenticated sidebar widths using an isolated household.
+
+## Portainer production stack (2026-11-23)
+
+- Added [a standalone Portainer Compose file](../compose.portainer.yaml),
+  [a variable template](../.env.production.example) and [deployment and
+  migration instructions](portainer.md). The app joins an existing HTTPS
+  proxy network. PostgreSQL and the backup worker stay on the project network.
+- Compose v5.7.0 rendered the stack using test values for all 50 documented
+  variables and rejected each of the nine required values when omitted.
+  Workflow policy, local-artifact checks and Gitleaks passed.
+- A fresh isolated Docker project ran the published GHCR index digest
+  `sha256:a700512919ba457b02f098f0a6a53fbb7429a7b5775f2c28e67e33a3f3154af1`
+  with the pinned PostgreSQL image. All three services became healthy. The
+  backup worker retried while initial migrations ran. Through a disposable
+  Caddy TLS proxy, readiness returned HTTP 200 and Edge signed in with a
+  secure, HTTP-only session cookie. A separate container outside the proxy
+  CIDR received HTTP 400 when it sent a forwarded HTTPS header. The app ran
+  as uid 10001 and PostgreSQL as uid 70. The app's running process had
+  scrubbed its setup credentials.
+- An encrypted local restic backup passed restore verification into a disposable
+  database. The stack returned to readiness after an app and backup restart.
+  The test project, volumes and proxy were removed. Validation used Docker
+  Compose directly. The production Portainer endpoint and offsite backup
+  destinations were outside this test.
+- Repeated the Compose startup with the Core45 image and an isolated Caddy HTTPS
+  proxy. All three services were healthy, PostgreSQL recorded Core45 and the
+  login page loaded through HTTPS. Removed the containers, volumes, networks and
+  temporary credentials.
+
+## E-mail sign-in, authenticator step and backup progress
+
+- [x] Added case-insensitive E-mail usernames in Core45 while keeping the existing handle syntax and preserving the Fuel readiness and authorization contracts.
+- [x] Added a browser-bound, five-minute authenticator step after password verification. Verified inline errors, wrong-cookie rejection, no session before the code, a valid recovery code and rejection after consumption.
+- [x] Updated shared application dialogs and backup history. Verified that a failed job becomes visible while a different job remains queued. The initial offsite connection and repository opening have bounded timeouts. Full integrity checks and trial restores retain their previous verification scope.
+- [x] Passed the three focused PostgreSQL tests, the Go and Node checks, the pinned lint and security scanners, and two mobile Edge accessibility scans. Ignored screenshots are in outputs/login-backup-review.
+- [x] Ran a local encrypted backup and verified it with a trial restore on Core44. Upgraded the local stack to Core45. Readiness returned HTTP 200. App, database and backup are healthy, with the original database container, named volumes, configuration and existing accounts preserved.
+- [ ] Confirm the signed connection from the user's Garage installation. Physical-device Push and manual screen reader checks remain open.
+
+- [x] Verified that a Restic initialization error, such as denied write access, is preserved when an earlier probe found no repository. An ambiguous access-denied probe never initializes a destination. The history distinguishes interruption, timeout and storage errors.
+- [x] Matched the Parkrr/Treckrr S3 setup with separate endpoint, bucket and prefix settings. Verified signed, read-only bucket probes for success, missing bucket and access denied. The new settings reject unsafe prefixes, and synthetic Portainer configuration passes S3 credentials only to the backup service.
+- [x] In an isolated Garage 2.5.0 fixture, created a fresh `s3-dp` bucket and tested its signed connection before an offsite repository existed. The first copy initialized and verified an encrypted snapshot under `household`. A full trial restore read that snapshot back and recorded verification. Removed the fixture containers, network, volumes and temporary credentials.
+- [x] Ran all Go packages, `go vet`, module verification, the 530 Node tests and scoped Gosec. The dependency scan found no vulnerabilities. Recreated the local app and backup services from the final image. The original PostgreSQL container and volume were preserved, all three services are healthy and five embedded assets matched their source hashes. A Core45 local encrypted backup and trial restore also passed.
+
+## Staffel H/H release to main (2026-11-23)
+
+- [x] Integrated dependency PRs #28 through #31 into `dev` after all 34 checks on each passed. CodeRabbit reviewed the combined exact `dev` revision `9851af7` in [PR #32](https://github.com/d0linger/Household/pull/32), with no actionable comments or open review threads. All 70 checks passed before merging.
+- [x] Merged PR #32 with merge commit `cec1f18`. Both GitHub branches point to that commit. Its tree matches the reviewed `dev` revision. The local Core45 login and backup work is outside this release.
+- [x] All 35 jobs passed in the [main production run](https://github.com/d0linger/Household/actions/runs/45223555021). The five post-merge `dev` workflows passed. GHCR returned digest `sha256:34167ab9c2f3d3a85c5ba411c62d0a8e8a6245fd069f23e3c988f645e7e28834` for `production`, `latest` and the tag for the exact merge commit. The GitHub open-PR list was empty after promotion.

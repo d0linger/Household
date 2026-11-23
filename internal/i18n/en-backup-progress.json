@@ -1,0 +1,21 @@
+{
+  "Bestätige das endgültige Löschen des früheren Stands.": "Confirm you want to permanently discard the previous state.",
+  "Für dieses Ziel wartet bereits ein Auftrag desselben Typs.": "A job of this type is already queued for this destination.",
+  "Der Auftrag wartet auf den Sicherungsdienst.": "The job is waiting for the backup service.",
+  "Seit": "Since",
+  "Daten und Dateien werden lokal gesichert": "Saving data and files locally",
+  "Lokale Sicherung wird vollständig geprüft": "Checking the full local backup",
+  "Sicherung wird extern kopiert und geprüft": "Copying and checking the offsite backup",
+  "Anmeldung am externen Ziel wird geprüft": "Checking credentials for the offsite destination",
+  "Sicherungsauftrag eingereiht.": "Backup job queued.",
+  "Sicherungsauftrag abgeschlossen.": "Backup job completed.",
+  "Sicherungsauftrag fehlgeschlagen. Details stehen im Verlauf.": "Backup job failed. See its details in the history.",
+  "Der Sicherungsdienst bearbeitet den Auftrag.": "The backup service is processing the job.",
+  "Der Sicherungsstatus konnte noch nicht aktualisiert werden. Household versucht es erneut.": "Household could not refresh the backup status yet and will retry.",
+  "Sicherungsauftrag aktualisiert.": "Backup job updated.",
+  "Der Sicherungsdienst hat den Vorgang unterbrochen. Prüfe das Dienstprotokoll und versuche es erneut.": "The backup service interrupted this job. Check its log and retry.",
+  "Restic hat kein Repository gefunden. Prüfe S3-Bucket, Pfad und die Datei config im gewählten Präfix.": "Restic could not find a repository. Check the S3 bucket, path and the config file in the selected prefix.",
+  "Extern / S3": "Offsite / S3",
+  "Der Verbindungstest liest das Ziel. Eine Sicherung erstellt das Repository bei Bedarf.": "The connection test reads the destination. A backup creates the repository if needed.",
+  "Verbindung zum Sicherungsziel geprüft.": "Backup destination connection verified."
+}

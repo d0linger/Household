@@ -100,3 +100,38 @@ func TestLocalBackupTargetRequiresPasswordAndAbsolutePath(t *testing.T) {
 		t.Fatal("relative repository accepted")
 	}
 }
+
+func TestNamedS3BackupConfiguration(t *testing.T) {
+	t.Setenv(SecretsDirVariable, "")
+	t.Setenv("HOUSEHOLD_S3_ENDPOINT", "garage.example.test")
+	t.Setenv("HOUSEHOLD_S3_BUCKET", "s3-dp")
+	t.Setenv("HOUSEHOLD_S3_PREFIX", "household/")
+	t.Setenv("HOUSEHOLD_S3_REGION", "us-east-1")
+	t.Setenv("HOUSEHOLD_S3_ACCESS_KEY", "fixture-access")
+	t.Setenv("HOUSEHOLD_S3_SECRET_KEY", "fixture-secret-only")
+	t.Setenv("HOUSEHOLD_BACKUP_OFFSITE_PASSWORD", "fixture encryption password")
+	t.Setenv("HOUSEHOLD_BACKUP_OFFSITE_REPOSITORY", "")
+	target, err := OffsiteBackupTarget(BackupTarget{Repository: "/data/backups"})
+	if err != nil || target == nil || target.Label() != "s3:https://garage.example.test/s3-dp/household" {
+		t.Fatalf("named S3 target: %v", err)
+	}
+	s3, ok := target.S3Connection()
+	if !ok || !s3.Secure || s3.Endpoint != "garage.example.test" || s3.Bucket != "s3-dp" || s3.Region != "us-east-1" {
+		t.Fatal("the bucket probe used different settings from Restic")
+	}
+	if s3.AccessKey != "fixture-access" || s3.SecretKey != "fixture-secret-only" {
+		t.Fatal("the probe must use the configured backup credentials")
+	}
+	for _, prefix := range []string{"/", ".", "household/../parkrr", "household/%2e%2e/parkrr"} {
+		t.Run(prefix, func(t *testing.T) {
+			t.Setenv("HOUSEHOLD_S3_PREFIX", prefix)
+			if _, err := OffsiteBackupTarget(BackupTarget{Repository: "/data/backups"}); err == nil {
+				t.Fatalf("unsafe prefix %q was accepted", prefix)
+			}
+		})
+	}
+	t.Setenv("HOUSEHOLD_BACKUP_OFFSITE_REPOSITORY", "s3:https://garage.example.test/s3-dp/other")
+	if _, err := OffsiteBackupTarget(BackupTarget{Repository: "/data/backups"}); err == nil {
+		t.Fatal("ambiguous destinations were accepted")
+	}
+}

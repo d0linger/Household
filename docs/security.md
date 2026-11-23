@@ -1,5 +1,7 @@
 # Security model and account recovery
 
+Users can sign in with an existing handle or an email address chosen as their username. Both use case-insensitive uniqueness. When an account has an authenticator enabled, a valid password leads to a separate five-minute code step. Supported password managers can fill the focused field. Recovery codes work in the same field. A password-stage proof is bound to its browser cookie and has no access to protected pages.
+
 ## Accounts and sessions
 
 Passwords use bcrypt cost 12, at least 14 Unicode characters and at most 72 bytes. Login uses a dummy bcrypt comparison for unknown accounts. Expensive hashing is bounded and credential changes have persistent per-user limits. Network/account limits are HMAC-subject PostgreSQL buckets and survive application restarts. Login admits 100 attempts per client address per 15 minutes, 20 per account from one client network (IPv4 /24, IPv6 /56) per hour, and 500 per account across all networks per hour. Exhausting one network's budget therefore cannot lock the account holder out from another network, while the account-wide cap bounds distributed guessing. A further budget of 300 attempts per 15 minutes applies to each client network prefix (IPv4 /24, IPv6 /64), so rotating addresses inside one prefix cannot multiply pre-authentication bcrypt work. Second factors have their own limit: after 10 wrong TOTP or recovery codes for an account within 15 minutes, login and re-authentication refuse the factor before checking it until the window passes.

@@ -108,8 +108,12 @@ production image. Publishing an image does not deploy an installation. The
 
 Requirements: Docker Engine with Compose v2 (rootful or
 [rootless](docs/installation.md#rootless-docker)). No source code, Go or scripts are
-needed. [`compose.yaml`](compose.yaml) is the only deployment file. A step-by-step
+needed. Use [`compose.yaml`](compose.yaml) for command-line setup. A step-by-step
 guide in German is in [docs/installation.md](docs/installation.md).
+
+**Portainer (Docker Standalone):** use [`compose.portainer.yaml`](compose.portainer.yaml)
+with the [variable template](.env.production.example) and
+[Portainer setup guide](docs/portainer.md).
 
 ```sh
 curl -fsSLO https://raw.githubusercontent.com/d0linger/Household/main/compose.yaml
@@ -172,7 +176,8 @@ optional modules in the app.
 
 ## ⚙️ Configuration
 
-`.env` is the only configuration file. The principal settings are:
+Set variables in `.env` for command-line deployments or enter them in the
+Portainer stack. The principal settings are:
 
 | Setting | Purpose |
 | --- | --- |
@@ -185,6 +190,7 @@ optional modules in the app.
 | `HOUSEHOLD_OFF_ENABLED` | Optional product suggestions, off by default. |
 | `HOUSEHOLD_BACKUP_OFFSITE_REPOSITORY` / `_PASSWORD` | Optional offsite restic repository (`s3:https://host/bucket/prefix`, `rest:https://host/path` or an absolute path) and its own password; only the backup service reads them. |
 | `HOUSEHOLD_BACKUP_S3_ACCESS_KEY_ID` / `_SECRET_ACCESS_KEY` / `_REGION` | Credentials for an `s3:` offsite repository. `HOUSEHOLD_BACKUP_REST_USERNAME` / `_PASSWORD` serve a `rest:` repository. |
+| `HOUSEHOLD_S3_ENDPOINT` / `_BUCKET` / `_PREFIX` / `_REGION` | Separate S3 destination settings, as in Parkrr and Treckrr. Use `HOUSEHOLD_S3_ACCESS_KEY` and `_SECRET_KEY` and the repository password above. `HOUSEHOLD_S3_USE_SSL` defaults to true. |
 | `HOUSEHOLD_ALERT_NTFY_URL`, `HOUSEHOLD_ALERT_WEBHOOK_URL`, `HOUSEHOLD_ALERT_SMTP_*` | Optional external warnings from the backup service (ntfy, webhook or e-mail over TLS). |
 | `HOUSEHOLD_METRICS_TOKEN` | Enables `/metrics` for Prometheus; see [monitoring](docs/monitoring/README.md). |
 | `HOUSEHOLD_UPDATE_CHECK` | `true` asks GitHub at most once a day whether a newer revision exists; shown on the system page. Off by default. |
@@ -206,7 +212,7 @@ without `HOUSEHOLD_DATABASE_PASSWORD` (an explicit setting wins over a file in
 `HOUSEHOLD_<NAME>_FILE` or a file `/run/secrets/<name>`, for operators who mount
 secrets as files. `RESTIC_PASSWORD` also accepts `RESTIC_PASSWORD_FILE` or
 `/run/secrets/restic_password`. `start` removes every backup repository credential
-(`RESTIC_PASSWORD*`, `HOUSEHOLD_BACKUP_OFFSITE_*`, `HOUSEHOLD_BACKUP_S3_*`,
+(`RESTIC_PASSWORD*`, `HOUSEHOLD_BACKUP_OFFSITE_*`, `HOUSEHOLD_BACKUP_S3_*`, `HOUSEHOLD_S3_*`,
 `HOUSEHOLD_BACKUP_REST_*`) before the web process runs, so only the backup service
 can use them.
 

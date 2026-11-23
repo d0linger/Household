@@ -95,6 +95,8 @@ type Page struct {
 	Page         int
 	Query        string
 	Extra        any
+	LoginName    string
+	LoginFactor  string
 	MFANotice    string
 	Related      []Related
 }

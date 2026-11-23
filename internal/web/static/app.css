@@ -493,3 +493,22 @@ body:has(main .editorial-kicker) .shell-kicker{visibility:hidden}
   width: 64px;
   height: 64px;
 }
+
+dialog:not(.navigation-tray):not(#more-dialog) {
+  border-radius: clamp(16px, 3vw, 24px);
+  background: var(--surface);
+  overflow-wrap: anywhere;
+}
+dialog:has(.dialog-heading) .dialog-heading {
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 14px;
+  gap: 12px;
+}
+dialog:has(.dialog-heading) .dialog-heading > button { border-radius: 50%; }
+dialog [data-security-status]:not(:empty) {
+  padding: 10px 12px;
+  border-inline-start: 3px solid var(--accent);
+  border-radius: 4px;
+  background: var(--ground);
+}
+dialog [data-security-status].security-error { border-inline-start-color: var(--danger); }

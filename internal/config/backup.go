@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"os"
 	"path"
+	"strconv"
 	"strings"
 )
 
@@ -47,6 +48,8 @@ var BackupServiceVariables = []string{
 	"HOUSEHOLD_BACKUP_OFFSITE_REPOSITORY", "HOUSEHOLD_BACKUP_OFFSITE_PASSWORD",
 	"HOUSEHOLD_BACKUP_S3_ACCESS_KEY_ID", "HOUSEHOLD_BACKUP_S3_SECRET_ACCESS_KEY", "HOUSEHOLD_BACKUP_S3_REGION",
 	"HOUSEHOLD_BACKUP_REST_USERNAME", "HOUSEHOLD_BACKUP_REST_PASSWORD",
+	"HOUSEHOLD_S3_ENDPOINT", "HOUSEHOLD_S3_BUCKET", "HOUSEHOLD_S3_PREFIX", "HOUSEHOLD_S3_REGION",
+	"HOUSEHOLD_S3_ACCESS_KEY", "HOUSEHOLD_S3_SECRET_KEY", "HOUSEHOLD_S3_USE_SSL",
 	"AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN",
 }
 
@@ -86,11 +89,24 @@ func resticPassword(name string) (string, error) {
 }
 
 // OffsiteBackupTarget reads the optional offsite repository. It returns
-// (nil, nil) when HOUSEHOLD_BACKUP_OFFSITE_REPOSITORY is unset.
+// (nil, nil) when neither a repository URL nor S3 settings are configured.
 func OffsiteBackupTarget(local BackupTarget) (*BackupTarget, error) {
 	repository, err := secret("HOUSEHOLD_BACKUP_OFFSITE_REPOSITORY")
-	if err != nil || repository == "" {
+	if err != nil {
 		return nil, err
+	}
+	namedS3, err := namedS3Repository()
+	if err != nil {
+		return nil, err
+	}
+	if namedS3 != "" {
+		if repository != "" {
+			return nil, errors.New("use either HOUSEHOLD_S3_ENDPOINT or HOUSEHOLD_BACKUP_OFFSITE_REPOSITORY")
+		}
+		repository = namedS3
+	}
+	if repository == "" {
+		return nil, nil
 	}
 	repository, scheme, err := ValidateOffsiteRepository(repository)
 	if err != nil {
@@ -109,21 +125,22 @@ func OffsiteBackupTarget(local BackupTarget) (*BackupTarget, error) {
 	target := &BackupTarget{Kind: "offsite", Repository: repository, password: password}
 	switch scheme {
 	case "s3":
-		access, err := secret("HOUSEHOLD_BACKUP_S3_ACCESS_KEY_ID")
+		accessVariable, credentialVariable, regionVariable := s3EnvironmentNames(namedS3 != "")
+		access, err := secret(accessVariable)
 		if err != nil {
 			return nil, err
 		}
-		key, err := secret("HOUSEHOLD_BACKUP_S3_SECRET_ACCESS_KEY")
+		key, err := secret(credentialVariable)
 		if err != nil {
 			return nil, err
 		}
 		if access == "" || key == "" || strings.ContainsAny(access+key, "\x00\r\n") {
-			return nil, errors.New("an s3 offsite repository needs HOUSEHOLD_BACKUP_S3_ACCESS_KEY_ID and HOUSEHOLD_BACKUP_S3_SECRET_ACCESS_KEY")
+			return nil, fmt.Errorf("an s3 offsite repository needs %s and %s", accessVariable, credentialVariable)
 		}
 		target.extra = append(target.extra, "AWS_ACCESS_KEY_ID="+access, "AWS_SECRET_ACCESS_KEY="+key)
-		if region := strings.TrimSpace(os.Getenv("HOUSEHOLD_BACKUP_S3_REGION")); region != "" {
+		if region := strings.TrimSpace(os.Getenv(regionVariable)); region != "" {
 			if !regionPattern(region) {
-				return nil, errors.New("HOUSEHOLD_BACKUP_S3_REGION is not a valid region name")
+				return nil, fmt.Errorf("%s is not a valid region name", regionVariable)
 			}
 			target.extra = append(target.extra, "AWS_DEFAULT_REGION="+region)
 		}
@@ -144,6 +161,72 @@ func OffsiteBackupTarget(local BackupTarget) (*BackupTarget, error) {
 		}
 	}
 	return target, nil
+}
+
+func s3EnvironmentNames(named bool) (string, string, string) {
+	if named {
+		return "HOUSEHOLD_S3_ACCESS_KEY", "HOUSEHOLD_S3_SECRET_KEY", "HOUSEHOLD_S3_REGION"
+	}
+	return "HOUSEHOLD_BACKUP_S3_ACCESS_KEY_ID", "HOUSEHOLD_BACKUP_S3_SECRET_ACCESS_KEY", "HOUSEHOLD_BACKUP_S3_REGION"
+}
+
+// namedS3Repository accepts the endpoint/bucket/prefix layout used by the
+// sibling applications and derives the equivalent restic location.
+func namedS3Repository() (string, error) {
+	endpoint := strings.TrimSpace(os.Getenv("HOUSEHOLD_S3_ENDPOINT"))
+	bucket := strings.TrimSpace(os.Getenv("HOUSEHOLD_S3_BUCKET"))
+	if endpoint == "" && bucket == "" {
+		return "", nil
+	}
+	if endpoint == "" || bucket == "" || strings.ContainsAny(endpoint, "/?#@") || strings.ContainsAny(bucket, "/?#@") {
+		return "", errors.New("HOUSEHOLD_S3_ENDPOINT needs a host and HOUSEHOLD_S3_BUCKET needs a bucket name")
+	}
+	prefix := strings.TrimSuffix(strings.TrimSpace(env("HOUSEHOLD_S3_PREFIX", "household")), "/")
+	if prefix == "" || prefix == "." || strings.HasPrefix(prefix, "/") || path.Clean(prefix) != prefix || strings.ContainsAny(prefix, `\%`) {
+		return "", errors.New("HOUSEHOLD_S3_PREFIX must be a clean, relative path")
+	}
+	scheme := "https"
+	if raw := os.Getenv("HOUSEHOLD_S3_USE_SSL"); raw != "" {
+		secure, err := strconv.ParseBool(raw)
+		if err != nil {
+			return "", errors.New("HOUSEHOLD_S3_USE_SSL must be true or false")
+		}
+		if !secure {
+			scheme = "http"
+		}
+	}
+	return "s3:" + scheme + "://" + endpoint + "/" + bucket + "/" + prefix, nil
+}
+
+// S3Connection exposes only the fields required for a signed bucket probe.
+type S3Connection struct {
+	Endpoint, Bucket, AccessKey, SecretKey, Region string
+	Secure                                         bool
+}
+
+func (t BackupTarget) S3Connection() (S3Connection, bool) {
+	raw, found := strings.CutPrefix(t.Repository, "s3:")
+	if !found {
+		return S3Connection{}, false
+	}
+	u, err := url.Parse(raw)
+	if err != nil {
+		return S3Connection{}, false
+	}
+	bucket, _, _ := strings.Cut(strings.TrimPrefix(u.Path, "/"), "/")
+	connection := S3Connection{Endpoint: u.Host, Bucket: bucket, Secure: u.Scheme == "https"}
+	for _, variable := range t.extra {
+		name, value, _ := strings.Cut(variable, "=")
+		switch name {
+		case "AWS_ACCESS_KEY_ID":
+			connection.AccessKey = value
+		case "AWS_SECRET_ACCESS_KEY":
+			connection.SecretKey = value
+		case "AWS_DEFAULT_REGION":
+			connection.Region = value
+		}
+	}
+	return connection, true
 }
 
 func regionPattern(region string) bool {
