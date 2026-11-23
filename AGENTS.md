@@ -10,7 +10,7 @@ Never touch sibling Treckrr/Parkrr containers, databases, or files. Household lo
 
 Keep project memory and tooling scoped to Household. Sibling-project memory, paths and historical approvals are not Household instructions; do not retarget shared skills or global settings. Preserve unrelated concurrent edits and stage only the completed, reviewed task scope.
 
-Treat missing CI prerequisites and scanner failures as failures. Do not suppress required checks or weaken assertions/coverage to obtain a green run. After staging, run `node scripts/check-local-artifacts.cjs --index` alongside secret checks. Authored `design-preview/` source and product icons remain intentional inputs; generated captures and private evidence stay ignored.
+Treat missing CI prerequisites and scanner failures as failures. Do not suppress required checks or weaken assertions/coverage to obtain a green run. After staging, run `node scripts/check-local-artifacts.cjs --index` alongside secret checks. Authored `design-preview/` source and product icons remain intentional inputs; generated captures and private evidence stay ignored, except the README screenshots in `docs/img/`, which show only synthetic demo data from an isolated fixture.
 
 For release preparation, review the exact base/head diff and document data/workflow impact, manual steps and rollback compatibility in the PR template. Embedded-asset changes need a rebuilt binary/image; rebuilding or merging does not grant deployment permission. See `docs/workflow-reference-adoption.md` for the reviewed Treckrr/Parkrr adaptations.
 
