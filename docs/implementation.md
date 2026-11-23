@@ -2231,3 +2231,10 @@ At `cb8d372` the PR Fuel job passed 185 checks and all 32 scans, while the push 
 - [x] A local link check resolved all 67 relative README links, anchors and image paths. `node scripts/check-local-artifacts.cjs --index`, `node --test scripts/local-artifacts.test.cjs` (5/5) and gitleaks v8.30.1 (staged, branch, and `--log-opts=--all` over 146 commits) passed.
 - [x] Recorded `docs/img/` as the single exception to excluding generated screenshots, in `AGENTS.md` and `docs/workflow-reference-adoption.md`.
 - [ ] Hosted CI and CodeRabbit results for this change are recorded in its pull requests, not here.
+
+## Staffel H/H identity
+
+- [x] Applied the shared monogram to the desktop sidebar, mobile header and sign-in, plus the standalone favicon and maskable PWA icons.
+- [x] Passed the Go web package and all 48 service-worker tests. Windows Edge rendered the sign-in mark in Warm Light, Warm Dark, Pink Light and Pink Dark. The live sprite, favicon and both manifest icons matched the source files after the local Docker rebuild.
+- [ ] Physical-device icon refresh and push delivery.
+- [x] Centered the sign-in mark (76–96px) above a 22–26px heading and centered a 64px mark in the signed-in sidebar. Edge before/after captures in outputs/staffel-layout cover four sign-in widths and themes and two authenticated sidebar widths using an isolated household.

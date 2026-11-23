@@ -230,7 +230,7 @@ Motion is conditional on `prefers-reduced-motion: no-preference`: shared button/
 
 Controls have gently rounded corners; notices, editing panels, and authentication surfaces use the progressively larger radii in the frontmatter. Mobile panels use 13px corners. Rows and module settings remain square and separated by a one-pixel line. Current tabs retain a two-pixel accent underline with rounded top corners. Status badges are compact pills; circular completion controls retain their existing functional silhouette.
 
-Navigation icons come from the bundled outline SVG system, typically 22px with a 1.8px stroke. Do not introduce remote icon fonts or a new illustration system. The local house mark remains the identity asset.
+Navigation icons come from the bundled outline SVG system, typically 22px with a 1.8px stroke. Do not introduce remote icon fonts or a new illustration system. The Household mark uses two staggered H letters and an ascending slash (Staffel). Show the mark alone on sign-in and in desktop and mobile navigation. Each brand link has the accessible name Household. The letters inherit the link color and the slash uses the theme accent. The standalone icon uses the Pink Dark palette.
 
 ## Components
 
@@ -302,4 +302,4 @@ Use two or three primary module destinations, a short contextual row for the act
 
 The 17 approved household and administrative PNGs are mapped to application routes in [the visual review](docs/visual-fidelity.md). Standard light and system on a light device use the ivory/navy composition.
 
-Use the transparent copper branch in the household header, the outline house with its serif wordmark and the vector sprig on the sidebar and account drawer. Use the market bag as decoration for shopping. Recipe imagery comes from the recipe's authorized attachment. The empty photo treatment uses the book icon. Paper gradients, fine outlines, restrained shadows and serif card headings distinguish household records from the navy administrative surfaces. Financial amounts and task completion use explicitly labeled scales.
+Use the transparent copper branch in the household header, the Staffel monogram in the sidebar and the vector sprig in the sidebar and account drawer. Use the market bag as decoration for shopping. Recipe imagery comes from the recipe's authorized attachment. The empty photo treatment uses the book icon. Paper gradients, fine outlines, restrained shadows and serif card headings distinguish household records from the navy administrative surfaces. Financial amounts and task completion use explicitly labeled scales.
