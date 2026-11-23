@@ -462,3 +462,34 @@ body:has(main .editorial-kicker) .shell-kicker{visibility:hidden}
  .shopping-board .shopping-controls{display:flex;align-items:center;justify-content:space-between;gap:6px}
  .shopping-board .shopping-controls>details[open]{flex:1;min-width:0}
 }
+.sidebar .logo,.topbar .logo{--brand-slash:var(--nav-selected)}
+.brand:has(.logo),.topbar .mobile-brand:has(.logo){min-width:44px;min-height:44px}
+
+/* Give the standalone monogram a different scale at each point of entry. */
+.auth-card > .brand,
+.sidebar > .brand {
+  width: fit-content;
+  justify-content: center;
+  margin-inline: auto;
+  padding: 0;
+}
+.auth-card > .brand {
+  margin-block: 0 4px;
+}
+.auth-card > .brand .logo {
+  width: clamp(76px, 14vw, 96px);
+  height: auto;
+}
+.auth-card > .brand + h1 {
+  margin: 0 0 24px;
+  font-size: clamp(22px, 3vw, 26px);
+  line-height: 1.2;
+  text-align: center;
+}
+.sidebar > .brand {
+  margin-block: 0 24px;
+}
+.sidebar > .brand .logo {
+  width: 64px;
+  height: 64px;
+}
