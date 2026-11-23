@@ -21,7 +21,8 @@ interface and API from one binary; PostgreSQL holds the data; Docker Compose run
 Household keeps the everyday organisation of one home in one place: what to buy,
 what is in the cupboard, what to cook this week, who does which chore, what the car
 consumes, what the meters read, which documents expire and where the money went.
-Modules beyond the core set are optional, and one installation serves one household.
+Five modules start enabled; administrators switch on the other four, and pausing a
+module keeps its data. One installation serves one household.
 
 > The interface is available in **German** and **English**; this README is in English.
 >
@@ -393,8 +394,10 @@ is a prototype, separate from the running app.
 
 | Workflow | What it does |
 | --- | --- |
-| [Go quality and security](.github/workflows/quality.yml) | Lint, gosec, govulncheck, dependency review, unit and PostgreSQL tests, coverage, workflow and secret checks. |
+| [Go quality and security](.github/workflows/quality.yml) | Lint, gosec, govulncheck, module verification with a dependency report and migration-history check, unit and PostgreSQL tests, coverage, workflow and secret checks. |
 | [Browser and accessibility](.github/workflows/browser.yml) | Real browser checks against a disposable fixture, including the notification matrix. |
+| [Shopping extensions and offline privacy](.github/workflows/shopping-extensions.yml) | Shopping extension and offline-privacy checks. |
+| [Fuel OCR and real recovery](.github/workflows/fuel-ocr-recovery.yml) | Fuel workflows with OCR sources and a real backup/restore recovery run. |
 | [Container and release candidate](.github/workflows/container.yml) | Builds the `ocr` image and inspects the delivered image. |
 | [Production promotion policy](.github/workflows/promotion.yml) | Accepts pull requests into `main` only from this repository's `dev` branch. |
 | [Production image](.github/workflows/release.yml) | Publishes the scanned image to GHCR as `production`/`latest`. |
