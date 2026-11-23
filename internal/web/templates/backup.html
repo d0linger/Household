@@ -24,7 +24,7 @@
 <link rel="stylesheet" href="{{index .Asset "backup.css"}}">
 {{$d:=.Extra}}{{$o:=$d.Overview}}{{$page:=$d.WithPage .}}
 <div class="page-heading"><div><h1>{{t "Sicherung"}}</h1><p class="muted">{{t "Verschlüsselte Sicherungen deines Haushalts, lokal und auf Wunsch extern."}}</p></div></div>
-{{if not $o.ServiceOnline}}<div class="notice error" role="alert">{{t "Der Sicherungsdienst meldet sich nicht. Aufträge werden erst ausgeführt, wenn der Dienst backup läuft."}}</div>{{end}}
+<div class="notice error" role="alert" data-backup-worker {{if $o.ServiceOnline}}hidden{{end}}>{{t "Der Sicherungsdienst meldet sich nicht. Aufträge werden erst ausgeführt, wenn der Dienst backup läuft."}}</div>
 <div data-backup-overview-progress>{{if $o.ActiveRestore}}<div class="notice backup-progress" role="status" data-backup-active="{{$o.ActiveRestore.ID}}"><strong>{{t "Wiederherstellung läuft"}}</strong> <span data-backup-phase>{{template "backup-phase" $o.ActiveRestore.Phase}}</span><p class="fine">{{t "Household pausiert kurz, sobald die Daten umgeschaltet werden. Danach melden sich alle erneut an."}}</p></div>{{end}}</div>
 
 <p class="backup-feedback" data-backup-feedback role="status" aria-atomic="true" hidden></p>
@@ -43,9 +43,9 @@
 </div>
 <div class="actions backup-actions">
 <form method="post" action="/settings/backup/jobs" data-security-form>{{template "csrf" .}}<input type="hidden" name="kind" value="backup"><input type="hidden" name="target" value="local"><button class="primary">{{t "Jetzt sichern"}}</button></form>
-{{if $o.OffsiteConfigured}}<form method="post" action="/settings/backup/jobs" data-security-form>{{template "csrf" .}}<input type="hidden" name="kind" value="backup"><input type="hidden" name="target" value="both"><button>{{t "Lokal und extern sichern"}}</button></form>
-<form method="post" action="/settings/backup/jobs" data-security-form aria-describedby="backup-connection-help">{{template "csrf" .}}<input type="hidden" name="kind" value="offsite_test"><input type="hidden" name="target" value="offsite"><button>{{t "Externe Verbindung testen"}}</button></form>{{end}}
-</div>{{if $o.OffsiteConfigured}}<p class="fine" id="backup-connection-help">{{t "Der Verbindungstest liest das Ziel. Eine Sicherung erstellt das Repository bei Bedarf."}}</p>{{end}}</section>
+<div data-backup-offsite-actions {{if not $o.OffsiteConfigured}}hidden{{end}}>{{if $o.OffsiteConfigured}}<form method="post" action="/settings/backup/jobs" data-security-form>{{template "csrf" .}}<input type="hidden" name="kind" value="backup"><input type="hidden" name="target" value="both"><button>{{t "Lokal und extern sichern"}}</button></form>
+<form method="post" action="/settings/backup/jobs" data-security-form aria-describedby="backup-connection-help">{{template "csrf" .}}<input type="hidden" name="kind" value="offsite_test"><input type="hidden" name="target" value="offsite"><button>{{t "Externe Verbindung testen"}}</button></form>{{end}}</div>
+</div><p class="fine" id="backup-connection-help" data-backup-offsite-help {{if not $o.OffsiteConfigured}}hidden{{end}}>{{t "Der Verbindungstest liest das Ziel. Eine Sicherung erstellt das Repository bei Bedarf."}}</p></section>
 
 <section class="panel" aria-labelledby="backup-schedule-heading"><h2 id="backup-schedule-heading">{{t "Zeitplan und Aufbewahrung"}}</h2>
 <form method="post" action="/settings/backup/settings" data-security-form class="backup-schedule">{{template "csrf" .}}<input type="hidden" name="version" value="{{$o.SettingsVersion}}">
@@ -56,7 +56,7 @@
 <label>{{t "Wöchentliche behalten"}}<input type="number" name="keep_weekly" min="0" max="104" value="{{$o.Settings.KeepWeekly}}" required></label>
 <label>{{t "Monatliche behalten"}}<input type="number" name="keep_monthly" min="0" max="120" value="{{$o.Settings.KeepMonthly}}" required></label>
 </div></fieldset>
-<fieldset><legend>{{t "Externe Kopie"}}</legend>{{if not $o.OffsiteConfigured}}<p class="fine">{{t "Richte zuerst ein externes Ziel in der .env ein (siehe unten)."}}</p>{{end}}<div class="form-grid">
+<fieldset><legend>{{t "Externe Kopie"}}</legend><p class="fine" data-backup-offsite-guidance {{if $o.OffsiteConfigured}}hidden{{end}}>{{t "Richte zuerst ein externes Ziel in der .env ein (siehe unten)."}}</p><div class="form-grid">
 <label class="check-label"><input type="checkbox" name="offsite_enabled" {{if $o.Settings.OffsiteEnabled}}checked{{end}}>{{t "Automatisch extern kopieren"}}</label>
 <label>{{t "Wiederholen"}}<select name="offsite_interval_hours">{{range $h := (list 24 12 8 6 4 3 2 1 48 168)}}<option value="{{$h}}" {{if eq $h $o.Settings.OffsiteIntervalHours}}selected{{end}}>{{if eq $h 24}}{{t "Täglich"}}{{else if eq $h 48}}{{t "Alle zwei Tage"}}{{else if eq $h 168}}{{t "Wöchentlich"}}{{else if eq $h 1}}{{t "Stündlich"}}{{else}}{{t "Alle %d Stunden" $h}}{{end}}</option>{{end}}</select></label>
 <label>{{t "Tägliche behalten"}}<input type="number" name="offsite_keep_daily" min="1" max="90" value="{{$o.Settings.OffsiteKeepDaily}}" required></label>
@@ -71,17 +71,17 @@
 <p class="fine">{{t "Zeiten gelten in der Zeitzone des Haushalts:"}} {{$o.Zone}}</p>
 </form></section>
 
-<section class="panel backup-wide" aria-labelledby="backup-local-heading" data-backup-snapshots="backup-local-heading"><h2 id="backup-local-heading">{{t "Lokale Wiederherstellungspunkte"}}</h2>
+<section class="panel backup-wide" aria-labelledby="backup-local-heading" data-backup-snapshots="local"><h2 id="backup-local-heading">{{t "Lokale Wiederherstellungspunkte"}}</h2>
 {{template "backup-snapshots" (list $page $o.LocalSnapshots "local")}}</section>
 
-{{if $o.OffsiteConfigured}}<section class="panel backup-wide" aria-labelledby="backup-offsite-heading" data-backup-snapshots="backup-offsite-heading"><h2 id="backup-offsite-heading">{{t "Externe Wiederherstellungspunkte"}}</h2>
-{{template "backup-snapshots" (list $page $o.OffsiteSnapshots "offsite")}}</section>{{end}}
+<section class="panel backup-wide" aria-labelledby="backup-offsite-heading" data-backup-snapshots="offsite" {{if not $o.OffsiteConfigured}}hidden{{end}}>{{if $o.OffsiteConfigured}}<h2 id="backup-offsite-heading">{{t "Externe Wiederherstellungspunkte"}}</h2>
+{{template "backup-snapshots" (list $page $o.OffsiteSnapshots "offsite")}}{{end}}</section>
 
-{{if $o.Retained}}<section class="panel backup-wide" aria-labelledby="backup-previous-heading"><h2 id="backup-previous-heading">{{t "Früherer Stand"}}</h2>
+<section class="panel backup-wide" aria-labelledby="backup-previous-heading" data-backup-retained {{if not $o.Retained}}hidden{{end}}>{{if $o.Retained}}<h2 id="backup-previous-heading">{{t "Früherer Stand"}}</h2>
 {{if $o.Previous}}<p>{{t "Die letzte Wiederherstellung hat den vorherigen Stand aufbewahrt. Prüfe die wiederhergestellten Daten und verwirf ihn danach, um Speicher freizugeben."}}</p>
 <p class="fine">{{t "Zurück zum früheren Stand: App stoppen und den Wartungsbefehl restore-rollback ausführen (siehe Betriebsanleitung)."}}</p>
 {{else}}<p>{{t "Eine zurückgenommene Wiederherstellung ist noch aufbewahrt. Verwirf sie, um Speicher freizugeben."}}</p>{{end}}
-<form method="post" action="/settings/backup/jobs" data-security-form>{{template "csrf" .}}<input type="hidden" name="kind" value="discard_previous"><input type="hidden" name="target" value="local"><label class="check-label"><input type="checkbox" name="confirm" required>{{t "Früheren Stand endgültig löschen"}}</label><button class="danger">{{t "Verwerfen"}}</button></form></section>{{end}}
+<form method="post" action="/settings/backup/jobs" data-security-form>{{template "csrf" .}}<input type="hidden" name="kind" value="discard_previous"><input type="hidden" name="target" value="local"><label class="check-label"><input type="checkbox" name="confirm" required>{{t "Früheren Stand endgültig löschen"}}</label><button class="danger">{{t "Verwerfen"}}</button></form>{{end}}</section>
 
 <section class="panel backup-wide" aria-labelledby="backup-export-heading"><h2 id="backup-export-heading">{{t "Datenexport"}}</h2>
 <p>{{t "Lade alle Einträge deines Haushalts als ZIP-Datei mit einer CSV-Tabelle je Bereich herunter, etwa für einen Umzug. Dateien und Dokumente enthält der Export nicht; dafür gibt es den Dokumente-Export und die Sicherung."}}</p>
@@ -95,7 +95,7 @@
 <div class="backup-job-state">{{template "backup-job-state" .}}{{if eq .State "requested"}}<form method="post" action="/settings/backup/jobs/{{.ID}}/cancel" data-security-form>{{template "csrf" $page.Page}}<button>{{t "Abbrechen"}}</button></form>{{end}}</div>
 </article>{{end}}</div>{{else}}<p class="fine">{{t "Noch keine Aufträge."}}</p>{{end}}</section>
 
-{{if not $o.OffsiteConfigured}}<section class="panel backup-wide" aria-labelledby="backup-offsite-setup"><h2 id="backup-offsite-setup">{{t "Externes Ziel einrichten"}}</h2>
+<section class="panel backup-wide" aria-labelledby="backup-offsite-setup" data-backup-offsite-setup {{if $o.OffsiteConfigured}}hidden{{end}}>{{if not $o.OffsiteConfigured}}<h2 id="backup-offsite-setup">{{t "Externes Ziel einrichten"}}</h2>
 <p>{{t "Trage das Ziel in die .env ein und starte die Dienste neu. Die Zugangsdaten erhält nur der Sicherungsdienst, nie die App."}}</p>
 <pre class="backup-env" tabindex="0" aria-label="{{t "Beispiel für die .env"}}">HOUSEHOLD_S3_ENDPOINT=s3.example.org
 HOUSEHOLD_S3_BUCKET=s3-dp
@@ -104,7 +104,7 @@ HOUSEHOLD_S3_REGION=us-east-1
 HOUSEHOLD_S3_ACCESS_KEY=…
 HOUSEHOLD_S3_SECRET_KEY=…
 HOUSEHOLD_BACKUP_OFFSITE_PASSWORD=…</pre>
-<p class="fine">{{t "Unterstützt werden S3-kompatible Speicher (AWS, Backblaze B2, Wasabi, Hetzner, MinIO), ein restic-REST-Server oder ein eingebundener Pfad wie ein NAS."}}</p></section>{{end}}
+<p class="fine">{{t "Unterstützt werden S3-kompatible Speicher (AWS, Backblaze B2, Wasabi, Hetzner, MinIO), ein restic-REST-Server oder ein eingebundener Pfad wie ein NAS."}}</p>{{end}}</section>
 </div>
 
 <dialog id="backup-restore" aria-labelledby="backup-restore-title"><div class="dialog-heading"><h2 id="backup-restore-title">{{t "Aus Sicherung wiederherstellen"}}</h2><button type="button" data-restore-close aria-label="{{t "Schließen"}}">×</button></div>

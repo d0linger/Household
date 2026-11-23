@@ -10,6 +10,7 @@
   "Sicherungsauftrag eingereiht.": "Backup job queued.",
   "Sicherungsauftrag abgeschlossen.": "Backup job completed.",
   "Sicherungsauftrag fehlgeschlagen. Details stehen im Verlauf.": "Backup job failed. See its details in the history.",
+  "Sicherungsauftrag nicht gefunden. Prüfe den Verlauf.": "Backup job not found. Check the history.",
   "Der Sicherungsdienst bearbeitet den Auftrag.": "The backup service is processing the job.",
   "Der Sicherungsstatus konnte noch nicht aktualisiert werden. Household versucht es erneut.": "Household could not refresh the backup status yet and will retry.",
   "Sicherungsauftrag aktualisiert.": "Backup job updated.",

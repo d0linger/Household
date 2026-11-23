@@ -7115,6 +7115,7 @@ globalThis.HouseholdEnglish = Object.freeze({
   "Sicherungsauftrag angelegt": "Backup job requested",
   "Sicherungsauftrag eingereiht.": "Backup job queued.",
   "Sicherungsauftrag fehlgeschlagen. Details stehen im Verlauf.": "Backup job failed. See its details in the history.",
+  "Sicherungsauftrag nicht gefunden. Prüfe den Verlauf.": "Backup job not found. Check the history.",
   "Sicherungsdienst": "Backup service",
   "Sicherungseinstellungen geändert": "Backup settings changed",
   "sichtbare Erstattung": "visible refund",

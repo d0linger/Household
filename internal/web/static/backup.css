@@ -2,6 +2,7 @@
 .backup-target,.backup-schedule,.backup-schedule fieldset{min-width:0}.backup-target .break{overflow-wrap:anywhere}
 .backup-targets{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:20px}.backup-target h3{margin:0 0 8px}.backup-target p{margin:6px 0}
 .backup-actions{flex-wrap:wrap;border-top:1px solid var(--line);margin-top:20px;padding-top:20px}.backup-actions form{margin:0}
+[data-backup-offsite-actions]:not([hidden]){display:contents}
 .badge.backup-bad{background:var(--ground);border-color:var(--danger);color:var(--danger)}.badge.backup-warn{border-color:var(--warning);color:var(--ink)}.badge.backup-running{border-color:var(--accent);color:var(--accent)}
 .backup-schedule fieldset{border:0;border-top:1px solid var(--line);margin:0;padding:16px 0 4px}.backup-schedule legend{font-weight:650;padding:0 0 8px}
 .backup-snapshot,.backup-job,.system-check{display:flex;justify-content:space-between;align-items:center;gap:20px;border-bottom:1px solid var(--line);padding:16px 0}

@@ -67,6 +67,7 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 	var required auth.SecondFactorRequired
 	switch {
 	case errors.As(err, &required):
+		http.SetCookie(w, s.cookie("household_login", challenge.Value, int(auth.LoginFactorTTL/time.Second), time.Time{}))
 		s.renderLogin(w, r, challenge.Value, "", required.Token, "", http.StatusOK)
 	case errors.Is(err, auth.ErrLimited):
 		w.Header().Set("Retry-After", "900")

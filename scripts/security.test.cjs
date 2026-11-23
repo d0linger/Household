@@ -160,50 +160,69 @@ test('modal confirmation resumes the original protected form only after checking
  assert.deepEqual(f.destinations,[]);assert.equal(f.reloads,0);assert.equal(f.original.getAttribute('aria-busy'),'false');
 });
 
-test('backup poll retries a deferred history refresh after its first HTML request fails', async () => {
+function backupFixture({htmlFailure = 0, detailStatuses = []} = {}) {
   const historySelector = '[data-backup-history]';
   const activeSelector = '.backup-running, .backup-waiting, [data-backup-active]';
   const feedback = {dataset: {}};
-  const row = {dataset: {backupJob: 'fixture-job', jobState: 'running'}};
-  const history = {
-    contains: () => false,
-    hasAttribute: name => name === 'data-backup-history',
+  const retainedAction = {closest: () => null};
+  let historyFocused = false;
+  const heading = {focus() { historyFocused = true; }};
+  const node = (name, text, hidden = false) => ({
+    innerHTML: text,
+    hidden,
+    childNodes: [text],
+    contains: child => name === 'retained' && child === retainedAction,
+    hasAttribute: attribute => name === 'history' && attribute === 'data-backup-history',
     querySelector: () => null,
-    replaceChildren(state) { row.dataset.jobState = state; },
+    replaceChildren(text) { this.innerHTML = text; },
+  });
+  const targets = {
+    [historySelector]: node('history', 'running'),
+    '[data-backup-snapshots="local"]': node('local', 'empty'),
+    '[data-backup-snapshots="offsite"]': node('offsite', '', true),
+    '[data-backup-retained]': node('retained', 'old copy'),
   };
-  let reauth = true;
+  const updated = {
+    [historySelector]: node('history', 'complete'),
+    '[data-backup-snapshots="local"]': node('local', 'local point'),
+    '[data-backup-snapshots="offsite"]': node('offsite', 'external point'),
+    '[data-backup-retained]': node('retained', '', true),
+  };
+  let reauth = false;
   let htmlRequests = 0;
+  let detailRequests = 0;
   let scheduled = null;
+  let jobs = [{id: 'fixture-job', state: 'complete'}];
+  const events = new Map();
   const document = {
-    addEventListener() {},
+    activeElement: null,
+    addEventListener(name, handler) { events.set(name, handler); },
     querySelector(selector) {
       if (selector === '[data-backup-feedback]') return feedback;
       if (selector === '#security-reauth[open]') return reauth ? {} : null;
-      if (selector === activeSelector) return row;
-      return null;
-    },
-    querySelectorAll(selector) {
-      if (selector === '[data-backup-job]') return [row];
-      if (selector === historySelector) return [history];
-      return [];
+      if (selector === activeSelector) return {};
+      if (selector === `${historySelector} h2`) return heading;
+      return targets[selector] || null;
     },
   };
-  const nextHistory = {childNodes: ['complete']};
   class DOMParser {
     parseFromString() {
-      return {
-        querySelector: selector => selector === historySelector ? nextHistory : null,
-        querySelectorAll: selector => selector === historySelector ? [nextHistory] : [],
-      };
+      return {querySelector: selector => updated[selector] || null};
     }
   }
   const fetch = async url => {
     if (url === '/api/v1/core/backup') {
-      return {ok: true, json: async () => ({jobs: [{id: 'fixture-job', state: 'complete'}]})};
+      return {ok: true, json: async () => ({jobs})};
+    }
+    if (url.startsWith('/api/v1/core/backup/jobs/')) {
+      const response = detailStatuses[detailRequests++];
+      const status = typeof response === 'function' ? await response() : response;
+      const id = url.split('/').at(-1);
+      return {status, ok: status === 200, json: async () => ({id, state: 'complete'})};
     }
     assert.equal(url, '/settings/backup');
     htmlRequests++;
-    return {ok: htmlRequests !== 2, status: htmlRequests === 2 ? 502 : 200, text: async () => '<html></html>'};
+    return {ok: htmlRequests !== htmlFailure, status: htmlRequests === htmlFailure ? 502 : 200, text: async () => '<html></html>'};
   };
   const source = fs.readFileSync(require.resolve('../internal/web/static/backup.js'), 'utf8');
   vm.runInNewContext(source, {
@@ -211,20 +230,86 @@ test('backup poll retries a deferred history refresh after its first HTML reques
     setTimeout(callback) { scheduled = callback; },
     clearTimeout() { scheduled = null; },
   });
-  const poll = async () => {
-    assert.ok(scheduled, 'the status poll must be scheduled');
-    const callback = scheduled;
-    scheduled = null;
-    await callback();
+  return {
+    feedback, targets,
+    setReauth(value) { reauth = value; },
+    focusRetainedAction() { document.activeElement = retainedAction; },
+    get historyFocused() { return historyFocused; },
+    get htmlRequests() { return htmlRequests; },
+    get detailRequests() { return detailRequests; },
+    get scheduled() { return scheduled !== null; },
+    saveJob(id = 'fixture-job') {
+      jobs = [];
+      events.get('household:security-saved')({
+        target: {matches: () => true}, detail: {id}, preventDefault() {},
+      });
+    },
+    async poll() {
+      assert.ok(scheduled, 'the status poll must be scheduled');
+      const callback = scheduled;
+      scheduled = null;
+      await callback();
+    },
   };
+}
 
-  await poll();
-  assert.equal(row.dataset.jobState, 'running', 'reauthentication preserves the current DOM');
-  reauth = false;
-  await poll();
-  assert.equal(row.dataset.jobState, 'running', 'the HTML request failed');
-  await poll();
-  assert.equal(htmlRequests, 3);
-  assert.equal(row.dataset.jobState, 'complete');
-  assert.equal(scheduled, null, 'finished jobs no longer need polling');
+test('backup poll retries a deferred history refresh after its first HTML request fails', async () => {
+  const f = backupFixture({htmlFailure: 2});
+  const history = f.targets['[data-backup-history]'];
+  f.setReauth(true);
+  await f.poll();
+  assert.equal(history.innerHTML, 'running', 'reauthentication preserves the current DOM');
+  f.setReauth(false);
+  await f.poll();
+  assert.equal(history.innerHTML, 'running', 'the HTML request failed');
+  await f.poll();
+  assert.equal(f.htmlRequests, 3);
+  assert.equal(history.innerHTML, 'complete');
+  assert.equal(f.scheduled, false, 'finished jobs no longer need polling');
+});
+
+test('backup refresh adds the offsite list and removes a discarded copy while restoring keyboard focus', async () => {
+  const f = backupFixture();
+  f.focusRetainedAction();
+  await f.poll();
+  assert.equal(f.targets['[data-backup-snapshots="local"]'].innerHTML, 'local point');
+  assert.equal(f.targets['[data-backup-snapshots="offsite"]'].hidden, false);
+  assert.equal(f.targets['[data-backup-snapshots="offsite"]'].innerHTML, 'external point');
+  assert.equal(f.targets['[data-backup-retained]'].hidden, true);
+  assert.equal(f.historyFocused, true);
+  assert.equal(f.scheduled, false);
+});
+
+test('backup poll retries unavailable job details and stops tracking a permanently missing job', async () => {
+  const transient = backupFixture({detailStatuses: [503, 200]});
+  transient.saveJob();
+  await transient.poll();
+  assert.equal(transient.scheduled, true);
+  await transient.poll();
+  assert.equal(transient.detailRequests, 2);
+  assert.equal(transient.feedback.textContent, 'Sicherungsauftrag abgeschlossen.');
+  assert.equal(transient.scheduled, false);
+
+  const missing = backupFixture({detailStatuses: [404]});
+  missing.saveJob();
+  await missing.poll();
+  assert.equal(missing.detailRequests, 1);
+  assert.equal(missing.feedback.textContent, 'Sicherungsauftrag nicht gefunden. Prüfe den Verlauf.');
+  assert.equal(missing.scheduled, false);
+});
+
+test('a stale missing-job response cannot clear a more recently submitted backup job', async () => {
+  let finishOldRequest;
+  const oldRequest = new Promise(resolve => { finishOldRequest = resolve; });
+  const f = backupFixture({detailStatuses: [() => oldRequest, 200]});
+  f.saveJob();
+  const polling = f.poll();
+  await settled(() => f.detailRequests === 1);
+  f.saveJob('newer-job');
+  finishOldRequest(404);
+  await polling;
+  assert.equal(f.feedback.textContent, 'Sicherungsauftrag aktualisiert.');
+  await f.poll();
+  assert.equal(f.detailRequests, 2);
+  assert.equal(f.feedback.textContent, 'Sicherungsauftrag abgeschlossen.');
 });

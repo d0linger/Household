@@ -14,7 +14,12 @@
   let lastJob = '';
   let lastResult = '';
   const activeStates = new Set(['requested', 'running', 'preparing', 'awaiting_drain', 'swapping']);
-  const sections = ['[data-backup-overview-progress]', '[data-backup-targets]', '[data-backup-history]', '[data-backup-snapshots]'];
+  const sections = [
+    '[data-backup-history]', '[data-backup-overview-progress]', '[data-backup-targets]',
+    '[data-backup-worker]', '[data-backup-offsite-actions]', '[data-backup-offsite-help]',
+    '[data-backup-offsite-guidance]', '[data-backup-offsite-setup]',
+    '[data-backup-snapshots="local"]', '[data-backup-snapshots="offsite"]', '[data-backup-retained]',
+  ];
 
   document.addEventListener('click', async event => {
     const restore = event.target.closest('[data-restore-open]');
@@ -54,12 +59,13 @@
     timer = setTimeout(poll, delay);
   }
 
-  function signature(jobs) {
-    return JSON.stringify(jobs.map(job => [job.id, job.state, job.phase || '', job.result || '']));
+  function signature(data, job) {
+    const jobs = data.jobs || [];
+    const states = jobs.map(entry => [entry.id, entry.state, entry.phase || '', entry.result || '']);
+    const tracked = job && !jobs.includes(job) ? [job.id, job.state, job.phase, job.result] : null;
+    return JSON.stringify([states, tracked, data.service_online, data.offsite_configured, data.retained, data.previous]);
   }
-  let known = signature([...document.querySelectorAll('[data-backup-job]')].map(row => ({
-    id: row.dataset.backupJob, state: row.dataset.jobState, phase: row.dataset.jobPhase, result: row.dataset.jobResult,
-  })));
+  let known = '';
 
   async function updateSections() {
     const response = await fetch('/settings/backup', { credentials: 'same-origin', signal: AbortSignal.timeout(10000) });
@@ -67,26 +73,25 @@
     const shadowPage = new DOMParser().parseFromString(await response.text(), 'text/html');
     if (!shadowPage.querySelector('[data-backup-history]')) throw new Error();
     for (const selector of sections) {
-      const current = document.querySelectorAll(selector);
-      const next = shadowPage.querySelectorAll(selector);
-      if (current.length !== next.length) continue;
-      for (const [index, section] of current.entries()) {
-        // Keep keyboard focus and pending reauthentication attached to their form.
-        const focused = section.contains(document.activeElement) ? document.activeElement : null;
-        const history = section.hasAttribute('data-backup-history');
-        if ((focused && !history) || section.querySelector('[aria-busy="true"]') || document.querySelector('#security-reauth[open]')) {
-          dirty = true;
-          continue;
-        }
-        const rowID = focused?.closest('[data-backup-job]')?.dataset.backupJob;
-        section.replaceChildren(...next[index].childNodes);
-        if (focused) {
-          const replacement = rowID && section.querySelector('[data-backup-job="' + CSS.escape(rowID) + '"]')?.querySelector('button');
-          const target = replacement || section.querySelector('h2');
-          if (target) {
-            if (!replacement) target.tabIndex = -1;
-            target.focus({ preventScroll: true });
-          }
+      const section = document.querySelector(selector);
+      const next = shadowPage.querySelector(selector);
+      if (!section || !next || section.hidden === next.hidden && section.innerHTML === next.innerHTML) continue;
+      // Keep editing and reauthentication attached to their original forms.
+      const focused = section.contains(document.activeElement) ? document.activeElement : null;
+      const history = section.hasAttribute('data-backup-history');
+      if ((focused && !history && !next.hidden) || section.querySelector('[aria-busy="true"]') || document.querySelector('#security-reauth[open]')) {
+        dirty = true;
+        continue;
+      }
+      const rowID = focused?.closest('[data-backup-job]')?.dataset.backupJob;
+      section.replaceChildren(...next.childNodes);
+      section.hidden = next.hidden;
+      if (focused) {
+        const replacement = rowID && section.querySelector('[data-backup-job="' + CSS.escape(rowID) + '"]')?.querySelector('button');
+        const target = replacement || (next.hidden ? document.querySelector('[data-backup-history] h2') : section.querySelector('h2'));
+        if (target) {
+          if (!replacement) target.tabIndex = -1;
+          target.focus({ preventScroll: true });
         }
       }
     }
@@ -102,7 +107,21 @@
       if (!response.ok) throw new Error(String(response.status));
       const data = await response.json();
       const jobs = data.jobs || [];
-      const next = signature(jobs);
+      const trackedID = lastJob;
+      let job = jobs.find(entry => entry.id === trackedID);
+      if (!job && trackedID) {
+        const detail = await fetch('/api/v1/core/backup/jobs/' + encodeURIComponent(trackedID), { credentials: 'same-origin', signal: AbortSignal.timeout(10000) });
+        if (trackedID !== lastJob) { schedule(0); return; }
+        if (detail.status === 401) { location.assign('/login'); return; }
+        if (detail.status === 404) {
+          lastJob = '';
+          announce(t('Sicherungsauftrag nicht gefunden. Prüfe den Verlauf.'), 'error');
+        } else {
+          if (!detail.ok) throw new Error(String(detail.status));
+          job = await detail.json();
+        }
+      }
+      const next = signature(data, job);
       if (dirty || next !== known) {
         dirty = false;
         try {
@@ -113,12 +132,7 @@
         }
         known = next;
       }
-      let job = jobs.find(entry => entry.id === lastJob);
-      if (!job && lastJob) {
-        const detail = await fetch('/api/v1/core/backup/jobs/' + encodeURIComponent(lastJob), { credentials: 'same-origin', signal: AbortSignal.timeout(10000) });
-        if (detail.ok) job = await detail.json();
-      }
-      if (job && job.state !== lastResult) {
+      if (job?.id === lastJob && job.state !== lastResult) {
         lastResult = job.state;
         if (job.state === 'requested') announce(t('Sicherungsauftrag eingereiht.'));
         else if (job.state === 'complete') announce(job.kind === 'offsite_test' ? t('Verbindung zum Sicherungsziel geprüft.') : t('Sicherungsauftrag abgeschlossen.'), 'success');

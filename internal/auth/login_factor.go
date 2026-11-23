@@ -13,6 +13,9 @@ import (
 
 const loginFactorPurpose = "password-totp"
 
+// LoginFactorTTL is the lifetime of a verified password awaiting its second factor.
+const LoginFactorTTL = 5 * time.Minute
+
 var ErrLoginChallenge = errors.New("login challenge expired or consumed")
 
 type SecondFactorRequired struct {
@@ -28,7 +31,8 @@ func loginFactorHash(binding, token string) []byte {
 func startLoginFactor(ctx context.Context, tx pgx.Tx, uid string, version int64, binding string) (string, error) {
 	token := RandomToken()
 	_, err := tx.Exec(ctx, `INSERT INTO core.auth_challenges(user_id,purpose,token_hash,payload,expires_at)
- VALUES($1,$2,$3,jsonb_build_object('auth_version',$4::bigint),clock_timestamp()+interval '5 minutes')`, uid, loginFactorPurpose, loginFactorHash(binding, token), version)
+ VALUES($1,$2,$3,jsonb_build_object('auth_version',$4::bigint),clock_timestamp()+$5::bigint*interval '1 second')`,
+		uid, loginFactorPurpose, loginFactorHash(binding, token), version, int64(LoginFactorTTL/time.Second))
 	return token, err
 }
 

@@ -3,6 +3,7 @@
 package web
 
 import (
+	"errors"
 	"io"
 	"net/http"
 	"net/url"
@@ -11,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"household/internal/auth"
 	"household/internal/database"
 
 	"github.com/pquerna/otp/totp"
@@ -80,9 +82,13 @@ func TestBrowserEmailLoginWithSecondFactor(t *testing.T) {
 			return 0, false, "", err
 		}
 		defer func() { _ = response.Body.Close() }()
-		var session bool
+		var session, renewed bool
 		for _, c := range response.Cookies() {
 			session = session || c.Name == f.app.cookieName() && c.MaxAge > 0
+			renewed = renewed || c.Name == "household_login" && c.Value == cookie.Value && c.MaxAge == int(auth.LoginFactorTTL/time.Second)
+		}
+		if response.StatusCode == http.StatusOK && form.Has("password") && !renewed {
+			return 0, false, "", errors.New("entering the MFA step must renew the same login cookie for the full factor lifetime")
 		}
 		body, err := io.ReadAll(response.Body)
 		return response.StatusCode, session, string(body), err
