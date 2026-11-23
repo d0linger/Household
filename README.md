@@ -215,7 +215,7 @@ can use them.
 
 1. Save the existing repository password and keep a separate copy for recovery.
 2. Make it readable only by the container user:
-   `sudo chown 10001 restic_password && chmod 0400 restic_password`
+   `chmod 0400 restic_password && sudo chown 10001 restic_password`
    (with rootless Docker, use the UID that 10001 maps to).
 3. Mount it read-only on `backup`:
    `- ./restic_password:/run/secrets/restic_password:ro` under `backup.volumes`.
@@ -281,6 +281,10 @@ the `.env`. See [live restore](docs/operations.md#live-restore) and
 ---
 
 ## ⬆️ Upgrades
+
+If you pinned `HOUSEHOLD_IMAGE` to a digest in `.env`, first replace that digest
+with the digest of the release you are installing; otherwise the commands below keep
+the old version.
 
 ```sh
 docker compose pull
