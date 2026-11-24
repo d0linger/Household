@@ -408,6 +408,18 @@ func (s *Service) finish(ctx context.Context, id string, err error, snapshot str
 	}
 }
 
+// reportBackupPhase updates progress independently of the backup outcome.
+func reportBackupPhase(ctx context.Context, pool *pgxpool.Pool, jobID, phase string) {
+	if jobID == "" || pool == nil {
+		return
+	}
+	reportContext, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	if _, err := pool.Exec(reportContext, "UPDATE core.backup_jobs SET phase=$2 WHERE id=$1 AND finished_at IS NULL AND kind<>'restore'", jobID, phase); err != nil {
+		slog.Default().Warn("could not update backup phase", "job", jobID, "phase", phase)
+	}
+}
+
 // perform runs one claimed job and records its outcome.
 func (s *Service) perform(ctx context.Context, job Job) {
 	stop := s.keepAlive(ctx, job.ID)
@@ -423,8 +435,10 @@ func (s *Service) perform(ctx context.Context, job Job) {
 			err = &ToolError{Program: "restic", Code: "offsite_" + ResultCode(result.OffsiteErr), err: result.OffsiteErr}
 		}
 	case "verify":
+		reportBackupPhase(ctx, s.Pool(), job.ID, "restoring")
 		err = s.verify(ctx, job.Target, job.Snapshot)
 	case "offsite_test":
+		reportBackupPhase(ctx, s.Pool(), job.ID, "connecting_offsite")
 		err = TestOffsite(ctx, s.Pool())
 	case "restore":
 		stop()

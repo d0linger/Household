@@ -1,8 +1,8 @@
 package web
 
 import (
+	"errors"
 	"net/http"
-	"regexp"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -12,6 +12,8 @@ import (
 	"household/internal/securityevent"
 	"household/internal/store"
 	"household/internal/value"
+
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 func (s *Server) securityPage(w http.ResponseWriter, r *http.Request) {
@@ -147,8 +149,8 @@ func (s *Server) createUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	username, name := strings.TrimSpace(r.FormValue("username")), strings.TrimSpace(r.FormValue("display_name"))
-	if !regexp.MustCompile(`^[A-Za-z0-9_.-]{3,64}$`).MatchString(username) || !utf8.ValidString(name) || utf8.RuneCountInString(name) < 1 || utf8.RuneCountInString(name) > 100 {
-		s.fail(w, r, store.Invalid{Message: "Benutzername: 3 bis 64 Buchstaben, Ziffern, Punkt, Bindestrich oder Unterstrich. Anzeigename: 1 bis 100 Zeichen."})
+	if !auth.UsernameValid(username) || !utf8.ValidString(name) || utf8.RuneCountInString(name) < 1 || utf8.RuneCountInString(name) > 100 {
+		s.fail(w, r, store.Invalid{Message: "Gib einen gültigen Benutzernamen oder eine E-Mail-Adresse und einen Anzeigenamen mit 1 bis 100 Zeichen ein."})
 		return
 	}
 	role := r.FormValue("role")
@@ -190,6 +192,11 @@ func (s *Server) createUser(w http.ResponseWriter, r *http.Request) {
 	}
 	var uid string
 	err = tx.QueryRow(r.Context(), "INSERT INTO core.users(username,display_name,password_hash) VALUES($1,$2,$3) RETURNING id", username, name, string(hash)).Scan(&uid)
+	var conflict *pgconn.PgError
+	if errors.As(err, &conflict) && conflict.Code == "23505" && conflict.ConstraintName == "users_username_key_key" {
+		s.fail(w, r, store.Invalid{Message: "Dieser Benutzername wird bereits verwendet."})
+		return
+	}
 	if err == nil {
 		_, err = tx.Exec(r.Context(), "INSERT INTO core.memberships(household_id,user_id,role) VALUES($1,$2,$3)", id.HouseholdID, uid, role)
 	}

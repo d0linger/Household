@@ -247,6 +247,7 @@ func RunBackup(ctx context.Context, pool *pgxpool.Pool, cfg config.Config, optio
 	if err != nil {
 		return BackupResult{}, err
 	}
+	reportBackupPhase(ctx, pool, options.JobID, "saving_local")
 	snapshot, schemas, err := backupLocked(ctx, pool, cfg, local, settings, options.JobID, true)
 	result := BackupResult{Snapshot: snapshot}
 	if err != nil || !options.Offsite {
@@ -257,6 +258,7 @@ func RunBackup(ctx context.Context, pool *pgxpool.Pool, cfg config.Config, optio
 		err = ErrOffsiteUnconfigured
 	}
 	if err == nil {
+		reportBackupPhase(ctx, pool, options.JobID, "copying_offsite")
 		result.OffsiteSnapshot, err = copyOffsiteLocked(ctx, pool, local, *offsite, settings, snapshot, schemas, options.JobID)
 	}
 	result.OffsiteErr = err
@@ -378,6 +380,7 @@ func backupLocked(ctx context.Context, pool *pgxpool.Pool, cfg config.Config, lo
 	if err = tx.Commit(ctx); err != nil {
 		return "", nil, err
 	}
+	reportBackupPhase(ctx, pool, jobID, "checking_local")
 	if _, err = restic(ctx, local, nil, "check", "--read-data"); err != nil {
 		return "", nil, err
 	}

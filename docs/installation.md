@@ -2,6 +2,8 @@
 
 Diese Anleitung braucht nur Docker mit Compose v2. Quellcode, Go oder Skripte werden nicht benötigt. Alles Weitere, etwa Schlüsselrotation und Wiederherstellung, steht im [Betriebshandbuch](operations.md).
 
+Für Portainer (Docker Standalone) gibt es eine [eigene Compose-Datei und Anleitung](portainer.md).
+
 ## 1. Ordner anlegen und Compose-Datei holen
 
 Lege einen leeren Ordner an, zum Beispiel `household`, und speichere darin [`compose.yaml`](../compose.yaml):
@@ -82,13 +84,16 @@ Alles Wichtige steht in der App unter **Einstellungen → Sicherung** (nur für 
 Trage in Abschnitt 4 der `.env` das Ziel ein, entferne das `#` und führe `docker compose up -d` aus:
 
 ```bash
-HOUSEHOLD_BACKUP_OFFSITE_REPOSITORY=s3:https://s3.eu-central-1.amazonaws.com/mein-bucket/household
+HOUSEHOLD_S3_ENDPOINT=s3.example.org
+HOUSEHOLD_S3_BUCKET=s3-dp
+HOUSEHOLD_S3_PREFIX=household
+HOUSEHOLD_S3_REGION=us-east-1
+HOUSEHOLD_S3_ACCESS_KEY=…
+HOUSEHOLD_S3_SECRET_KEY=…
 HOUSEHOLD_BACKUP_OFFSITE_PASSWORD=ein-eigenes-langes-passwort
-HOUSEHOLD_BACKUP_S3_ACCESS_KEY_ID=…
-HOUSEHOLD_BACKUP_S3_SECRET_ACCESS_KEY=…
 ```
 
-- **S3-kompatibel:** AWS, Backblaze B2, Wasabi, Hetzner Object Storage oder ein eigenes MinIO, jeweils mit `s3:https://adresse/bucket/ordner`.
+- **S3-kompatibel:** AWS, Backblaze B2, Wasabi, Hetzner Object Storage, MinIO oder Garage. Verwende den S3-API-Endpunkt und die dort eingestellte Region. Der bestehende zusammengefasste Wert `HOUSEHOLD_BACKUP_OFFSITE_REPOSITORY=s3:https://adresse/bucket/ordner` bleibt unterstützt.
 - **restic-REST-Server:** `rest:https://adresse/pfad`, Benutzer und Passwort über `HOUSEHOLD_BACKUP_REST_USERNAME` und `HOUSEHOLD_BACKUP_REST_PASSWORD`.
 - **NAS oder USB-Platte:** ein absoluter Pfad, den du beim Dienst `backup` unter `volumes` einbindest, zum Beispiel `- /mnt/nas/household:/offsite` und `HOUSEHOLD_BACKUP_OFFSITE_REPOSITORY=/offsite`.
 

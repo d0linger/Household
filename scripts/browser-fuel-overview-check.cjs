@@ -11,25 +11,39 @@ const report={checks:[],screenshots:[],accessibility:[],errors:[],externalReques
  async function login(password){await page.goto(base+'/login');await page.locator('[name=username]').fill(process.env.HOUSEHOLD_BROWSER_USER||'bootstrap');await page.locator('[name=password]').fill(password);await Promise.all([page.waitForURL(u=>u.pathname!=='/login'),page.locator('form[action="/login"] button.primary').click()]);}
  if(process.env.HOUSEHOLD_BROWSER_HANDOFF){await page.goto(base+'/');if(['/login','/change-password'].includes(new URL(page.url()).pathname))throw Error('Shared synthetic session expired');}else{await login(initialPassword);if(new URL(page.url()).pathname==='/change-password'){await page.locator('[name=current]').fill(initialPassword);await page.locator('[name=next]').fill(changedPassword);await Promise.all([page.waitForURL('**/login'),page.locator('form[action="/change-password"] button').click()]);await login(changedPassword);}}
  if(await page.locator('html').getAttribute('data-locale')!=='de'){await page.locator('.language-control button[value=de]').click();await page.waitForFunction(()=>document.documentElement.dataset.locale==='de');}
- const fixture=await page.evaluate(async()=>{
-  const scopeResponse=await fetch('/api/v1/fuel/overview');if(!scopeResponse.ok)throw Error('FU01 needs the approved current Core26/manual I0 review baseline');const overview=await scopeResponse.json(),csrf=document.querySelector('meta[name="csrf-token"]').content,generation=overview.context.generation,suffix=String(Date.now()),today=overview.context.today;
+ const prepareFixture=()=>page.evaluate(async()=>{
+  // The capture workspace reads its day and generation in one transaction.
+  // The overview itself is exercised below, after fixture preparation.
+  const scope=async(vehicle='')=>{
+   const query=new URLSearchParams({pane:'capture',limit:'1'});
+   if(vehicle)query.set('vehicle',vehicle);
+   const response=await fetch('/api/v1/fuel/module?'+query,{cache:'no-store'});
+   if(!response.ok)throw Error('Fuel fixture scope unavailable: HTTP '+response.status);
+   return (await response.json()).context;
+  };
+  const original=await scope(),csrf=document.querySelector('meta[name="csrf-token"]').content,generation=original.generation,suffix=String(Date.now()),today=original.today;
+  const requireFixtureDay=current=>{if(current.generation===generation&&current.timezone===original.timezone&&current.today>today)throw Error('Fuel fixture crossed household midnight');};
   const plus=days=>{const date=new Date(today+'T12:00:00Z');date.setUTCDate(date.getUTCDate()+days);return date.toISOString().slice(0,10);};
   const create=async(entity,data)=>{
-   if(entity!=='fillups'){const r=await fetch('/api/v1/m/fuel/'+entity,{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf,'Idempotency-Key':crypto.randomUUID()},body:JSON.stringify({generation,data})});if(!r.ok)throw Error(await r.text());return r.json();}
+   if(entity!=='fillups'){
+    const response=await fetch('/api/v1/m/fuel/'+entity,{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf,'Idempotency-Key':crypto.randomUUID()},body:JSON.stringify({generation,data})});
+    if(response.status===409)requireFixtureDay(await scope());
+    if(!response.ok)throw Error('Fuel fixture '+entity+' HTTP '+response.status+': '+await response.text());
+    return response.json();
+   }
    // Fixture preparation only. Keep the original EUR amounts/quantities and
    // accept the actual signed price-rounding review; never bypass the writer.
    for(const name of['vehicle_id','odometer_series_id','occurred_on','fuel_type','odometer','quantity'])if(typeof data[name]!=='string'||!data[name].trim())throw Error('Reviewed Fuel fixture needs explicit '+name);
    for(const name of['full_tank','previous_fill_missing'])if(typeof data[name]!=='boolean')throw Error('Reviewed Fuel fixture needs explicit boolean '+name);
-   const currentResponse=await fetch('/api/v1/fuel/module?'+new URLSearchParams({pane:'capture',vehicle:data.vehicle_id}));
-   if(!currentResponse.ok)throw Error('Current typed Fuel fixture scope unavailable');
-   const current=await currentResponse.json(),unit=({diesel:'l',cng:'kg'})[data.fuel_type];
-   if(!unit||!current.context.can_write||current.context.generation!==generation||current.context.currency_code!=='EUR')throw Error('Exact Diesel/CNG EUR fixture authority changed');
+   const current=await scope(data.vehicle_id),unit=({diesel:'l',cng:'kg'})[data.fuel_type];
+   requireFixtureDay(current);
+   if(!unit||!current.can_write||current.generation!==generation||current.currency_code!=='EUR')throw Error('Exact Diesel/CNG EUR fixture authority changed');
    if(typeof data.total_minor!=='string'||!/^\d{1,12}(?:\.\d{1,2})?$/.test(data.total_minor))throw Error('Legacy fixture amount must be exact EUR decimal text');
    const[whole,fraction='']=data.total_minor.split('.'),{vehicle_id,...values}=data;
    values.total_minor=(BigInt(whole)*100n+BigInt(fraction.padEnd(2,'0'))).toString();
    values.quantity_unit=unit;values.currency_code='EUR';values.acknowledged_warnings=[];
-   const key=crypto.randomUUID(),command={action:'fillup.save',generation:current.context.generation,vehicle_id,record_id:'',version:0,source_stamp:current.context.stamp,target_generations:{},data:values};
-   const post=async(endpoint,body)=>{const r=await fetch('/api/v1/fuel/module/'+endpoint,{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf,'Idempotency-Key':key},body:JSON.stringify(body)});if(!r.ok)throw Error('Reviewed Fuel fixture '+endpoint+': '+await r.text());return r.json();};
+   const key=crypto.randomUUID(),command={action:'fillup.save',generation:current.generation,vehicle_id,record_id:'',version:0,source_stamp:current.stamp,target_generations:{},data:values};
+   const post=async(endpoint,body)=>{const r=await fetch('/api/v1/fuel/module/'+endpoint,{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf,'Idempotency-Key':key},body:JSON.stringify(body)});if(r.status===409)requireFixtureDay(await scope());if(!r.ok)throw Error('Reviewed Fuel fixture '+endpoint+': '+await r.text());return r.json();};
    let reviewed=await post('preview',command);
    const codes=[...new Set((reviewed.warnings||[]).map(w=>w.code))];
    if(codes.length){if(codes.some(code=>typeof code!=='string'||!code))throw Error('Fixture warning cannot be acknowledged without a code');reviewed.command.data.acknowledged_warnings=codes;reviewed=await post('preview',reviewed.command);}
@@ -43,8 +57,17 @@ const report={checks:[],screenshots:[],accessibility:[],errors:[],externalReques
   // later synthetic fill is present, including the Diesel partial fill.
   for(const[day,odo,q,full,missing]of[['2026-01-01','1000','30',true,true],['2026-01-02','1500','25',true,false],['2026-01-03','1600','10',false,false]])await create('fillups',{vehicle_id:v.id,odometer_series_id:s.id,occurred_on:day,odometer:odo,quantity:q,total_minor:'50.00',fuel_type:'diesel',full_tank:full,previous_fill_missing:missing});
   const cng=await create('vehicles',{name:'CNG '+suffix,fuel_type:'cng'}),cs=await create('odometer_series',{vehicle_id:cng.id,started_on:'2026-01-01',initial_reading:'0',reason:'CNG counter'});for(const[day,odo,q,missing]of[['2026-01-01','1000','30',true],['2026-01-02','1500','20',false]])await create('fillups',{vehicle_id:cng.id,odometer_series_id:cs.id,occurred_on:day,odometer:odo,quantity:q,total_minor:'50.00',fuel_type:'cng',full_tank:true,previous_fill_missing:missing});
-  const empty=await create('vehicles',{name:'Ohne Fakten '+suffix,fuel_type:'diesel'});return{vehicle:v.id,cng:cng.id,empty:empty.id,suffix,today,tomorrow:plus(1)};
+  const empty=await create('vehicles',{name:'Ohne Fakten '+suffix,fuel_type:'diesel'});
+  requireFixtureDay(await scope());
+  return{vehicle:v.id,cng:cng.id,empty:empty.id,suffix,today,tomorrow:plus(1)};
  });
+ let fixture;
+ try { fixture=await prepareFixture(); } catch (error) {
+  if(!String(error).includes('Fuel fixture crossed household midnight'))throw error;
+  // Preparation can span several real writes. Seed a fresh, independently
+  // keyed fixture once on the new day so all date assertions stay exact.
+  fixture=await prepareFixture();
+ }
  async function ready(){await page.waitForFunction(()=>{const b=document.querySelector('#fuel-overview-submit');return b&&!b.disabled;});}
  async function capture(name){const file=path.join(output,name+'.png');await page.screenshot({path:file,fullPage:name.endsWith('desktop'),animations:'disabled'});report.screenshots.push(file);const result=await new AxeBuilder({page}).withTags(['wcag2a','wcag2aa','wcag21aa']).analyze();report.accessibility.push({name,violations:result.violations});must(!result.violations.length,'Accessibility '+name);}
  await page.goto(base+'/m/fuel/overview');await ready();await page.locator('#fuel-overview-filter [name=q]').fill(fixture.suffix);await page.locator('#fuel-overview-submit').click();await page.locator('[data-vehicle="'+fixture.vehicle+'"]').waitFor();await ready();must(await page.locator('.fuel-vehicle').count()===3,'Search isolates the three synthetic vehicles');

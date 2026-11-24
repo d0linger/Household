@@ -1,0 +1,148 @@
+# Portainer Docker Standalone. Setup and variables: docs/portainer.md
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: 10m
+    max-file: '3'
+
+x-household: &household
+  image: ${HOUSEHOLD_IMAGE:-ghcr.io/d0linger/household:production}
+  restart: unless-stopped
+  read_only: true
+  tmpfs: ['/tmp:size=128m']
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  stop_grace_period: 20s
+  logging: *logging
+
+x-household-environment: &household-environment
+  HOUSEHOLD_ENV: production
+  HOUSEHOLD_ORIGIN: ${HOUSEHOLD_ORIGIN:?Set the public HTTPS origin}
+  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Use the value from household init or your existing stack}
+  HOUSEHOLD_OWNER_PASSWORD: ${HOUSEHOLD_OWNER_PASSWORD:?Use the value from household init or your existing stack}
+  HOUSEHOLD_APP_PASSWORD: ${HOUSEHOLD_APP_PASSWORD:?Use the value from household init or your existing stack}
+  HOUSEHOLD_CSRF_SECRET: ${HOUSEHOLD_CSRF_SECRET:?Use the value from household init or your existing stack}
+  HOUSEHOLD_RATE_SECRET: ${HOUSEHOLD_RATE_SECRET:?Use the value from household init or your existing stack}
+  HOUSEHOLD_ENCRYPTION_KEY: ${HOUSEHOLD_ENCRYPTION_KEY:-}
+  HOUSEHOLD_ENCRYPTION_KEYRING: ${HOUSEHOLD_ENCRYPTION_KEYRING:-}
+  HOUSEHOLD_ADMIN_PASSWORD: ${HOUSEHOLD_ADMIN_PASSWORD:-}
+
+services:
+  db:
+    image: postgres:18-alpine@sha256:ff64c9e3bdf8e2120107d3559de8db314e8305f7e38c5105903c6295876738ff
+    user: '70:70'
+    restart: unless-stopped
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    logging: *logging
+    environment:
+      POSTGRES_DB: household
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Use the value from household init or your existing stack}
+    volumes:
+      - postgres:/var/lib/postgresql
+    healthcheck:
+      test: [CMD, pg_isready, -h, 127.0.0.1, -U, postgres, -d, postgres]
+      interval: 5s
+      timeout: 3s
+      start_period: 1m
+      retries: 12
+
+  app:
+    <<: *household
+    command: start
+    environment:
+      <<: *household-environment
+      HOUSEHOLD_TRUSTED_PROXIES: ${HOUSEHOLD_TRUSTED_PROXIES:?Set the source CIDR of the HTTPS proxy}
+      HOUSEHOLD_NAME: ${HOUSEHOLD_NAME:-Mein Haushalt}
+      HOUSEHOLD_ADMIN_USERNAME: ${HOUSEHOLD_ADMIN_USERNAME:-admin}
+      HOUSEHOLD_WEB_PUSH_VAPID_PRIVATE_KEY: ${HOUSEHOLD_WEB_PUSH_VAPID_PRIVATE_KEY:-}
+      HOUSEHOLD_WEB_PUSH_VAPID_CONTACT: ${HOUSEHOLD_WEB_PUSH_VAPID_CONTACT:-}
+      HOUSEHOLD_WEB_PUSH_ENABLED: ${HOUSEHOLD_WEB_PUSH_ENABLED:-}
+      HOUSEHOLD_OCR_ENABLED: ${HOUSEHOLD_OCR_ENABLED:-}
+      HOUSEHOLD_OFF_ENABLED: ${HOUSEHOLD_OFF_ENABLED:-}
+      HOUSEHOLD_OFF_USER_AGENT: ${HOUSEHOLD_OFF_USER_AGENT:-}
+      HOUSEHOLD_UPDATE_CHECK: ${HOUSEHOLD_UPDATE_CHECK:-}
+      HOUSEHOLD_PASSWORD_BREACH_CHECK: ${HOUSEHOLD_PASSWORD_BREACH_CHECK:-}
+      HOUSEHOLD_METRICS_TOKEN: ${HOUSEHOLD_METRICS_TOKEN:-}
+      HOUSEHOLD_DB_MAX_CONNECTIONS: ${HOUSEHOLD_DB_MAX_CONNECTIONS:-}
+      HOUSEHOLD_DOCUMENT_IMAP_ADDRESS: ${HOUSEHOLD_DOCUMENT_IMAP_ADDRESS:-}
+      HOUSEHOLD_DOCUMENT_IMAP_USER: ${HOUSEHOLD_DOCUMENT_IMAP_USER:-}
+      HOUSEHOLD_DOCUMENT_IMAP_PASSWORD: ${HOUSEHOLD_DOCUMENT_IMAP_PASSWORD:-}
+      HOUSEHOLD_DOCUMENT_IMAP_MAILBOX: ${HOUSEHOLD_DOCUMENT_IMAP_MAILBOX:-}
+      HOUSEHOLD_DOCUMENT_PAPERLESS_URL: ${HOUSEHOLD_DOCUMENT_PAPERLESS_URL:-}
+      HOUSEHOLD_DOCUMENT_PAPERLESS_TOKEN: ${HOUSEHOLD_DOCUMENT_PAPERLESS_TOKEN:-}
+      HOUSEHOLD_DOCUMENT_PAPERLESS_TAG: ${HOUSEHOLD_DOCUMENT_PAPERLESS_TAG:-}
+      HOUSEHOLD_METERS_HA_URL: ${HOUSEHOLD_METERS_HA_URL:-}
+      HOUSEHOLD_METERS_HA_TOKEN: ${HOUSEHOLD_METERS_HA_TOKEN:-}
+      HOUSEHOLD_METERS_MQTT_URL: ${HOUSEHOLD_METERS_MQTT_URL:-}
+      HOUSEHOLD_METERS_MQTT_USER: ${HOUSEHOLD_METERS_MQTT_USER:-}
+      HOUSEHOLD_METERS_MQTT_PASSWORD: ${HOUSEHOLD_METERS_MQTT_PASSWORD:-}
+    volumes:
+      - uploads:/data/uploads
+    networks:
+      default: {}
+      proxy:
+        aliases: [household-app]
+    depends_on:
+      db:
+        condition: service_healthy
+
+  backup:
+    <<: *household
+    command: backup-loop
+    environment:
+      <<: *household-environment
+      HOUSEHOLD_DATABASE_USER: household_owner
+      HOUSEHOLD_DATABASE_PASSWORD: ${HOUSEHOLD_OWNER_PASSWORD:?Use the value from household init or your existing stack}
+      HOUSEHOLD_BACKUP_WORK: /work
+      RESTIC_PASSWORD: ${RESTIC_PASSWORD:?Use the value from household init or your existing stack}
+      HOUSEHOLD_BACKUP_OFFSITE_REPOSITORY: ${HOUSEHOLD_BACKUP_OFFSITE_REPOSITORY:-}
+      HOUSEHOLD_BACKUP_OFFSITE_PASSWORD: ${HOUSEHOLD_BACKUP_OFFSITE_PASSWORD:-}
+      HOUSEHOLD_BACKUP_S3_ACCESS_KEY_ID: ${HOUSEHOLD_BACKUP_S3_ACCESS_KEY_ID:-}
+      HOUSEHOLD_BACKUP_S3_SECRET_ACCESS_KEY: ${HOUSEHOLD_BACKUP_S3_SECRET_ACCESS_KEY:-}
+      HOUSEHOLD_BACKUP_S3_REGION: ${HOUSEHOLD_BACKUP_S3_REGION:-}
+      HOUSEHOLD_S3_ENDPOINT: ${HOUSEHOLD_S3_ENDPOINT:-}
+      HOUSEHOLD_S3_BUCKET: ${HOUSEHOLD_S3_BUCKET:-}
+      HOUSEHOLD_S3_PREFIX: ${HOUSEHOLD_S3_PREFIX:-}
+      HOUSEHOLD_S3_REGION: ${HOUSEHOLD_S3_REGION:-}
+      HOUSEHOLD_S3_USE_SSL: ${HOUSEHOLD_S3_USE_SSL:-}
+      HOUSEHOLD_S3_ACCESS_KEY: ${HOUSEHOLD_S3_ACCESS_KEY:-}
+      HOUSEHOLD_S3_SECRET_KEY: ${HOUSEHOLD_S3_SECRET_KEY:-}
+      HOUSEHOLD_S3_ACCESS_KEY_FILE: ${HOUSEHOLD_S3_ACCESS_KEY_FILE:-}
+      HOUSEHOLD_S3_SECRET_KEY_FILE: ${HOUSEHOLD_S3_SECRET_KEY_FILE:-}
+      HOUSEHOLD_BACKUP_REST_USERNAME: ${HOUSEHOLD_BACKUP_REST_USERNAME:-}
+      HOUSEHOLD_BACKUP_REST_PASSWORD: ${HOUSEHOLD_BACKUP_REST_PASSWORD:-}
+      HOUSEHOLD_ALERT_NAME: ${HOUSEHOLD_ALERT_NAME:-}
+      HOUSEHOLD_ALERT_NTFY_URL: ${HOUSEHOLD_ALERT_NTFY_URL:-}
+      HOUSEHOLD_ALERT_NTFY_TOKEN: ${HOUSEHOLD_ALERT_NTFY_TOKEN:-}
+      HOUSEHOLD_ALERT_WEBHOOK_URL: ${HOUSEHOLD_ALERT_WEBHOOK_URL:-}
+      HOUSEHOLD_ALERT_SMTP_ADDRESS: ${HOUSEHOLD_ALERT_SMTP_ADDRESS:-}
+      HOUSEHOLD_ALERT_SMTP_USER: ${HOUSEHOLD_ALERT_SMTP_USER:-}
+      HOUSEHOLD_ALERT_SMTP_PASSWORD: ${HOUSEHOLD_ALERT_SMTP_PASSWORD:-}
+      HOUSEHOLD_ALERT_SMTP_FROM: ${HOUSEHOLD_ALERT_SMTP_FROM:-}
+      HOUSEHOLD_ALERT_SMTP_TO: ${HOUSEHOLD_ALERT_SMTP_TO:-}
+    volumes:
+      - uploads:/data/uploads
+      - backups:/data/backups
+      - backup_work:/work
+    healthcheck:
+      test: [CMD, household, backup-health]
+      interval: 1m
+      timeout: 30s
+      start_period: 5m
+      retries: 3
+    # Recovery must be able to start when an interrupted restore blocks app readiness.
+    depends_on:
+      db:
+        condition: service_healthy
+
+networks:
+  proxy:
+    external: true
+    name: ${HOUSEHOLD_PROXY_NETWORK:?Set the existing Docker network of the HTTPS proxy}
+
+volumes:
+  postgres: {}
+  uploads: {}
+  backups: {}
+  backup_work: {}

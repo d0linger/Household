@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"household/internal/audit"
@@ -52,6 +53,7 @@ type backupJob struct {
 	Snapshot  string     `json:"snapshot,omitempty"`
 	Requester string     `json:"requester,omitempty"`
 	Created   time.Time  `json:"created"`
+	Started   *time.Time `json:"started,omitempty"`
 	Finished  *time.Time `json:"finished,omitempty"`
 	Previous  string     `json:"previous,omitempty"`
 }
@@ -60,6 +62,9 @@ type backupJob struct {
 func (j backupJob) Active() bool {
 	return j.State == "requested" || j.State == "running" || j.State == "preparing" || j.State == "awaiting_drain" || j.State == "swapping"
 }
+
+func (j backupJob) OffsiteFailure() bool { return strings.HasPrefix(j.Result, "offsite_") }
+func (j backupJob) ResultReason() string { return strings.TrimPrefix(j.Result, "offsite_") }
 
 // backupOverview is everything the backup page and its poller show.
 type backupOverview struct {
@@ -170,14 +175,14 @@ func (s *Server) loadBackupOverview(ctx context.Context) (backupOverview, error)
 	}
 	o.ProbeStale = backupplan.ProbeStale(now, o.Settings.ProbeIntervalDays, probeVerified)
 	rows, err = s.Pool.Query(ctx, `SELECT j.id::text,j.kind,j.target,j.state,coalesce(j.phase,''),coalesce(j.result_code,''),coalesce(j.snapshot_reference,coalesce(j.result_snapshot,'')),
- coalesce(u.username,''),j.created_at,j.finished_at,coalesce(j.previous_database,'')
- FROM core.backup_jobs j LEFT JOIN core.users u ON u.id=j.requested_by ORDER BY j.created_at DESC LIMIT 15`)
+ coalesce(u.username,''),j.created_at,j.started_at,j.finished_at,coalesce(j.previous_database,'')
+ FROM core.backup_jobs j LEFT JOIN core.users u ON u.id=j.requested_by ORDER BY (j.state IN ('running','preparing','awaiting_drain','swapping')) DESC,(j.state='requested') DESC,j.created_at DESC,j.id DESC LIMIT 15`)
 	if err != nil {
 		return o, err
 	}
 	for rows.Next() {
 		var job backupJob
-		if err = rows.Scan(&job.ID, &job.Kind, &job.Target, &job.State, &job.Phase, &job.Result, &job.Snapshot, &job.Requester, &job.Created, &job.Finished, &job.Previous); err != nil {
+		if err = rows.Scan(&job.ID, &job.Kind, &job.Target, &job.State, &job.Phase, &job.Result, &job.Snapshot, &job.Requester, &job.Created, &job.Started, &job.Finished, &job.Previous); err != nil {
 			rows.Close()
 			return o, err
 		}
@@ -280,9 +285,9 @@ func (s *Server) backupJobAPI(w http.ResponseWriter, r *http.Request) {
 	}
 	var job backupJob
 	err := s.Pool.QueryRow(r.Context(), `SELECT j.id::text,j.kind,j.target,j.state,coalesce(j.phase,''),coalesce(j.result_code,''),coalesce(j.snapshot_reference,coalesce(j.result_snapshot,'')),
- coalesce(u.username,''),j.created_at,j.finished_at,coalesce(j.previous_database,'')
+ coalesce(u.username,''),j.created_at,j.started_at,j.finished_at,coalesce(j.previous_database,'')
  FROM core.backup_jobs j LEFT JOIN core.users u ON u.id=j.requested_by WHERE j.id=$1`, r.PathValue("id")).Scan(
-		&job.ID, &job.Kind, &job.Target, &job.State, &job.Phase, &job.Result, &job.Snapshot, &job.Requester, &job.Created, &job.Finished, &job.Previous)
+		&job.ID, &job.Kind, &job.Target, &job.State, &job.Phase, &job.Result, &job.Snapshot, &job.Requester, &job.Created, &job.Started, &job.Finished, &job.Previous)
 	if errors.Is(err, pgx.ErrNoRows) {
 		s.fail(w, r, store.ErrNotFound)
 		return
@@ -327,6 +332,10 @@ func (s *Server) requestBackupJob(w http.ResponseWriter, r *http.Request) {
 	}
 	if (target == "offsite" || target == "both") && !overview.OffsiteConfigured {
 		s.fail(w, r, store.Invalid{Message: "Kein externes Sicherungsziel eingerichtet"})
+		return
+	}
+	if kind == "discard_previous" && r.FormValue("confirm") != "on" {
+		s.fail(w, r, store.Invalid{Message: "Bestätige das endgültige Löschen des früheren Stands."})
 		return
 	}
 	if kind == "discard_previous" && !overview.Retained {
@@ -378,8 +387,14 @@ func (s *Server) requestBackupJob(w http.ResponseWriter, r *http.Request) {
  VALUES($1,$2,$3,$4,nullif($5,''),$6,$7,nullif($8,''))`, job, id.HouseholdID, kind, target, snapshot, id.UserID, session, confirmation)
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
-		s.fail(w, r, store.Invalid{Message: "Ein gleicher Auftrag wartet bereits"})
-		return
+		switch pgErr.ConstraintName {
+		case "backup_jobs_one_active_restore":
+			s.fail(w, r, store.Invalid{Message: "Ein anderer Wiederherstellungsvorgang läuft gerade."})
+			return
+		case "backup_jobs_one_pending":
+			s.fail(w, r, store.Invalid{Message: "Für dieses Ziel wartet bereits ein Auftrag desselben Typs."})
+			return
+		}
 	}
 	if err == nil {
 		err = audit.Event(r.Context(), tx, "core", "backup_jobs", job, "backup_requested", nil)

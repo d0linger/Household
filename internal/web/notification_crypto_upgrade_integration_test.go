@@ -30,6 +30,32 @@ func notificationCryptoRestore39(t *testing.T, f *integrationFixture) {
 	if version == 39 {
 		return
 	}
+	if version == 45 {
+		// This fixture contains only its legacy bootstrap handle.
+		_, err = f.owner.Exec(f.ctx, `DO $restore$
+ DECLARE authority text;overview text;ready text;needle text='bool_and(version=45 AND NOT dirty)';old_hash text;
+ BEGIN
+ IF current_database()<>'household_test' OR EXISTS(SELECT 1 FROM core.users WHERE username !~ '^[A-Za-z0-9_.-]{3,64}$')
+ THEN RAISE EXCEPTION 'Username predecessor requires the isolated legacy fixture'; END IF;
+ ALTER TABLE core.users DROP CONSTRAINT users_username_check,
+ ADD CONSTRAINT users_username_check CHECK(username ~ '^[A-Za-z0-9_.-]{3,64}$');
+ authority=pg_get_functiondef('fuel.module_authorize(bigint,jsonb,uuid,bigint,uuid)'::regprocedure);
+ overview=pg_get_functiondef('fuel.overview_ready()'::regprocedure);
+ ready=pg_get_functiondef('fuel.module_ready()'::regprocedure);
+ old_hash=md5(authority);
+ IF position(needle in authority)=0 OR position(needle in overview)=0 OR position(old_hash in ready)=0
+ THEN RAISE EXCEPTION 'Unreviewed Core45 Fuel contracts'; END IF;
+ EXECUTE replace(authority,needle,'bool_and(version=44 AND NOT dirty)');
+ EXECUTE replace(overview,needle,'bool_and(version=44 AND NOT dirty)');
+ EXECUTE replace(ready,old_hash,md5(pg_get_functiondef('fuel.module_authorize(bigint,jsonb,uuid,bigint,uuid)'::regprocedure)));
+ UPDATE core.schema_migrations SET version=44 WHERE version=45 AND NOT dirty;
+ IF NOT fuel.module_ready() THEN RAISE EXCEPTION 'Core44 Fuel contract was not restored'; END IF;
+ END $restore$;`)
+		if err != nil {
+			t.Fatal("restore Core44 username constraint", err)
+		}
+		version = 44
+	}
 	if version == 44 {
 		exportAuditRestore43(t, f)
 		version = 43

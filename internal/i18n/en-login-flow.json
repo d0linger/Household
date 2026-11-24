@@ -1,0 +1,11 @@
+{
+  "Gib den Code aus deiner Authenticator-App oder einen Wiederherstellungscode ein.": "Enter the code from your authenticator app or a recovery code.",
+  "Zurück zur Anmeldung": "Back to sign-in",
+  "Benutzername oder E-Mail-Adresse": "Username or email address",
+  "Der Sicherheitscode ist ungültig oder wurde bereits verwendet.": "The security code is invalid or has already been used.",
+  "Anmeldebestätigung abgelaufen. Bitte melde dich erneut an.": "Sign-in confirmation expired. Please sign in again.",
+  "E-Mail-Adresse oder 3 bis 64 Buchstaben, Ziffern, Punkte, Bindestriche oder Unterstriche.": "An email address or 3 to 64 letters, digits, periods, hyphens or underscores.",
+  "Gib einen gültigen Benutzernamen oder eine E-Mail-Adresse und einen Anzeigenamen mit 1 bis 100 Zeichen ein.": "Enter a valid username or email address and a display name of 1 to 100 characters.",
+  "Sicherheitscode": "Security code",
+  "Dieser Benutzername wird bereits verwendet.": "This username is already in use."
+}
