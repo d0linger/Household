@@ -160,20 +160,81 @@
     }
   }
 
-  document.addEventListener('household:security-saved', event => {
-    if (!event.target.matches('form[action^="/settings/backup/jobs"]') || !event.detail?.id) return;
-    event.preventDefault();
-    lastJob = event.detail.id;
+  function trackJob(id) {
+    lastJob = id;
     lastResult = '';
     dirty = true;
-    if (dialog?.open) dialog.close();
     announce(t('Sicherungsauftrag aktualisiert.'));
     if (inFlight) pollAgain = true;
     else schedule(0);
+  }
+
+  document.addEventListener('household:security-saved', event => {
+    if (!event.target.matches('form[action^="/settings/backup/jobs"]') || !event.detail?.id) return;
+    event.preventDefault();
+    if (dialog?.open) dialog.close();
+    trackJob(event.detail.id);
   });
   document.addEventListener('household:security-failed', event => {
     if (!event.target.matches('form[action^="/settings/backup/jobs"]') || dialog?.open) return;
     announce(event.detail, 'error');
   });
   if (document.querySelector('.backup-running, .backup-waiting, [data-backup-active]')) schedule(4000);
+
+  const upload = document.querySelector('#backup-upload');
+  const uploadOpen = document.querySelector('[data-backup-upload-open]');
+  if (!upload || !uploadOpen) return;
+  const uploadForm = upload.querySelector('[data-backup-upload]');
+  const uploadStatus = upload.querySelector('[data-backup-upload-status]');
+  const file = uploadForm.elements.archive;
+  const submitUpload = uploadForm.querySelector('[data-backup-upload-submit]');
+  let request = null;
+  function showUploadStatus(message, error = false) {
+    uploadStatus.textContent = message;
+    uploadStatus.dataset.tone = error ? 'error' : '';
+    uploadStatus.hidden = !message;
+  }
+  uploadOpen.addEventListener('click', () => {
+    if (upload.open) return;
+    showUploadStatus('');
+    upload.showModal();
+    file.focus();
+  });
+  upload.querySelectorAll('[data-backup-upload-close]').forEach(button => button.addEventListener('click', () => upload.close()));
+  upload.addEventListener('close', () => {
+    request?.abort();
+    uploadForm.reset();
+    uploadOpen.focus();
+  });
+  uploadForm.addEventListener('submit', async event => {
+    event.preventDefault();
+    const archive = file.files[0];
+    if (!archive || request) return;
+    if (archive.size > 32 * 1024 ** 3) {
+      showUploadStatus(t('Die Backup-Datei überschreitet 32 GiB.'), true);
+      return;
+    }
+    request = new AbortController();
+    file.disabled = submitUpload.disabled = true;
+    uploadForm.setAttribute('aria-busy', 'true');
+    showUploadStatus(t('Backup-Datei wird hochgeladen …'));
+    try {
+      const response = await fetch('/api/v1/core/backup/upload', {
+        method: 'POST', credentials: 'same-origin', body: archive, signal: request.signal,
+        headers: { Accept: 'application/json', 'Content-Type': 'application/octet-stream',
+          'X-CSRF-Token': document.querySelector('meta[name="csrf-token"]').content },
+      });
+      if (response.status === 401) { location.assign('/login'); return; }
+      const result = response.headers.get('content-type')?.includes('application/json') ? await response.json() : {};
+      if (!response.ok || !result.id) throw new Error(result.error || t('Die Backup-Datei konnte nicht hochgeladen werden.'));
+      trackJob(result.id);
+      upload.close();
+    } catch (error) {
+      if (error.name !== 'AbortError') showUploadStatus(error.message, true);
+    } finally {
+      request = null;
+      file.disabled = submitUpload.disabled = false;
+      uploadForm.setAttribute('aria-busy', 'false');
+    }
+  });
 })();

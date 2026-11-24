@@ -598,5 +598,19 @@
   "error pattern\ninternal/maintenance/backup.go\nlook up the latest snapshot: %w": "Internal/operator diagnostic outside typed Invalid/Rejection and HTTP presentation boundaries; preserve diagnostic text.",
   "error pattern\ninternal/maintenance/backup.go\nno completed snapshot to check": "Internal/operator diagnostic outside typed Invalid/Rejection and HTTP presentation boundaries; preserve diagnostic text.",
   "error pattern\ninternal/worker/worker.go\npaused by a live restore": "Internal/operator diagnostic outside typed Invalid/Rejection and HTTP presentation boundaries; preserve diagnostic text.",
-  "error pattern\ninternal/maintenance/restore.go\nremove kept uploads of %s: %w": "Internal/operator diagnostic outside typed Invalid/Rejection and HTTP presentation boundaries; preserve diagnostic text."
+  "error pattern\ninternal/maintenance/restore.go\nremove kept uploads of %s: %w": "Internal/operator diagnostic outside typed Invalid/Rejection and HTTP presentation boundaries; preserve diagnostic text.",
+  "error pattern\ninternal/maintenance/archive_import.go\narchive does not record its capture date": "Internal backup-worker diagnostic. The UI uses the localized stable result code.",
+  "error pattern\ninternal/maintenance/archive_storage.go\nbackup storage is not S3": "Internal backup-worker diagnostic. The UI uses the localized stable result code.",
+  "error pattern\ninternal/maintenance/archive_storage.go\nencrypted object exceeds archive limit": "Internal backup-worker diagnostic. The UI uses the localized stable result code.",
+  "error pattern\ninternal/maintenance/archive_storage.go\ninvalid encrypted backup reference": "Internal backup-worker diagnostic. The UI uses the localized stable result code.",
+  "error pattern\ninternal/maintenance/archive_storage.go\nunexpected encrypted backup size or type": "Internal backup-worker diagnostic. The UI uses the localized stable result code.",
+  "error pattern\ninternal/maintenance/archive.go\narchive exceeds configured format limit": "Internal backup-worker diagnostic. The UI uses the localized stable result code.",
+  "error pattern\ninternal/maintenance/archive.go\nattachment changed while backing up": "Internal backup-worker diagnostic. The UI uses the localized stable result code.",
+  "error pattern\ninternal/maintenance/archive.go\nencrypted backup exceeds archive limit": "Internal backup-worker diagnostic. The UI uses the localized stable result code.",
+  "error pattern\ninternal/maintenance/archive.go\nencrypted backup has an incomplete or unexpected trailer: %w": "Internal backup-worker diagnostic. The UI uses the localized stable result code.",
+  "error pattern\ninternal/maintenance/archive.go\ninvalid attachment key": "Internal backup-worker diagnostic. The UI uses the localized stable result code.",
+  "error pattern\ninternal/maintenance/archive.go\nunexpected backup file size or type": "Internal backup-worker diagnostic. The UI uses the localized stable result code.",
+  "error pattern\ninternal/maintenance/archive.go\nunexpected entry in encrypted backup": "Internal backup-worker diagnostic. The UI uses the localized stable result code.",
+  "error pattern\ninternal/maintenance/archive.go\nunsupported Household archive manifest": "Internal backup-worker diagnostic. The UI uses the localized stable result code.",
+  "error pattern\ninternal/maintenance/offsite.go\nportable archives cannot be stored on a restic REST target": "Internal backup-worker diagnostic. The UI uses the localized stable result code."
 }

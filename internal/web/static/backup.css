@@ -39,3 +39,52 @@
 .backup-job-error { color: var(--danger); }
 .backup-job-state .badge { font-size: 12px; padding: 4px 9px; }
 .backup-waiting { background: var(--soft); color: var(--ink); }
+
+.backup-layout { gap: var(--settings-gap); }
+.backup-layout > .panel {
+  padding: var(--settings-inset);
+  border: 1px solid var(--line);
+  box-shadow: none;
+}
+body[data-admin=true] .backup-layout > .panel > h2 { margin-block: 0 10px; font-size: 20px; }
+.backup-layout > .panel > p { margin-block: 0 10px; }
+.backup-targets { gap: var(--settings-gap); }
+.backup-target h3 { margin-block: 0 4px; font-size: 16px; line-height: 1.3; }
+.backup-target p { margin-block: 4px; }
+.backup-actions { margin-block-start: 10px; padding-block-start: 10px; }
+.backup-layout > .panel > .backup-actions + .fine { margin-block: 6px 0; }
+.backup-schedule-groups { display: grid; gap: 10px var(--settings-gap); }
+.backup-schedule fieldset { padding-block: 6px 0; }
+.backup-schedule legend { padding-block-end: 4px; }
+.backup-schedule .form-grid { gap: 8px; }
+.backup-schedule label, .backup-schedule p { margin-block: 0; }
+.backup-schedule fieldset > p { margin-block: 0 8px; }
+.backup-schedule .form-grid + p { margin-block: 8px 0; }
+.backup-schedule-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px var(--settings-gap);
+  flex-wrap: wrap;
+  border-block-start: 1px solid var(--line);
+  margin-block-start: 12px;
+  padding-block-start: 10px;
+}
+:is(.backup-snapshot, .backup-job, .system-check) { padding-block: 8px; gap: 8px 12px; }
+:is(.backup-snapshot, .backup-job, .system-check) h3 { line-height: 1.35; }
+:is(.backup-snapshot, .backup-job, .system-check) p { margin-block: 2px 0; }
+:is(.backup-snapshot-actions, .backup-job-state, .system-value) { gap: 8px; flex-shrink: 1; }
+.system-facts { gap: 6px 12px; }
+#backup-upload label { margin-block-end: 4px; }
+#backup-upload .backup-feedback { position: static; }
+
+@media (min-width: 1140px) {
+  .backup-schedule-groups { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (max-width: 860px) {
+  .backup-target + .backup-target { padding-block-start: 8px; border-block-start: 1px solid var(--line); }
+}
+@media (max-width: 390px) {
+  .system-facts { grid-template-columns: fit-content(46%) minmax(0, 1fr); }
+  .system-facts :is(dt, dd) { overflow-wrap: anywhere; }
+}

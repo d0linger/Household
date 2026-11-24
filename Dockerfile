@@ -11,7 +11,7 @@ RUN GOMAXPROCS=2 GOMEMLIMIT=2GiB CGO_ENABLED=0 go build -trimpath -ldflags="-s -
 
 FROM alpine:3.24@sha256:f59abe656b692d901e184be3445e084786602108599d2a51d229c0f5a48c71bf AS runtime
 # restic and the PostgreSQL 18 client let the same image run scheduled backups.
-RUN apk add --no-cache ca-certificates tzdata poppler-utils font-liberation restic postgresql18-client && addgroup -S -g 10001 household && adduser -S -D -H -u 10001 -G household household && mkdir -p /data/uploads /data/backups /work && chown -R 10001:10001 /data /work
+RUN apk add --no-cache ca-certificates tzdata poppler-utils font-liberation restic postgresql18-client && addgroup -S -g 10001 household && adduser -S -D -H -u 10001 -G household household && mkdir -p /data/uploads /data/backups /data/backup-exchange /work && chown -R 10001:10001 /data /work
 COPY --from=build /out/household /usr/local/bin/household
 ENV HOUSEHOLD_SECRETS_DIR=/run/secrets HOUSEHOLD_UPLOAD_DIR=/data/uploads RESTIC_REPOSITORY=/data/backups
 USER 10001:10001

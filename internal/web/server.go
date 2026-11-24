@@ -501,7 +501,10 @@ func (s *Server) middleware(next http.Handler) http.Handler {
 		ctx = context.WithValue(ctx, traceKey, requestID)
 		ctx = audit.WithRequest(ctx, requestID)
 		r = r.WithContext(ctx)
-		r.Body = http.MaxBytesReader(w, r.Body, 12<<20)
+		// The authenticated archive upload streams under its own limit.
+		if r.Method != http.MethodPost || r.URL.Path != "/api/v1/core/backup/upload" {
+			r.Body = http.MaxBytesReader(w, r.Body, 12<<20)
+		}
 		defer func() {
 			if r.MultipartForm != nil {
 				_ = r.MultipartForm.RemoveAll()

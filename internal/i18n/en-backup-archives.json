@@ -1,0 +1,20 @@
+{
+  "Backup-Datei hochladen": "Upload backup file",
+  "Household prüft die Datei zuerst in einer separaten Datenbank. Danach kannst du den geprüften Stand wiederherstellen.": "Household checks the file in a separate database first. You can then restore the verified backup.",
+  "Verschlüsselte Backup-Datei (.tar.age)": "Encrypted backup file (.tar.age)",
+  "Maximal 32 GiB. Verwende eine Datei, deren Backup-Passwort auf diesem Server eingerichtet ist.": "Up to 32 GiB. Use a file whose backup password is configured on this server.",
+  "Datei hochladen und prüfen": "Upload and verify file",
+  "Backup-Datei wird hochgeladen …": "Uploading backup file …",
+  "Die Backup-Datei konnte nicht hochgeladen werden.": "The backup file could not be uploaded.",
+  "Die Backup-Datei überschreitet 32 GiB.": "The backup file exceeds 32 GiB.",
+  "Wähle eine verschlüsselte Household-Backup-Datei (.tar.age).": "Choose an encrypted Household backup file (.tar.age).",
+  "Eine Backup-Datei wird bereits hochgeladen.": "A backup file is already being uploaded.",
+  "Eine lokale Probewiederherstellung wartet bereits.": "A local trial restore is already queued.",
+  "Der Sicherungsdienst ist nicht erreichbar.": "The backup service is unavailable.",
+  "Herunterladen": "Download",
+  "Prüfen und Download vorbereiten": "Verify and prepare download",
+  "Die Backup-Datei konnte nicht sicher geprüft werden.": "The backup file could not be verified safely.",
+  "Die Backup-Datei ist beschädigt oder ihr Passwort passt nicht zur Konfiguration.": "The backup file is damaged or its password does not match this server's configuration.",
+  "Die verschlüsselte Backup-Datei wurde am Ziel nicht gefunden.": "The encrypted backup file was not found at its destination.",
+  "Der Verbindungstest prüft den Zugriff. Die erste Sicherung schreibt die verschlüsselte Datei.": "The connection test checks access. The first backup writes the encrypted file."
+}

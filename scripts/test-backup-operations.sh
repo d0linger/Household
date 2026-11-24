@@ -58,6 +58,7 @@ HOUSEHOLD_WEB_PUSH_ENABLED=false
 RESTIC_PASSWORD=$(random)
 HOUSEHOLD_BACKUP_OFFSITE_REPOSITORY=/offsite/household
 HOUSEHOLD_BACKUP_OFFSITE_PASSWORD=$(random)
+HOUSEHOLD_BACKUP_FORMAT=${HOUSEHOLD_TEST_BACKUP_FORMAT:-archive}
 EOF
 
 docker network create "$network" >/dev/null
@@ -108,6 +109,13 @@ offsite_snapshot="$(psql "SELECT snapshot_reference FROM core.backup_runs WHERE 
 [[ ${#offsite_snapshot} -eq 64 ]] || fail "no complete offsite run"
 
 log "restore checks"
+docker exec -d "$db" psql -U postgres -d household -v ON_ERROR_STOP=1 -c \
+  "SET statement_timeout=0; SELECT pg_advisory_lock(721607137); SELECT pg_sleep(25);" || fail "could not launch lock contender"
+for _ in $(seq 1 15); do
+  [[ "$(psql "SELECT count(*) FROM pg_locks WHERE locktype='advisory' AND objid=721607137 AND granted")" -ge 1 ]] && break
+  sleep 1
+done
+[[ "$(psql "SELECT count(*) FROM pg_locks WHERE locktype='advisory' AND objid=721607137 AND granted")" -ge 1 ]] || fail "fixture contention did not start"
 docker exec "$backup" household restore-check latest || fail "local restore-check"
 docker exec "$backup" household restore-check --offsite latest || fail "offsite restore-check"
 [[ "$(psql "SELECT count(*) FROM core.backup_runs WHERE verified_at IS NOT NULL")" -eq 2 ]] || fail "both snapshots not verified"
@@ -128,8 +136,15 @@ docker exec "$backup" household restore --offsite "$offsite_snapshot" --confirm 
 [[ "$(psql "SELECT count(*) FROM core.backup_runs WHERE state='complete'")" -ge 3 ]] || fail "backup history lost (safety backup missing)"
 [[ "$(psql "SELECT state FROM core.backup_runs WHERE snapshot_reference='$local_snapshot' AND repository_kind='local'")" == "complete" ]] \
   || fail "the safety backup pruned today's earlier local snapshot"
-repository_snapshots="$(docker exec "$backup" restic --no-cache snapshots --json)" || fail "could not list local snapshots"
-[[ "$repository_snapshots" == *"$local_snapshot"* ]] || fail "today's earlier local snapshot is gone from the repository"
+if [[ "${HOUSEHOLD_TEST_BACKUP_FORMAT:-archive}" == restic ]]; then
+  repository_snapshots="$(docker exec "$backup" restic --no-cache snapshots --json)" || fail "could not list local snapshots"
+  [[ "$repository_snapshots" == *"$local_snapshot"* ]] || fail "today's earlier local snapshot is gone from the repository"
+else
+  archive_files="$(docker exec "$backup" ls -1 /data/backups/portable)" || fail "could not list encrypted archives"
+  [[ "$archive_files" == *"${local_snapshot:0:36}.tar.age"* ]] || fail "today's earlier archive is gone"
+  offsite_files="$(docker exec "$backup" ls -1 /offsite/household/portable)" || fail "could not list offsite files"
+  [[ "$offsite_files" == *"${offsite_snapshot:0:36}.tar.age"* ]] || fail "offsite encrypted file is missing"
+fi
 previous="$(psql "SELECT datname FROM pg_database WHERE datname LIKE 'household_pre_restore_%'")"
 [[ -n "$previous" ]] || fail "previous database not kept"
 for _ in $(seq 1 30); do docker exec "$app" household healthcheck >/dev/null 2>&1 && break; sleep 2; done

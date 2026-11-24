@@ -9,10 +9,12 @@
 <dialog id="new-household-user" aria-labelledby="new-user-title">
 <form action="/settings/users" method="post" data-security-form>{{template "csrf" .}}
 <div class="dialog-heading"><h2 id="new-user-title">{{t "Benutzer hinzufügen"}}</h2><button type="button" class="icon-button" data-close-user aria-label="{{t "Schließen"}}"><svg aria-hidden="true"><use href="{{icon .Asset "x"}}"/></svg></button></div>
-<label>{{t "Benutzername"}}<input name="username" autocomplete="off" autocapitalize="none" spellcheck="false" minlength="3" maxlength="254" aria-describedby="new-user-name-help" required></label><p class="fine" id="new-user-name-help">{{t "E-Mail-Adresse oder 3 bis 64 Buchstaben, Ziffern, Punkte, Bindestriche oder Unterstriche."}}</p>
+<div class="user-dialog-fields">
+<div><label>{{t "Benutzername"}}<input name="username" autocomplete="off" autocapitalize="none" spellcheck="false" minlength="3" maxlength="254" aria-describedby="new-user-name-help" required></label><p class="fine" id="new-user-name-help">{{t "E-Mail-Adresse oder 3 bis 64 Buchstaben, Ziffern, Punkte, Bindestriche oder Unterstriche."}}</p></div>
 <label>{{t "Anzeigename"}}<input name="display_name" maxlength="100" required></label>
-<label>{{t "Startpasswort"}}<input type="password" name="password" minlength="14" maxlength="72" autocomplete="new-password" aria-describedby="new-user-password-help" required></label><p class="fine" id="new-user-password-help">{{t "Mindestens 14 Zeichen, höchstens 72 Bytes. Beim ersten Anmelden ist ein Passwortwechsel erforderlich."}}</p>
+<div><label>{{t "Startpasswort"}}<input type="password" name="password" minlength="14" maxlength="72" autocomplete="new-password" aria-describedby="new-user-password-help" required></label><p class="fine" id="new-user-password-help">{{t "Mindestens 14 Zeichen, höchstens 72 Bytes. Beim ersten Anmelden ist ein Passwortwechsel erforderlich."}}</p></div>
 <label>{{t "Rolle"}}<select name="role"><option value="editor">{{t "Bearbeiten"}}</option><option value="reader">{{t "Lesen"}}</option><option value="admin">{{t "Administration"}}</option></select></label>
+</div>
 <p data-security-status role="status"></p><div class="actions"><button type="button" data-close-user>{{t "Abbrechen"}}</button><button class="primary">{{t "Benutzer anlegen"}}</button></div>
 </form></dialog>
 {{template "security-reauth-dialog" .}}<script nonce="{{.Nonce}}" src="{{index .Asset "security.js"}}" defer></script><script nonce="{{.Nonce}}" src="{{index .Asset "security-users.js"}}" defer></script>

@@ -35,12 +35,13 @@ type File struct {
 	Size   int64  `json:"size"`
 }
 type Manifest struct {
-	Version    string         `json:"version"`
-	Created    time.Time      `json:"created"`
-	UploadPath string         `json:"upload_path"`
-	Schemas    map[string]int `json:"schemas"`
-	Files      []File         `json:"files"`
-	Crypto     *CryptoReport  `json:"crypto,omitempty"`
+	ArchiveFormat int            `json:"archive_format,omitempty"`
+	Version       string         `json:"version"`
+	Created       time.Time      `json:"created"`
+	UploadPath    string         `json:"upload_path"`
+	Schemas       map[string]int `json:"schemas"`
+	Files         []File         `json:"files"`
+	Crypto        *CryptoReport  `json:"crypto,omitempty"`
 }
 type limitedBuffer struct{ buffer bytes.Buffer }
 
@@ -277,8 +278,15 @@ func backupLocked(ctx context.Context, pool *pgxpool.Pool, cfg config.Config, lo
 	if err != nil {
 		return "", nil, err
 	}
-	if err = ensureRepository(ctx, local, nil); err != nil {
-		return "", nil, err
+	portable := portableBackups(local)
+	sourceUploads := manifest.UploadPath
+	if portable {
+		manifest.ArchiveFormat = 1
+		manifest.UploadPath = "/uploads"
+	} else {
+		if err = ensureRepository(ctx, local, nil); err != nil {
+			return "", nil, err
+		}
 	}
 	base := workDirectory()
 	if err = os.MkdirAll(base, 0700); err != nil { // #nosec G703 -- trusted operator backup-work directory
@@ -356,7 +364,7 @@ func backupLocked(ctx context.Context, pool *pgxpool.Pool, cfg config.Config, lo
 	if err = writePrivate(filepath.Join(dir, "manifest.json"), raw); err != nil {
 		return "", nil, err
 	}
-	// Escrow is private and covered by restic encryption. Its keys verified the
+	// Escrow is private and covered by backup encryption. Its keys verified the
 	// same repeatable-read snapshot imported by pg_dump, including retained keys.
 	keyring, err := encodeSecurityBundle(cfg, ring)
 	if err != nil {
@@ -368,11 +376,19 @@ func backupLocked(ctx context.Context, pool *pgxpool.Pool, cfg config.Config, lo
 	for i := range keyring {
 		keyring[i] = 0
 	}
-	output, err := restic(ctx, local, nil, "backup", "--json", "--host", "household", "--tag", "household", "--tag", "v"+buildinfo.Release(), dir, manifest.UploadPath)
+	var summary backupSummary
+	if portable {
+		summary.SnapshotID = backupplan.ArchiveID(manifest.Created)
+		summary.TotalBytes, err = writePortable(ctx, local, summary.SnapshotID, dir, sourceUploads, manifest.Files)
+		summary.DataAdded = summary.TotalBytes
+	} else {
+		var output []byte
+		output, err = restic(ctx, local, nil, "backup", "--json", "--host", "household", "--tag", "household", "--tag", "v"+buildinfo.Release(), dir, manifest.UploadPath)
+		summary = parseBackupSummary(output)
+	}
 	if err != nil {
 		return "", nil, err
 	}
-	summary := parseBackupSummary(output)
 	snapshot := summary.SnapshotID
 	if snapshot == "" {
 		return "", nil, errors.New("backup tool returned no snapshot reference")
@@ -381,7 +397,12 @@ func backupLocked(ctx context.Context, pool *pgxpool.Pool, cfg config.Config, lo
 		return "", nil, err
 	}
 	reportBackupPhase(ctx, pool, jobID, "checking_local")
-	if _, err = restic(ctx, local, nil, "check", "--read-data"); err != nil {
+	if portable {
+		err = checkPortable(ctx, local, snapshot)
+	} else {
+		_, err = restic(ctx, local, nil, "check", "--read-data")
+	}
+	if err != nil {
 		return "", nil, err
 	}
 	schemas, _ := json.Marshal(manifest.Schemas)
@@ -393,7 +414,12 @@ func backupLocked(ctx context.Context, pool *pgxpool.Pool, cfg config.Config, lo
 	if !retain {
 		return snapshot, schemas, nil
 	}
-	if err = applyRetention(ctx, pool, local, settings.KeepDaily, settings.KeepWeekly, settings.KeepMonthly); err != nil {
+	if portable {
+		err = applyArchiveRetention(ctx, pool, local, settings.KeepDaily, settings.KeepWeekly, settings.KeepMonthly)
+	} else {
+		err = applyRetention(ctx, pool, local, settings.KeepDaily, settings.KeepWeekly, settings.KeepMonthly)
+	}
+	if err != nil {
 		return snapshot, schemas, err
 	}
 	return snapshot, schemas, nil
@@ -411,7 +437,7 @@ func applyRetention(ctx context.Context, pool *pgxpool.Pool, target config.Backu
 	if _, err = retention.Exec(ctx, "SELECT id FROM core.households FOR UPDATE"); err != nil {
 		return err
 	}
-	if _, err = retention.Exec(ctx, "UPDATE core.backup_runs SET state='retention_pending' WHERE repository_reference=$1 AND state='complete'", target.Label()); err != nil {
+	if _, err = retention.Exec(ctx, "UPDATE core.backup_runs SET state='retention_pending' WHERE repository_reference=$1 AND state='complete' AND snapshot_reference !~ $2", target.Label(), backupplan.ArchiveReferencePattern); err != nil {
 		return err
 	}
 	if err = retention.Commit(ctx); err != nil {
@@ -435,7 +461,7 @@ func reconcileRuns(ctx context.Context, pool *pgxpool.Pool, target config.Backup
 	for _, item := range snapshots {
 		ids = append(ids, item.ID)
 	}
-	_, err = audit.Exec(ctx, pool, "UPDATE core.backup_runs SET state=CASE WHEN snapshot_reference=ANY($2::text[]) THEN 'complete' ELSE 'expired' END WHERE repository_reference=$1 AND state='retention_pending'", target.Label(), ids)
+	_, err = audit.Exec(ctx, pool, "UPDATE core.backup_runs SET state=CASE WHEN snapshot_reference=ANY($2::text[]) THEN 'complete' ELSE 'expired' END WHERE repository_reference=$1 AND state='retention_pending' AND snapshot_reference !~ $3", target.Label(), ids, backupplan.ArchiveReferencePattern)
 	return err
 }
 
@@ -447,13 +473,35 @@ func nullableUUID(id string) any {
 }
 
 func lockRepository(ctx context.Context, pool *pgxpool.Pool) (func(), error) {
-	conn, err := pool.Acquire(ctx)
+	wait, stopWaiting := context.WithTimeout(ctx, 5*time.Minute)
+	defer stopWaiting()
+	conn, err := pool.Acquire(wait)
 	if err != nil {
 		return nil, err
 	}
-	if _, err = conn.Exec(ctx, "SELECT pg_advisory_lock(721607137)"); err != nil {
-		conn.Release()
-		return nil, err
+	// Wait independently of PostgreSQL's shorter statement_timeout. A trial
+	// restore may legitimately overlap the scheduled check of another target.
+	retry := time.NewTicker(time.Second)
+	defer retry.Stop()
+	for {
+		var acquired bool
+		err = conn.QueryRow(wait, "SELECT pg_try_advisory_lock(721607137)").Scan(&acquired)
+		if err != nil {
+			// A cancelled query can have acquired the session lock on the server.
+			closeCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+			_ = conn.Hijack().Close(closeCtx)
+			cancel()
+			return nil, err
+		}
+		if acquired {
+			break
+		}
+		select {
+		case <-wait.Done():
+			conn.Release()
+			return nil, wait.Err()
+		case <-retry.C:
+		}
 	}
 	return func() {
 		unlockCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
@@ -516,10 +564,12 @@ func knownSnapshot(ctx context.Context, pool *pgxpool.Pool, target config.Backup
 		return err
 	}
 	if !known {
-		return errors.New("snapshot is not a completed Household backup")
+		return errUnknownSnapshot
 	}
 	return nil
 }
+
+var errUnknownSnapshot = errors.New("snapshot is not a completed Household backup")
 
 // ErrRestoreIncompatible refuses a snapshot whose schema differs from this
 // release: it must be verified and restored with its own release.
@@ -545,12 +595,27 @@ func (r *restoredSnapshot) Remove() error {
 // snapshot of another schema release is refused before anything is restored.
 // The caller removes the returned directory.
 func restoreVerified(ctx context.Context, cfg config.Config, target config.BackupTarget, snapshot, targetURL string, requireCompatible bool) (*restoredSnapshot, error) {
+	return restoreWithPayload(ctx, targetURL, requireCompatible, func(dir string) error {
+		if backupplan.ArchiveName(snapshot) != "" {
+			source, err := openPortable(ctx, target, snapshot)
+			if err != nil {
+				return err
+			}
+			defer func() { _ = source.Close() }()
+			return extractArchive(ctx, source, target.ArchivePassword(), dir)
+		}
+		_, err := restic(ctx, target, nil, "restore", snapshot, "--target", dir)
+		return err
+	})
+}
+
+func restoreWithPayload(ctx context.Context, targetURL string, requireCompatible bool, extract func(string) error) (*restoredSnapshot, error) {
 	dir, err := os.MkdirTemp(workDirectory(), "restore-check-")
 	if err != nil {
 		return nil, err
 	}
 	result := &restoredSnapshot{Directory: dir}
-	if _, err = restic(ctx, target, nil, "restore", snapshot, "--target", dir); err != nil {
+	if err = extract(dir); err != nil {
 		return result, err
 	}
 	manifestPath, dumpPath := "", ""

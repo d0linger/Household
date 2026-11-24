@@ -2294,3 +2294,19 @@ At `cb8d372` the PR Fuel job passed 185 checks and all 32 scans, while the push 
 - [x] Integrated dependency PRs #28 through #31 into `dev` after all 34 checks on each passed. CodeRabbit reviewed the combined exact `dev` revision `9851af7` in [PR #32](https://github.com/d0linger/Household/pull/32), with no actionable comments or open review threads. All 70 checks passed before merging.
 - [x] Merged PR #32 with merge commit `cec1f18`. Both GitHub branches point to that commit. Its tree matches the reviewed `dev` revision. The local Core45 login and backup work is outside this release.
 - [x] All 35 jobs passed in the [main production run](https://github.com/d0linger/Household/actions/runs/45223555021). The five post-merge `dev` workflows passed. GHCR returned digest `sha256:34167ab9c2f3d3a85c5ba411c62d0a8e8a6245fd069f23e3c988f645e7e28834` for `production`, `latest` and the tag for the exact merge commit. The GitHub open-PR list was empty after promotion.
+
+## Portable backup files and browser recovery
+
+- [x] Added one dated, authenticated encrypted archive per new local and S3 backup. The worker retains calendar-bucket representatives, and existing Restic snapshots remain recoverable.
+- [x] Added browser download and upload with trial restore. The signed Garage 2.5 fixture passed local and offsite download, import of an offsite file, and live restore of the original synthetic PostgreSQL value after confirmation. An old-format Restic snapshot was checked in the same fixture.
+- [x] Go and Node suites, scoped lint and security checks, the 13 MiB PostgreSQL upload-admission case, and the existing backup admission and settings checks passed. Edge checked the desktop page and mobile dialog with no Axe violations in the selected WCAG tag set. Evidence is in the ignored outputs/portable-backup directory.
+- [x] Replaced the blocking advisory-lock query after a scheduled probe encountered PostgreSQL's statement timeout. The exact image waited through a deliberate 25-second competing lock. The local probe and the external Garage probe both passed.
+- [x] Recreated the local app and backup containers. All three services became healthy, readiness returned HTTP 200, and two embedded asset hashes matched. PostgreSQL and all pre-existing mounts stayed in place. The app sees the backup volume read-only and shares only the encrypted file exchange.
+
+## Compact settings
+
+- [x] Compared the public Treckrr profile and the Parkrr settings, menu and backup views. Applied their short action rows and clear grouping to the existing Household settings tray and administrative screens.
+- [x] Consolidated module cards into rows. Tightened security, user administration, notification settings, audit and system status. Grouped the backup overview and its schedule, and condensed the settings dialogs while keeping their existing forms and explanations.
+- [x] Compared isolated Edge captures before and after the change. Verified eight settings screens at 320, 390, 1024 and 1440 pixels, keyboard focus and Escape in the navigation tray and dialogs, and 27 Axe scans without violations in the selected WCAG tag set. Saved a backup schedule, created a test user after reauthentication and verified the English dialog. Captures and height measurements are in the ignored `outputs/compact-settings` directory.
+- [x] Passed 103 targeted JavaScript tests covering localization, themes, security, notifications and shopping settings. The web, configuration, maintenance and backup-plan Go package tests passed.
+- [x] Recreated the local web container on port 8100. Readiness returned HTTP 200 for the new image, all three services reported healthy, and the five served stylesheet hashes matched. Verified the database container ID and mounted volumes, then removed the isolated browser fixture.

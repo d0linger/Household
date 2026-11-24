@@ -27,19 +27,32 @@ func (s *Server) registerBackupRoutes(mux *http.ServeMux) {
 	mux.Handle("POST /settings/backup/jobs", s.require(s.requestBackupJob))
 	mux.Handle("POST /settings/backup/jobs/{id}/cancel", s.require(s.cancelBackupJob))
 	mux.Handle("POST /settings/backup/settings", s.require(s.saveBackupSettings))
+	mux.Handle("GET /settings/backup/files/{target}/{snapshot}", s.require(s.downloadBackupArchive))
+	upload := s.require(s.uploadBackupArchive)
+	mux.HandleFunc("POST /api/v1/core/backup/upload", func(w http.ResponseWriter, r *http.Request) {
+		// Require the CSRF header so session middleware never parses the entire
+		// file as an ordinary multipart form before authorization.
+		if r.Header.Get("X-CSRF-Token") == "" || r.Header.Get("Content-Type") != "application/octet-stream" {
+			s.fail(w, r, store.ErrForbidden)
+			return
+		}
+		upload.ServeHTTP(w, r)
+	})
 }
 
 // backupSnapshot is one restore point shown to administrators.
 type backupSnapshot struct {
-	Snapshot     string     `json:"snapshot"`
-	Short        string     `json:"short"`
-	Kind         string     `json:"kind"`
-	Started      time.Time  `json:"started"`
-	Version      string     `json:"version"`
-	Verified     *time.Time `json:"verified,omitempty"`
-	TotalBytes   *int64     `json:"total_bytes,omitempty"`
-	Compatible   bool       `json:"compatible"`
-	Confirmation string     `json:"confirmation"`
+	Snapshot      string     `json:"snapshot"`
+	Short         string     `json:"short"`
+	Kind          string     `json:"kind"`
+	Started       time.Time  `json:"started"`
+	Version       string     `json:"version"`
+	Verified      *time.Time `json:"verified,omitempty"`
+	TotalBytes    *int64     `json:"total_bytes,omitempty"`
+	Compatible    bool       `json:"compatible"`
+	Confirmation  string     `json:"confirmation"`
+	Archive       string     `json:"archive,omitempty"`
+	DownloadReady bool       `json:"download_ready,omitempty"`
 }
 
 // backupJob is one requested or scheduled unit of backup work.
@@ -142,6 +155,10 @@ func (s *Server) loadBackupOverview(ctx context.Context) (backupOverview, error)
 		}
 		item.Compatible = backupplan.SchemaCompatible(schemas, current)
 		item.Confirmation = backupplan.RestoreConfirmation(item.Snapshot)
+		item.Archive = backupplan.ArchiveName(item.Snapshot)
+		if item.Archive != "" {
+			item.DownloadReady = archiveDownloadReady(item.Kind, item.Snapshot)
+		}
 		if item.Kind == "offsite" {
 			o.OffsiteSnapshots = append(o.OffsiteSnapshots, item)
 		} else {

@@ -22,3 +22,63 @@
 .role-guide dl{margin:12px 0 0}.role-guide dt{color:var(--accent);font-weight:650}.role-guide dd{margin:3px 0 12px;color:var(--muted)}
 @media(min-width:1100px){.security-layout>.security-wide{grid-column:auto}.security-user{grid-template-columns:minmax(0,.6fr) minmax(0,1.4fr);gap:12px}.security-user .security-fields{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:1000px){.security-users{grid-template-columns:minmax(0,1fr)}}
+
+.security-layout, .security-users { gap: var(--settings-gap); }
+.security-layout > .panel, .security-users > section, .role-guide {
+  padding: var(--settings-inset);
+  background: var(--surface);
+  box-shadow: none;
+}
+body[data-admin=true] .security-layout > .panel > h2,
+.security-users > section > h2, .role-guide > h2 {
+  padding-block-end: 8px;
+  margin-block: 0 8px;
+  font-size: 20px;
+}
+.security-layout > .panel > p { margin-block: 0 10px; }
+.security-freshness {
+  gap: 8px 12px;
+  padding-block: 8px;
+  margin-block: 12px;
+}
+.security-layout .security-empty { padding-block: 8px 0; }
+.security-layout details { margin-block-start: 8px; }
+.security-layout summary { min-height: 44px; align-content: center; cursor: pointer; }
+.security-key, .security-session-list .session-row { padding-block: 8px; gap: 12px; }
+.security-key h3, .security-session-list h3 { font-size: 16px; }
+.security-session-list .session-row p, .security-key p { margin-block: 2px 0; }
+.security-layout [data-passkey-register] {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 8px;
+  max-width: none;
+}
+.security-layout [data-passkey-register] label { flex: 1 1 180px; margin: 0; }
+.security-layout [data-passkey-register] > p { flex-basis: 100%; margin: 0; }
+.security-user { padding-block: 12px; }
+.security-user:last-child { border-block-end: 0; padding-block-end: 0; }
+.security-user > div > p { margin-block: 2px 8px; }
+.security-user .security-fields { gap: 8px; }
+.security-user .security-fields label { margin: 0; }
+.role-guide dl { margin-block-start: 8px; }
+.role-guide dd { margin-block: 2px 8px; }
+.role-guide dd:last-child { margin-block-end: 0; }
+#security-reauth .security-passkey-alternative { margin-block-start: 12px; padding-block-start: 12px; }
+#new-household-user .user-dialog-fields { display: grid; gap: 10px 12px; }
+#new-household-user .user-dialog-fields :is(label, p) { margin-block: 0; }
+#new-household-user .user-dialog-fields p { margin-block-start: 4px; }
+
+@media (min-width: 540px) {
+  #new-household-user .user-dialog-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (min-width: 1350px) {
+  .security-users .user-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, max-content);
+    align-items: end;
+    gap: 8px;
+  }
+  .security-users .user-row > button { max-width: 15ch; margin: 0; }
+  .security-users .user-row > [role=status] { grid-column: 1 / -1; }
+}

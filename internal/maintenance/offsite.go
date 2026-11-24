@@ -4,6 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"household/internal/audit"
@@ -53,6 +56,12 @@ func loadSettings(ctx context.Context, q querier) (backupplan.Settings, *time.Lo
 // checks a rotating sixth of its data, records the run and applies the
 // offsite retention. The repository lock is held by the caller.
 func copyOffsiteLocked(ctx context.Context, pool *pgxpool.Pool, local, offsite config.BackupTarget, settings backupplan.Settings, snapshot string, schemas []byte, jobID string) (string, error) {
+	if backupplan.ArchiveName(snapshot) != "" {
+		if strings.HasPrefix(offsite.Repository, "rest:") {
+			return "", errors.New("portable archives cannot be stored on a restic REST target")
+		}
+		return copyPortableLocked(ctx, pool, local, offsite, settings, snapshot, schemas, jobID)
+	}
 	opening, cancel := context.WithTimeout(ctx, offsiteProbeTimeout)
 	if err := ensureRepository(opening, offsite, &local); err != nil {
 		cancel()
@@ -187,6 +196,13 @@ func TestOffsite(ctx context.Context, pool *pgxpool.Pool) error {
 	}
 	if connection, ok := offsite.S3Connection(); ok {
 		return testS3Bucket(ctx, connection)
+	}
+	if portableBackups(local) && filepath.IsAbs(offsite.Repository) {
+		root, err := os.OpenRoot(offsite.Repository)
+		if err != nil {
+			return archiveStorageError(err)
+		}
+		return root.Close()
 	}
 	unlock, err := lockRepository(ctx, pool)
 	if err != nil {

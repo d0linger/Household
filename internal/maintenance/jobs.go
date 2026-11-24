@@ -182,6 +182,7 @@ func (s *Service) Tick(ctx context.Context) {
 		s.Log.Error("backup service heartbeat failed", "error", err)
 		return
 	}
+	cleanArchiveExchange(s.clock())
 	job, err := s.claim(ctx)
 	if err != nil {
 		s.Log.Error("backup request claim failed", "error", err)
@@ -436,7 +437,7 @@ func (s *Service) perform(ctx context.Context, job Job) {
 		}
 	case "verify":
 		reportBackupPhase(ctx, s.Pool(), job.ID, "restoring")
-		err = s.verify(ctx, job.Target, job.Snapshot)
+		err = s.verifyRequested(ctx, job)
 	case "offsite_test":
 		reportBackupPhase(ctx, s.Pool(), job.ID, "connecting_offsite")
 		err = TestOffsite(ctx, s.Pool())
@@ -487,6 +488,28 @@ func (s *Service) verify(ctx context.Context, kind, snapshot string) error {
 	return CheckRestore(verifyCtx, s.Config.DatabaseURL, s.Superuser, func(targetURL string) error {
 		return VerifyRestore(verifyCtx, s.Pool(), s.Config, target, snapshot, targetURL)
 	})
+}
+
+func (s *Service) verifyRequested(ctx context.Context, job Job) error {
+	if backupplan.ArchiveName(job.Snapshot) == "" {
+		return s.verify(ctx, job.Target, job.Snapshot)
+	}
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Minute)
+	defer cancel()
+	target, err := s.target(job.Target)
+	if err != nil {
+		return err
+	}
+	if job.Target == "offsite" {
+		return s.prepareArchiveDownload(ctx, target, job.Snapshot)
+	}
+	if err = knownSnapshot(ctx, s.Pool(), target, job.Snapshot); err == nil {
+		return s.verify(ctx, job.Target, job.Snapshot)
+	}
+	if !errors.Is(err, errUnknownSnapshot) {
+		return err
+	}
+	return s.importArchive(ctx, target, job)
 }
 
 // RestoreNow performs an operator's live restore from the command line. The

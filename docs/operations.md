@@ -41,7 +41,7 @@ The database and ready attachment/preview metadata are captured behind the house
 
 Administrators manage backups under **Settings → Backup** (`/settings/backup`). The page shows the health of the local and offsite targets (derived from each target's own schedule plus a grace of a tenth of the interval, 15 minutes to 2 hours), the last restore test, every restore point and the history of requested and scheduled work. It stores the schedule in `core.backup_settings`: start time and interval (default daily at 03:00 in the household zone), local retention (default 7 daily / 4 weekly / 12 monthly, `household` tag), offsite interval and retention, and the automatic restore test (default weekly, local).
 
-The history puts running and queued jobs first. Their state, current stage and start time refresh while the page remains open. The signed S3 bucket probe has a 10-second budget once claimed. Opening the offsite repository for a copy has a separate 90-second budget. Full backup integrity checks and trial restores can take longer, especially on slow storage or with large uploads.
+The history puts running and queued jobs first. Their state, current stage and start time refresh while the page remains open. The signed S3 bucket probe has a 10-second budget once claimed. The older Restic repository opens with a separate 90-second budget. Full backup integrity checks and trial restores can take longer, especially on slow storage or with large uploads.
 
 For Garage and compatible S3 services, opening the repository URL directly in a browser sends an unsigned request. An anonymous `AccessDenied` response is expected. Use **Test offsite connection** for the signed bucket check. If the signed check returns access denied, verify the backup service's configured access key and secret, the selected bucket's read and write grants, the S3 region and that the proxy preserves the signed host and path. The repository encryption password is separate from the S3 credentials. [Garage's restic setup](https://github.com/deuxfleurs-org/garage/blob/main-v2/doc/book/connect/backup.md)
 
@@ -53,7 +53,47 @@ After a local backup restic fully checks the local repository. Failed runs are r
 
 ### Offsite repository
 
-Local snapshots do not protect against loss of the entire host. Configure an offsite restic repository in `.env` and recreate the services:
+#### Portable backup files
+
+The default for new backups is one dated `household-*.tar.age` file. The
+worker captures a consistent PostgreSQL dump, ready attachments and previews,
+the file-checksum and schema manifest, and the recovery key bundle. The local
+file lives under `/data/backups/portable`. For S3, the file is an object directly
+under the configured prefix, such as `s3-dp/household/household-…tar.age`.
+A mounted offsite destination stores its files in its `portable` directory.
+Files share the same dated name at both locations. Household authenticates the
+whole file with age, using `RESTIC_PASSWORD` locally and
+`HOUSEHOLD_BACKUP_OFFSITE_PASSWORD` externally.
+
+Use the updated Compose or Portainer template. The app mounts `backups`
+read-only and shares the `backup_exchange` volume with the backup service.
+Exchange holds encrypted uploads and prepared downloads. Keep the existing
+stack name and named data volumes. A proxy that caps request bodies or
+timeouts must allow the upload on `/api/v1/core/backup/upload`. The Household
+upload limit is 32 GiB and 30 minutes.
+
+1. Under **Settings → Backup**, download a local file directly. For an
+   external file, choose **Verify and prepare download**, wait for the
+   trial restore, then choose **Download**. Prepared copies expire after
+   six hours.
+2. Choose **Upload backup file**, select the encrypted archive, and submit.
+   The worker authenticates it with the configured local or external backup
+   password and checks it in a disposable database. The live keyring must be
+   able to read the data before the worker registers a verified local point.
+3. At that verified point, choose **Restore**. Review the date, confirm
+   your sign-in and enter the displayed confirmation phrase. The usual
+   safety backup and live restore procedure apply.
+
+Keep the passwords used by any retained files. Portable files carry their own
+password encryption and a Restic repository key change affects only Restic
+snapshots. Existing Restic data stays readable by its original passwords and
+is exempt from the portable-file retention job. The two formats can coexist
+at the same S3 prefix. A restic REST target uses Restic for new writes. An
+operator can also select the older writer with `HOUSEHOLD_BACKUP_FORMAT=restic`.
+
+#### S3 settings and legacy Restic repositories
+
+Set the offsite destination in `.env` and recreate the services:
 
 ```sh
 HOUSEHOLD_S3_ENDPOINT=s3.example.org
@@ -69,7 +109,7 @@ HOUSEHOLD_BACKUP_OFFSITE_PASSWORD=<own long password, kept separately>
 
 Supported are `s3:http(s)://host/bucket[/prefix]` (AWS, Backblaze B2, Wasabi, Hetzner, MinIO and other S3-compatible storage), `rest:http(s)://host/path` with optional `HOUSEHOLD_BACKUP_REST_USERNAME`/`_PASSWORD`, and an absolute mounted path such as a NAS share added under `backup.volumes`. The repository URL rejects credentials, queries and fragments. Household uses it as the public label in the app and `core.backup_runs`. The credentials and repository password also accept `_FILE` or a file in `/run/secrets`. Use a separate repository password of at least 16 characters and keep a copy of it and `.env` off the server.
 
-The first copy creates the offsite repository with the local chunker parameters (`restic init --copy-chunker-params`), so later copies deduplicate. Each run copies the new local snapshot (`restic copy`), checks the repository structure plus one rotating sixth of its data (`restic check --read-data-subset=n/6`) instead of downloading everything daily, records an offsite run with the source snapshot's size and applies the offsite retention. When the offsite schedule is due between local runs, the newest local snapshot is copied; if it is already offsite, no new run is recorded (the target does not look freshly backed up) and only the rotating data check runs. A copy whose earlier run failed after `restic copy` (in its check) is recorded with its own snapshot time once the check passes, and runs left `retention_pending` by an interrupted prune are reconciled. A repository is initialized only when restic confirms it does not exist (exit code 10 or its "does not exist" diagnostic); access, credential and connection errors are reported as such and never lead to an `init`. The S3 connection test checks the bucket with a signed read-only request. The copy opens or initializes the repository and verifies its contents. You may keep the existing composite repository setting and its associated credentials. Choose a single configuration style per deployment. The restic cache lives on the work volume (`/work/restic-cache`, or below `HOUSEHOLD_BACKUP_WORK`).
+In Restic mode, the first copy creates the offsite repository with the local chunker parameters (`restic init --copy-chunker-params`), so later copies deduplicate. Each run copies the new local snapshot (`restic copy`), checks the repository structure plus one rotating sixth of its data (`restic check --read-data-subset=n/6`) instead of downloading everything daily, records an offsite run with the source snapshot's size and applies the offsite retention. When the offsite schedule is due between local runs, the newest local snapshot is copied; if it is already offsite, no new run is recorded (the target does not look freshly backed up) and only the rotating data check runs. A copy whose earlier run failed after `restic copy` (in its check) is recorded with its own snapshot time once the check passes, and runs left `retention_pending` by an interrupted prune are reconciled. A repository is initialized only when restic confirms it does not exist (exit code 10 or its "does not exist" diagnostic); access, credential and connection errors are reported as such and never lead to an `init`. The S3 connection test checks the bucket with a signed read-only request. The copy opens or initializes the repository and verifies its contents. You may keep the existing composite repository setting and its associated credentials. Choose a single configuration style per deployment. The restic cache lives on the work volume (`/work/restic-cache`, or below `HOUSEHOLD_BACKUP_WORK`).
 
 Offsite storage can have separate terms and costs. Egress for restore tests from offsite counts against them; the default restore test reads the local repository.
 

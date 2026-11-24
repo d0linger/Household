@@ -26,6 +26,9 @@ type BackupTarget struct {
 // Label is the nonsecret repository reference stored and shown to administrators.
 func (t BackupTarget) Label() string { return t.Repository }
 
+// ArchivePassword is used by the isolated backup worker for portable archives.
+func (t BackupTarget) ArchivePassword() string { return t.password }
+
 // Environment returns the restic variables for this repository only.
 func (t BackupTarget) Environment() []string {
 	env := []string{"RESTIC_REPOSITORY=" + t.Repository, "RESTIC_PASSWORD=" + t.password}
@@ -45,6 +48,7 @@ func (t BackupTarget) SourceEnvironment() []string {
 // strips them (and their _FILE forms) so the web process never inherits them.
 var BackupServiceVariables = []string{
 	"RESTIC_PASSWORD", "RESTIC_PASSWORD_FILE", "RESTIC_PASSWORD_COMMAND",
+	"HOUSEHOLD_BACKUP_FORMAT",
 	"HOUSEHOLD_BACKUP_OFFSITE_REPOSITORY", "HOUSEHOLD_BACKUP_OFFSITE_PASSWORD",
 	"HOUSEHOLD_BACKUP_S3_ACCESS_KEY_ID", "HOUSEHOLD_BACKUP_S3_SECRET_ACCESS_KEY", "HOUSEHOLD_BACKUP_S3_REGION",
 	"HOUSEHOLD_BACKUP_REST_USERNAME", "HOUSEHOLD_BACKUP_REST_PASSWORD",

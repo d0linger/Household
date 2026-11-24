@@ -10,5 +10,21 @@
 <script nonce="{{.Nonce}}" src="{{index .Asset "shopping-notifications.js"}}" defer></script><script nonce="{{.Nonce}}" src="{{index .Asset "shopping-offline.js"}}" defer></script>
 {{end}}
 {{define "modules-settings"}}<div class="page-heading"><div><h1>{{t "Module"}}</h1><p class="muted">{{t "Aktiviere die Bereiche, die dein Haushalt braucht. Pausierte Daten bleiben erhalten."}}</p></div></div>
-<p class="module-count"><strong>{{len .Modules}} {{t "Module"}}</strong> · <a href="/planning-purchases">{{t "Planungsbedarf und Einkaufszuordnungen verwalten"}}</a></p><div class="module-grid" id="settings-modules" tabindex="-1">{{range .Modules}}{{$state:=index $.States .ID}}<article class="panel module-card"><div class="module-icon"><svg aria-hidden="true"><use href="{{icon $.Asset .Icon}}"/></svg><span class="badge {{if eq $state.State "enabled"}}active{{end}}">{{if eq $state.State "enabled"}}{{t "Aktiv"}}{{else}}{{t "Pausiert"}}{{end}}</span></div><h2>{{.Title}}</h2><p>{{len .Entities}} {{t "Bereiche · Daten bleiben beim Pausieren erhalten."}}</p><div class="module-actions">{{if eq $.User.Role "admin"}}<form action="/settings/modules/{{.ID}}" method="post">{{template "csrf" $}}<input type="hidden" name="version" value="{{$state.Version}}"><input type="hidden" name="enabled" value="{{if eq $state.State "enabled"}}false{{else}}true{{end}}"><button class="{{if ne $state.State "enabled"}}primary{{end}}">{{if eq $state.State "enabled"}}{{t "Pausieren"}}{{else}}{{t "Aktivieren"}}{{end}}</button></form>{{end}}{{if eq $state.State "enabled"}}<a href="{{moduleURL .}}">{{t "Öffnen →"}}</a>{{end}}</div></article>{{end}}</div>
+<p class="module-count"><strong>{{len .Modules}} {{t "Module"}}</strong> · <a href="/planning-purchases">{{t "Planungsbedarf und Einkaufszuordnungen verwalten"}}</a></p>
+<div class="module-grid" id="settings-modules" tabindex="-1">
+{{range .Modules}}{{$state:=index $.States .ID}}
+<article class="panel module-card">
+  <svg class="module-icon" aria-hidden="true"><use href="{{icon $.Asset .Icon}}"/></svg>
+  <h2>{{.Title}}</h2>
+  <span class="badge {{if eq $state.State "enabled"}}active{{end}}">{{if eq $state.State "enabled"}}{{t "Aktiv"}}{{else}}{{t "Pausiert"}}{{end}}</span>
+  {{if or (eq $.User.Role "admin") (eq $state.State "enabled")}}<div class="module-actions">
+    {{if eq $.User.Role "admin"}}<form action="/settings/modules/{{.ID}}" method="post">{{template "csrf" $}}
+      <input type="hidden" name="version" value="{{$state.Version}}"><input type="hidden" name="enabled" value="{{if eq $state.State "enabled"}}false{{else}}true{{end}}">
+      <button type="submit">{{if eq $state.State "enabled"}}{{t "Pausieren"}}{{else}}{{t "Aktivieren"}}{{end}}</button>
+    </form>{{end}}
+    {{if eq $state.State "enabled"}}<a href="{{moduleURL .}}">{{t "Öffnen →"}}</a>{{end}}
+  </div>{{end}}
+</article>
+{{end}}
+</div>
 {{if eq .User.Role "admin"}}<details class="panel import-panel danger-zone"><summary>{{t "Daten eines Moduls endgültig löschen"}}</summary><p>{{t "Voraussetzung: Modul pausiert, frische Anmeldung und geprüfte Sicherung. Eine Anforderung läuft nach 30 Minuten ab; der Betreiber führt sie über den Wartungsbefehl aus. Änderungen bleiben im Administrator-Protokoll nachvollziehbar."}}</p>{{range .Modules}}{{if not (enabled $.States .ID)}}<form class="purge-form" method="post" action="/settings/modules/{{.ID}}/purge">{{template "csrf" $}}<h3>{{.Title}}</h3><label>{{t "Modulkennung zur Bestätigung"}}<input name="confirm" required placeholder="{{.ID}}"></label><label>{{t "Geprüfte Sicherungs-ID"}}<input name="backup_reference" required></label><button class="danger">{{t "Löschung anfordern"}}</button></form>{{end}}{{end}}</details>{{end}}{{end}}
