@@ -248,7 +248,8 @@ service claims each request and checks it again with its own privileges.
 
 - **What a backup file holds:** by default, a PostgreSQL dump, uploaded files, a
   schema and file-hash manifest, and a security-key bundle in one encrypted dated
-  `.tar.age` file. With `HOUSEHOLD_BACKUP_FORMAT=restic`, and for a restic REST
+  `.tar.age` file of at most 32 GiB; a larger backup fails, so installations with
+  more data set `HOUSEHOLD_BACKUP_FORMAT=restic`. With that setting, and for a restic REST
   offsite target, new backups are Restic snapshots instead; they are restored in
   the app or with `restore-check`, not downloaded as files.
 - **Download and recover:** download a local file, or verify an external file to

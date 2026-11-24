@@ -675,7 +675,7 @@ func (s *Service) scheduledProbe(ctx context.Context, settings backupplan.Settin
 func lastAttempt(ctx context.Context, pool *pgxpool.Pool, kind, label string) (*time.Time, error) {
 	var last *time.Time
 	err := pool.QueryRow(ctx, `SELECT greatest(
- (SELECT max(started_at) FROM core.backup_runs WHERE repository_kind=$1 AND repository_reference=$2),
+ (SELECT max(r.started_at) FROM core.backup_runs r WHERE r.repository_kind=$1 AND r.repository_reference=$2 AND NOT `+backupplan.ImportedRun+`),
  (SELECT max(started_at) FROM core.backup_jobs WHERE kind='backup' AND started_at IS NOT NULL AND (target='both' OR $1='local')
   AND CASE WHEN $1='local' THEN local_label ELSE offsite_label END=$2))`, kind, label).Scan(&last)
 	return last, err

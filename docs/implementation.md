@@ -2347,3 +2347,18 @@ At `9388e61` the `WorkflowAndSecrets` job failed: two new worker diagnostics had
   - The backup integration tests (`Backup|Archive|Offsite|Retention|Probe|Portable` in `internal/web` and `internal/maintenance`) passed.
   - `scripts/test-backup-operations.sh` passed with 0 failures and removed its containers, volumes and image.
   - Not run locally: the Garage S3 fixture and the full integration suite.
+
+## Portable backup files: CodeRabbit round 3 (PR #34)
+
+At `99a804f` all 34 checks passed. The first review request was refused by CodeRabbit's hourly chat limit, so it was posted again. CodeRabbit raised five findings, all fixed:
+
+- [x] Runs registered by an archive import (`backupplan.ImportedRun`: the run's job is a `verify` job) no longer count as backup attempts in `lastAttempt` or as successes in `HealthQuery`. An imported archive therefore cannot skip the next scheduled backup.
+- [x] An offsite copy that retention removes in the same run is reported as `copy_not_retained` instead of a success.
+- [x] A mounted archive directory that cannot be opened keeps retention and failed-copy cleanup pending (`repository_unreachable`). Only a file missing inside the opened directory counts as removed.
+- [x] The connection test for a mounted target probes every format a coming copy can use: the newest copyable local snapshot's format and the configured writer.
+- [x] The README and the operations guide state the 32 GiB limit for creating backup files, and that larger installations should use `HOUSEHOLD_BACKUP_FORMAT=restic`.
+- [x] Validation of round 3:
+  - `go vet`, unit tests, `scripts/localization.test.cjs` (11/11) and golangci-lint (0 issues) passed.
+  - The integration tests matching `Backup|Archive|Offsite|Retention|Probe|Portable|Health|Schedul` in `internal/web`, `internal/maintenance` and `internal/backupplan` passed.
+  - `scripts/test-backup-operations.sh` passed with 0 failures and cleaned up after itself.
+  - Not run locally: the Garage S3 fixture and the full integration suite.

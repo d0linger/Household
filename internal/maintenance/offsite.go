@@ -197,19 +197,27 @@ func TestOffsite(ctx context.Context, pool *pgxpool.Pool) error {
 	if connection, ok := offsite.S3Connection(); ok {
 		return testS3Bucket(ctx, connection)
 	}
-	if portableBackups(local) && filepath.IsAbs(offsite.Repository) {
-		if err = probeArchiveDirectory(backupplan.ArchiveDirectory(offsite.Repository)); err != nil {
-			return err
-		}
-		// The next offsite-only copy takes the newest local snapshot. When that
-		// is still a Restic snapshot, the copy uses the Restic repository, so the
-		// test checks it as well.
+	if filepath.IsAbs(offsite.Repository) {
+		// Test every format a coming copy can use for this target: the newest
+		// local snapshot that an offsite-only copy takes, and the configured
+		// writer that a combined backup uses.
+		archive, restic := portableBackups(local), !portableBackups(local)
 		snapshot, _, latestErr := latestCopyableSnapshot(ctx, pool, local, *offsite)
-		if errors.Is(latestErr, errNoLocalSnapshot) || latestErr == nil && backupplan.ArchiveName(snapshot) != "" {
-			return nil
-		}
-		if latestErr != nil {
+		switch {
+		case latestErr == nil && backupplan.ArchiveName(snapshot) != "":
+			archive = true
+		case latestErr == nil:
+			restic = true
+		case !errors.Is(latestErr, errNoLocalSnapshot):
 			return latestErr
+		}
+		if archive {
+			if err = probeArchiveDirectory(backupplan.ArchiveDirectory(offsite.Repository)); err != nil {
+				return err
+			}
+		}
+		if !restic {
+			return nil
 		}
 	}
 	unlock, err := lockRepository(ctx, pool)

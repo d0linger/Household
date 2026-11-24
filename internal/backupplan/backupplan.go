@@ -205,6 +205,11 @@ func Evaluate(now time.Time, zone *time.Location, localTime string, intervalHour
 	return h
 }
 
+// ImportedRun matches a backup run r that an archive upload registered. Its
+// start is the archive's capture date, so it is neither a backup attempt nor
+// evidence that the installation was backed up recently.
+const ImportedRun = `EXISTS(SELECT 1 FROM core.backup_jobs vj WHERE vj.id=r.job_id AND vj.kind='verify')`
+
 // HealthQuery reads one target's health inputs. $1 is the repository kind
 // ('local' or 'offsite'). It returns the activation time, the newest
 // successful run, whether the newest finished attempt failed and when that
@@ -221,12 +226,12 @@ const HealthQuery = `WITH configured AS (SELECT (SELECT CASE WHEN $1='local' THE
 SELECT CASE WHEN $1='local' THEN (SELECT created_at FROM core.households WHERE singleton=1)
   ELSE (SELECT updated_at FROM core.backup_settings LIMIT 1) END,
  (SELECT max(r.started_at) FROM core.backup_runs r,configured c WHERE r.repository_kind=$1 AND r.state IN('complete','retention_pending')
-   AND (c.label IS NULL OR r.repository_reference=c.label)),
+   AND (c.label IS NULL OR r.repository_reference=c.label) AND NOT ` + ImportedRun + `),
  coalesce(latest.failed,false),latest.ended
 FROM configured c LEFT JOIN LATERAL (SELECT ended,failed FROM (
    SELECT coalesce(r.finished_at,r.started_at) AS ended,r.state='failed' AS failed FROM core.backup_runs r
     WHERE r.repository_kind=$1 AND r.state IN('complete','retention_pending','failed','expired')
-     AND (c.label IS NULL OR r.repository_reference=c.label)
+     AND (c.label IS NULL OR r.repository_reference=c.label) AND NOT ` + ImportedRun + `
    UNION ALL
    SELECT j.finished_at,j.state='failed' FROM core.backup_jobs j
     WHERE j.kind='backup' AND j.state IN('complete','failed') AND j.finished_at IS NOT NULL

@@ -205,8 +205,21 @@ func copyPortableLocked(ctx context.Context, pool *pgxpool.Pool, local, offsite 
 	}
 	err = errors.Join(reconcileOffsiteAttempts(ctx, pool, offsite, snapshot),
 		applyArchiveRetention(ctx, pool, offsite, settings.OffsiteKeepDaily, settings.OffsiteKeepWeekly, settings.OffsiteKeepMonthly))
+	// Retention can expire the new copy when newer captures already fill its
+	// calendar buckets. That copy is gone, so it is not reported as a success.
+	var retained bool
+	if retainedErr := pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM core.backup_runs
+ WHERE repository_kind='offsite' AND repository_reference=$1 AND snapshot_reference=$2 AND state='complete')`,
+		offsite.Label(), snapshot).Scan(&retained); retainedErr != nil {
+		return "", errors.Join(err, retainedErr)
+	}
+	if !retained {
+		return "", errors.Join(err, &ToolError{Program: "archive", Code: "copy_not_retained", err: errCopyNotRetained})
+	}
 	return snapshot, err
 }
+
+var errCopyNotRetained = errors.New("offsite retention removed the copied snapshot in the same run")
 
 // sendPortableCopy records the copy as running before anything is uploaded, so
 // an upload whose check or registration fails stays referenced by a run and
@@ -399,8 +412,14 @@ func finishArchiveRetention(ctx context.Context, pool *pgxpool.Pool, target conf
 
 func removePortable(ctx context.Context, target config.BackupTarget, name string) error {
 	if filepath.IsAbs(target.Repository) {
-		err := os.Remove(filepath.Join(backupplan.ArchiveDirectory(target.Repository), name)) // #nosec G703 -- name is derived from the validated snapshot ID
-		if errors.Is(err, os.ErrNotExist) {
+		// Open the directory first: an unmounted destination must keep the
+		// deletion pending. Only a file missing inside it counts as removed.
+		root, err := os.OpenRoot(backupplan.ArchiveDirectory(target.Repository))
+		if err != nil {
+			return &ToolError{Program: "archive", Code: "repository_unreachable", err: err}
+		}
+		defer func() { _ = root.Close() }()
+		if err = root.Remove(name); errors.Is(err, os.ErrNotExist) {
 			return nil
 		}
 		return err

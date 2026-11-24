@@ -55,7 +55,9 @@ After a local backup restic fully checks the local repository. Failed runs are r
 
 #### Portable backup files
 
-The default for new backups is one dated `household-*.tar.age` file. The
+The default for new backups is one dated `household-*.tar.age` file of at
+most 32 GiB. A backup that would be larger fails; installations with more data
+set `HOUSEHOLD_BACKUP_FORMAT=restic`, which has no such limit. The
 worker captures a consistent PostgreSQL dump, ready attachments and previews,
 the file-checksum and schema manifest, and the recovery key bundle. The local
 file lives under `/data/backups/portable`. For S3, the file is an object directly
