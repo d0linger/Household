@@ -76,7 +76,9 @@ upload limit is 32 GiB and 30 minutes.
    external file, choose **Verify and prepare download**, wait for the
    trial restore, then choose **Download**. Prepared copies expire after
    six hours.
-2. Choose **Upload backup file**, select the encrypted archive, and submit.
+2. Upload only backup files from installations you trust: restoring a dump
+   runs its SQL, and a confirmed live restoration keeps the objects it creates.
+   Choose **Upload backup file**, select the encrypted archive, and submit.
    The worker authenticates it with the configured local or external backup
    password and checks it in a disposable database. The live keyring must be
    able to read the data before the worker registers a verified local point.

@@ -174,9 +174,10 @@ func sendArchive(ctx context.Context, local, offsite config.BackupTarget, id str
 }
 
 func copyPortableLocked(ctx context.Context, pool *pgxpool.Pool, local, offsite config.BackupTarget, settings backupplan.Settings, snapshot string, schemas []byte, jobID string) (string, error) {
-	// Finish an interrupted retention first: its files are removed and its rows
-	// expired, so a copy recorded below can never share a pending snapshot group.
-	if err := finishArchiveRetention(ctx, pool, offsite); err != nil {
+	// A pending deletion of this snapshot finishes before its name is reused.
+	// Other pending deletions and earlier failed copies are handled after the
+	// copy, so a destination that refuses deletes cannot block a new copy.
+	if err := finishArchiveRetention(ctx, pool, offsite, snapshot); err != nil {
 		return "", err
 	}
 	var exists bool
@@ -199,25 +200,84 @@ func copyPortableLocked(ctx context.Context, pool *pgxpool.Pool, local, offsite 
 		if err != nil {
 			return "", err
 		}
-	} else {
-		size, err := sendArchive(ctx, local, offsite, snapshot)
-		if err != nil {
-			return "", err
-		}
-		if err = checkPortable(ctx, offsite, snapshot); err != nil {
-			return "", err
-		}
-		_, err = audit.Exec(ctx, pool, `INSERT INTO core.backup_runs
- (id,state,application_version,repository_reference,repository_kind,job_id,finished_at,snapshot_reference,schema_manifest,data_added,total_bytes)
- SELECT $1,'complete',$2,$3,'offsite',$4,now(),$5,$6,$7,$7 WHERE NOT EXISTS(SELECT 1 FROM core.backup_runs
+	} else if err = sendPortableCopy(ctx, pool, local, offsite, snapshot, schemas, jobID); err != nil {
+		return "", err
+	}
+	err = errors.Join(reconcileOffsiteAttempts(ctx, pool, offsite, snapshot),
+		applyArchiveRetention(ctx, pool, offsite, settings.OffsiteKeepDaily, settings.OffsiteKeepWeekly, settings.OffsiteKeepMonthly))
+	return snapshot, err
+}
+
+// sendPortableCopy records the copy as running before anything is uploaded, so
+// an upload whose check or registration fails stays referenced by a run and
+// reconcileOffsiteAttempts can remove it later.
+func sendPortableCopy(ctx context.Context, pool *pgxpool.Pool, local, offsite config.BackupTarget, snapshot string, schemas []byte, jobID string) error {
+	run := value.UUID()
+	tag, err := audit.Exec(ctx, pool, `INSERT INTO core.backup_runs
+ (id,state,application_version,repository_reference,repository_kind,job_id,snapshot_reference,schema_manifest)
+ SELECT $1,'running',$2,$3,'offsite',$4,$5,$6 WHERE NOT EXISTS(SELECT 1 FROM core.backup_runs
  WHERE repository_kind='offsite' AND repository_reference=$3 AND snapshot_reference=$5 AND state IN('complete','retention_pending'))`,
-			value.UUID(), buildinfo.Label(), offsite.Label(), nullableUUID(jobID), snapshot, schemas, size)
-		if err != nil {
-			return "", err
+		run, buildinfo.Label(), offsite.Label(), nullableUUID(jobID), snapshot, schemas)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() != 1 {
+		return errors.New("offsite copy of this snapshot is already recorded")
+	}
+	finished := false
+	defer func() {
+		if !finished {
+			failureCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 3*time.Second)
+			defer cancel()
+			_, _ = audit.Exec(failureCtx, pool, "UPDATE core.backup_runs SET state='failed',finished_at=now(),failure_reason='offsite copy failed' WHERE id=$1 AND state='running'", run)
+		}
+	}()
+	size, err := sendArchive(ctx, local, offsite, snapshot)
+	if err != nil {
+		return err
+	}
+	if err = checkPortable(ctx, offsite, snapshot); err != nil {
+		return err
+	}
+	if _, err = audit.Exec(ctx, pool, "UPDATE core.backup_runs SET state='complete',finished_at=now(),data_added=$2,total_bytes=$2 WHERE id=$1", run, size); err != nil {
+		return err
+	}
+	finished = true
+	return nil
+}
+
+// reconcileOffsiteAttempts removes archives left by earlier copies that never
+// completed, then clears their reference. Under the repository lock no other
+// copy runs, so a running row is stale. A snapshot with a complete or pending
+// row keeps its file, also when its completion committed despite an error.
+func reconcileOffsiteAttempts(ctx context.Context, pool *pgxpool.Pool, offsite config.BackupTarget, current string) error {
+	rows, err := pool.Query(ctx, `SELECT r.id,r.snapshot_reference FROM core.backup_runs r
+ WHERE r.repository_kind='offsite' AND r.repository_reference=$1 AND r.state IN('running','failed')
+ AND r.snapshot_reference ~ $2 AND r.snapshot_reference<>$3 AND NOT EXISTS(SELECT 1 FROM core.backup_runs c
+ WHERE c.repository_reference=r.repository_reference AND c.snapshot_reference=r.snapshot_reference AND c.state IN('complete','retention_pending'))
+ ORDER BY r.started_at`, offsite.Label(), backupplan.ArchiveReferencePattern, current)
+	if err != nil {
+		return err
+	}
+	type attempt struct{ id, snapshot string }
+	attempts, err := pgx.CollectRows(rows, func(row pgx.CollectableRow) (attempt, error) {
+		var a attempt
+		err := row.Scan(&a.id, &a.snapshot)
+		return a, err
+	})
+	if err != nil {
+		return err
+	}
+	for _, a := range attempts {
+		if err = removePortable(ctx, offsite, backupplan.ArchiveName(a.snapshot)); err != nil {
+			return err
+		}
+		if _, err = audit.Exec(ctx, pool, `UPDATE core.backup_runs SET state='failed',finished_at=coalesce(finished_at,now()),
+ failure_reason=coalesce(failure_reason,'offsite copy failed'),snapshot_reference=NULL WHERE id=$1`, a.id); err != nil {
+			return err
 		}
 	}
-	err = applyArchiveRetention(ctx, pool, offsite, settings.OffsiteKeepDaily, settings.OffsiteKeepWeekly, settings.OffsiteKeepMonthly)
-	return snapshot, err
+	return nil
 }
 
 type archiveRetentionPoint struct {
@@ -303,16 +363,16 @@ func applyArchiveRetention(ctx context.Context, pool *pgxpool.Pool, target confi
 	if err = tx.Commit(ctx); err != nil {
 		return err
 	}
-	return finishArchiveRetention(ctx, pool, target)
+	return finishArchiveRetention(ctx, pool, target, "")
 }
 
 // finishArchiveRetention removes the file of every archive marked for
-// retention on this repository and then marks its rows expired. It also
-// completes a retention that an earlier run left unfinished.
-func finishArchiveRetention(ctx context.Context, pool *pgxpool.Pool, target config.BackupTarget) error {
+// retention on this repository, or only of one snapshot, and then marks its
+// rows expired. It also completes a retention an earlier run left unfinished.
+func finishArchiveRetention(ctx context.Context, pool *pgxpool.Pool, target config.BackupTarget, only string) error {
 	rows, err := pool.Query(ctx, `SELECT DISTINCT snapshot_reference FROM core.backup_runs
- WHERE repository_reference=$1 AND snapshot_reference ~ $2 AND state='retention_pending' ORDER BY 1`,
-		target.Label(), backupplan.ArchiveReferencePattern)
+ WHERE repository_reference=$1 AND snapshot_reference ~ $2 AND state='retention_pending' AND ($3='' OR snapshot_reference=$3) ORDER BY 1`,
+		target.Label(), backupplan.ArchiveReferencePattern, only)
 	if err != nil {
 		return err
 	}

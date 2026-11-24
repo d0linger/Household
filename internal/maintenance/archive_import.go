@@ -5,8 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
+	"strings"
 	"time"
 
 	"household/internal/audit"
@@ -14,6 +17,9 @@ import (
 	"household/internal/config"
 	"household/internal/database"
 	"household/internal/value"
+
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 func (s *Service) importArchive(ctx context.Context, local config.BackupTarget, job Job) error {
@@ -86,6 +92,9 @@ func (s *Service) importArchive(ctx context.Context, local config.BackupTarget, 
 		if openErr = liveKeysReadStage(ctx, verified, s.Config); openErr != nil {
 			return openErr
 		}
+		if openErr = attachmentsMatchManifest(ctx, verified, result.Manifest.Files); openErr != nil {
+			return openErr
+		}
 		manifest = result.Manifest
 		if manifest.Created.IsZero() {
 			return errors.New("archive does not record its capture date")
@@ -93,7 +102,10 @@ func (s *Service) importArchive(ctx context.Context, local config.BackupTarget, 
 		return nil
 	})
 	if err != nil {
-		if ResultCode(err) == "failed" && !errors.Is(err, context.Canceled) {
+		// Only a payload that fails validation is an invalid archive. A full or
+		// unwritable restore volume keeps its own error, so the operator can fix
+		// the volume and upload the same file again.
+		if ResultCode(err) == "failed" && !errors.Is(err, context.Canceled) && !storageFailure(err) {
 			return &ToolError{Program: "archive", Code: "archive_invalid", err: err}
 		}
 		return err
@@ -177,4 +189,40 @@ func cleanArchiveExchange(now time.Time) {
 			_ = os.Remove(filepath.Join(directory, entry.Name())) // #nosec G703 -- exact managed exchange filename
 		}
 	}
+}
+
+// storageFailure reports a filesystem error of the worker's own volumes.
+func storageFailure(err error) bool {
+	var pathErr *fs.PathError
+	var linkErr *os.LinkError
+	var syscallErr *os.SyscallError
+	return errors.As(err, &pathErr) || errors.As(err, &linkErr) || errors.As(err, &syscallErr)
+}
+
+// attachmentsMatchManifest requires that the restored attachment rows are
+// exactly the files the manifest lists, by key, hash and size. The writer builds
+// the manifest from the same query, so only a crafted archive can differ.
+func attachmentsMatchManifest(ctx context.Context, db *pgxpool.Pool, files []File) error {
+	rows, err := db.Query(ctx, attachmentInventoryQuery)
+	if err != nil {
+		return err
+	}
+	restored, err := pgx.CollectRows(rows, func(row pgx.CollectableRow) (File, error) {
+		var f File
+		err := row.Scan(&f.Key, &f.SHA256, &f.Size)
+		return f, err
+	})
+	if err != nil {
+		return err
+	}
+	listed := slices.Clone(files)
+	byKey := func(a, b File) int { return strings.Compare(a.Key, b.Key) }
+	slices.SortFunc(restored, byKey)
+	slices.SortFunc(listed, byKey)
+	if !slices.EqualFunc(restored, listed, func(a, b File) bool {
+		return a.Key == b.Key && a.SHA256 == b.SHA256 && a.Size == b.Size
+	}) {
+		return errors.New("restored attachment records differ from the archive manifest")
+	}
+	return nil
 }

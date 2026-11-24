@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/url"
 	"os"
 	"os/exec"
@@ -229,6 +230,10 @@ func RunOperatorBackup(ctx context.Context, pool *pgxpool.Pool, cfg config.Confi
 	}
 }
 
+// attachmentInventoryQuery selects the files a backup carries. An archive
+// import compares the restored rows with its manifest using the same query.
+const attachmentInventoryQuery = `SELECT storage_key,encode(sha256,'hex'),size_bytes FROM core.attachments WHERE state='ready' UNION ALL SELECT d.storage_key,encode(d.sha256,'hex'),d.size_bytes FROM core.attachment_derivatives d JOIN core.attachments a ON a.id=d.attachment_id WHERE a.state='ready' ORDER BY storage_key`
+
 // RunBackup creates a local snapshot and optionally copies it offsite.
 func RunBackup(ctx context.Context, pool *pgxpool.Pool, cfg config.Config, options BackupOptions) (BackupResult, error) {
 	ctx = audit.WithRequest(audit.WithSystem(ctx, "operator"), value.UUID())
@@ -249,9 +254,13 @@ func RunBackup(ctx context.Context, pool *pgxpool.Pool, cfg config.Config, optio
 		return BackupResult{}, err
 	}
 	// Every archive is either referenced by a run or removed here, including
-	// one whose earlier registration or check failed.
+	// one whose earlier registration or check failed. A Restic backup does not
+	// write archives, so a cleanup failure is reported without blocking it.
 	if err = reclaimArchives(ctx, pool, local, time.Now()); err != nil {
-		return BackupResult{}, err
+		if portableBackups(local) {
+			return BackupResult{}, err
+		}
+		slog.Default().Warn("could not reclaim unreferenced backup files", "code", ResultCode(err))
 	}
 	reportBackupPhase(ctx, pool, options.JobID, "saving_local")
 	snapshot, schemas, err := backupLocked(ctx, pool, cfg, local, settings, options.JobID, true)
@@ -329,7 +338,7 @@ func backupLocked(ctx context.Context, pool *pgxpool.Pool, cfg config.Config, lo
 	if _, err = tx.Exec(ctx, "SELECT id FROM core.households FOR UPDATE"); err != nil {
 		return "", nil, err
 	}
-	rows, err := tx.Query(ctx, "SELECT storage_key,encode(sha256,'hex'),size_bytes FROM core.attachments WHERE state='ready' UNION ALL SELECT d.storage_key,encode(d.sha256,'hex'),d.size_bytes FROM core.attachment_derivatives d JOIN core.attachments a ON a.id=d.attachment_id WHERE a.state='ready' ORDER BY storage_key")
+	rows, err := tx.Query(ctx, attachmentInventoryQuery)
 	if err != nil {
 		return "", nil, err
 	}

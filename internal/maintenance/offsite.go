@@ -198,7 +198,19 @@ func TestOffsite(ctx context.Context, pool *pgxpool.Pool) error {
 		return testS3Bucket(ctx, connection)
 	}
 	if portableBackups(local) && filepath.IsAbs(offsite.Repository) {
-		return probeArchiveDirectory(backupplan.ArchiveDirectory(offsite.Repository))
+		if err = probeArchiveDirectory(backupplan.ArchiveDirectory(offsite.Repository)); err != nil {
+			return err
+		}
+		// The next offsite-only copy takes the newest local snapshot. When that
+		// is still a Restic snapshot, the copy uses the Restic repository, so the
+		// test checks it as well.
+		snapshot, _, latestErr := latestCopyableSnapshot(ctx, pool, local, *offsite)
+		if errors.Is(latestErr, errNoLocalSnapshot) || latestErr == nil && backupplan.ArchiveName(snapshot) != "" {
+			return nil
+		}
+		if latestErr != nil {
+			return latestErr
+		}
 	}
 	unlock, err := lockRepository(ctx, pool)
 	if err != nil {
@@ -212,16 +224,25 @@ func TestOffsite(ctx context.Context, pool *pgxpool.Pool) error {
 // copyLatestOffsite copies the newest complete local snapshot that is not
 // offsite yet. It is used when the offsite schedule is due between local runs.
 func copyLatestOffsite(ctx context.Context, pool *pgxpool.Pool, local, offsite config.BackupTarget, settings backupplan.Settings, jobID string) (string, error) {
-	var snapshot, schemas string
-	err := pool.QueryRow(ctx, `SELECT snapshot_reference,schema_manifest::text FROM core.backup_runs
- WHERE repository_kind='local' AND repository_reference=$1 AND state='complete' ORDER BY started_at DESC LIMIT 1`, local.Label()).Scan(&snapshot, &schemas)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return "", errNoLocalSnapshot
-	}
+	snapshot, schemas, err := latestCopyableSnapshot(ctx, pool, local, offsite)
 	if err != nil {
 		return "", err
 	}
-	return copyOffsiteLocked(ctx, pool, local, offsite, settings, snapshot, []byte(schemas), jobID)
+	return copyOffsiteLocked(ctx, pool, local, offsite, settings, snapshot, schemas, jobID)
+}
+
+// latestCopyableSnapshot is the newest complete local snapshot this offsite
+// target can store. A restic REST target only stores Restic snapshots.
+func latestCopyableSnapshot(ctx context.Context, pool *pgxpool.Pool, local, offsite config.BackupTarget) (string, []byte, error) {
+	var snapshot, schemas string
+	err := pool.QueryRow(ctx, `SELECT snapshot_reference,schema_manifest::text FROM core.backup_runs
+ WHERE repository_kind='local' AND repository_reference=$1 AND state='complete' AND snapshot_reference IS NOT NULL
+ AND NOT ($2 AND snapshot_reference ~ $3) ORDER BY started_at DESC LIMIT 1`,
+		local.Label(), strings.HasPrefix(offsite.Repository, "rest:"), backupplan.ArchiveReferencePattern).Scan(&snapshot, &schemas)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", nil, errNoLocalSnapshot
+	}
+	return snapshot, []byte(schemas), err
 }
 
 var errNoLocalSnapshot = errors.New("no completed local snapshot to copy")

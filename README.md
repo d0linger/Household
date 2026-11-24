@@ -252,8 +252,10 @@ service claims each request and checks it again with its own privileges.
   offsite target, new backups are Restic snapshots instead; they are restored in
   the app or with `restore-check`, not downloaded as files.
 - **Download and recover:** download a local file, or verify an external file to
-  prepare its download. Use **Upload backup file** to run a trial restore and
-  register the verified file before confirming a live restoration.
+  prepare its download. Upload only backup files from installations you trust.
+  Use **Upload backup file** to run a trial restore and register the verified file
+  before confirming a live restoration. Restoring a dump runs its SQL, and a
+  confirmed live restoration keeps the objects it creates.
 - **Schedule and retention:** daily at 03:00 in the household zone by default, with
   7 daily / 4 weekly / 12 monthly local snapshots and a weekly automatic restore
   test.

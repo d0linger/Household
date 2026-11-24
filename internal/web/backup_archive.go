@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"household/internal/audit"
@@ -147,7 +148,8 @@ func backupTooLarge(w http.ResponseWriter, r *http.Request) {
 }
 
 func localArchiveDirectory() string {
-	return backupplan.ArchiveDirectory(os.Getenv("RESTIC_REPOSITORY"))
+	// The worker trims the configured repository the same way.
+	return backupplan.ArchiveDirectory(strings.TrimSpace(os.Getenv("RESTIC_REPOSITORY")))
 }
 
 // openBackupDownload opens the file for a snapshot of the repository with this

@@ -2330,3 +2330,20 @@ CodeRabbit reviewed `d76dfc6` with 13 findings. Each was checked against the cod
   - The integration tests matching `Backup|Archive|Offsite|Retention|Probe|Portable` in `internal/web` and `internal/maintenance` all passed (16 web tests). In a first run, `TestBackupLockCancellationContract` failed once under load. It passed alone and in the full repeat; it ends before any archive code runs.
   - `scripts/test-backup-operations.sh` passed with 0 failures, including the new scheduled-probe contention step. Under Git Bash it needs `MSYS_NO_PATHCONV=1` and a Windows-readable `TMPDIR`.
   - Not run locally: the Garage S3 fixture and the full integration suite, which CI runs.
+
+## Portable backup files: CodeRabbit round 2 (PR #34)
+
+At `9388e61` the `WorkflowAndSecrets` job failed: two new worker diagnostics had no localization review. Both, and two more added in this round, are now documented as internal backup-worker diagnostics. CodeRabbit raised nine findings, all fixed:
+
+- [x] An archive import requires that the restored attachment and derivative rows equal the manifest by key, hash and size. It uses the writer's query (`attachmentInventoryQuery`).
+- [x] Filesystem errors of the worker's volumes keep their own result code instead of `archive_invalid`.
+- [x] An offsite copy is recorded as `running` before the upload and completed after the check. Failed or stale attempts are removed after the next verified copy. Before the copy, only the pending deletion of the snapshot being copied is finished, so a destination that refuses deletes no longer blocks new copies.
+- [x] In Restic mode, a failure to reclaim archive files is logged and no longer blocks the backup.
+- [x] An offsite-only copy to a restic REST target selects the newest local Restic snapshot. The connection test for a mounted target also checks the Restic repository when the next copy will use it.
+- [x] The web process trims `RESTIC_REPOSITORY` like the worker.
+- [x] The README and the upload step in the operations guide require trusted backup sources.
+- [x] Validation of round 2:
+  - `go vet`, the unit tests of `maintenance`, `backupplan`, `web` and `config`, and `scripts/localization.test.cjs` (11/11) passed. golangci-lint v2.15.0 reported 0 issues.
+  - The backup integration tests (`Backup|Archive|Offsite|Retention|Probe|Portable` in `internal/web` and `internal/maintenance`) passed.
+  - `scripts/test-backup-operations.sh` passed with 0 failures and removed its containers, volumes and image.
+  - Not run locally: the Garage S3 fixture and the full integration suite.
