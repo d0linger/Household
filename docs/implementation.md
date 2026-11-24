@@ -2310,3 +2310,23 @@ At `cb8d372` the PR Fuel job passed 185 checks and all 32 scans, while the push 
 - [x] Compared isolated Edge captures before and after the change. Verified eight settings screens at 320, 390, 1024 and 1440 pixels, keyboard focus and Escape in the navigation tray and dialogs, and 27 Axe scans without violations in the selected WCAG tag set. Saved a backup schedule, created a test user after reauthentication and verified the English dialog. Captures and height measurements are in the ignored `outputs/compact-settings` directory.
 - [x] Passed 103 targeted JavaScript tests covering localization, themes, security, notifications and shopping settings. The web, configuration, maintenance and backup-plan Go package tests passed.
 - [x] Recreated the local web container on port 8100. Readiness returned HTTP 200 for the new image, all three services reported healthy, and the five served stylesheet hashes matched. Verified the database container ID and mounted volumes, then removed the isolated browser fixture.
+
+## Portable backup files: CodeRabbit round 1 (PR #34)
+
+CodeRabbit reviewed `d76dfc6` with 13 findings. Each was checked against the code and fixed:
+
+- [x] Archive headers leave the tar format to `archive/tar`, so a database dump of 8 GiB or more is written with PAX instead of failing on USTAR. A unit test writes a 9 GiB header.
+- [x] The writer applies the reader's entry rules before publication. These are the shared 100,000-attachment limit (`archiveEntryLimit` = attachments plus the three fixed files) and the 16 MiB metadata limit. Unit tests cover an oversized manifest and one attachment over the limit, and check that no file is published.
+- [x] Every backup first reclaims local archive files that no `complete` or `retention_pending` run references, and partial files older than one hour. This covers a publication whose commit, check or import registration failed. The worker holds the repository lock. S3 objects are not enumerated: offsite files are only written after the local file exists and are removed by retention.
+- [x] An offsite copy first finishes any interrupted retention for its target: files removed, rows expired. The insert is guarded against a second `complete` or `retention_pending` row for the same snapshot. A recorded copy whose file is confirmed missing (`archive_missing`) is sent and checked again without a new run. A missing or unmounted directory is now reported as `repository_unreachable` rather than as a missing archive.
+- [x] Archive retention keys each point by the snapshot's local capture time: the local run start, or for an import the archive's capture date. The time an offsite copy finished is no longer used.
+- [x] A prepared offsite download is named after the snapshot and a hash of the repository label (`backupplan.DownloadName`). The download handler and the overview look it up for the current label only, and the exchange cleanup recognizes the new name.
+- [x] The offsite connection test for a mounted path writes and removes a probe file in the archive directory, so a read-only mount fails the test.
+- [x] The unapproved-entry test asserts the exact rejection. Its symlink has a valid upload name, so only the type check can reject it.
+- [x] The README states that `.tar.age` files are the default and that `HOUSEHOLD_BACKUP_FORMAT=restic` and restic REST targets write Restic snapshots.
+- [x] `scripts/test-backup-operations.sh` holds the repository lock for 75 seconds while it enables the scheduled restore test. It requires that the test started during the hold and completed after the release.
+- [x] Validation of round 1:
+  - `go vet` and the unit tests of `maintenance`, `backupplan`, `web` and `config` passed. golangci-lint v2.15.0 (offline) reported 0 issues.
+  - The integration tests matching `Backup|Archive|Offsite|Retention|Probe|Portable` in `internal/web` and `internal/maintenance` all passed (16 web tests). In a first run, `TestBackupLockCancellationContract` failed once under load. It passed alone and in the full repeat; it ends before any archive code runs.
+  - `scripts/test-backup-operations.sh` passed with 0 failures, including the new scheduled-probe contention step. Under Git Bash it needs `MSYS_NO_PATHCONV=1` and a Windows-readable `TMPDIR`.
+  - Not run locally: the Garage S3 fixture and the full integration suite, which CI runs.

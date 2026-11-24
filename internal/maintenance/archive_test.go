@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"io"
 	"os"
 	"path/filepath"
 	"slices"
@@ -79,8 +80,10 @@ func TestPortableArchiveRoundTripAndAuthentication(t *testing.T) {
 }
 
 func TestArchiveExtractRejectsUnapprovedEntries(t *testing.T) {
+	// The symlink has a valid upload name, so only the type check can reject it.
 	for _, header := range []tar.Header{
-		{Name: "../escape", Typeflag: tar.TypeReg}, {Name: "uploads/link", Typeflag: tar.TypeSymlink, Linkname: "manifest.json"},
+		{Name: "../escape", Typeflag: tar.TypeReg},
+		{Name: "uploads/2b0979e6-0c00-43ca-9893-ae8c7cf2633c", Typeflag: tar.TypeSymlink, Linkname: "manifest.json"},
 	} {
 		var data bytes.Buffer
 		writer := tar.NewWriter(&data)
@@ -90,9 +93,53 @@ func TestArchiveExtractRejectsUnapprovedEntries(t *testing.T) {
 		if err := writer.Close(); err != nil {
 			t.Fatal(err)
 		}
-		if err := extractArchivePlain(context.Background(), &data, t.TempDir()); err == nil {
-			t.Fatalf("accepted unapproved entry %q", header.Name)
+		err := extractArchivePlain(context.Background(), &data, t.TempDir())
+		if err == nil || err.Error() != "unexpected entry in encrypted backup" {
+			t.Fatalf("entry %q: got %v, want the unapproved-entry rejection", header.Name, err)
 		}
+	}
+}
+
+func TestArchiveHeaderAllowsEntriesOverEightGiB(t *testing.T) {
+	writer := tar.NewWriter(io.Discard)
+	if err := writer.WriteHeader(archiveHeader("database.dump", 9<<30)); err != nil {
+		t.Fatalf("a 9 GiB dump needs a header: %v", err)
+	}
+}
+
+func TestArchiveWriterAppliesReaderEntryRules(t *testing.T) {
+	stage := t.TempDir()
+	if err := os.WriteFile(filepath.Join(stage, "manifest.json"), make([]byte, archiveMetadataLimit+1), 0600); err != nil {
+		t.Fatal(err)
+	}
+	root, err := os.OpenRoot(stage)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = root.Close() }()
+	if err = addArchiveFile(context.Background(), tar.NewWriter(io.Discard), root, "manifest.json", "manifest.json", nil); err == nil {
+		t.Fatal("writer accepted a manifest the reader rejects")
+	}
+	small := t.TempDir()
+	for _, name := range []string{"manifest.json", "database.dump", "security-keys.json"} {
+		if err = os.WriteFile(filepath.Join(small, name), []byte("synthetic"), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Setenv("RESTIC_REPOSITORY", "/data/backups")
+	t.Setenv("RESTIC_PASSWORD", "test backup file encryption key")
+	target, err := config.LocalBackupTarget()
+	if err != nil {
+		t.Fatal(err)
+	}
+	target.Repository = t.TempDir()
+	files := make([]File, archiveAttachmentLimit+1)
+	_, err = writePortable(context.Background(), target, backupplan.ArchiveID(time.Now()), small, small, files)
+	if err == nil || !strings.Contains(err.Error(), "attachments") {
+		t.Fatalf("writer accepted more attachments than the reader extracts: %v", err)
+	}
+	if entries, _ := os.ReadDir(backupplan.ArchiveDirectory(target.Repository)); len(entries) != 0 {
+		t.Fatalf("a rejected archive left files: %v", entries)
 	}
 }
 

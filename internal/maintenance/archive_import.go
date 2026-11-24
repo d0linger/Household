@@ -7,7 +7,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"household/internal/audit"
@@ -141,7 +140,7 @@ func (s *Service) prepareArchiveDownload(ctx context.Context, target config.Back
 		return err
 	}
 	defer func() { _ = source.Close() }()
-	_, err = writeArchiveFile(backupplan.ExchangeDirectory(), backupplan.ExchangeName("download", snapshot), func(f *os.File) error {
+	_, err = writeArchiveFile(backupplan.ExchangeDirectory(), backupplan.DownloadName(snapshot, target.Label()), func(f *os.File) error {
 		secured := &archiveWriter{Writer: f, remaining: backupplan.ArchiveLimit}
 		return CheckRestore(ctx, s.Config.DatabaseURL, s.Superuser, func(targetURL string) error {
 			result, verifyErr := restoreWithPayload(ctx, targetURL, false, func(dir string) error {
@@ -171,8 +170,7 @@ func cleanArchiveExchange(now time.Time) {
 		if entry.IsDir() {
 			continue
 		}
-		if kind, id, ok := strings.Cut(entry.Name(), "-"); !strings.HasPrefix(entry.Name(), ".partial-") &&
-			(!ok || backupplan.ExchangeName(kind, id) == "") {
+		if !backupplan.ManagedExchangeName(entry.Name()) {
 			continue
 		}
 		if info, statErr := entry.Info(); statErr == nil && now.Sub(info.ModTime()) > 6*time.Hour {

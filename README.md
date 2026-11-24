@@ -246,16 +246,19 @@ history of requested and scheduled work. Buttons there *request* work (back up n
 test the offsite connection, verify or restore a restore point); the `backup`
 service claims each request and checks it again with its own privileges.
 
-- **What a backup file holds:** a PostgreSQL dump, uploaded files, a schema and
-  file-hash manifest, and a security-key bundle in one encrypted dated `.tar.age` file.
+- **What a backup file holds:** by default, a PostgreSQL dump, uploaded files, a
+  schema and file-hash manifest, and a security-key bundle in one encrypted dated
+  `.tar.age` file. With `HOUSEHOLD_BACKUP_FORMAT=restic`, and for a restic REST
+  offsite target, new backups are Restic snapshots instead; they are restored in
+  the app or with `restore-check`, not downloaded as files.
 - **Download and recover:** download a local file, or verify an external file to
   prepare its download. Use **Upload backup file** to run a trial restore and
   register the verified file before confirming a live restoration.
 - **Schedule and retention:** daily at 03:00 in the household zone by default, with
   7 daily / 4 weekly / 12 monthly local snapshots and a weekly automatic restore
   test.
-- **Offsite:** S3-compatible storage (including Garage) and mounted paths store
-  a dated encrypted file per copy. The backup service verifies the new file.
+- **Offsite:** by default, S3-compatible storage (including Garage) and mounted
+  paths store a dated encrypted file per copy. The backup service verifies the new file.
   Existing Restic snapshots remain restorable, and restic REST uses the Restic
   format. See [backup operations](docs/operations.md#portable-backup-files) for
   the Portainer volume change, passphrases and recovery procedure.

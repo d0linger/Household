@@ -17,6 +17,7 @@ import (
 	"household/internal/store"
 	"household/internal/value"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
@@ -149,15 +150,20 @@ func localArchiveDirectory() string {
 	return backupplan.ArchiveDirectory(os.Getenv("RESTIC_REPOSITORY"))
 }
 
-func openBackupDownload(target, snapshot string) (*os.File, error) {
+// openBackupDownload opens the file for a snapshot of the repository with this
+// label. An offsite download is only served when it was prepared from that label.
+func openBackupDownload(target, snapshot, label string) (*os.File, error) {
 	name := backupplan.ArchiveName(snapshot)
 	if name == "" {
 		return nil, os.ErrNotExist
 	}
 	dir := localArchiveDirectory()
 	if target == "offsite" {
-		name = backupplan.ExchangeName("download", snapshot)
+		name = backupplan.DownloadName(snapshot, label)
 		dir = backupplan.ExchangeDirectory()
+		if name == "" {
+			return nil, os.ErrNotExist
+		}
 	}
 	root, err := os.OpenRoot(dir)
 	if err != nil {
@@ -167,8 +173,8 @@ func openBackupDownload(target, snapshot string) (*os.File, error) {
 	return root.Open(name)
 }
 
-func archiveDownloadReady(target, snapshot string) bool {
-	f, err := openBackupDownload(target, snapshot)
+func archiveDownloadReady(target, snapshot, label string) bool {
+	f, err := openBackupDownload(target, snapshot, label)
 	if err != nil {
 		return false
 	}
@@ -188,20 +194,19 @@ func (s *Server) downloadBackupArchive(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, store.ErrNotFound)
 		return
 	}
-	var known bool
-	err := s.Pool.QueryRow(r.Context(), `SELECT EXISTS(
- SELECT 1 FROM core.backup_runs r JOIN core.backup_settings s
+	var label string
+	err := s.Pool.QueryRow(r.Context(), `SELECT r.repository_reference FROM core.backup_runs r JOIN core.backup_settings s
  ON r.repository_reference=CASE WHEN $1='local' THEN s.local_label ELSE s.offsite_label END
- WHERE r.state='complete' AND r.repository_kind=$1 AND r.snapshot_reference=$2)`, target, snapshot).Scan(&known)
+ WHERE r.state='complete' AND r.repository_kind=$1 AND r.snapshot_reference=$2 LIMIT 1`, target, snapshot).Scan(&label)
+	if errors.Is(err, pgx.ErrNoRows) {
+		s.fail(w, r, store.ErrNotFound)
+		return
+	}
 	if err != nil {
 		s.fail(w, r, err)
 		return
 	}
-	if !known {
-		s.fail(w, r, store.ErrNotFound)
-		return
-	}
-	f, err := openBackupDownload(target, snapshot)
+	f, err := openBackupDownload(target, snapshot, label)
 	if err != nil {
 		s.fail(w, r, store.ErrNotFound)
 		return

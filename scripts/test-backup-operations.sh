@@ -121,6 +121,30 @@ docker exec "$backup" household restore-check --offsite latest || fail "offsite 
 [[ "$(psql "SELECT count(*) FROM core.backup_runs WHERE verified_at IS NOT NULL")" -eq 2 ]] || fail "both snapshots not verified"
 docker exec "$backup" household backup-health >/dev/null || fail "backup-health reports unhealthy"
 
+# The scheduled restore test is a separate entry point: it must wait for the
+# repository lock instead of failing on PostgreSQL's statement timeout.
+log "scheduled restore test waits for the repository lock"
+lock_granted() { [[ "$(psql "SELECT count(*) FROM pg_locks WHERE locktype='advisory' AND objid=721607137 AND granted")" -ge 1 ]]; }
+for _ in $(seq 1 30); do lock_granted || break; sleep 1; done
+lock_granted && fail "the previous lock contender is still running"
+docker exec -d "$db" psql -U postgres -d household -v ON_ERROR_STOP=1 -c   "SET statement_timeout=0; SELECT pg_advisory_lock(721607137); SELECT pg_sleep(75);" || fail "could not launch lock contender"
+for _ in $(seq 1 15); do lock_granted && break; sleep 1; done
+lock_granted || fail "probe contention did not start"
+lock_start="$(psql "SELECT now()")"
+psql "UPDATE core.backup_settings SET probe_interval_days=1,probe_target='local'"
+probe_state=""
+for _ in $(seq 1 80); do
+  probe_state="$(psql "SELECT state FROM core.backup_jobs WHERE kind='verify' AND target='local' AND created_at >= '$lock_start' ORDER BY created_at DESC LIMIT 1")"
+  [[ "$probe_state" == "complete" || "$probe_state" == "failed" ]] && break
+  sleep 3
+done
+[[ "$probe_state" == "complete" ]] || fail "scheduled restore test did not complete (state: ${probe_state:-none})"
+# It started while the contender held the lock and finished after its release.
+[[ "$(psql "SELECT count(*) FROM core.backup_jobs WHERE kind='verify' AND target='local' AND created_at >= '$lock_start'
+  AND started_at < '$lock_start'::timestamptz + interval '70 seconds' AND finished_at >= '$lock_start'::timestamptz + interval '70 seconds'")" -eq 1 ]] ||
+  fail "scheduled restore test did not wait for the repository lock"
+psql "UPDATE core.backup_settings SET probe_interval_days=0"
+
 psql "UPDATE core.households SET name='After backup'"
 # The safety backup taken by the live restore must not apply retention: with
 # keep-daily it would forget today's earlier local snapshot.

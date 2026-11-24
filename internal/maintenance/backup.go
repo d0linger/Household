@@ -248,6 +248,11 @@ func RunBackup(ctx context.Context, pool *pgxpool.Pool, cfg config.Config, optio
 	if err != nil {
 		return BackupResult{}, err
 	}
+	// Every archive is either referenced by a run or removed here, including
+	// one whose earlier registration or check failed.
+	if err = reclaimArchives(ctx, pool, local, time.Now()); err != nil {
+		return BackupResult{}, err
+	}
 	reportBackupPhase(ctx, pool, options.JobID, "saving_local")
 	snapshot, schemas, err := backupLocked(ctx, pool, cfg, local, settings, options.JobID, true)
 	result := BackupResult{Snapshot: snapshot}

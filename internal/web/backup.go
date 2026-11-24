@@ -138,7 +138,7 @@ func (s *Server) loadBackupOverview(ctx context.Context) (backupOverview, error)
 	for _, schema := range database.Schemas {
 		current[schema] = database.ExpectedVersion(schema)
 	}
-	rows, err := s.Pool.Query(ctx, `SELECT repository_kind,snapshot_reference,started_at,application_version,verified_at,total_bytes,schema_manifest FROM core.backup_runs
+	rows, err := s.Pool.Query(ctx, `SELECT repository_kind,repository_reference,snapshot_reference,started_at,application_version,verified_at,total_bytes,schema_manifest FROM core.backup_runs
  WHERE state='complete' AND snapshot_reference IS NOT NULL ORDER BY started_at DESC LIMIT 120`)
 	if err != nil {
 		return o, err
@@ -146,7 +146,8 @@ func (s *Server) loadBackupOverview(ctx context.Context) (backupOverview, error)
 	for rows.Next() {
 		var item backupSnapshot
 		var schemas map[string]int
-		if err = rows.Scan(&item.Kind, &item.Snapshot, &item.Started, &item.Version, &item.Verified, &item.TotalBytes, &schemas); err != nil {
+		var repository string
+		if err = rows.Scan(&item.Kind, &repository, &item.Snapshot, &item.Started, &item.Version, &item.Verified, &item.TotalBytes, &schemas); err != nil {
 			rows.Close()
 			return o, err
 		}
@@ -156,8 +157,13 @@ func (s *Server) loadBackupOverview(ctx context.Context) (backupOverview, error)
 		item.Compatible = backupplan.SchemaCompatible(schemas, current)
 		item.Confirmation = backupplan.RestoreConfirmation(item.Snapshot)
 		item.Archive = backupplan.ArchiveName(item.Snapshot)
-		if item.Archive != "" {
-			item.DownloadReady = archiveDownloadReady(item.Kind, item.Snapshot)
+		// Offer a download only for the repository the download endpoint serves.
+		current := o.LocalLabel
+		if item.Kind == "offsite" {
+			current = o.OffsiteLabel
+		}
+		if item.Archive != "" && repository == current {
+			item.DownloadReady = archiveDownloadReady(item.Kind, item.Snapshot, repository)
 		}
 		if item.Kind == "offsite" {
 			o.OffsiteSnapshots = append(o.OffsiteSnapshots, item)

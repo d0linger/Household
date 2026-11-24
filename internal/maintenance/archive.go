@@ -23,6 +23,10 @@ import (
 const (
 	archiveWorkFactor    = 17
 	archiveMetadataLimit = 16 << 20
+	// archiveAttachmentLimit bounds the uploads in one archive. The writer
+	// and the reader share it with the three fixed payload files.
+	archiveAttachmentLimit = 100000
+	archiveEntryLimit      = archiveAttachmentLimit + 3
 )
 
 type archiveReader struct {
@@ -141,6 +145,9 @@ func writePortable(ctx context.Context, target config.BackupTarget, id, stage, s
 				return err
 			}
 		}
+		if len(files) > archiveAttachmentLimit {
+			return fmt.Errorf("backup has %d attachments; an encrypted backup file holds at most %d", len(files), archiveAttachmentLimit)
+		}
 		if len(files) > 0 {
 			uploads, openErr := os.OpenRoot(sourceUploads)
 			if openErr != nil {
@@ -170,10 +177,13 @@ func addArchiveFile(ctx context.Context, dst *tar.Writer, root *os.Root, key, na
 	if err != nil {
 		return err
 	}
-	if !info.Mode().IsRegular() || info.Size() > backupplan.ArchiveLimit || expected != nil && expected.Size != info.Size() {
+	// The writer applies the reader's entry rules, so every published archive
+	// can be restored.
+	if !info.Mode().IsRegular() || info.Size() > backupplan.ArchiveLimit || !allowedArchiveEntry(name, info.Size()) ||
+		expected != nil && expected.Size != info.Size() {
 		return errors.New("unexpected backup file size or type")
 	}
-	if err = dst.WriteHeader(&tar.Header{Name: name, Mode: 0600, Size: info.Size(), Typeflag: tar.TypeReg, Format: tar.FormatUSTAR}); err != nil {
+	if err = dst.WriteHeader(archiveHeader(name, info.Size())); err != nil {
 		return err
 	}
 	if expected == nil {
@@ -189,6 +199,12 @@ func addArchiveFile(ctx context.Context, dst *tar.Writer, root *os.Root, key, na
 		return errors.New("attachment changed while backing up")
 	}
 	return nil
+}
+
+// archiveHeader leaves the tar format to archive/tar: USTAR cannot record
+// entries of 8 GiB or more, so a large database dump needs PAX.
+func archiveHeader(name string, size int64) *tar.Header {
+	return &tar.Header{Name: name, Mode: 0600, Size: size, Typeflag: tar.TypeReg}
 }
 
 // extractArchive authenticates the complete stream before pg_restore can run.
@@ -220,7 +236,7 @@ func extractArchivePlain(ctx context.Context, plaintext io.Reader, directory str
 		if nextErr != nil {
 			return nextErr
 		}
-		if entries >= 100003 || header.Typeflag != tar.TypeReg ||
+		if entries >= archiveEntryLimit || header.Typeflag != tar.TypeReg ||
 			header.Size < 0 || header.Size > remaining || !allowedArchiveEntry(header.Name, header.Size) {
 			return errors.New("unexpected entry in encrypted backup")
 		}

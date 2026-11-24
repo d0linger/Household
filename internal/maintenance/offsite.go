@@ -198,11 +198,7 @@ func TestOffsite(ctx context.Context, pool *pgxpool.Pool) error {
 		return testS3Bucket(ctx, connection)
 	}
 	if portableBackups(local) && filepath.IsAbs(offsite.Repository) {
-		root, err := os.OpenRoot(offsite.Repository)
-		if err != nil {
-			return archiveStorageError(err)
-		}
-		return root.Close()
+		return probeArchiveDirectory(backupplan.ArchiveDirectory(offsite.Repository))
 	}
 	unlock, err := lockRepository(ctx, pool)
 	if err != nil {
@@ -229,3 +225,24 @@ func copyLatestOffsite(ctx context.Context, pool *pgxpool.Pool, local, offsite c
 }
 
 var errNoLocalSnapshot = errors.New("no completed local snapshot to copy")
+
+// probeArchiveDirectory proves that the worker can create files where archives
+// are published. A read-only mount passes an open, but not this probe. The
+// probe uses the partial-file prefix and records no backup run.
+func probeArchiveDirectory(directory string) error {
+	unreachable := func(err error) error {
+		return &ToolError{Program: "archive", Code: "repository_unreachable", err: err}
+	}
+	if err := os.MkdirAll(directory, 0700); err != nil { // #nosec G703 -- operator-approved storage location
+		return unreachable(err)
+	}
+	probe, err := os.CreateTemp(directory, ".partial-probe-")
+	if err != nil {
+		return unreachable(err)
+	}
+	_, err = probe.WriteString("household write probe")
+	if err = errors.Join(err, probe.Close(), os.Remove(probe.Name())); err != nil {
+		return unreachable(err)
+	}
+	return nil
+}

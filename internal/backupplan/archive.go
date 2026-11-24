@@ -2,9 +2,11 @@ package backupplan
 
 import (
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -50,10 +52,58 @@ func ArchiveDirectory(repository string) string {
 	return filepath.Join(repository, "portable")
 }
 
-// ExchangeName names an import or download without trusting a browser filename.
+// ExchangeName names an uploaded import without trusting a browser filename.
 func ExchangeName(kind, id string) string {
-	if (kind != "import" && kind != "download") || ArchiveName(id) == "" {
+	if kind != "import" || ArchiveName(id) == "" {
 		return ""
 	}
 	return kind + "-" + id
+}
+
+// DownloadName names a prepared offsite download. It includes the repository
+// label, so a file prepared from one offsite target is never served for another.
+func DownloadName(id, label string) string {
+	if ArchiveName(id) == "" || label == "" {
+		return ""
+	}
+	sum := sha256.Sum256([]byte(label))
+	return "download-" + id + "-" + hex.EncodeToString(sum[:8])
+}
+
+// ManagedExchangeName reports whether the worker created or accepts this
+// exchange filename, so stale copies can be removed.
+func ManagedExchangeName(name string) bool {
+	if strings.HasPrefix(name, ".partial-") {
+		return true
+	}
+	if id, ok := strings.CutPrefix(name, "import-"); ok {
+		return ExchangeName("import", id) != ""
+	}
+	rest, ok := strings.CutPrefix(name, "download-")
+	if !ok || len(rest) != 64+1+16 || rest[64] != '-' {
+		return false
+	}
+	_, err := hex.DecodeString(rest[65:])
+	return ArchiveName(rest[:64]) != "" && err == nil && strings.ToLower(rest[65:]) == rest[65:]
+}
+
+// ArchiveIDFromName reverses ArchiveName for a file in an archive directory.
+func ArchiveIDFromName(name string) string {
+	rest, ok := strings.CutPrefix(name, "household-")
+	if !ok {
+		return ""
+	}
+	rest, ok = strings.CutSuffix(rest, ".tar.age")
+	if !ok || len(rest) != len("2006-01-02T15-04-05Z")+1+36 || rest[20] != '-' {
+		return ""
+	}
+	at, err := time.Parse("2006-01-02T15-04-05Z", rest[:20])
+	if err != nil {
+		return ""
+	}
+	id := rest[21:] + archiveMarker + at.Format(archiveStamp)
+	if ArchiveName(id) != name {
+		return ""
+	}
+	return id
 }
