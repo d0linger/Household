@@ -266,7 +266,9 @@ func (s *Service) failStale(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	_, err = s.Pool().Exec(ctx, "DELETE FROM core.backup_jobs WHERE finished_at<now()-interval '180 days'")
+	// A job that owns a restorable run stays: it records the run's provenance.
+	_, err = s.Pool().Exec(ctx, `DELETE FROM core.backup_jobs j WHERE j.finished_at<now()-interval '180 days'
+ AND NOT EXISTS(SELECT 1 FROM core.backup_runs r WHERE r.job_id=j.id AND r.state IN('complete','retention_pending'))`)
 	return err
 }
 
@@ -627,7 +629,10 @@ func (s *Service) scheduledProbe(ctx context.Context, settings backupplan.Settin
 	}
 	var lastProbe *time.Time
 	// Only checks that actually started count; a cancelled request never ran.
-	if err = pool.QueryRow(ctx, "SELECT max(started_at) FROM core.backup_jobs WHERE kind='verify' AND target=$1 AND started_at IS NOT NULL", settings.ProbeTarget).Scan(&lastProbe); err != nil {
+	// An archive upload is also a verify job; it does not test an existing
+	// restore point, so it does not delay the scheduled test.
+	if err = pool.QueryRow(ctx, `SELECT max(j.started_at) FROM core.backup_jobs j WHERE j.kind='verify' AND j.target=$1 AND j.started_at IS NOT NULL
+ AND EXISTS(SELECT 1 FROM core.backup_runs r WHERE r.snapshot_reference=j.snapshot_reference AND r.job_id IS DISTINCT FROM j.id)`, settings.ProbeTarget).Scan(&lastProbe); err != nil {
 		return err
 	}
 	if lastProbe != nil && now.Sub(*lastProbe) < time.Duration(settings.ProbeIntervalDays)*24*time.Hour {

@@ -2362,3 +2362,20 @@ At `99a804f` all 34 checks passed. The first review request was refused by CodeR
   - The integration tests matching `Backup|Archive|Offsite|Retention|Probe|Portable|Health|Schedul` in `internal/web`, `internal/maintenance` and `internal/backupplan` passed.
   - `scripts/test-backup-operations.sh` passed with 0 failures and cleaned up after itself.
   - Not run locally: the Garage S3 fixture and the full integration suite.
+
+## Portable backup files: CodeRabbit round 4 (PR #34)
+
+The first request for `54b0d72` was refused by CodeRabbit's review quota and was posted again. CodeRabbit raised six findings, all fixed without a schema change:
+
+- [x] Import provenance is per snapshot: `backupplan.ImportedSnapshot` and `ImportedRun` match a snapshot whose local run belongs to a `verify` job, and offsite copies inherit it.
+  - The module purge gate and the newest-point selection of scheduled offsite copies exclude imported points.
+  - The 180-day job cleanup keeps jobs that own a restorable run, so the provenance lasts as long as the point. `backup_runs.job_id` is `ON DELETE SET NULL`.
+- [x] Offsite attempt cleanup and archive retention continue past a delete that fails, keep that item pending and return the errors together.
+- [x] New archive directories are made durable: the parent of each directory created for publication is synced.
+- [x] Local archive retention protects the archive the current run wrote, so a successful backup never returns an expired point.
+- [x] The scheduled restore-test cooldown counts only verify jobs that tested an existing point, not archive uploads.
+- [x] Validation of round 4:
+  - `go vet`, unit tests (including the new retention-protection test), `scripts/localization.test.cjs` (11/11) and golangci-lint (0 issues) passed.
+  - The integration tests matching `Backup|Archive|Offsite|Retention|Probe|Portable|Health|Schedul|Purge` in `internal/web`, `internal/maintenance`, `internal/backupplan` and `internal/store` passed.
+  - `scripts/test-backup-operations.sh` passed with 0 failures and cleaned up.
+  - Not run locally: the Garage S3 fixture and the full integration suite.

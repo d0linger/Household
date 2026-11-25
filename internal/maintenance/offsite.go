@@ -243,9 +243,11 @@ func copyLatestOffsite(ctx context.Context, pool *pgxpool.Pool, local, offsite c
 // target can store. A restic REST target only stores Restic snapshots.
 func latestCopyableSnapshot(ctx context.Context, pool *pgxpool.Pool, local, offsite config.BackupTarget) (string, []byte, error) {
 	var snapshot, schemas string
-	err := pool.QueryRow(ctx, `SELECT snapshot_reference,schema_manifest::text FROM core.backup_runs
- WHERE repository_kind='local' AND repository_reference=$1 AND state='complete' AND snapshot_reference IS NOT NULL
- AND NOT ($2 AND snapshot_reference ~ $3) ORDER BY started_at DESC LIMIT 1`,
+	// Imported points stay restorable but are never copied as this
+	// installation's newest backup.
+	err := pool.QueryRow(ctx, `SELECT r.snapshot_reference,r.schema_manifest::text FROM core.backup_runs r
+ WHERE r.repository_kind='local' AND r.repository_reference=$1 AND r.state='complete' AND r.snapshot_reference IS NOT NULL
+ AND NOT ($2 AND r.snapshot_reference ~ $3) AND NOT `+backupplan.ImportedRun+` ORDER BY r.started_at DESC LIMIT 1`,
 		local.Label(), strings.HasPrefix(offsite.Repository, "rest:"), backupplan.ArchiveReferencePattern).Scan(&snapshot, &schemas)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return "", nil, errNoLocalSnapshot

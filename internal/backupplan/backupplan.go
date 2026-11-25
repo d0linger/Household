@@ -205,10 +205,22 @@ func Evaluate(now time.Time, zone *time.Location, localTime string, intervalHour
 	return h
 }
 
-// ImportedRun matches a backup run r that an archive upload registered. Its
-// start is the archive's capture date, so it is neither a backup attempt nor
-// evidence that the installation was backed up recently.
-const ImportedRun = `EXISTS(SELECT 1 FROM core.backup_jobs vj WHERE vj.id=r.job_id AND vj.kind='verify')`
+// importedSnapshotPrefix is completed with a snapshot_reference expression.
+const importedSnapshotPrefix = `EXISTS(SELECT 1 FROM core.backup_runs ir JOIN core.backup_jobs ij ON ij.id=ir.job_id
+ WHERE ij.kind='verify' AND ir.repository_kind='local' AND ir.snapshot_reference=`
+
+// ImportedRun matches a backup run r whose snapshot an archive upload
+// registered: a local run of that snapshot belongs to a verify job. Offsite
+// copies share the reference and inherit this provenance. The job cleanup
+// keeps every job that owns a restorable run, so the link lasts as long as the
+// point can be restored. An imported point is not a backup of this
+// installation: it is neither an attempt nor evidence of a recent backup.
+const ImportedRun = importedSnapshotPrefix + `r.snapshot_reference)`
+
+// ImportedSnapshot is ImportedRun for another snapshot_reference expression.
+func ImportedSnapshot(reference string) string {
+	return importedSnapshotPrefix + reference + `)`
+}
 
 // HealthQuery reads one target's health inputs. $1 is the repository kind
 // ('local' or 'offsite'). It returns the activation time, the newest

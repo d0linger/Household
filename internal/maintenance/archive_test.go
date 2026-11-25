@@ -157,3 +157,23 @@ func TestArchiveRetentionCalendarBuckets(t *testing.T) {
 		t.Fatalf("unexpected expiry: %v", got)
 	}
 }
+
+func TestArchiveRetentionKeepsTheArchiveThisRunWrote(t *testing.T) {
+	zone := time.UTC
+	// An imported archive captured later the same day sorts ahead of the new
+	// backup; the new backup still claims its buckets and stays.
+	points := []archiveRetentionPoint{
+		{id: "imported", at: time.Date(2026, 11, 24, 9, 0, 0, 0, time.UTC)},
+		{id: "new", at: time.Date(2026, 11, 24, 3, 0, 0, 0, time.UTC)},
+		{id: "older", at: time.Date(2026, 11, 23, 3, 0, 0, 0, time.UTC)},
+	}
+	if got := expiredArchives(keepFirst(points, "new"), zone, 1, 1, 1); !slices.Equal(got, []string{"imported", "older"}) {
+		t.Fatalf("unexpected expiry with the new archive protected: %v", got)
+	}
+	if got := expiredArchives(keepFirst(points, ""), zone, 1, 1, 1); !slices.Equal(got, []string{"new", "older"}) {
+		t.Fatalf("without protection the newest capture claims the buckets: %v", got)
+	}
+	if got := keepFirst(points, "missing"); !slices.Equal(got, points) {
+		t.Fatalf("an unknown keep reference reordered points: %v", got)
+	}
+}

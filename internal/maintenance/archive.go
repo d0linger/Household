@@ -95,7 +95,7 @@ func copyArchive(ctx context.Context, dst io.Writer, src io.Reader) (int64, erro
 
 // writeArchiveFile publishes an encrypted file only after close and fsync.
 func writeArchiveFile(directory, name string, write func(*os.File) error) (int64, error) {
-	if err := os.MkdirAll(directory, 0700); err != nil { // #nosec G703 -- fixed or operator-approved storage location
+	if err := makeDurableDirectory(directory); err != nil {
 		return 0, err
 	}
 	tmp, err := os.CreateTemp(directory, ".partial-")
@@ -126,6 +126,35 @@ func writeArchiveFile(directory, name string, write func(*os.File) error) (int64
 		return 0, err
 	}
 	return info.Size(), syncDirectory(directory)
+}
+
+// makeDurableDirectory creates missing directories and syncs the parent of
+// each new one, so a published archive's path survives a crash: an atomic
+// rename alone does not make new directory entries durable.
+func makeDurableDirectory(directory string) error {
+	var created []string
+	for current := filepath.Clean(directory); ; {
+		if _, err := os.Stat(current); err == nil {
+			break
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+		created = append(created, current)
+		parent := filepath.Dir(current)
+		if parent == current {
+			break
+		}
+		current = parent
+	}
+	if err := os.MkdirAll(directory, 0700); err != nil { // #nosec G703 -- fixed or operator-approved storage location
+		return err
+	}
+	for i := len(created) - 1; i >= 0; i-- {
+		if err := syncDirectory(filepath.Dir(created[i])); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func writePortable(ctx context.Context, target config.BackupTarget, id, stage, sourceUploads string, files []File) (int64, error) {

@@ -9,6 +9,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -204,7 +205,7 @@ func copyPortableLocked(ctx context.Context, pool *pgxpool.Pool, local, offsite 
 		return "", err
 	}
 	err = errors.Join(reconcileOffsiteAttempts(ctx, pool, offsite, snapshot),
-		applyArchiveRetention(ctx, pool, offsite, settings.OffsiteKeepDaily, settings.OffsiteKeepWeekly, settings.OffsiteKeepMonthly))
+		applyArchiveRetention(ctx, pool, offsite, "", settings.OffsiteKeepDaily, settings.OffsiteKeepWeekly, settings.OffsiteKeepMonthly))
 	// Retention can expire the new copy when newer captures already fill its
 	// calendar buckets. That copy is gone, so it is not reported as a success.
 	var retained bool
@@ -281,16 +282,19 @@ func reconcileOffsiteAttempts(ctx context.Context, pool *pgxpool.Pool, offsite c
 	if err != nil {
 		return err
 	}
+	// A failed delete keeps that attempt's reference for the next run and does
+	// not stop the cleanup of later attempts.
+	var failures []error
 	for _, a := range attempts {
 		if err = removePortable(ctx, offsite, backupplan.ArchiveName(a.snapshot)); err != nil {
-			return err
+			failures = append(failures, err)
+			continue
 		}
-		if _, err = audit.Exec(ctx, pool, `UPDATE core.backup_runs SET state='failed',finished_at=coalesce(finished_at,now()),
- failure_reason=coalesce(failure_reason,'offsite copy failed'),snapshot_reference=NULL WHERE id=$1`, a.id); err != nil {
-			return err
-		}
+		_, err = audit.Exec(ctx, pool, `UPDATE core.backup_runs SET state='failed',finished_at=coalesce(finished_at,now()),
+ failure_reason=coalesce(failure_reason,'offsite copy failed'),snapshot_reference=NULL WHERE id=$1`, a.id)
+		failures = append(failures, err)
 	}
-	return nil
+	return errors.Join(failures...)
 }
 
 type archiveRetentionPoint struct {
@@ -326,7 +330,19 @@ func expiredArchives(points []archiveRetentionPoint, zone *time.Location, daily,
 	return expired
 }
 
-func applyArchiveRetention(ctx context.Context, pool *pgxpool.Pool, target config.BackupTarget, daily, weekly, monthly int) error {
+// keepFirst moves the protected point to the front and keeps the remaining
+// newest-first order.
+func keepFirst(points []archiveRetentionPoint, keep string) []archiveRetentionPoint {
+	i := slices.IndexFunc(points, func(p archiveRetentionPoint) bool { return p.id == keep && !p.pending })
+	if keep == "" || i <= 0 {
+		return points
+	}
+	return slices.Concat(points[i:i+1], points[:i], points[i+1:])
+}
+
+// keep names an archive this run wrote; it claims its calendar buckets first,
+// so a new local backup is never expired by the run that created it.
+func applyArchiveRetention(ctx context.Context, pool *pgxpool.Pool, target config.BackupTarget, keep string, daily, weekly, monthly int) error {
 	tx, err := audit.Begin(ctx, pool)
 	if err != nil {
 		return err
@@ -365,7 +381,7 @@ func applyArchiveRetention(ctx context.Context, pool *pgxpool.Pool, target confi
 	if err = rows.Err(); err != nil {
 		return err
 	}
-	expired := expiredArchives(points, zone, daily, weekly, monthly)
+	expired := expiredArchives(keepFirst(points, keep), zone, daily, weekly, monthly)
 	if len(expired) == 0 {
 		return nil
 	}
@@ -393,21 +409,23 @@ func finishArchiveRetention(ctx context.Context, pool *pgxpool.Pool, target conf
 	if err != nil {
 		return err
 	}
+	// One file that cannot be removed keeps only its own row pending; the
+	// others are still removed, and the errors are returned together.
+	var failures []error
 	for _, id := range pending {
 		name := backupplan.ArchiveName(id)
 		if name == "" {
 			continue
 		}
 		if err = removePortable(ctx, target, name); err != nil {
-			return err
+			failures = append(failures, err)
+			continue
 		}
 		_, err = audit.Exec(ctx, pool, `UPDATE core.backup_runs SET state='expired'
  WHERE repository_reference=$1 AND snapshot_reference=$2 AND state='retention_pending'`, target.Label(), id)
-		if err != nil {
-			return err
-		}
+		failures = append(failures, err)
 	}
-	return nil
+	return errors.Join(failures...)
 }
 
 func removePortable(ctx context.Context, target config.BackupTarget, name string) error {
