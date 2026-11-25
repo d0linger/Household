@@ -80,15 +80,47 @@ func decryptArchive(ctx context.Context, src io.Reader, password string) (io.Rea
 	identity.SetMaxWorkFactor(archiveWorkFactor)
 	read, err := age.Decrypt(archiveReader{Context: ctx, Reader: src}, identity)
 	if err != nil {
+		if contextFailure(err) {
+			return nil, err
+		}
 		return nil, &ToolError{Program: "archive", Code: "archive_unreadable", err: err}
 	}
 	return read, nil
 }
 
+// contextFailure reports a canceled or expired context, which keeps its own
+// result code instead of being reported as an unreadable file.
+func contextFailure(err error) bool {
+	return errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)
+}
+
+// errArchiveCorrupt marks a file that its password opens but whose content
+// fails authentication although the storage returned every byte without an
+// error. Only such a file is confirmed corrupt; read, password and access
+// failures stay ambiguous.
+var errArchiveCorrupt = errors.New("encrypted backup content failed authentication")
+
+// errArchiveTooLarge marks plaintext beyond the format limit.
+var errArchiveTooLarge = errors.New("archive exceeds configured format limit")
+
+// sourceReader records the first error of the storage read below decryption.
+type sourceReader struct {
+	io.Reader
+	err error
+}
+
+func (r *sourceReader) Read(p []byte) (int, error) {
+	n, err := r.Reader.Read(p)
+	if err != nil && err != io.EOF && r.err == nil {
+		r.err = err
+	}
+	return n, err
+}
+
 func copyArchive(ctx context.Context, dst io.Writer, src io.Reader) (int64, error) {
 	size, err := io.Copy(dst, io.LimitReader(archiveReader{Context: ctx, Reader: src}, backupplan.ArchiveLimit+1))
 	if err == nil && size > backupplan.ArchiveLimit {
-		err = errors.New("archive exceeds configured format limit")
+		err = errArchiveTooLarge
 	}
 	return size, err
 }
@@ -257,6 +289,7 @@ func extractArchivePlain(ctx context.Context, plaintext io.Reader, directory str
 		return err
 	}
 	remaining := int64(backupplan.ArchiveLimit)
+	seen := make(map[string]bool)
 	for entries := 0; ; entries++ {
 		header, nextErr := reader.Next()
 		if nextErr == io.EOF {
@@ -266,9 +299,10 @@ func extractArchivePlain(ctx context.Context, plaintext io.Reader, directory str
 			return nextErr
 		}
 		if entries >= archiveEntryLimit || header.Typeflag != tar.TypeReg ||
-			header.Size < 0 || header.Size > remaining || !allowedArchiveEntry(header.Name, header.Size) {
+			header.Size < 0 || header.Size > remaining || !allowedArchiveEntry(header.Name, header.Size) || seen[header.Name] {
 			return errors.New("unexpected entry in encrypted backup")
 		}
+		seen[header.Name] = true
 		remaining -= header.Size
 		file, openErr := root.OpenFile(filepath.FromSlash(header.Name), os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
 		if openErr != nil {
@@ -285,6 +319,12 @@ func extractArchivePlain(ctx context.Context, plaintext io.Reader, directory str
 	var trailer [1]byte
 	if n, readErr := plaintext.Read(trailer[:]); n != 0 || readErr != io.EOF {
 		return fmt.Errorf("encrypted backup has an incomplete or unexpected trailer: %w", errors.Join(readErr, io.ErrUnexpectedEOF))
+	}
+	// A missing member is a defect of the file, not of the staging volume.
+	for _, name := range []string{"manifest.json", "database.dump", "security-keys.json"} {
+		if !seen[name] {
+			return fmt.Errorf("encrypted backup lacks %s", name)
+		}
 	}
 	meta, err := root.ReadFile("manifest.json")
 	if err != nil {

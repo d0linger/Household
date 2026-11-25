@@ -254,12 +254,11 @@ func RunBackup(ctx context.Context, pool *pgxpool.Pool, cfg config.Config, optio
 		return BackupResult{}, err
 	}
 	// Every archive is either referenced by a run or removed here, including
-	// one whose earlier registration or check failed. A Restic backup does not
-	// write archives, so a cleanup failure is reported without blocking it.
+	// one whose earlier registration or check failed. A file that cannot be
+	// removed must not stop new backups: the failure is logged and the backup
+	// still runs. If the destination refuses new files as well, writing the
+	// new archive reports that.
 	if err = reclaimArchives(ctx, pool, local, time.Now()); err != nil {
-		if portableBackups(local) {
-			return BackupResult{}, err
-		}
 		slog.Default().Warn("could not reclaim unreferenced backup files", "code", ResultCode(err))
 	}
 	reportBackupPhase(ctx, pool, options.JobID, "saving_local")

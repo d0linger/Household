@@ -114,11 +114,20 @@ func checkPortable(ctx context.Context, target config.BackupTarget, id string) e
 		return err
 	}
 	defer func() { _ = src.Close() }()
-	reader, err := decryptArchive(ctx, src, target.ArchivePassword())
+	source := &sourceReader{Reader: src}
+	reader, err := decryptArchive(ctx, source, target.ArchivePassword())
 	if err != nil {
 		return err
 	}
 	if _, err = copyArchive(ctx, io.Discard, reader); err != nil {
+		if contextFailure(err) {
+			return err
+		}
+		// The password opened the file and the storage returned every byte, so
+		// the failed authentication is a defect of the stored file itself.
+		if source.err == nil && !errors.Is(err, errArchiveTooLarge) {
+			err = errors.Join(errArchiveCorrupt, err)
+		}
 		return &ToolError{Program: "archive", Code: "archive_unreadable", err: err}
 	}
 	return nil
@@ -192,9 +201,12 @@ func copyPortableLocked(ctx context.Context, pool *pgxpool.Pool, local, offsite 
 	if exists {
 		err = checkPortable(ctx, offsite, snapshot)
 		var tool *ToolError
-		if errors.As(err, &tool) && tool.Code == "archive_missing" {
-			// The recorded copy is confirmed absent: send it again and keep the
-			// existing run. Access and connection failures are returned as such.
+		if errors.As(err, &tool) && (tool.Code == "archive_missing" || errors.Is(err, errArchiveCorrupt)) {
+			// The recorded copy is confirmed absent or corrupt: send it again
+			// from the local file and keep the existing run. Re-encryption
+			// authenticates the whole local file before anything is published,
+			// so a defective source never replaces the copy. Access, password
+			// and connection failures are returned as such.
 			if _, err = sendArchive(ctx, local, offsite, snapshot); err == nil {
 				err = checkPortable(ctx, offsite, snapshot)
 			}
@@ -216,7 +228,8 @@ func copyPortableLocked(ctx context.Context, pool *pgxpool.Pool, local, offsite 
 		return "", errors.Join(err, retainedErr)
 	}
 	if !retained {
-		return "", errors.Join(err, &ToolError{Program: "archive", Code: "copy_not_retained", err: errCopyNotRetained})
+		// The lost copy is the outcome; a cleanup failure stays a secondary cause.
+		return "", errors.Join(&ToolError{Program: "archive", Code: "copy_not_retained", err: errCopyNotRetained}, err)
 	}
 	return snapshot, err
 }

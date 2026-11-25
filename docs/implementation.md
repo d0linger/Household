@@ -2338,7 +2338,7 @@ At `9388e61` the `WorkflowAndSecrets` job failed: two new worker diagnostics had
 - [x] An archive import requires that the restored attachment and derivative rows equal the manifest by key, hash and size. It uses the writer's query (`attachmentInventoryQuery`).
 - [x] Filesystem errors of the worker's volumes keep their own result code instead of `archive_invalid`.
 - [x] An offsite copy is recorded as `running` before the upload and completed after the check. Failed or stale attempts are removed after the next verified copy. Before the copy, only the pending deletion of the snapshot being copied is finished, so a destination that refuses deletes no longer blocks new copies.
-- [x] In Restic mode, a failure to reclaim archive files is logged and no longer blocks the backup.
+- [x] In Restic mode, a failure to reclaim archive files is logged and no longer blocks the backup (since round 6 in portable mode too).
 - [x] An offsite-only copy to a restic REST target selects the newest local Restic snapshot. The connection test for a mounted target also checks the Restic repository when the next copy will use it.
 - [x] The web process trims `RESTIC_REPOSITORY` like the worker.
 - [x] The README and the upload step in the operations guide require trusted backup sources.
@@ -2394,3 +2394,23 @@ CodeRabbit raised four findings for `956d0e5`, all fixed without a schema change
   - The integration tests matching `Backup|Archive|Offsite|Retention|Probe|Portable|Health|Schedul|Purge|JobCleanup` in `internal/web`, `internal/maintenance`, `internal/backupplan` and `internal/store` passed. `TestEnergyNativeAdapterLeaseDedupePersistentBudgetAndArchive` (selected by the `Archive` pattern and unchanged here) failed once in the combined run. It passed alone and in a full rerun of the `internal/store` selection.
   - `scripts/test-backup-operations.sh` passed with 0 failures and cleaned up.
   - Not run locally: the Garage S3 fixture and the full integration suite.
+
+## Portable backup files: CodeRabbit round 6 (PR #34)
+
+CodeRabbit raised six findings for `f89e8ed`, all fixed without a schema change:
+
+- [x] A confirmed corrupt offsite copy is repaired from the local file.
+  - `checkPortable` marks a file as corrupt (`errArchiveCorrupt`, result code still `archive_unreadable`) only when its password opens it, the storage returns every byte without an error, and the content then fails authentication.
+  - The offsite copy sends such a snapshot again, exactly like a missing one. Re-encryption authenticates the whole local file before anything is published.
+  - Read, password and access failures stay ambiguous and never replace a copy.
+- [x] Cancellation and deadline errors keep the `canceled`/`timeout` result codes when they arise while reading or decrypting an archive.
+- [x] Extraction requires `manifest.json`, `database.dump` and `security-keys.json` exactly once each. A missing or repeated member is now a file defect (`archive_invalid` for an upload), not a staging storage failure.
+- [x] When retention removes the copy a run just made, `copy_not_retained` is reported first; a cleanup failure stays a secondary cause.
+- [x] A local file that cannot be reclaimed is logged and no longer stops portable backups. Writing the new archive still reports a destination that refuses new files.
+- [x] The attachment-limit test fails if it cannot read the archive directory.
+- [x] Validation of round 6:
+  - `go vet`, unit tests and `scripts/localization.test.cjs` (11/11) passed. golangci-lint reported 0 issues, including the integration build tags for `internal/maintenance`.
+  - New unit tests cover missing and repeated members and the corrupt/wrong-password/canceled classification.
+  - Integration tests matching `Backup|Archive|Offsite|Retention|Probe|Portable|Health|Schedul|Purge|JobCleanup` in `internal/web`, `internal/maintenance`, `internal/backupplan` and `internal/store` passed.
+  - `scripts/test-backup-operations.sh` passed with 0 failures and cleaned up.
+  - Not run locally: the Garage S3 fixture, the full integration suite and an end-to-end repair of a corrupt offsite copy (the repair takes the same path as a missing copy).

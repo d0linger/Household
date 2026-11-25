@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -143,7 +144,11 @@ func TestArchiveWriterAppliesReaderEntryRules(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "attachments") {
 		t.Fatalf("writer accepted more attachments than the reader extracts: %v", err)
 	}
-	if entries, _ := os.ReadDir(backupplan.ArchiveDirectory(target.Repository)); len(entries) != 0 {
+	entries, err := os.ReadDir(backupplan.ArchiveDirectory(target.Repository))
+	if err != nil {
+		t.Fatalf("read the archive directory of the rejected backup: %v", err)
+	}
+	if len(entries) != 0 {
 		t.Fatalf("a rejected archive left files: %v", entries)
 	}
 }
@@ -180,5 +185,81 @@ func TestArchiveRetentionKeepsTheArchiveThisRunWrote(t *testing.T) {
 	}
 	if got := keepFirst(points, "missing"); !slices.Equal(got, points) {
 		t.Fatalf("an unknown keep reference reordered points: %v", got)
+	}
+}
+
+func TestArchiveExtractRequiresEachMemberOnce(t *testing.T) {
+	for name, entries := range map[string][]string{
+		"missing manifest": {"database.dump", "security-keys.json"},
+		"duplicate dump":   {"manifest.json", "database.dump", "database.dump", "security-keys.json"},
+	} {
+		var data bytes.Buffer
+		writer := tar.NewWriter(&data)
+		for _, entry := range entries {
+			if err := writer.WriteHeader(&tar.Header{Name: entry, Typeflag: tar.TypeReg, Size: 1, Mode: 0600}); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := writer.Write([]byte("x")); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if err := writer.Close(); err != nil {
+			t.Fatal(err)
+		}
+		err := extractArchivePlain(context.Background(), &data, t.TempDir())
+		if err == nil || storageFailure(err) {
+			t.Fatalf("%s: got %v, want a file defect rather than a storage failure", name, err)
+		}
+	}
+}
+
+func TestCheckPortableConfirmsCorruptionOnlyWhenTheFileOpens(t *testing.T) {
+	ctx := context.Background()
+	stage, repo := t.TempDir(), t.TempDir()
+	t.Setenv("RESTIC_REPOSITORY", "/data/backups")
+	t.Setenv("RESTIC_PASSWORD", "test backup file encryption key")
+	t.Setenv("RESTIC_PASSWORD_FILE", "")
+	target, err := config.LocalBackupTarget()
+	if err != nil {
+		t.Fatal(err)
+	}
+	target.Repository = repo
+	for _, name := range []string{"manifest.json", "database.dump", "security-keys.json"} {
+		if err = os.WriteFile(filepath.Join(stage, name), []byte("synthetic "+name), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	id := backupplan.ArchiveID(time.Date(2026, 11, 25, 12, 0, 0, 0, time.UTC))
+	if _, err = writePortable(ctx, target, id, stage, stage, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err = checkPortable(ctx, target, id); err != nil {
+		t.Fatalf("intact file: %v", err)
+	}
+	canceled, cancel := context.WithCancel(ctx)
+	cancel()
+	if err = checkPortable(canceled, target, id); ResultCode(err) != "canceled" {
+		t.Fatalf("canceled check: got %q (%v), want canceled", ResultCode(err), err)
+	}
+	t.Setenv("RESTIC_PASSWORD", "another backup file encryption key")
+	wrong, err := config.LocalBackupTarget()
+	if err != nil {
+		t.Fatal(err)
+	}
+	wrong.Repository = repo
+	if err = checkPortable(ctx, wrong, id); ResultCode(err) != "archive_unreadable" || errors.Is(err, errArchiveCorrupt) {
+		t.Fatalf("wrong password must stay ambiguous: %q, %v", ResultCode(err), err)
+	}
+	path := filepath.Join(backupplan.ArchiveDirectory(repo), backupplan.ArchiveName(id))
+	encrypted, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	encrypted[len(encrypted)-1] ^= 1
+	if err = os.WriteFile(path, encrypted, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err = checkPortable(ctx, target, id); ResultCode(err) != "archive_unreadable" || !errors.Is(err, errArchiveCorrupt) {
+		t.Fatalf("tampered content must be confirmed corrupt: %q, %v", ResultCode(err), err)
 	}
 }

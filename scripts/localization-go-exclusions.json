@@ -617,5 +617,7 @@
   "error pattern\ninternal/maintenance/archive_storage.go\nopen backup storage directory: %v": "Internal backup-worker diagnostic. The UI uses the localized stable result code.",
   "error pattern\ninternal/maintenance/archive_import.go\nrestored attachment records differ from the archive manifest": "Internal backup-worker diagnostic. The UI uses the localized stable result code.",
   "error pattern\ninternal/maintenance/archive_storage.go\noffsite copy of this snapshot is already recorded": "Internal backup-worker diagnostic. The UI uses the localized stable result code.",
-  "error pattern\ninternal/maintenance/archive_storage.go\noffsite retention removed the copied snapshot in the same run": "Internal backup-worker diagnostic. The UI uses the localized stable result code."
+  "error pattern\ninternal/maintenance/archive_storage.go\noffsite retention removed the copied snapshot in the same run": "Internal backup-worker diagnostic. The UI uses the localized stable result code.",
+  "error pattern\ninternal/maintenance/archive.go\nencrypted backup content failed authentication": "Internal backup-worker diagnostic. The UI uses the localized stable result code.",
+  "error pattern\ninternal/maintenance/archive.go\nencrypted backup lacks %s": "Internal backup-worker diagnostic. The UI uses the localized stable result code."
 }
