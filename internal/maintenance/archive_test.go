@@ -30,6 +30,7 @@ func TestPortableArchiveRoundTripAndAuthentication(t *testing.T) {
 	stage, uploads, repo := t.TempDir(), t.TempDir(), t.TempDir()
 	t.Setenv("RESTIC_REPOSITORY", "/data/backups")
 	t.Setenv("RESTIC_PASSWORD", "test backup file encryption key")
+	t.Setenv("RESTIC_PASSWORD_FILE", "")
 	target, err := config.LocalBackupTarget()
 	if err != nil {
 		t.Fatal(err)
@@ -80,6 +81,9 @@ func TestPortableArchiveRoundTripAndAuthentication(t *testing.T) {
 }
 
 func TestArchiveExtractRejectsUnapprovedEntries(t *testing.T) {
+	// With tarinsecurepath=0 archive/tar rejects "../escape" itself; allow it
+	// here so the test exercises Household's own entry check.
+	t.Setenv("GODEBUG", "tarinsecurepath=1")
 	// The symlink has a valid upload name, so only the type check can reject it.
 	for _, header := range []tar.Header{
 		{Name: "../escape", Typeflag: tar.TypeReg},
@@ -128,6 +132,7 @@ func TestArchiveWriterAppliesReaderEntryRules(t *testing.T) {
 	}
 	t.Setenv("RESTIC_REPOSITORY", "/data/backups")
 	t.Setenv("RESTIC_PASSWORD", "test backup file encryption key")
+	t.Setenv("RESTIC_PASSWORD_FILE", "")
 	target, err := config.LocalBackupTarget()
 	if err != nil {
 		t.Fatal(err)

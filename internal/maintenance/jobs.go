@@ -267,8 +267,12 @@ func (s *Service) failStale(ctx context.Context) error {
 		return err
 	}
 	// A job that owns a restorable run stays: it records the run's provenance.
+	// An import job stays for as long as any of its local runs exists, even
+	// an expired one, because scheduling and health read every run and must
+	// keep telling an imported capture date apart from a backup attempt.
 	_, err = s.Pool().Exec(ctx, `DELETE FROM core.backup_jobs j WHERE j.finished_at<now()-interval '180 days'
- AND NOT EXISTS(SELECT 1 FROM core.backup_runs r WHERE r.job_id=j.id AND r.state IN('complete','retention_pending'))`)
+ AND NOT EXISTS(SELECT 1 FROM core.backup_runs r WHERE r.job_id=j.id
+  AND (r.state IN('complete','retention_pending') OR (j.kind='verify' AND r.repository_kind='local')))`)
 	return err
 }
 

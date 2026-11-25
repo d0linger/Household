@@ -9,6 +9,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"time"
@@ -437,16 +438,34 @@ func removePortable(ctx context.Context, target config.BackupTarget, name string
 			return &ToolError{Program: "archive", Code: "repository_unreachable", err: err}
 		}
 		defer func() { _ = root.Close() }()
-		if err = root.Remove(name); errors.Is(err, os.ErrNotExist) {
-			return nil
+		if err = root.Remove(name); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return err
 		}
-		return err
+		// Persist the unlink before the caller records the deletion, so a
+		// crash cannot leave an expired archive that nothing retries. A file
+		// that is already gone may still have an unsynced removal.
+		return syncRootDirectory(root)
 	}
 	client, bucket, key, err := archiveObject(target, name)
 	if err != nil {
 		return err
 	}
 	return archiveStorageError(client.RemoveObject(ctx, bucket, key, minio.RemoveObjectOptions{}))
+}
+
+// syncRootDirectory syncs the directory a root opened, so entries removed
+// through it are durable.
+func syncRootDirectory(root *os.Root) error {
+	dir, err := root.Open(".")
+	if err != nil {
+		return err
+	}
+	defer func() { _ = dir.Close() }()
+	if err = dir.Sync(); err != nil && runtime.GOOS != "windows" {
+		// Windows cannot sync directories (developer tests only).
+		return err
+	}
+	return nil
 }
 
 // archiveReclaimGrace keeps recently written files out of reclamation. Writers

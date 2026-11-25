@@ -2379,3 +2379,18 @@ The first request for `54b0d72` was refused by CodeRabbit's review quota and was
   - The integration tests matching `Backup|Archive|Offsite|Retention|Probe|Portable|Health|Schedul|Purge` in `internal/web`, `internal/maintenance`, `internal/backupplan` and `internal/store` passed.
   - `scripts/test-backup-operations.sh` passed with 0 failures and cleaned up.
   - Not run locally: the Garage S3 fixture and the full integration suite.
+
+## Portable backup files: CodeRabbit round 5 (PR #34)
+
+CodeRabbit raised four findings for `956d0e5`, all fixed without a schema change:
+
+- [x] Removing an archive from a mounted target syncs its directory before retention records the run as `expired`. After a crash, an unlink that was not persisted therefore stays pending instead of being forgotten.
+- [x] The 180-day job cleanup keeps an import job as long as any of its local runs exists, including an expired one. Scheduling and health read every run, so an imported capture date in the future can no longer pass for a backup attempt after cleanup.
+  - A new integration test (`TestJobCleanupKeepsImportProvenance`) failed against the previous cleanup query and passes with the fix. Old backup and restore-test jobs without such runs are still deleted.
+- [x] The archive unit tests clear an inherited `RESTIC_PASSWORD_FILE`. The traversal test sets `GODEBUG=tarinsecurepath=1`, so it exercises Household's own entry check even when a developer runs with `tarinsecurepath=0`.
+- [x] Validation of round 5:
+  - `go vet`, unit tests, `scripts/localization.test.cjs` (11/11) and golangci-lint (0 issues, including the integration build tags for `internal/maintenance`) passed.
+  - The archive tests also passed with `GODEBUG=tarinsecurepath=0` and `RESTIC_PASSWORD_FILE` set.
+  - The integration tests matching `Backup|Archive|Offsite|Retention|Probe|Portable|Health|Schedul|Purge|JobCleanup` in `internal/web`, `internal/maintenance`, `internal/backupplan` and `internal/store` passed. `TestEnergyNativeAdapterLeaseDedupePersistentBudgetAndArchive` (selected by the `Archive` pattern and unchanged here) failed once in the combined run. It passed alone and in a full rerun of the `internal/store` selection.
+  - `scripts/test-backup-operations.sh` passed with 0 failures and cleaned up.
+  - Not run locally: the Garage S3 fixture and the full integration suite.
