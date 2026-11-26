@@ -195,14 +195,16 @@ func copyPortableLocked(ctx context.Context, pool *pgxpool.Pool, local, offsite 
 		}
 	}
 	// A pending deletion of this snapshot finishes before its name is reused.
-	// Other pending deletions are handled after the copy, so a destination
-	// that refuses deletes cannot block a new copy.
 	if err := finishArchiveRetention(ctx, pool, offsite, snapshot); err != nil {
 		return "", err
 	}
-	// Files of earlier failed copies are removed first, so they cannot take
-	// the space this copy needs. This is best effort: a refused delete does not
-	// block the copy, and the cleanup after the copy reports it.
+	// Other pending deletions and files of earlier failed copies are removed
+	// first, so they cannot take the space this copy needs. This is best
+	// effort: a refused delete does not block the copy, and the cleanup after
+	// the copy reports it.
+	if err := finishArchiveRetention(ctx, pool, offsite, ""); err != nil {
+		slog.Default().Warn("could not finish pending offsite deletions before the copy", "code", ResultCode(err))
+	}
 	if err := reconcileOffsiteAttempts(ctx, pool, offsite, snapshot); err != nil {
 		slog.Default().Warn("could not remove earlier offsite copy attempts before the copy", "code", ResultCode(err))
 	}
@@ -603,10 +605,15 @@ func syncRootDirectory(root *os.Root) error {
 // hold the repository lock as well; the grace period only adds a margin.
 const archiveReclaimGrace = time.Hour
 
-// reclaimArchives removes local archive files that no backup run references:
-// a published archive whose registration or check failed, an import that was
-// never recorded, and partial files of an interrupted write. The local archive
-// directory is always a filesystem path. Callers hold the repository lock.
+// reclaimArchives frees local archive space before a new archive is written.
+// It first retries deletions that an earlier retention left pending, so a
+// file whose deletion failed once cannot keep blocking every later write. It
+// then removes files that no backup run references: a published archive whose
+// registration or check failed, an import that was never recorded, and
+// partial files of an interrupted write. A run of any kind protects its file
+// by the repository label it records, so the rows of an offsite repository
+// that became the local one keep their archives. The local archive directory
+// is always a filesystem path. Callers hold the repository lock.
 func reclaimArchives(ctx context.Context, pool *pgxpool.Pool, local config.BackupTarget, now time.Time) error {
 	if !filepath.IsAbs(local.Repository) && local.Repository != "" {
 		return nil
@@ -619,8 +626,9 @@ func reclaimArchives(ctx context.Context, pool *pgxpool.Pool, local config.Backu
 	if err != nil {
 		return err
 	}
+	// A failed delete keeps its row pending and its file protected below.
+	failures := []error{finishArchiveRetention(ctx, pool, local, "")}
 	candidates := map[string]string{}
-	var failures []error
 	for _, entry := range entries {
 		info, infoErr := entry.Info()
 		if entry.IsDir() || infoErr != nil || !info.Mode().IsRegular() || now.Sub(info.ModTime()) < archiveReclaimGrace {
@@ -639,7 +647,8 @@ func reclaimArchives(ctx context.Context, pool *pgxpool.Pool, local config.Backu
 			ids = append(ids, id)
 		}
 		rows, queryErr := pool.Query(ctx, `SELECT DISTINCT snapshot_reference FROM core.backup_runs
- WHERE repository_kind='local' AND snapshot_reference=ANY($1::text[]) AND state IN('complete','retention_pending')`, ids)
+ WHERE (repository_kind='local' OR repository_reference=$2) AND snapshot_reference=ANY($1::text[])
+ AND state IN('complete','retention_pending')`, ids, local.Label())
 		if queryErr != nil {
 			return queryErr
 		}

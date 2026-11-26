@@ -158,7 +158,15 @@ func command(ctx context.Context, program string, args []string, dsn string) ([]
 	var out, stderr limitedBuffer
 	cmd.Stdout = &out
 	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
+	if err := cmd.Start(); err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, ctxErr
+		}
+		// A missing or unstartable tool says nothing about the dump.
+		return nil, &ToolError{Program: program, Code: "tool_unavailable",
+			err: fmt.Errorf("%s could not start (%v); inspect the backup service image", program, err)}
+	}
+	if err := cmd.Wait(); err != nil {
 		// A canceled or expired run keeps its own result; the killed tool
 		// reports nothing about the dump.
 		if ctxErr := ctx.Err(); ctxErr != nil {
@@ -176,28 +184,24 @@ func command(ctx context.Context, program string, args []string, dsn string) ([]
 
 // classifyDatabaseToolOutput recognizes pg_dump and pg_restore failures of the
 // database server or its storage, which no dump content causes: a full disk,
-// and a server that refuses, drops or cannot serve the connection. Every other
-// failure, including a corrupt or incompatible dump, returns "".
+// another failure to extend a database file, and a server that refuses,
+// drops or cannot serve the connection. Every other failure, including a
+// corrupt or incompatible dump, returns "". A full disk needs an explicit
+// space or quota error.
 //
 // Only the start of each diagnostic message is matched, plus the system error
 // that ends a failed file operation. Server messages can quote dump data, as
 // in invalid input syntax for type integer: "out of memory", and that data
 // must not select a code.
 func classifyDatabaseToolOutput(stderr []byte) string {
-	full, unavailable := false, false
+	found := map[string]bool{}
 	for line := range strings.Lines(strings.ToLower(string(stderr))) {
-		switch databaseDiagnostic(strings.TrimSpace(line)) {
-		case "disk_full":
-			full = true
-		case "database_unavailable":
-			unavailable = true
-		}
+		found[databaseDiagnostic(strings.TrimSpace(line))] = true
 	}
-	switch {
-	case full:
-		return "disk_full"
-	case unavailable:
-		return "database_unavailable"
+	for _, code := range []string{"disk_full", "database_storage_failed", "database_unavailable"} {
+		if found[code] {
+			return code
+		}
 	}
 	return ""
 }
@@ -224,9 +228,12 @@ func databaseDiagnostic(line string) string {
 		return slices.ContainsFunc(markers, func(marker string) bool { return strings.HasPrefix(line, marker) })
 	}
 	switch {
-	case starts("could not extend file", "no space left on device", "disk quota exceeded"),
+	case starts("no space left on device", "disk quota exceeded"),
 		strings.HasSuffix(line, ": no space left on device"), strings.HasSuffix(line, ": disk quota exceeded"):
 		return "disk_full"
+	case starts("could not extend file"):
+		// Without a space error this is a storage failure, such as an I/O error.
+		return "database_storage_failed"
 	case starts("server closed the connection unexpectedly", "terminating connection", "the database system is",
 		"sorry, too many clients", "too many clients", "remaining connection slots", "out of memory", "out of shared memory"):
 		return "database_unavailable"

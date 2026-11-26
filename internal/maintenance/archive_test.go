@@ -206,6 +206,7 @@ func TestDatabaseToolFailuresKeepTheirCause(t *testing.T) {
 		"pg_restore: error: could not execute query: ERROR:  invalid input syntax for type integer: \"out of memory\"":                "",
 		"pg_restore: error: could not execute query: ERROR:  value too long for type character varying(5): \"could not extend file\"": "",
 		"CONTEXT:  COPY items, line 1, column name: \"disk quota exceeded\"\nCommand was: COPY items FROM stdin;":                     "",
+		"pg_restore: error: could not execute query: ERROR:  could not extend file \"base/1/2\": Input/output error":                  "database_storage_failed",
 		"pg_restore: error: could not read input file: end of file":                                                                   "",
 		"pg_restore: error: could not execute query: ERROR:  syntax error at or near \"x\"":                                           "",
 	} {
@@ -216,6 +217,15 @@ func TestDatabaseToolFailuresKeepTheirCause(t *testing.T) {
 	err := &ToolError{Program: "pg_restore", Code: "disk_full", err: errors.New("pg_restore failed")}
 	if ResultCode(err) == "failed" || strings.Contains(err.Error(), "No space") {
 		t.Fatalf("classified tool error = %q, %q", ResultCode(err), err.Error())
+	}
+}
+
+// A database tool that cannot start reports its own code, never an invalid
+// archive.
+func TestDatabaseToolThatCannotStartKeepsItsCode(t *testing.T) {
+	t.Setenv("PATH", t.TempDir())
+	if _, err := command(context.Background(), "pg_restore", []string{"--list"}, ""); ResultCode(err) != "tool_unavailable" {
+		t.Fatalf("missing pg_restore = %v (%s)", err, ResultCode(err))
 	}
 }
 

@@ -146,6 +146,90 @@ func TestArchiveRetentionUsesTheCommittedQuotas(t *testing.T) {
 	}
 }
 
+// Before a new archive is written, reclaim retries pending local deletions.
+// It keeps files that any run of this repository label references, also an
+// offsite run of a repository that became the local one, and removes files
+// that no run references.
+func TestReclaimFinishesPendingDeletionsAndKeepsReferencedFiles(t *testing.T) {
+	f := newRestoreBarcodeFixture(t)
+	ctx := f.ctx
+	local := config.BackupTarget{Kind: "local", Repository: t.TempDir()}
+	directory := backupplan.ArchiveDirectory(local.Repository)
+	if err := os.Mkdir(directory, 0700); err != nil {
+		t.Fatal(err)
+	}
+	old := time.Now().Add(-3 * time.Hour)
+	file := func(id string) string {
+		t.Helper()
+		path := filepath.Join(directory, backupplan.ArchiveName(id))
+		if err := os.WriteFile(path, []byte("synthetic archive"), 0600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chtimes(path, old, old); err != nil {
+			t.Fatal(err)
+		}
+		return path
+	}
+	run := func(state, kind, id string) {
+		t.Helper()
+		if _, err := f.owner.Exec(ctx, `INSERT INTO core.backup_runs(state,application_version,repository_reference,snapshot_reference,repository_kind)
+ VALUES($1,'test',$2,$3,$4)`, state, local.Label(), id, kind); err != nil {
+			t.Fatal(err)
+		}
+	}
+	pending := backupplan.ArchiveID(old.Add(-48 * time.Hour))
+	formerOffsite := backupplan.ArchiveID(old.Add(-24 * time.Hour))
+	unreferenced := backupplan.ArchiveID(old)
+	pendingFile, formerOffsiteFile, unreferencedFile := file(pending), file(formerOffsite), file(unreferenced)
+	run("retention_pending", "local", pending)
+	run("complete", "offsite", formerOffsite)
+	if err := reclaimArchives(ctx, f.owner, local, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	for path, want := range map[string]bool{pendingFile: false, formerOffsiteFile: true, unreferencedFile: false} {
+		if _, err := os.Stat(path); (err == nil) != want {
+			t.Errorf("%s present=%v, want %v", filepath.Base(path), err == nil, want)
+		}
+	}
+	var state string
+	if err := f.owner.QueryRow(ctx, "SELECT state FROM core.backup_runs WHERE repository_reference=$1 AND snapshot_reference=$2", local.Label(), pending).Scan(&state); err != nil || state != "expired" {
+		t.Fatalf("pending deletion recorded as %q, %v; want expired", state, err)
+	}
+}
+
+// Pending deletions of other snapshots are retried before an offsite copy is
+// staged, also when that copy then fails.
+func TestOffsiteCopyFinishesOtherPendingDeletionsFirst(t *testing.T) {
+	f := newRestoreBarcodeFixture(t)
+	ctx := f.ctx
+	offsite := config.BackupTarget{Kind: "offsite", Repository: t.TempDir()}
+	directory := backupplan.ArchiveDirectory(offsite.Repository)
+	if err := os.Mkdir(directory, 0700); err != nil {
+		t.Fatal(err)
+	}
+	expired := backupplan.ArchiveID(time.Now().Add(-72 * time.Hour))
+	expiredFile := filepath.Join(directory, backupplan.ArchiveName(expired))
+	if err := os.WriteFile(expiredFile, []byte("synthetic expired copy"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.owner.Exec(ctx, `INSERT INTO core.backup_runs(state,application_version,repository_reference,snapshot_reference,repository_kind)
+ VALUES('retention_pending','test',$1,$2,'offsite')`, offsite.Label(), expired); err != nil {
+		t.Fatal(err)
+	}
+	// The local file of the new snapshot is missing, so this copy fails.
+	local := config.BackupTarget{Kind: "local", Repository: t.TempDir()}
+	if _, err := copyPortableLocked(ctx, f.owner, local, offsite, backupplan.Defaults(), backupplan.ArchiveID(time.Now()), []byte(`{}`), ""); err == nil {
+		t.Fatal("copy without a local archive succeeded")
+	}
+	if _, err := os.Stat(expiredFile); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("pending deletion kept its file before the copy: %v", err)
+	}
+	var state string
+	if err := f.owner.QueryRow(ctx, "SELECT state FROM core.backup_runs WHERE repository_reference=$1 AND snapshot_reference=$2", offsite.Label(), expired).Scan(&state); err != nil || state != "expired" {
+		t.Fatalf("pending deletion recorded as %q, %v; want expired", state, err)
+	}
+}
+
 // A failed copy of a snapshot can leave its file under the final name. A new
 // copy of the same snapshot removes it before staging, so the mount does not
 // have to hold both files.

@@ -18,10 +18,10 @@ func TestArchiveNamesRoundTripAndExchangeNames(t *testing.T) {
 		}
 	}
 	first, second := DownloadName(id, "s3:https://a.example/bucket"), DownloadName(id, "s3:https://b.example/bucket")
-	if first == "" || first == second || DownloadName(id, "") != "" || DownloadName("x", "label") != "" {
+	if first == "" || second == "" || first == second || DownloadName(id, "") != "" || DownloadName("x", "label") != "" {
 		t.Fatalf("download names are not bound to the repository: %q %q", first, second)
 	}
-	for _, managed := range []string{first, ExchangeName("import", id), ".partial-123"} {
+	for _, managed := range []string{first, second, ExchangeName("import", id), ".partial-123"} {
 		if !ManagedExchangeName(managed) {
 			t.Fatalf("%q is not recognized as a managed exchange file", managed)
 		}

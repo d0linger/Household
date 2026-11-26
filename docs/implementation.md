@@ -2492,3 +2492,20 @@ CodeRabbit raised eight findings for `f6ad35d`. All eight are fixed without a sc
   - The integration tests matching `Backup|Archive|Offsite|Retention|Probe|Portable|Health|Schedul|Purge|JobCleanup|Mounted|RepositoryLock` in `internal/web`, `internal/maintenance`, `internal/backupplan` and `internal/store` passed.
   - `scripts/test-backup-operations.sh` passed with 0 failures and cleaned up.
   - Not run locally: the Garage S3 fixture and the full integration suite. The two directory syncs have no automated test.
+
+## Portable backup files: CodeRabbit round 11 (PR #34)
+
+CodeRabbit raised six findings for `05c7f58`. All six are fixed without a schema change.
+
+- [x] Before a new local archive is written, `reclaimArchives` retries deletions that an earlier retention left pending. A file whose deletion failed once can no longer keep every later write from finding space. A failed delete is logged, keeps its row pending and does not stop the backup.
+- [x] Before an offsite copy is staged, pending deletions of other snapshots are retried, best effort. The pending deletion of the copied snapshot itself is still required before its name is reused.
+- [x] `reclaimArchives` protects a file that any `complete` or `retention_pending` run of the local repository label references, not only local runs. The archives of an offsite repository that became the local one are no longer removed after the grace period.
+- [x] A `pg_dump` or `pg_restore` that cannot start returns the new code `tool_unavailable` instead of an unclassified failure, so a valid upload is not reported as `archive_invalid`.
+- [x] `could not extend file` becomes `disk_full` only with an explicit space or quota error. Other extension failures, such as an I/O error, return the new code `database_storage_failed`. The backup page shows localized messages for both new codes.
+- [x] The download-name test requires both repository labels to produce a recognized name.
+- [x] Validation of round 11:
+  - `go vet`, unit tests (including the new `TestDatabaseToolThatCannotStartKeepsItsCode` and the I/O-error case of the classification table), `npm test` (536/536), `scripts/localization.test.cjs` (11/11), `scripts/build-localization.cjs --check` and golangci-lint (0 issues, including the integration build tags for `internal/maintenance`) passed.
+  - New integration tests `TestReclaimFinishesPendingDeletionsAndKeepsReferencedFiles` and `TestOffsiteCopyFinishesOtherPendingDeletionsFirst` passed. Each failed with its fix removed.
+  - The integration tests matching `Backup|Archive|Offsite|Retention|Probe|Portable|Health|Schedul|Purge|JobCleanup|Mounted|RepositoryLock|Reclaim` in `internal/web`, `internal/maintenance`, `internal/backupplan` and `internal/store` passed.
+  - `scripts/test-backup-operations.sh` passed with 0 failures and cleaned up.
+  - Not run locally: the Garage S3 fixture and the full integration suite.
