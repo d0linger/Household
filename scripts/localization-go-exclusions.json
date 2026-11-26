@@ -623,5 +623,6 @@
   "error pattern\ninternal/maintenance/archive_storage.go\nthe offsite backup directory is missing although copies were recorded there; is the destination mounted?": "Internal backup-worker diagnostic. The UI uses the localized stable result code.",
   "error pattern\ninternal/maintenance/archive_storage.go\nthe offsite backup path is not a directory": "Internal backup-worker diagnostic. The UI uses the localized stable result code.",
   "error pattern\ninternal/maintenance/archive.go\nencrypted backup contains an attachment its manifest does not list": "Internal backup-worker diagnostic. The UI uses the localized stable result code.",
-  "error pattern\ninternal/maintenance/archive.go\nencrypted backup lacks an attachment its manifest lists": "Internal backup-worker diagnostic. The UI uses the localized stable result code."
+  "error pattern\ninternal/maintenance/archive.go\nencrypted backup lacks an attachment its manifest lists": "Internal backup-worker diagnostic. The UI uses the localized stable result code.",
+  "error pattern\ninternal/maintenance/archive_storage.go\nthe mounted offsite path is the local backup directory": "Internal backup-worker diagnostic. The UI uses the localized stable result code."
 }

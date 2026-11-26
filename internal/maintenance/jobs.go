@@ -438,8 +438,10 @@ func (s *Service) perform(ctx context.Context, job Job) {
 		var result BackupResult
 		result, err = RunBackup(ctx, s.Pool(), s.Config, BackupOptions{Offsite: job.Target == "both", JobID: job.ID})
 		snapshot = result.Snapshot
-		if err == nil && result.OffsiteErr != nil {
-			err = &ToolError{Program: "restic", Code: "offsite_" + ResultCode(result.OffsiteErr), err: result.OffsiteErr}
+		if result.OffsiteErr != nil {
+			// The missing offsite copy decides the code; a local retention
+			// failure stays in the chain.
+			err = errors.Join(&ToolError{Program: "restic", Code: "offsite_" + ResultCode(result.OffsiteErr), err: result.OffsiteErr}, err)
 		}
 	case "verify":
 		reportBackupPhase(ctx, s.Pool(), job.ID, "restoring")

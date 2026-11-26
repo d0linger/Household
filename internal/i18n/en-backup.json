@@ -157,5 +157,6 @@
   "Beispiel für die .env": "Example for the .env file",
   "Ein anderer Wiederherstellungsvorgang läuft gerade.": "Another restore operation is running.",
   "Per Wartungsbefehl auf den früheren Stand zurückgesetzt.": "Switched back to the previous state with the maintenance command.",
-  "Die Datenbank war nicht verfügbar oder ausgelastet. Prüfe den Datenbankdienst und versuche es erneut.": "The database was unavailable or overloaded. Check the database service and try again."
+  "Die Datenbank war nicht verfügbar oder ausgelastet. Prüfe den Datenbankdienst und versuche es erneut.": "The database was unavailable or overloaded. Check the database service and try again.",
+  "Das externe Ziel ist dasselbe Verzeichnis wie die lokale Sicherung. Wähle einen anderen Pfad.": "The offsite destination is the same directory as the local backup. Choose a different path."
 }

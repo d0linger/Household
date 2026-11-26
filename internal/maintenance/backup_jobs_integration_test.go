@@ -3,6 +3,7 @@
 package maintenance
 
 import (
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
@@ -12,6 +13,8 @@ import (
 
 	"household/internal/backupplan"
 	"household/internal/config"
+
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 // The 180-day job cleanup must keep an import job while its local run exists,
@@ -141,6 +144,81 @@ func TestArchiveRetentionUsesTheCommittedQuotas(t *testing.T) {
 	if got := kept(local); got != 1 {
 		t.Fatalf("local retention kept %d archives after keep_daily=1 was saved, want 1", got)
 	}
+}
+
+// A failed copy of a snapshot can leave its file under the final name. A new
+// copy of the same snapshot removes it before staging, so the mount does not
+// have to hold both files.
+func TestOffsiteCopyRemovesTheStaleFileOfTheSameSnapshot(t *testing.T) {
+	f := newRestoreBarcodeFixture(t)
+	ctx := f.ctx
+	offsite := config.BackupTarget{Kind: "offsite", Repository: t.TempDir()}
+	directory := backupplan.ArchiveDirectory(offsite.Repository)
+	if err := os.Mkdir(directory, 0700); err != nil {
+		t.Fatal(err)
+	}
+	snapshot := backupplan.ArchiveID(time.Now())
+	stale := filepath.Join(directory, backupplan.ArchiveName(snapshot))
+	if err := os.WriteFile(stale, []byte("synthetic copy that failed its check"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.owner.Exec(ctx, `INSERT INTO core.backup_runs(state,application_version,repository_reference,snapshot_reference,repository_kind,failure_reason)
+ VALUES('failed','test',$1,$2,'offsite','offsite copy failed')`, offsite.Label(), snapshot); err != nil {
+		t.Fatal(err)
+	}
+	// The local file is missing, so the new copy fails after the removal.
+	local := config.BackupTarget{Kind: "local", Repository: t.TempDir()}
+	if _, err := copyPortableLocked(ctx, f.owner, local, offsite, backupplan.Defaults(), snapshot, []byte(`{}`), ""); err == nil {
+		t.Fatal("copy without a local archive succeeded")
+	}
+	if _, err := os.Stat(stale); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("stale file of the same snapshot kept: %v", err)
+	}
+}
+
+// Callers waiting for the repository lock hold no pool connection, so the
+// holder and other requests can still use a small pool.
+func TestRepositoryLockWaitersLeaveThePoolFree(t *testing.T) {
+	f := newRestoreBarcodeFixture(t)
+	ctx := f.ctx
+	settings := f.owner.Config()
+	settings.MaxConns = 1
+	pool, err := pgxpool.NewWithConfig(ctx, settings)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+	unlock, err := lockRepository(ctx, pool)
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitCtx, stopWaiter := context.WithCancel(ctx)
+	waiter := make(chan error, 1)
+	go func() {
+		release, err := lockRepository(waitCtx, pool)
+		if err == nil {
+			release()
+		}
+		waiter <- err
+	}()
+	time.Sleep(1500 * time.Millisecond)
+	queryCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	var one int
+	err = pool.QueryRow(queryCtx, "SELECT 1").Scan(&one)
+	cancel()
+	stopWaiter()
+	if waitErr := <-waiter; !errors.Is(waitErr, context.Canceled) {
+		t.Errorf("waiter returned %v, want cancellation", waitErr)
+	}
+	unlock()
+	if err != nil || one != 1 {
+		t.Fatalf("pool blocked while a caller waited for the lock: %v", err)
+	}
+	release, err := lockRepository(ctx, pool)
+	if err != nil {
+		t.Fatalf("lock not released: %v", err)
+	}
+	release()
 }
 
 // The file of an earlier failed offsite copy is removed before a new copy,

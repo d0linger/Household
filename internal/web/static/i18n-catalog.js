@@ -2160,6 +2160,7 @@ globalThis.HouseholdEnglish = Object.freeze({
   "Das angemeldete Konto hat gewechselt. Seite nach Prüfung deiner offenen Eingaben neu öffnen.": "The signed-in account changed. Reopen the page after reviewing your unsaved inputs.",
   "Das ausgewählte Bankprofil passt nicht zur Kopfzeile": "The selected bank profile does not match the header",
   "Das Ergebnis einer früheren Übernahme bleibt unbekannt. Vor einer neuen Erfassung vorhandene Buchungen mit aktueller Berechtigung prüfen. Alte Eingaben werden nicht wiederhergestellt oder automatisch erneut gesendet.": "The result of an earlier application remains unknown. Check existing postings with current permissions before creating a new entry. Old inputs are not restored or automatically resent.",
+  "Das externe Ziel ist dasselbe Verzeichnis wie die lokale Sicherung. Wähle einen anderen Pfad.": "The offsite destination is the same directory as the local backup. Choose a different path.",
   "Das externe Ziel ist eingerichtet, aber der Zeitplan ist ausgeschaltet.": "The offsite target is set up, but its schedule is switched off.",
   "Das Fenster einschließlich nötiger Randbelege umfasst mehr als 10.000 Tankungen.": "The period, including required boundary receipts, contains more than 10,000 fill-ups.",
   "Das Finanzmodul wurde gewechselt. Alte Eingaben werden nicht erneut verwendet.": "The finance module changed. Old inputs will not be reused.",

@@ -97,6 +97,8 @@ func TestOffsiteUsesResticRESTReadsOnlyTheRepository(t *testing.T) {
 		t.Setenv(name, "")
 		t.Setenv(name+"_FILE", "")
 	}
+	t.Setenv("RESTIC_REPOSITORY_FILE", "")
+	t.Setenv("RESTIC_PASSWORD_FILE", "")
 	t.Setenv("RESTIC_REPOSITORY", "/data/backups")
 	t.Setenv("RESTIC_PASSWORD", "local-password")
 	local, err := LocalBackupTarget()

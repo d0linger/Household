@@ -187,6 +187,9 @@ func sendArchive(ctx context.Context, local, offsite config.BackupTarget, id str
 
 func copyPortableLocked(ctx context.Context, pool *pgxpool.Pool, local, offsite config.BackupTarget, settings backupplan.Settings, snapshot string, schemas []byte, jobID string) (string, error) {
 	if filepath.IsAbs(offsite.Repository) {
+		if err := distinctArchiveStorage(local, offsite); err != nil {
+			return "", err
+		}
 		if _, err := mountedArchiveDirectory(ctx, pool, offsite); err != nil {
 			return "", err
 		}
@@ -222,6 +225,11 @@ func copyPortableLocked(ctx context.Context, pool *pgxpool.Pool, local, offsite 
 			if _, err = sendArchive(ctx, local, offsite, snapshot); err == nil {
 				err = checkPortable(ctx, offsite, snapshot)
 			}
+		}
+		// A readable file is not yet a durable one: an earlier publication
+		// may have failed its directory sync after the rename.
+		if err == nil && filepath.IsAbs(offsite.Repository) {
+			err = syncDirectory(backupplan.ArchiveDirectory(offsite.Repository))
 		}
 		if err != nil {
 			return "", err
@@ -272,6 +280,7 @@ func sendPortableCopy(ctx context.Context, pool *pgxpool.Pool, local, offsite co
 			_, _ = audit.Exec(failureCtx, pool, "UPDATE core.backup_runs SET state='failed',finished_at=now(),failure_reason='offsite copy failed' WHERE id=$1 AND state='running'", run)
 		}
 	}()
+	removeStaleCopy(ctx, offsite, snapshot)
 	size, err := sendArchive(ctx, local, offsite, snapshot)
 	if err != nil {
 		return err
@@ -283,6 +292,50 @@ func sendPortableCopy(ctx context.Context, pool *pgxpool.Pool, local, offsite co
 		return err
 	}
 	finished = true
+	return nil
+}
+
+// removeStaleCopy removes the file an earlier failed copy of this snapshot
+// left under its final name, when it failed after the rename. Its run was
+// just recorded as running, so no complete or pending row references that
+// file. Removing it first keeps a mount from needing room for both the stale
+// file and the new partial file. This is best effort: publishing replaces the
+// file anyway, and that write reports a destination that refuses changes.
+func removeStaleCopy(ctx context.Context, offsite config.BackupTarget, snapshot string) {
+	if !filepath.IsAbs(offsite.Repository) {
+		return
+	}
+	name := backupplan.ArchiveName(snapshot)
+	if _, err := os.Lstat(filepath.Join(backupplan.ArchiveDirectory(offsite.Repository), name)); err != nil { // #nosec G703 -- name derived from a validated snapshot ID
+		return
+	}
+	if err := removePortable(ctx, offsite, name); err != nil {
+		slog.Default().Warn("could not remove the earlier failed copy of this snapshot", "code", ResultCode(err))
+	}
+}
+
+var errArchiveStorageAliased = errors.New("the mounted offsite path is the local backup directory")
+
+// distinctArchiveStorage rejects a mounted offsite repository that resolves to
+// the local repository, or whose archive directory is the local one, although
+// the configured paths differ. A copy there would replace each local archive
+// with one encrypted under the offsite password. Distinct directories on the
+// same filesystem stay valid.
+func distinctArchiveStorage(local, offsite config.BackupTarget) error {
+	if !filepath.IsAbs(local.Repository) || !filepath.IsAbs(offsite.Repository) {
+		return nil
+	}
+	for _, paths := range [][2]string{{local.Repository, offsite.Repository},
+		{backupplan.ArchiveDirectory(local.Repository), backupplan.ArchiveDirectory(offsite.Repository)}} {
+		first, err := os.Stat(paths[0])
+		if err != nil {
+			continue
+		}
+		second, err := os.Stat(paths[1])
+		if err == nil && os.SameFile(first, second) {
+			return &ToolError{Program: "archive", Code: "same_as_local", err: errArchiveStorageAliased}
+		}
+	}
 	return nil
 }
 

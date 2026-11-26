@@ -2473,3 +2473,22 @@ CodeRabbit raised five findings for `4715cd5`. Four are fixed without a schema c
   - The integration tests matching `Backup|Archive|Offsite|Retention|Probe|Portable|Health|Schedul|Purge|JobCleanup|Mounted` in `internal/web`, `internal/maintenance`, `internal/backupplan` and `internal/store` passed.
   - `scripts/test-backup-operations.sh` passed with 0 failures and cleaned up.
   - Not run locally: the Garage S3 fixture and the full integration suite.
+
+## Portable backup files: CodeRabbit round 10 (PR #34)
+
+CodeRabbit raised eight findings for `f6ad35d`. All eight are fixed without a schema change.
+
+- [x] A mounted offsite path that resolves to the local repository, or whose archive directory is the local one, is rejected with the new code `same_as_local` before any copy or connection probe. The configured strings can differ, for example through a symlink or a second mount of the same share. Distinct directories on the same filesystem stay valid. The backup page shows a localized message for the code.
+- [x] A combined backup copies the new snapshot offsite also when only local retention fails. The new snapshot is then already written, checked and recorded complete, and retention keeps its file. The retention failure is returned beside the offsite outcome. A failure to write or check the new snapshot still stops before the copy. When both fail, the job reports the offsite code and keeps the retention failure in its error chain. `household backup --offsite` returns both.
+- [x] The repository lock is taken on its own connection outside the pool. Callers waiting for it no longer hold pool connections that the lock holder needs. Closing that connection releases the lock, also after a cancelled query.
+- [x] `pg_dump` and `pg_restore` diagnostics select a code only by the start of each message, or by the system error that ends a failed file operation. Quoted dump data and `CONTEXT` lines can no longer turn a corrupt archive into `database_unavailable` or `disk_full`.
+- [x] An offsite copy kept from an earlier run is synced in its directory after its check, so an earlier publication whose directory sync failed is made durable before the run reports success.
+- [x] Before a new copy of a snapshot is staged, a file that an earlier failed copy of the same snapshot left under its final name is removed, best effort. No complete or pending run references it at that point.
+- [x] The connection probe syncs the mounted repository directory after it creates or finds the archive directory, so that entry is durable before later writes skip the sync.
+- [x] `TestOffsiteUsesResticRESTReadsOnlyTheRepository` also clears inherited `RESTIC_REPOSITORY_FILE` and `RESTIC_PASSWORD_FILE`.
+- [x] Validation of round 10:
+  - `go vet`, unit tests (including the new tests for message-start classification, for alias detection and for the copy after a failed local retention), `npm test` (536/536), `scripts/localization.test.cjs` (11/11), `scripts/build-localization.cjs --check` and golangci-lint (0 issues, including the integration build tags for `internal/maintenance`) passed.
+  - New integration tests `TestOffsiteCopyRemovesTheStaleFileOfTheSameSnapshot` and `TestRepositoryLockWaitersLeaveThePoolFree` passed. Each failed with its fix removed.
+  - The integration tests matching `Backup|Archive|Offsite|Retention|Probe|Portable|Health|Schedul|Purge|JobCleanup|Mounted|RepositoryLock` in `internal/web`, `internal/maintenance`, `internal/backupplan` and `internal/store` passed.
+  - `scripts/test-backup-operations.sh` passed with 0 failures and cleaned up.
+  - Not run locally: the Garage S3 fixture and the full integration suite. The two directory syncs have no automated test.

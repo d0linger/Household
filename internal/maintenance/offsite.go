@@ -213,6 +213,9 @@ func TestOffsite(ctx context.Context, pool *pgxpool.Pool) error {
 			return latestErr
 		}
 		if archive {
+			if err = distinctArchiveStorage(local, *offsite); err != nil {
+				return err
+			}
 			directory, dirErr := mountedArchiveDirectory(ctx, pool, *offsite)
 			if dirErr != nil {
 				return dirErr
@@ -272,6 +275,11 @@ func probeArchiveDirectory(directory string) error {
 	// Only the archive directory itself is created; its parent is the
 	// mounted repository path, which mountedArchiveDirectory checked.
 	if err := os.Mkdir(directory, 0700); err != nil && !errors.Is(err, os.ErrExist) { // #nosec G703 -- operator-approved storage location
+		return unreachable(err)
+	}
+	// Later writes find the directory present and skip this sync, so its
+	// entry is made durable here, also on a retry after a failed sync.
+	if err := syncDirectory(filepath.Dir(directory)); err != nil {
 		return unreachable(err)
 	}
 	probe, err := os.CreateTemp(directory, ".partial-probe-")

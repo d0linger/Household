@@ -196,12 +196,18 @@ func TestArchiveRetentionKeepsTheArchiveThisRunWrote(t *testing.T) {
 // failure, such as a corrupt dump, stays unclassified.
 func TestDatabaseToolFailuresKeepTheirCause(t *testing.T) {
 	for stderr, want := range map[string]string{
-		"pg_restore: error: could not execute query: ERROR:  could not extend file \"base/1/2\": No space left on device":              "disk_full",
-		"pg_restore: error: connection to server at \"db\" (10.0.0.2), port 5432 failed: FATAL:  the database system is shutting down": "database_unavailable",
-		"pg_restore: error: could not execute query: server closed the connection unexpectedly":                                        "database_unavailable",
-		"pg_restore: error: could not execute query: ERROR:  out of memory":                                                            "database_unavailable",
-		"pg_restore: error: could not read input file: end of file":                                                                    "",
-		"pg_restore: error: could not execute query: ERROR:  syntax error at or near \"x\"":                                            "",
+		"pg_restore: error: could not execute query: ERROR:  could not extend file \"base/1/2\": No space left on device":                  "disk_full",
+		"pg_restore: error: connection to server at \"db\" (10.0.0.2), port 5432 failed: FATAL:  the database system is shutting down":     "database_unavailable",
+		"pg_restore: error: could not execute query: server closed the connection unexpectedly":                                            "database_unavailable",
+		"pg_restore: error: could not execute query: ERROR:  out of memory":                                                                "database_unavailable",
+		"pg_restore: error: could not execute query: ERROR:  could not write to file \"base/pgsql_tmp/t1\": No space left on device":       "disk_full",
+		"pg_dump: error: connection to server on socket \"/run/postgresql/.s.PGSQL.5432\" failed: FATAL:  sorry, too many clients already": "database_unavailable",
+		// Quoted dump data and context lines must not select a code.
+		"pg_restore: error: could not execute query: ERROR:  invalid input syntax for type integer: \"out of memory\"":                "",
+		"pg_restore: error: could not execute query: ERROR:  value too long for type character varying(5): \"could not extend file\"": "",
+		"CONTEXT:  COPY items, line 1, column name: \"disk quota exceeded\"\nCommand was: COPY items FROM stdin;":                     "",
+		"pg_restore: error: could not read input file: end of file":                                                                   "",
+		"pg_restore: error: could not execute query: ERROR:  syntax error at or near \"x\"":                                           "",
 	} {
 		if got := classifyDatabaseToolOutput([]byte(stderr)); got != want {
 			t.Errorf("%q classified as %q, want %q", stderr, got, want)
@@ -210,6 +216,45 @@ func TestDatabaseToolFailuresKeepTheirCause(t *testing.T) {
 	err := &ToolError{Program: "pg_restore", Code: "disk_full", err: errors.New("pg_restore failed")}
 	if ResultCode(err) == "failed" || strings.Contains(err.Error(), "No space") {
 		t.Fatalf("classified tool error = %q, %q", ResultCode(err), err.Error())
+	}
+}
+
+// A mounted offsite path that resolves to the local repository is rejected,
+// although the configured strings differ; distinct directories stay valid.
+func TestOffsiteStorageMustDifferFromTheLocalDirectory(t *testing.T) {
+	directory := t.TempDir()
+	local := config.BackupTarget{Kind: "local", Repository: directory}
+	aliased := config.BackupTarget{Kind: "offsite", Repository: directory + string(filepath.Separator) + "."}
+	if err := distinctArchiveStorage(local, aliased); ResultCode(err) != "same_as_local" {
+		t.Fatalf("aliased offsite path = %v", err)
+	}
+	separate := config.BackupTarget{Kind: "offsite", Repository: t.TempDir()}
+	if err := distinctArchiveStorage(local, separate); err != nil {
+		t.Fatalf("separate directory rejected: %v", err)
+	}
+	absent := config.BackupTarget{Kind: "offsite", Repository: filepath.Join(directory, "absent")}
+	if err := distinctArchiveStorage(local, absent); err != nil {
+		t.Fatalf("absent directory rejected: %v", err)
+	}
+}
+
+// Only a failed local retention lets the offsite copy follow; a failure to
+// write or check the new snapshot stops before the copy.
+func TestOffsiteCopyFollowsOnlyAfterLocalRetentionFails(t *testing.T) {
+	retention := &localRetentionError{err: &ToolError{Program: "archive", Code: "repository_unreachable", err: errors.New("delete refused")}}
+	for err, want := range map[error]bool{
+		nil:                                  true,
+		retention:                            true,
+		fmt.Errorf("wrapped: %w", retention): true,
+		errors.New("check failed"):           false,
+		&ToolError{Program: "archive", Code: "disk_full", err: errors.New("full")}: false,
+	} {
+		if got := copyAfterLocalBackup(err); got != want {
+			t.Errorf("copyAfterLocalBackup(%v) = %v, want %v", err, got, want)
+		}
+	}
+	if ResultCode(retention) != "repository_unreachable" {
+		t.Fatalf("retention failure lost its code: %q", ResultCode(retention))
 	}
 }
 

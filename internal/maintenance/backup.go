@@ -178,17 +178,57 @@ func command(ctx context.Context, program string, args []string, dsn string) ([]
 // database server or its storage, which no dump content causes: a full disk,
 // and a server that refuses, drops or cannot serve the connection. Every other
 // failure, including a corrupt or incompatible dump, returns "".
+//
+// Only the start of each diagnostic message is matched, plus the system error
+// that ends a failed file operation. Server messages can quote dump data, as
+// in invalid input syntax for type integer: "out of memory", and that data
+// must not select a code.
 func classifyDatabaseToolOutput(stderr []byte) string {
-	text := strings.ToLower(string(stderr))
-	contains := func(markers ...string) bool {
-		return slices.ContainsFunc(markers, func(marker string) bool { return strings.Contains(text, marker) })
+	full, unavailable := false, false
+	for line := range strings.Lines(strings.ToLower(string(stderr))) {
+		switch databaseDiagnostic(strings.TrimSpace(line)) {
+		case "disk_full":
+			full = true
+		case "database_unavailable":
+			unavailable = true
+		}
 	}
 	switch {
-	case contains("no space left on device", "could not extend file", "disk quota exceeded"):
+	case full:
 		return "disk_full"
-	case contains("could not connect to server", "connection to server", "server closed the connection unexpectedly",
-		"terminating connection", "the database system is", "too many clients", "remaining connection slots",
-		"out of memory", "out of shared memory"):
+	case unavailable:
+		return "database_unavailable"
+	}
+	return ""
+}
+
+// databaseDiagnostic classifies one lowercased stderr line.
+func databaseDiagnostic(line string) string {
+	// The tool's own prefix, such as "pg_restore: error: ".
+	if program, rest, found := strings.Cut(line, ": "); found && !strings.Contains(program, " ") {
+		if level, message, found := strings.Cut(rest, ": "); found && (level == "error" || level == "fatal") {
+			line = message
+		}
+	}
+	line = strings.TrimPrefix(line, "could not execute query: ")
+	if strings.HasPrefix(line, "could not connect to server") || strings.HasPrefix(line, "connection to server ") {
+		return "database_unavailable"
+	}
+	for _, severity := range []string{"error:", "fatal:", "panic:"} {
+		if rest, found := strings.CutPrefix(line, severity); found {
+			line = strings.TrimSpace(rest)
+			break
+		}
+	}
+	starts := func(markers ...string) bool {
+		return slices.ContainsFunc(markers, func(marker string) bool { return strings.HasPrefix(line, marker) })
+	}
+	switch {
+	case starts("could not extend file", "no space left on device", "disk quota exceeded"),
+		strings.HasSuffix(line, ": no space left on device"), strings.HasSuffix(line, ": disk quota exceeded"):
+		return "disk_full"
+	case starts("server closed the connection unexpectedly", "terminating connection", "the database system is",
+		"sorry, too many clients", "too many clients", "remaining connection slots", "out of memory", "out of shared memory"):
 		return "database_unavailable"
 	}
 	return ""
@@ -295,19 +335,36 @@ func RunBackup(ctx context.Context, pool *pgxpool.Pool, cfg config.Config, optio
 	reportBackupPhase(ctx, pool, options.JobID, "saving_local")
 	snapshot, schemas, err := backupLocked(ctx, pool, cfg, local, settings, options.JobID, true)
 	result := BackupResult{Snapshot: snapshot}
-	if err != nil || !options.Offsite {
+	if !copyAfterLocalBackup(err) || !options.Offsite {
 		return result, err
 	}
-	offsite, err := config.OffsiteBackupTarget(local)
-	if err == nil && offsite == nil {
-		err = ErrOffsiteUnconfigured
+	// A failed local retention leaves the new snapshot complete and checked,
+	// and retention keeps its file, so the copy still runs. The retention
+	// failure is returned beside the offsite outcome.
+	offsite, offsiteErr := config.OffsiteBackupTarget(local)
+	if offsiteErr == nil && offsite == nil {
+		offsiteErr = ErrOffsiteUnconfigured
 	}
-	if err == nil {
+	if offsiteErr == nil {
 		reportBackupPhase(ctx, pool, options.JobID, "copying_offsite")
-		result.OffsiteSnapshot, err = copyOffsiteLocked(ctx, pool, local, *offsite, settings, snapshot, schemas, options.JobID)
+		result.OffsiteSnapshot, offsiteErr = copyOffsiteLocked(ctx, pool, local, *offsite, settings, snapshot, schemas, options.JobID)
 	}
-	result.OffsiteErr = err
-	return result, nil
+	result.OffsiteErr = offsiteErr
+	return result, err
+}
+
+// localRetentionError marks a failed retention after the new local snapshot
+// was written, checked and recorded complete.
+type localRetentionError struct{ err error }
+
+func (e *localRetentionError) Error() string { return e.err.Error() }
+func (e *localRetentionError) Unwrap() error { return e.err }
+
+// copyAfterLocalBackup reports whether the offsite copy can follow a local
+// backup that returned err: only after success or a failed local retention.
+func copyAfterLocalBackup(err error) bool {
+	var retention *localRetentionError
+	return err == nil || errors.As(err, &retention)
 }
 
 // ErrOffsiteUnconfigured reports offsite work without an offsite repository.
@@ -464,7 +521,7 @@ func backupLocked(ctx context.Context, pool *pgxpool.Pool, cfg config.Config, lo
 		err = applyRetention(ctx, pool, local, settings.KeepDaily, settings.KeepWeekly, settings.KeepMonthly)
 	}
 	if err != nil {
-		return snapshot, schemas, err
+		return snapshot, schemas, &localRetentionError{err: err}
 	}
 	return snapshot, schemas, nil
 }
@@ -516,12 +573,21 @@ func nullableUUID(id string) any {
 	return id
 }
 
+// lockRepository takes the repository lock on its own connection, outside
+// the pool: waiters must not hold pool connections that the lock holder needs
+// for its work. Closing that connection ends the session and releases the
+// lock, also when a cancelled query acquired it on the server.
 func lockRepository(ctx context.Context, pool *pgxpool.Pool) (func(), error) {
 	wait, stopWaiting := context.WithTimeout(ctx, 5*time.Minute)
 	defer stopWaiting()
-	conn, err := pool.Acquire(wait)
+	conn, err := pgx.ConnectConfig(wait, pool.Config().ConnConfig)
 	if err != nil {
 		return nil, err
+	}
+	closeConn := func() {
+		closeCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+		_ = conn.Close(closeCtx)
 	}
 	// Wait independently of PostgreSQL's shorter statement_timeout. A trial
 	// restore may legitimately overlap the scheduled check of another target.
@@ -529,12 +595,8 @@ func lockRepository(ctx context.Context, pool *pgxpool.Pool) (func(), error) {
 	defer retry.Stop()
 	for {
 		var acquired bool
-		err = conn.QueryRow(wait, "SELECT pg_try_advisory_lock(721607137)").Scan(&acquired)
-		if err != nil {
-			// A cancelled query can have acquired the session lock on the server.
-			closeCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-			_ = conn.Hijack().Close(closeCtx)
-			cancel()
+		if err = conn.QueryRow(wait, "SELECT pg_try_advisory_lock(721607137)").Scan(&acquired); err != nil {
+			closeConn()
 			return nil, err
 		}
 		if acquired {
@@ -542,20 +604,12 @@ func lockRepository(ctx context.Context, pool *pgxpool.Pool) (func(), error) {
 		}
 		select {
 		case <-wait.Done():
-			conn.Release()
+			closeConn()
 			return nil, wait.Err()
 		case <-retry.C:
 		}
 	}
-	return func() {
-		unlockCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-		defer cancel()
-		if _, unlockErr := conn.Exec(unlockCtx, "SELECT pg_advisory_unlock(721607137)"); unlockErr != nil {
-			_ = conn.Hijack().Close(unlockCtx)
-			return
-		}
-		conn.Release()
-	}, nil
+	return closeConn, nil
 }
 
 // VerifyRestore restores one completed snapshot of target into a disposable
