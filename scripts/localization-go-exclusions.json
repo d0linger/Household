@@ -344,7 +344,6 @@
   "error pattern\ninternal/maintenance/backup.go\nrestore source cannot use the reserved household_restore database": "Internal/operator diagnostic outside typed Invalid/Rejection and HTTP presentation boundaries; preserve diagnostic text.",
   "error pattern\ninternal/maintenance/backup.go\nrestore verification requires a separate database named household_restore": "Internal/operator diagnostic outside typed Invalid/Rejection and HTTP presentation boundaries; preserve diagnostic text.",
   "error pattern\ninternal/maintenance/backup.go\nrestored attachment integrity mismatch": "Internal/operator diagnostic outside typed Invalid/Rejection and HTTP presentation boundaries; preserve diagnostic text.",
-  "error pattern\ninternal/maintenance/backup.go\nrestored attachment metadata count mismatch": "Internal/operator diagnostic outside typed Invalid/Rejection and HTTP presentation boundaries; preserve diagnostic text.",
   "error pattern\ninternal/maintenance/restore_barcode.go\nrestored barcode definition differs from the reviewed original": "Internal/operator diagnostic outside typed Invalid/Rejection and HTTP presentation boundaries; preserve diagnostic text.",
   "error pattern\ninternal/maintenance/restore_barcode.go\nrestored barcode normalization requires the maintenance owner": "Internal/operator diagnostic outside typed Invalid/Rejection and HTTP presentation boundaries; preserve diagnostic text.",
   "error pattern\ninternal/maintenance/backup.go\nrestored stock projection differs from journal": "Internal/operator diagnostic outside typed Invalid/Rejection and HTTP presentation boundaries; preserve diagnostic text.",
@@ -625,5 +624,6 @@
   "error pattern\ninternal/maintenance/archive.go\nencrypted backup contains an attachment its manifest does not list": "Internal backup-worker diagnostic. The UI uses the localized stable result code.",
   "error pattern\ninternal/maintenance/archive.go\nencrypted backup lacks an attachment its manifest lists": "Internal backup-worker diagnostic. The UI uses the localized stable result code.",
   "error pattern\ninternal/maintenance/archive_storage.go\nthe mounted offsite path is the local backup directory": "Internal backup-worker diagnostic. The UI uses the localized stable result code.",
-  "error pattern\ninternal/maintenance/backup.go\n%s could not start (%v); inspect the backup service image": "Internal backup-worker diagnostic. The UI uses the localized stable result code."
+  "error pattern\ninternal/maintenance/backup.go\n%s could not start (%v); inspect the backup service image": "Internal backup-worker diagnostic. The UI uses the localized stable result code.",
+  "error pattern\ninternal/maintenance/archive.go\nnot a regular file": "Internal backup-worker diagnostic. The UI uses the localized stable result code."
 }

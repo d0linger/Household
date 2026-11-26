@@ -69,12 +69,14 @@ func openArchiveFile(directory, name string) (*os.File, error) {
 		return nil, fmt.Errorf("open backup storage directory: %v", err)
 	}
 	defer func() { _ = root.Close() }()
-	f, err := root.Open(name)
+	f, info, err := openRegular(root, name)
+	if errors.Is(err, errNotRegularFile) {
+		return nil, errors.New("unexpected encrypted backup size or type")
+	}
 	if err != nil {
 		return nil, err
 	}
-	info, err := f.Stat()
-	if err != nil || !info.Mode().IsRegular() || info.Size() > backupplan.ArchiveLimit {
+	if info.Size() > backupplan.ArchiveLimit {
 		_ = f.Close()
 		return nil, errors.New("unexpected encrypted backup size or type")
 	}

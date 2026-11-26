@@ -2509,3 +2509,17 @@ CodeRabbit raised six findings for `05c7f58`. All six are fixed without a schema
   - The integration tests matching `Backup|Archive|Offsite|Retention|Probe|Portable|Health|Schedul|Purge|JobCleanup|Mounted|RepositoryLock|Reclaim` in `internal/web`, `internal/maintenance`, `internal/backupplan` and `internal/store` passed.
   - `scripts/test-backup-operations.sh` passed with 0 failures and cleaned up.
   - Not run locally: the Garage S3 fixture and the full integration suite.
+
+## Portable backup files: CodeRabbit round 12 (PR #34)
+
+CodeRabbit raised three findings for `947ec8e`. All three are fixed without a schema change.
+
+- [x] Recorded archives, attachments being backed up, and restored or live attachment files are opened through one helper, `openRegular`. On Unix it opens without blocking, requires a regular file on the opened descriptor and then switches that descriptor back to blocking reads. The cross-volume copy of a live restore uses the same check. A named pipe without a writer is rejected at once instead of holding the repository lock past the deadline. A missing archive still reports `archive_missing`, and a missing storage directory is still a storage failure.
+- [x] Every restore check now compares the restored attachment and derivative rows with the manifest by key, SHA-256 and size (`attachmentsMatchManifest`), not only by count. Local and offsite verification therefore apply the same check as an archive import, which now gets it from the shared restore check.
+- [x] Validation of round 12:
+  - `go vet`, unit tests, `npm test` (536/536), `scripts/localization.test.cjs` (11/11), `scripts/build-localization.cjs --check` and golangci-lint (0 issues, including the integration build tags for `internal/maintenance`) passed.
+  - The new Unix test `TestNamedPipesAreRejectedWithoutBlocking` runs only on Unix. It passed with `go vet` and the `internal/maintenance` and `internal/backupplan` unit tests in a Linux `golang:1.27.4-alpine3.24` container, and it blocked with the non-blocking open removed. It does not run on the Windows host.
+  - The integration tests matching `Backup|Archive|Offsite|Retention|Probe|Portable|Health|Schedul|Purge|JobCleanup|Mounted|RepositoryLock|Reclaim` in `internal/web`, `internal/maintenance`, `internal/backupplan` and `internal/store` passed.
+  - `scripts/test-backup-operations.sh` passed with 0 failures and cleaned up. Its restore checks exercise the new manifest comparison on matching archives.
+  - No test makes the manifest comparison fail: no fixture restores an archive whose attachment rows differ from its manifest at the same count. The cross-volume path of `moveFile` has no pipe test, because a rename within one directory succeeds first.
+  - Not run locally: the Garage S3 fixture and the full integration suite.

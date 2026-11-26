@@ -101,10 +101,6 @@ func (s *Service) importArchive(ctx context.Context, local config.BackupTarget, 
 			content = openErr
 			return openErr
 		}
-		if openErr = attachmentsMatchManifest(ctx, verified, result.Manifest.Files); openErr != nil {
-			content = openErr
-			return openErr
-		}
 		manifest = result.Manifest
 		if manifest.Created.IsZero() {
 			content = errors.New("archive does not record its capture date")

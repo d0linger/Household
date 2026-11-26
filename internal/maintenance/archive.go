@@ -227,19 +227,50 @@ func writePortable(ctx context.Context, target config.BackupTarget, id, stage, s
 	})
 }
 
+// errNotRegularFile reports a file that is not a regular file, such as a
+// named pipe or a device.
+var errNotRegularFile = errors.New("not a regular file")
+
+// openRegular opens a file below root for reading and rejects anything that is
+// not a regular file. A named pipe is opened without blocking, so a pipe
+// without a writer cannot hold a backup or a check past its deadline.
+func openRegular(root *os.Root, name string) (*os.File, os.FileInfo, error) {
+	f, err := root.OpenFile(name, os.O_RDONLY|nonblockingRead, 0)
+	if err != nil {
+		return nil, nil, err
+	}
+	return regularFile(f)
+}
+
+// regularFile keeps f only if it is a regular file, and then reads it with
+// blocking reads. It closes f otherwise.
+func regularFile(f *os.File) (*os.File, os.FileInfo, error) {
+	info, err := f.Stat()
+	if err == nil && !info.Mode().IsRegular() {
+		err = errNotRegularFile
+	}
+	if err == nil {
+		err = clearNonblock(f)
+	}
+	if err != nil {
+		_ = f.Close()
+		return nil, nil, err
+	}
+	return f, info, nil
+}
+
 func addArchiveFile(ctx context.Context, dst *tar.Writer, root *os.Root, key, name string, expected *File) error {
-	f, err := root.Open(key)
+	f, info, err := openRegular(root, key)
+	if errors.Is(err, errNotRegularFile) {
+		return errors.New("unexpected backup file size or type")
+	}
 	if err != nil {
 		return err
 	}
 	defer func() { _ = f.Close() }()
-	info, err := f.Stat()
-	if err != nil {
-		return err
-	}
 	// The writer applies the reader's entry rules, so every published archive
 	// can be restored.
-	if !info.Mode().IsRegular() || info.Size() > backupplan.ArchiveLimit || !allowedArchiveEntry(name, info.Size()) ||
+	if info.Size() > backupplan.ArchiveLimit || !allowedArchiveEntry(name, info.Size()) ||
 		expected != nil && expected.Size != info.Size() {
 		return errors.New("unexpected backup file size or type")
 	}

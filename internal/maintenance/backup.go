@@ -308,8 +308,9 @@ func RunOperatorBackup(ctx context.Context, pool *pgxpool.Pool, cfg config.Confi
 	}
 }
 
-// attachmentInventoryQuery selects the files a backup carries. An archive
-// import compares the restored rows with its manifest using the same query.
+// attachmentInventoryQuery selects the files a backup carries. Every restore
+// check, including an archive import, compares the restored rows with the
+// manifest using the same query.
 const attachmentInventoryQuery = `SELECT storage_key,encode(sha256,'hex'),size_bytes FROM core.attachments WHERE state='ready' UNION ALL SELECT d.storage_key,encode(d.sha256,'hex'),d.size_bytes FROM core.attachment_derivatives d JOIN core.attachments a ON a.id=d.attachment_id WHERE a.state='ready' ORDER BY storage_key`
 
 // RunBackup creates a local snapshot and optionally copies it offsite.
@@ -839,7 +840,7 @@ func restoreWithPayload(ctx context.Context, targetURL string, requireCompatible
 		if !value.ValidUUID(f.Key) {
 			return result, errors.New("invalid backup storage key")
 		}
-		file, err := root.Open(f.Key)
+		file, _, err := openRegular(root, f.Key)
 		if err != nil {
 			return result, err
 		}
@@ -856,12 +857,10 @@ func restoreWithPayload(ctx context.Context, targetURL string, requireCompatible
 			return result, errors.New("restored attachment integrity mismatch")
 		}
 	}
-	var count int
-	if err = restored.QueryRow(ctx, "SELECT (SELECT count(*) FROM core.attachments WHERE state='ready')+(SELECT count(*) FROM core.attachment_derivatives d JOIN core.attachments a ON a.id=d.attachment_id WHERE a.state='ready')").Scan(&count); err != nil {
+	// The restored rows must name exactly the files the manifest lists, with
+	// their sizes and hashes, before a restore point counts as verified.
+	if err = attachmentsMatchManifest(ctx, restored, manifest.Files); err != nil {
 		return result, err
-	}
-	if count != len(manifest.Files) {
-		return result, errors.New("restored attachment metadata count mismatch")
 	}
 	return result, nil
 }
