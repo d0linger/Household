@@ -67,6 +67,19 @@ Files share the same dated name at both locations. Household authenticates the
 whole file with age, using `RESTIC_PASSWORD` locally and
 `HOUSEHOLD_BACKUP_OFFSITE_PASSWORD` externally.
 
+For a mounted destination, create the configured path on the mounted share
+before the first copy; Household creates only `portable` inside it. After a
+copy has been recorded, a missing `portable` directory counts as an absent
+mount: copies, tests and deletions report the destination as unreachable
+instead of writing to the filesystem underneath. Mount the share before the
+container starts, for example with a Docker volume that fails when the share
+is unavailable.
+
+On a versioned S3 bucket, retention deletes an expired file by adding a delete
+marker. The previous version stays stored and billed until the bucket removes
+it. If you do not retain those versions deliberately, add a lifecycle rule
+that expires noncurrent versions, scoped to the backup prefix.
+
 Use the updated Compose or Portainer template. The app mounts `backups`
 read-only and shares the `backup_exchange` volume with the backup service.
 Exchange holds encrypted uploads and prepared downloads. Keep the existing
@@ -82,7 +95,9 @@ upload limit is 32 GiB and 30 minutes.
    runs its SQL, and a confirmed live restoration keeps the objects it creates.
    Choose **Upload backup file**, select the encrypted archive, and submit.
    The worker authenticates it with the configured local or external backup
-   password and checks it in a disposable database. The live keyring must be
+   password and checks it in a disposable database. `HOUSEHOLD_BACKUP_OFFSITE_PASSWORD`
+   alone is enough for an external file; the offsite repository and its
+   credentials need not be configured. The live keyring must be
    able to read the data before the worker registers a verified local point.
 3. At that verified point, choose **Restore**. Review the date, confirm
    your sign-in and enter the displayed confirmation phrase. The usual

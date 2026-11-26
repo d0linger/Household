@@ -2414,3 +2414,26 @@ CodeRabbit raised six findings for `f89e8ed`, all fixed without a schema change:
   - Integration tests matching `Backup|Archive|Offsite|Retention|Probe|Portable|Health|Schedul|Purge|JobCleanup` in `internal/web`, `internal/maintenance`, `internal/backupplan` and `internal/store` passed.
   - `scripts/test-backup-operations.sh` passed with 0 failures and cleaned up.
   - Not run locally: the Garage S3 fixture, the full integration suite and an end-to-end repair of a corrupt offsite copy (the repair takes the same path as a missing copy).
+
+## Portable backup files: CodeRabbit round 7 (PR #34)
+
+CodeRabbit raised five findings for `3aecb29`, all addressed without a schema change. In the same CI run, `fuel-ocr-recovery` failed once: a Fuel review request got 409 "inzwischen geändert". This PR does not change that code, and the job passed on every earlier head of the PR. The push of this round runs it again.
+
+- [x] An upload is decrypted with the local password first and then with `HOUSEHOLD_BACKUP_OFFSITE_PASSWORD`. The offsite password is read on its own (`config.OffsiteArchivePassword`), so a replacement installation without offsite transport settings can import an offsite file.
+- [x] Only a failure while the archive's own content is checked becomes `archive_invalid`. Failures that keep their own result:
+  - preparing, connecting to and removing the trial database;
+  - PostgreSQL server errors of classes 08, 53, 57 and 58;
+  - storage and context errors.
+- [x] Mounted offsite destinations:
+  - Household no longer creates the configured repository path.
+  - Once an archive copy was recorded there, a missing `portable` directory makes copies and the connection test report `repository_unreachable` instead of writing to the filesystem underneath. Deletions already required the directory.
+  - `scripts/test-backup-operations.sh` now creates its mounted path the way an operator does.
+  - Operator impact: a configured path that does not exist must be created on the share before the next copy.
+- [x] `docs/operations.md` explains delete markers on versioned S3 buckets and the optional noncurrent-version lifecycle rule. Household itself deletes no object versions.
+- [x] The member test gives the duplicate fixture a valid manifest and asserts the exact missing-member and duplicate-entry errors.
+- [x] Validation of round 7:
+  - `go vet`, unit tests (including the new server-failure classification test), `scripts/localization.test.cjs` (11/11) and golangci-lint (0 issues, including the integration build tags for `internal/maintenance`) passed.
+  - New integration test `TestMountedArchiveDirectoryRequiresTheMountedFilesystem` passed.
+  - The integration tests matching `Backup|Archive|Offsite|Retention|Probe|Portable|Health|Schedul|Purge|JobCleanup|Mounted` in `internal/web`, `internal/maintenance`, `internal/backupplan` and `internal/store` passed.
+  - `scripts/test-backup-operations.sh` passed with 0 failures and cleaned up.
+  - Not run locally: the Garage S3 fixture and the full integration suite.

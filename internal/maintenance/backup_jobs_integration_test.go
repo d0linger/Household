@@ -3,11 +3,15 @@
 package maintenance
 
 import (
+	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"household/internal/backupplan"
+	"household/internal/config"
 )
 
 // The 180-day job cleanup must keep an import job while its local run exists,
@@ -65,5 +69,35 @@ func TestJobCleanupKeepsImportProvenance(t *testing.T) {
 	var detached bool
 	if err := f.owner.QueryRow(ctx, "SELECT job_id IS NULL FROM core.backup_runs WHERE id=$1", backupRun).Scan(&detached); err != nil || !detached {
 		t.Fatalf("expired backup run kept its deleted job: %v, %v", detached, err)
+	}
+}
+
+// A mounted offsite target must show the mounted filesystem: Household never
+// creates the repository path, and once an archive copy was recorded there a
+// missing archive directory means the mount is absent.
+func TestMountedArchiveDirectoryRequiresTheMountedFilesystem(t *testing.T) {
+	f := newRestoreBarcodeFixture(t)
+	ctx := f.ctx
+	mounted := t.TempDir()
+	if _, err := mountedArchiveDirectory(ctx, f.owner, config.BackupTarget{Kind: "offsite", Repository: filepath.Join(mounted, "absent")}); ResultCode(err) != "repository_unreachable" {
+		t.Fatalf("absent repository path: %v", err)
+	}
+	target := config.BackupTarget{Kind: "offsite", Repository: mounted}
+	directory, err := mountedArchiveDirectory(ctx, f.owner, target)
+	if err != nil || directory != backupplan.ArchiveDirectory(mounted) {
+		t.Fatalf("first copy to an existing path: %q, %v", directory, err)
+	}
+	if _, err = f.owner.Exec(ctx, `INSERT INTO core.backup_runs(state,application_version,repository_reference,snapshot_reference,repository_kind)
+ VALUES('complete','test',$1,$2,'offsite')`, target.Label(), backupplan.ArchiveID(time.Now())); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = mountedArchiveDirectory(ctx, f.owner, target); !errors.Is(err, errArchiveDirectoryMissing) || ResultCode(err) != "repository_unreachable" {
+		t.Fatalf("recorded copies without their directory: %v", err)
+	}
+	if err = os.Mkdir(directory, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := mountedArchiveDirectory(ctx, f.owner, target); err != nil || got != directory {
+		t.Fatalf("mounted directory with recorded copies: %q, %v", got, err)
 	}
 }

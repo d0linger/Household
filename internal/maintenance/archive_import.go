@@ -19,6 +19,7 @@ import (
 	"household/internal/value"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -58,11 +59,13 @@ func (s *Service) importArchive(ctx context.Context, local config.BackupTarget, 
 	passphrase := local.ArchivePassword()
 	plain, err := decryptArchive(ctx, staged, passphrase)
 	if err != nil {
-		offsite, configErr := config.OffsiteBackupTarget(local)
-		if configErr != nil || offsite == nil || offsite.ArchivePassword() == passphrase {
+		// An offsite file uses the offsite password. Read it without the
+		// transport settings, which a replacement installation may lack.
+		fallback, configErr := config.OffsiteArchivePassword()
+		if configErr != nil || fallback == "" || fallback == passphrase || contextFailure(err) {
 			return err
 		}
-		passphrase = offsite.ArchivePassword()
+		passphrase = fallback
 		if _, err = staged.Seek(0, io.SeekStart); err != nil {
 			return err
 		}
@@ -74,6 +77,10 @@ func (s *Service) importArchive(ctx context.Context, local config.BackupTarget, 
 	// Archive authentication happens before executing the PostgreSQL dump.
 	// The restore uses the configured installation passwords only.
 	var manifest Manifest
+	// content holds a failure while the archive's own content was checked.
+	// Preparing, connecting to and removing the trial database are not part
+	// of it, so their failures keep their own result.
+	var content error
 	err = CheckRestore(ctx, s.Config.DatabaseURL, s.Superuser, func(targetURL string) error {
 		result, restoreErr := restoreWithPayload(ctx, targetURL, true, func(dir string) error {
 			return extractArchivePlain(ctx, plain, dir)
@@ -82,6 +89,7 @@ func (s *Service) importArchive(ctx context.Context, local config.BackupTarget, 
 			defer func() { _ = result.Remove() }()
 		}
 		if restoreErr != nil {
+			content = restoreErr
 			return restoreErr
 		}
 		verified, openErr := database.Open(ctx, targetURL, 2)
@@ -90,22 +98,26 @@ func (s *Service) importArchive(ctx context.Context, local config.BackupTarget, 
 		}
 		defer verified.Close()
 		if openErr = liveKeysReadStage(ctx, verified, s.Config); openErr != nil {
+			content = openErr
 			return openErr
 		}
 		if openErr = attachmentsMatchManifest(ctx, verified, result.Manifest.Files); openErr != nil {
+			content = openErr
 			return openErr
 		}
 		manifest = result.Manifest
 		if manifest.Created.IsZero() {
-			return errors.New("archive does not record its capture date")
+			content = errors.New("archive does not record its capture date")
+			return content
 		}
 		return nil
 	})
 	if err != nil {
 		// Only a payload that fails validation is an invalid archive. A full or
-		// unwritable restore volume keeps its own error, so the operator can fix
-		// the volume and upload the same file again.
-		if ResultCode(err) == "failed" && !errors.Is(err, context.Canceled) && !storageFailure(err) {
+		// unwritable restore volume and an unavailable trial database keep their
+		// own error, so the operator can fix them and upload the same file again.
+		if content != nil && ResultCode(content) == "failed" && !contextFailure(content) &&
+			!storageFailure(content) && !databaseServerFailure(content) {
 			return &ToolError{Program: "archive", Code: "archive_invalid", err: err}
 		}
 		return err
@@ -189,6 +201,25 @@ func cleanArchiveExchange(now time.Time) {
 			_ = os.Remove(filepath.Join(directory, entry.Name())) // #nosec G703 -- exact managed exchange filename
 		}
 	}
+}
+
+// databaseServerFailure reports a failed connection or a PostgreSQL error of
+// the server itself (connection, resources, operator intervention, system),
+// which a restored archive cannot cause.
+func databaseServerFailure(err error) bool {
+	var connectErr *pgconn.ConnectError
+	if errors.As(err, &connectErr) {
+		return true
+	}
+	var pgErr *pgconn.PgError
+	if !errors.As(err, &pgErr) || len(pgErr.Code) < 2 {
+		return false
+	}
+	switch pgErr.Code[:2] {
+	case "08", "53", "57", "58":
+		return true
+	}
+	return false
 }
 
 // storageFailure reports a filesystem error of the worker's own volumes.

@@ -65,7 +65,7 @@ docker network create "$network" >/dev/null
 for volume in uploads backups offsite work; do docker volume create "$prefix-$volume" >/dev/null; done
 # The image runs as 10001; give it its writable volumes like Compose does.
 docker run --rm -v "$prefix-uploads:/data/uploads" -v "$prefix-backups:/data/backups" -v "$prefix-offsite:/offsite" -v "$prefix-work:/work" \
-  --user 0 --entrypoint sh "$image" -c 'chown 10001:10001 /data/uploads /data/backups /offsite /work' >/dev/null
+  --user 0 --entrypoint sh "$image" -c 'mkdir -p /offsite/household && chown 10001:10001 /data/uploads /data/backups /offsite /offsite/household /work' >/dev/null
 
 docker run -d --name "$db" --network "$network" --user 70:70 -e POSTGRES_DB=household -e POSTGRES_PASSWORD="$postgres_password" \
   --tmpfs /var/lib/postgresql:rw,size=768m,uid=70,gid=70 \

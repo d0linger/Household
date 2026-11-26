@@ -212,7 +212,11 @@ func TestOffsite(ctx context.Context, pool *pgxpool.Pool) error {
 			return latestErr
 		}
 		if archive {
-			if err = probeArchiveDirectory(backupplan.ArchiveDirectory(offsite.Repository)); err != nil {
+			directory, dirErr := mountedArchiveDirectory(ctx, pool, *offsite)
+			if dirErr != nil {
+				return dirErr
+			}
+			if err = probeArchiveDirectory(directory); err != nil {
 				return err
 			}
 		}
@@ -264,7 +268,9 @@ func probeArchiveDirectory(directory string) error {
 	unreachable := func(err error) error {
 		return &ToolError{Program: "archive", Code: "repository_unreachable", err: err}
 	}
-	if err := os.MkdirAll(directory, 0700); err != nil { // #nosec G703 -- operator-approved storage location
+	// Only the archive directory itself is created; its parent is the
+	// mounted repository path, which mountedArchiveDirectory checked.
+	if err := os.Mkdir(directory, 0700); err != nil && !errors.Is(err, os.ErrExist) { // #nosec G703 -- operator-approved storage location
 		return unreachable(err)
 	}
 	probe, err := os.CreateTemp(directory, ".partial-probe-")

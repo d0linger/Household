@@ -92,6 +92,14 @@ func resticPassword(name string) (string, error) {
 	return value, nil
 }
 
+// OffsiteArchivePassword reads HOUSEHOLD_BACKUP_OFFSITE_PASSWORD on its own,
+// without the transport settings, so a downloaded offsite file can be
+// imported where no offsite repository or credentials are configured. It
+// returns "" when no password is set.
+func OffsiteArchivePassword() (string, error) {
+	return resticPassword("HOUSEHOLD_BACKUP_OFFSITE_PASSWORD")
+}
+
 // OffsiteBackupTarget reads the optional offsite repository. It returns
 // (nil, nil) when neither a repository URL nor S3 settings are configured.
 func OffsiteBackupTarget(local BackupTarget) (*BackupTarget, error) {

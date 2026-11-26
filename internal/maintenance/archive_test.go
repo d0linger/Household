@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -18,6 +19,8 @@ import (
 
 	"household/internal/backupplan"
 	"household/internal/config"
+
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 func TestPortableArchiveRoundTripAndAuthentication(t *testing.T) {
@@ -189,26 +192,37 @@ func TestArchiveRetentionKeepsTheArchiveThisRunWrote(t *testing.T) {
 }
 
 func TestArchiveExtractRequiresEachMemberOnce(t *testing.T) {
-	for name, entries := range map[string][]string{
-		"missing manifest": {"database.dump", "security-keys.json"},
-		"duplicate dump":   {"manifest.json", "database.dump", "database.dump", "security-keys.json"},
+	manifest, err := json.Marshal(Manifest{ArchiveFormat: 1, Version: "test", Created: time.Now(), UploadPath: "/uploads", Crypto: &CryptoReport{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, test := range []struct {
+		name, want string
+		entries    []string
+	}{
+		{"missing manifest", "encrypted backup lacks manifest.json", []string{"database.dump", "security-keys.json"}},
+		{"duplicate dump", "unexpected entry in encrypted backup", []string{"manifest.json", "database.dump", "database.dump", "security-keys.json"}},
 	} {
 		var data bytes.Buffer
 		writer := tar.NewWriter(&data)
-		for _, entry := range entries {
-			if err := writer.WriteHeader(&tar.Header{Name: entry, Typeflag: tar.TypeReg, Size: 1, Mode: 0600}); err != nil {
+		for _, entry := range test.entries {
+			content := []byte("x")
+			if entry == "manifest.json" {
+				content = manifest
+			}
+			if err = writer.WriteHeader(&tar.Header{Name: entry, Typeflag: tar.TypeReg, Size: int64(len(content)), Mode: 0600}); err != nil {
 				t.Fatal(err)
 			}
-			if _, err := writer.Write([]byte("x")); err != nil {
+			if _, err = writer.Write(content); err != nil {
 				t.Fatal(err)
 			}
 		}
-		if err := writer.Close(); err != nil {
+		if err = writer.Close(); err != nil {
 			t.Fatal(err)
 		}
-		err := extractArchivePlain(context.Background(), &data, t.TempDir())
-		if err == nil || storageFailure(err) {
-			t.Fatalf("%s: got %v, want a file defect rather than a storage failure", name, err)
+		err = extractArchivePlain(context.Background(), &data, t.TempDir())
+		if err == nil || err.Error() != test.want || storageFailure(err) {
+			t.Fatalf("%s: got %v, want %q as a file defect", test.name, err, test.want)
 		}
 	}
 }
@@ -261,5 +275,22 @@ func TestCheckPortableConfirmsCorruptionOnlyWhenTheFileOpens(t *testing.T) {
 	}
 	if err = checkPortable(ctx, target, id); ResultCode(err) != "archive_unreadable" || !errors.Is(err, errArchiveCorrupt) {
 		t.Fatalf("tampered content must be confirmed corrupt: %q, %v", ResultCode(err), err)
+	}
+}
+
+func TestDatabaseServerFailureLeavesContentErrors(t *testing.T) {
+	for _, test := range []struct {
+		err  error
+		want bool
+	}{
+		{&pgconn.PgError{Code: "53100"}, true},  // disk full
+		{&pgconn.PgError{Code: "57P01"}, true},  // admin shutdown
+		{&pgconn.PgError{Code: "08006"}, true},  // connection failure
+		{&pgconn.PgError{Code: "42P01"}, false}, // a restored table is missing
+		{errors.New("restored attachment records differ from the archive manifest"), false},
+	} {
+		if got := databaseServerFailure(fmt.Errorf("check: %w", test.err)); got != test.want {
+			t.Fatalf("%v: got %v, want %v", test.err, got, test.want)
+		}
 	}
 }

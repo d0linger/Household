@@ -185,6 +185,11 @@ func sendArchive(ctx context.Context, local, offsite config.BackupTarget, id str
 }
 
 func copyPortableLocked(ctx context.Context, pool *pgxpool.Pool, local, offsite config.BackupTarget, settings backupplan.Settings, snapshot string, schemas []byte, jobID string) (string, error) {
+	if filepath.IsAbs(offsite.Repository) {
+		if _, err := mountedArchiveDirectory(ctx, pool, offsite); err != nil {
+			return "", err
+		}
+	}
 	// A pending deletion of this snapshot finishes before its name is reused.
 	// Other pending deletions and earlier failed copies are handled after the
 	// copy, so a destination that refuses deletes cannot block a new copy.
@@ -464,6 +469,44 @@ func removePortable(ctx context.Context, target config.BackupTarget, name string
 		return err
 	}
 	return archiveStorageError(client.RemoveObject(ctx, bucket, key, minio.RemoveObjectOptions{}))
+}
+
+var errArchiveDirectoryMissing = errors.New("the offsite backup directory is missing although copies were recorded there; is the destination mounted?")
+
+// mountedArchiveDirectory returns the archive directory of a mounted offsite
+// target once the path plausibly shows the mounted filesystem. Household never
+// creates the repository path itself, so an absent mount point is not replaced
+// by a new directory. Once an archive copy was recorded there, its archive
+// directory must exist as well: if it is missing, the mount is absent and the
+// path shows the filesystem underneath. Only the archive directory of a first
+// copy is created. Callers hold the repository lock.
+func mountedArchiveDirectory(ctx context.Context, pool *pgxpool.Pool, target config.BackupTarget) (string, error) {
+	unreachable := func(err error) error {
+		return &ToolError{Program: "archive", Code: "repository_unreachable", err: err}
+	}
+	info, err := os.Stat(target.Repository)
+	if err != nil {
+		return "", unreachable(err)
+	}
+	if !info.IsDir() {
+		return "", unreachable(errors.New("the offsite backup path is not a directory"))
+	}
+	directory := backupplan.ArchiveDirectory(target.Repository)
+	if _, err = os.Stat(directory); err == nil {
+		return directory, nil
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return "", unreachable(err)
+	}
+	var recorded bool
+	if err = pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM core.backup_runs WHERE repository_kind='offsite'
+ AND repository_reference=$1 AND state IN('complete','retention_pending','expired') AND snapshot_reference ~ $2)`,
+		target.Label(), backupplan.ArchiveReferencePattern).Scan(&recorded); err != nil {
+		return "", err
+	}
+	if recorded {
+		return "", unreachable(errArchiveDirectoryMissing)
+	}
+	return directory, nil
 }
 
 // syncRootDirectory syncs the directory a root opened, so entries removed
