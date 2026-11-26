@@ -55,12 +55,11 @@ func (r archiveReader) Read(b []byte) (int, error) {
 	return r.Reader.Read(b)
 }
 
-func portableBackups(local config.BackupTarget) bool {
+func portableBackups() bool {
 	if os.Getenv("HOUSEHOLD_BACKUP_FORMAT") == "restic" {
 		return false
 	}
-	remote, _ := config.OffsiteBackupTarget(local)
-	return remote == nil || !strings.HasPrefix(remote.Repository, "rest:")
+	return !config.OffsiteUsesResticREST()
 }
 
 func encryptArchive(dst io.Writer, password string) (io.WriteCloser, error) {
@@ -337,6 +336,22 @@ func extractArchivePlain(ctx context.Context, plaintext io.Reader, directory str
 	if manifest.ArchiveFormat != 1 || manifest.UploadPath != "/uploads" || manifest.Crypto == nil ||
 		manifest.Created.IsZero() || manifest.Version == "" {
 		return errors.New("unsupported Household archive manifest")
+	}
+	// The attachment members must match the manifest exactly. A listed file
+	// the archive omits is a defect of the file, not a missing file on the
+	// staging volume, so it is reported before the trial restore opens it.
+	listed := make(map[string]bool, len(manifest.Files))
+	for _, f := range manifest.Files {
+		name := "uploads/" + f.Key
+		if !seen[name] || listed[name] {
+			return errors.New("encrypted backup lacks an attachment its manifest lists")
+		}
+		listed[name] = true
+	}
+	for name := range seen {
+		if strings.HasPrefix(name, "uploads/") && !listed[name] {
+			return errors.New("encrypted backup contains an attachment its manifest does not list")
+		}
 	}
 	return nil
 }

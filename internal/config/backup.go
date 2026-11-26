@@ -92,6 +92,16 @@ func resticPassword(name string) (string, error) {
 	return value, nil
 }
 
+// OffsiteUsesResticREST reports whether the configured offsite repository is
+// a restic REST server. It reads only the repository setting, so incomplete
+// or invalid offsite credentials do not change the local backup format: the
+// copy reports the credential error, and the local snapshot stays copyable
+// once the credentials are fixed.
+func OffsiteUsesResticREST() bool {
+	repository, err := secret("HOUSEHOLD_BACKUP_OFFSITE_REPOSITORY")
+	return err == nil && strings.HasPrefix(strings.TrimSpace(repository), "rest:")
+}
+
 // OffsiteArchivePassword reads HOUSEHOLD_BACKUP_OFFSITE_PASSWORD on its own,
 // without the transport settings, so a downloaded offsite file can be
 // imported where no offsite repository or credentials are configured. It

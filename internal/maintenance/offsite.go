@@ -201,7 +201,7 @@ func TestOffsite(ctx context.Context, pool *pgxpool.Pool) error {
 		// Test every format a coming copy can use for this target: the newest
 		// local snapshot that an offsite-only copy takes, and the configured
 		// writer that a combined backup uses.
-		archive, restic := portableBackups(local), !portableBackups(local)
+		archive, restic := portableBackups(), !portableBackups()
 		snapshot, _, latestErr := latestCopyableSnapshot(ctx, pool, local, *offsite)
 		switch {
 		case latestErr == nil && backupplan.ArchiveName(snapshot) != "":

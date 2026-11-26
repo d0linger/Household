@@ -72,6 +72,77 @@ func TestJobCleanupKeepsImportProvenance(t *testing.T) {
 	}
 }
 
+// Archive retention reads the quotas committed when it prunes, for the local
+// and the offsite repository, not values a caller read before the backup.
+func TestArchiveRetentionUsesTheCommittedQuotas(t *testing.T) {
+	f := newRestoreBarcodeFixture(t)
+	ctx := f.ctx
+	var household string
+	if err := f.owner.QueryRow(ctx, "INSERT INTO core.households(name,timezone) VALUES('Synthetic retention quotas','UTC') RETURNING id").Scan(&household); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.owner.Exec(ctx, `INSERT INTO core.backup_settings(household_id,keep_daily,keep_weekly,keep_monthly,offsite_keep_daily,offsite_keep_weekly,offsite_keep_monthly)
+ VALUES($1,3,1,1,1,1,1) ON CONFLICT(household_id) DO UPDATE SET keep_daily=3,keep_weekly=1,keep_monthly=1,offsite_keep_daily=1,offsite_keep_weekly=1,offsite_keep_monthly=1`, household); err != nil {
+		t.Fatal(err)
+	}
+	// Three captures on consecutive days of one ISO week and month.
+	captures := []time.Time{
+		time.Date(2026, 1, 6, 3, 0, 0, 0, time.UTC),
+		time.Date(2026, 1, 7, 3, 0, 0, 0, time.UTC),
+		time.Date(2026, 1, 8, 3, 0, 0, 0, time.UTC),
+	}
+	setup := func(kind string) (config.BackupTarget, []string) {
+		t.Helper()
+		target := config.BackupTarget{Kind: kind, Repository: t.TempDir()}
+		if err := os.MkdirAll(backupplan.ArchiveDirectory(target.Repository), 0700); err != nil {
+			t.Fatal(err)
+		}
+		var ids []string
+		for _, at := range captures {
+			id := backupplan.ArchiveID(at)
+			if _, err := f.owner.Exec(ctx, `INSERT INTO core.backup_runs(started_at,finished_at,state,application_version,repository_reference,snapshot_reference,repository_kind)
+ VALUES($1,$1,'complete','test',$2,$3,$4)`, at, target.Label(), id, kind); err != nil {
+				t.Fatal(err)
+			}
+			ids = append(ids, id)
+		}
+		return target, ids
+	}
+	kept := func(target config.BackupTarget) int {
+		t.Helper()
+		var count int
+		if err := f.owner.QueryRow(ctx, "SELECT count(*) FROM core.backup_runs WHERE repository_reference=$1 AND state='complete'", target.Label()).Scan(&count); err != nil {
+			t.Fatal(err)
+		}
+		return count
+	}
+	local, _ := setup("local")
+	offsite, offsiteIDs := setup("offsite")
+	if err := applyArchiveRetention(ctx, f.owner, local, ""); err != nil {
+		t.Fatal(err)
+	}
+	if got := kept(local); got != 3 {
+		t.Fatalf("local retention kept %d of three daily archives, want the committed keep_daily=3", got)
+	}
+	if err := applyArchiveRetention(ctx, f.owner, offsite, ""); err != nil {
+		t.Fatal(err)
+	}
+	var newest string
+	if err := f.owner.QueryRow(ctx, "SELECT snapshot_reference FROM core.backup_runs WHERE repository_reference=$1 AND state='complete'", offsite.Label()).Scan(&newest); err != nil || newest != offsiteIDs[2] {
+		t.Fatalf("offsite retention kept %q, %v; want only the newest archive under offsite_keep_daily=1", newest, err)
+	}
+	// A retention change committed after the backup started governs the prune.
+	if _, err := f.owner.Exec(ctx, "UPDATE core.backup_settings SET keep_daily=1 WHERE household_id=$1", household); err != nil {
+		t.Fatal(err)
+	}
+	if err := applyArchiveRetention(ctx, f.owner, local, ""); err != nil {
+		t.Fatal(err)
+	}
+	if got := kept(local); got != 1 {
+		t.Fatalf("local retention kept %d archives after keep_daily=1 was saved, want 1", got)
+	}
+}
+
 // A mounted offsite target must show the mounted filesystem: Household never
 // creates the repository path, and once an archive copy was recorded there a
 // missing archive directory means the mount is absent.

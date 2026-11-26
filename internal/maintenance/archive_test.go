@@ -192,7 +192,9 @@ func TestArchiveRetentionKeepsTheArchiveThisRunWrote(t *testing.T) {
 }
 
 func TestArchiveExtractRequiresEachMemberOnce(t *testing.T) {
-	manifest, err := json.Marshal(Manifest{ArchiveFormat: 1, Version: "test", Created: time.Now(), UploadPath: "/uploads", Crypto: &CryptoReport{}})
+	const listed, unlisted = "uploads/6b1f4c2e-8a3d-4e5f-9b70-1c2d3e4f5a6b", "uploads/0f9e8d7c-6b5a-4c3d-8e2f-1a0b9c8d7e6f"
+	manifest, err := json.Marshal(Manifest{ArchiveFormat: 1, Version: "test", Created: time.Now(), UploadPath: "/uploads", Crypto: &CryptoReport{},
+		Files: []File{{Key: strings.TrimPrefix(listed, "uploads/"), SHA256: strings.Repeat("0", 64), Size: 1}}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -202,6 +204,9 @@ func TestArchiveExtractRequiresEachMemberOnce(t *testing.T) {
 	}{
 		{"missing manifest", "encrypted backup lacks manifest.json", []string{"database.dump", "security-keys.json"}},
 		{"duplicate dump", "unexpected entry in encrypted backup", []string{"manifest.json", "database.dump", "database.dump", "security-keys.json"}},
+		{"missing listed attachment", "encrypted backup lacks an attachment its manifest lists", []string{"manifest.json", "database.dump", "security-keys.json"}},
+		{"unlisted attachment", "encrypted backup contains an attachment its manifest does not list", []string{"manifest.json", "database.dump", "security-keys.json", listed, unlisted}},
+		{"complete", "", []string{"manifest.json", "database.dump", listed, "security-keys.json"}},
 	} {
 		var data bytes.Buffer
 		writer := tar.NewWriter(&data)
@@ -221,6 +226,12 @@ func TestArchiveExtractRequiresEachMemberOnce(t *testing.T) {
 			t.Fatal(err)
 		}
 		err = extractArchivePlain(context.Background(), &data, t.TempDir())
+		if test.want == "" {
+			if err != nil {
+				t.Fatalf("%s: %v", test.name, err)
+			}
+			continue
+		}
 		if err == nil || err.Error() != test.want || storageFailure(err) {
 			t.Fatalf("%s: got %v, want %q as a file defect", test.name, err, test.want)
 		}

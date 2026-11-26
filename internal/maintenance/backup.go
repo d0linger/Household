@@ -291,7 +291,7 @@ func backupLocked(ctx context.Context, pool *pgxpool.Pool, cfg config.Config, lo
 	if err != nil {
 		return "", nil, err
 	}
-	portable := portableBackups(local)
+	portable := portableBackups()
 	sourceUploads := manifest.UploadPath
 	if portable {
 		manifest.ArchiveFormat = 1
@@ -428,7 +428,7 @@ func backupLocked(ctx context.Context, pool *pgxpool.Pool, cfg config.Config, lo
 		return snapshot, schemas, nil
 	}
 	if portable {
-		err = applyArchiveRetention(ctx, pool, local, snapshot, settings.KeepDaily, settings.KeepWeekly, settings.KeepMonthly)
+		err = applyArchiveRetention(ctx, pool, local, snapshot)
 	} else {
 		err = applyRetention(ctx, pool, local, settings.KeepDaily, settings.KeepWeekly, settings.KeepMonthly)
 	}

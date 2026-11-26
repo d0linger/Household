@@ -223,7 +223,7 @@ func copyPortableLocked(ctx context.Context, pool *pgxpool.Pool, local, offsite 
 		return "", err
 	}
 	err = errors.Join(reconcileOffsiteAttempts(ctx, pool, offsite, snapshot),
-		applyArchiveRetention(ctx, pool, offsite, "", settings.OffsiteKeepDaily, settings.OffsiteKeepWeekly, settings.OffsiteKeepMonthly))
+		applyArchiveRetention(ctx, pool, offsite, ""))
 	// Retention can expire the new copy when newer captures already fill its
 	// calendar buckets. That copy is gone, so it is not reported as a success.
 	var retained bool
@@ -361,18 +361,33 @@ func keepFirst(points []archiveRetentionPoint, keep string) []archiveRetentionPo
 
 // keep names an archive this run wrote; it claims its calendar buckets first,
 // so a new local backup is never expired by the run that created it.
-func applyArchiveRetention(ctx context.Context, pool *pgxpool.Pool, target config.BackupTarget, keep string, daily, weekly, monthly int) error {
+//
+// The quotas are read in the pruning transaction, so a retention change saved
+// during a backup governs the prune that follows it.
+func applyArchiveRetention(ctx context.Context, pool *pgxpool.Pool, target config.BackupTarget, keep string) error {
 	tx, err := audit.Begin(ctx, pool)
 	if err != nil {
 		return err
 	}
 	defer rollbackCrypto(tx)
+	// The settings row is held until the prune commits. A save that committed
+	// earlier is read here; a later save waits (an update blocks on this row,
+	// a first insert on the household row's key lock) and governs the next run.
+	// It is locked before the household row, which a save's audit entry may
+	// reference, so the two never wait on each other.
+	if _, err = tx.Exec(ctx, "SELECT 1 FROM core.backup_settings FOR SHARE"); err != nil {
+		return err
+	}
 	if _, err = tx.Exec(ctx, "SELECT id FROM core.households FOR UPDATE"); err != nil {
 		return err
 	}
-	_, zone, err := loadSettings(ctx, tx)
+	settings, zone, err := loadSettings(ctx, tx)
 	if err != nil {
 		return err
+	}
+	daily, weekly, monthly := settings.KeepDaily, settings.KeepWeekly, settings.KeepMonthly
+	if target.Kind == "offsite" {
+		daily, weekly, monthly = settings.OffsiteKeepDaily, settings.OffsiteKeepWeekly, settings.OffsiteKeepMonthly
 	}
 	// Points are keyed by capture time: the local run's start (for an import,
 	// the archive's own capture date), not the time an offsite copy finished.

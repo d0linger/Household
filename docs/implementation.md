@@ -2437,3 +2437,19 @@ CodeRabbit raised five findings for `3aecb29`, all addressed without a schema ch
   - The integration tests matching `Backup|Archive|Offsite|Retention|Probe|Portable|Health|Schedul|Purge|JobCleanup|Mounted` in `internal/web`, `internal/maintenance`, `internal/backupplan` and `internal/store` passed.
   - `scripts/test-backup-operations.sh` passed with 0 failures and cleaned up.
   - Not run locally: the Garage S3 fixture and the full integration suite.
+
+## Portable backup files: CodeRabbit round 8 (PR #34)
+
+CodeRabbit raised three findings for `94510b1`, all addressed without a schema change.
+
+- [x] An uploaded archive whose attachment members differ from `manifest.Files` is rejected during extraction, before `pg_restore`: a listed attachment without its member, a key listed twice and an unlisted member. These are defects of the file and report `archive_invalid`. Staging-volume errors keep their storage result.
+- [x] Archive retention reads its quotas in the pruning transaction, for the local or the offsite repository, instead of using the values read when the backup started. The transaction locks `core.backup_settings` `FOR SHARE` before the household row. A settings save committed earlier governs the prune. A later save waits for the prune to commit and applies to the next run. The restic retention path is unchanged.
+- [x] The local backup format now follows the offsite repository scheme alone (`config.OffsiteUsesResticREST`). A `rest:` repository with incomplete credentials keeps the local backup in restic format, and the offsite copy still reports the credential error.
+- [x] Validation of round 8:
+  - `go vet` and unit tests passed, including the new attachment-member cases and `TestOffsiteUsesResticRESTReadsOnlyTheRepository`.
+  - `scripts/localization.test.cjs` passed (11/11).
+  - golangci-lint reported 0 issues, including with the integration build tags for `internal/maintenance`.
+  - New integration test `TestArchiveRetentionUsesTheCommittedQuotas` passed.
+  - The integration tests matching `Backup|Archive|Offsite|Retention|Probe|Portable|Health|Schedul|Purge|JobCleanup|Mounted` in `internal/web`, `internal/maintenance`, `internal/backupplan` and `internal/store` passed.
+  - `scripts/test-backup-operations.sh` passed with 0 failures and cleaned up.
+  - Not run locally: the Garage S3 fixture and the full integration suite.
