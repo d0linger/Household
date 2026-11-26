@@ -130,9 +130,10 @@ func TestArchiveRetentionUsesTheCommittedQuotas(t *testing.T) {
 	if err := applyArchiveRetention(ctx, f.owner, offsite, ""); err != nil {
 		t.Fatal(err)
 	}
+	var complete int
 	var newest string
-	if err := f.owner.QueryRow(ctx, "SELECT snapshot_reference FROM core.backup_runs WHERE repository_reference=$1 AND state='complete'", offsite.Label()).Scan(&newest); err != nil || newest != offsiteIDs[2] {
-		t.Fatalf("offsite retention kept %q, %v; want only the newest archive under offsite_keep_daily=1", newest, err)
+	if err := f.owner.QueryRow(ctx, "SELECT count(*),coalesce(max(snapshot_reference),'') FROM core.backup_runs WHERE repository_reference=$1 AND state='complete'", offsite.Label()).Scan(&complete, &newest); err != nil || complete != 1 || newest != offsiteIDs[2] {
+		t.Fatalf("offsite retention kept %d runs up to %q, %v; want only the newest archive under offsite_keep_daily=1", complete, newest, err)
 	}
 	// A retention change committed after the backup started governs the prune.
 	if _, err := f.owner.Exec(ctx, "UPDATE core.backup_settings SET keep_daily=1 WHERE household_id=$1", household); err != nil {
@@ -197,6 +198,50 @@ func TestReclaimFinishesPendingDeletionsAndKeepsReferencedFiles(t *testing.T) {
 	}
 }
 
+// An older backup worker expired every run of its repository label that its
+// own retention did not list, also portable archives. Reclaim registers such a
+// present file again instead of deleting it as unreferenced.
+func TestReclaimRegistersArchivesAnOlderWorkerExpired(t *testing.T) {
+	f := newRestoreBarcodeFixture(t)
+	ctx := f.ctx
+	local := config.BackupTarget{Kind: "local", Repository: t.TempDir()}
+	directory := backupplan.ArchiveDirectory(local.Repository)
+	if err := os.Mkdir(directory, 0700); err != nil {
+		t.Fatal(err)
+	}
+	old := time.Now().Add(-3 * time.Hour)
+	id := backupplan.ArchiveID(old.Add(-24 * time.Hour))
+	path := filepath.Join(directory, backupplan.ArchiveName(id))
+	if err := os.WriteFile(path, []byte("synthetic archive"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(path, old, old); err != nil {
+		t.Fatal(err)
+	}
+	expire := func(daysAgo int) string {
+		t.Helper()
+		var run string
+		if err := f.owner.QueryRow(ctx, `INSERT INTO core.backup_runs(state,application_version,repository_reference,snapshot_reference,repository_kind,started_at)
+ VALUES('expired','test',$1,$2,'local',now()-interval '1 day'*$3) RETURNING id`, local.Label(), id, daysAgo).Scan(&run); err != nil {
+			t.Fatal(err)
+		}
+		return run
+	}
+	earlier, newest := expire(2), expire(1)
+	if err := reclaimArchives(ctx, f.owner, local, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("archive of an expired run deleted: %v", err)
+	}
+	for run, want := range map[string]string{newest: "complete", earlier: "expired"} {
+		var state string
+		if err := f.owner.QueryRow(ctx, "SELECT state FROM core.backup_runs WHERE id=$1", run).Scan(&state); err != nil || state != want {
+			t.Errorf("run state = %q, %v; want %s", state, err, want)
+		}
+	}
+}
+
 // Pending deletions of other snapshots are retried before an offsite copy is
 // staged, also when that copy then fails.
 func TestOffsiteCopyFinishesOtherPendingDeletionsFirst(t *testing.T) {
@@ -250,8 +295,13 @@ func TestOffsiteCopyRemovesTheStaleFileOfTheSameSnapshot(t *testing.T) {
  VALUES('failed','test',$1,$2,'offsite','offsite copy failed')`, offsite.Label(), snapshot); err != nil {
 		t.Fatal(err)
 	}
-	// The local file is missing, so the new copy fails after the removal.
+	// The local run of the snapshot does not protect the offsite file.
 	local := config.BackupTarget{Kind: "local", Repository: t.TempDir()}
+	if _, err := f.owner.Exec(ctx, `INSERT INTO core.backup_runs(state,application_version,repository_reference,snapshot_reference,repository_kind)
+ VALUES('complete','test',$1,$2,'local')`, local.Label(), snapshot); err != nil {
+		t.Fatal(err)
+	}
+	// The local file is missing, so the new copy fails after the removal.
 	if _, err := copyPortableLocked(ctx, f.owner, local, offsite, backupplan.Defaults(), snapshot, []byte(`{}`), ""); err == nil {
 		t.Fatal("copy without a local archive succeeded")
 	}
@@ -285,7 +335,26 @@ func TestRepositoryLockWaitersLeaveThePoolFree(t *testing.T) {
 		}
 		waiter <- err
 	}()
-	time.Sleep(1500 * time.Millisecond)
+	// The holder's session last ran the same statement, so a second session
+	// showing it is the waiter contending for the lock.
+	contended := false
+	for deadline := time.Now().Add(10 * time.Second); !contended && time.Now().Before(deadline); {
+		var sessions int
+		if err = f.owner.QueryRow(ctx, `SELECT count(*) FROM pg_stat_activity
+ WHERE datname=current_database() AND query LIKE 'SELECT pg_try_advisory_lock(721607137)%'`).Scan(&sessions); err != nil {
+			t.Fatal(err)
+		}
+		contended = sessions >= 2
+		if !contended {
+			time.Sleep(50 * time.Millisecond)
+		}
+	}
+	if !contended {
+		stopWaiter()
+		waitErr := <-waiter
+		unlock()
+		t.Fatalf("the waiter never contended for the lock (waiter returned %v)", waitErr)
+	}
 	queryCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	var one int
 	err = pool.QueryRow(queryCtx, "SELECT 1").Scan(&one)
@@ -308,6 +377,67 @@ func TestRepositoryLockWaitersLeaveThePoolFree(t *testing.T) {
 // The file of an earlier failed offsite copy is removed before a new copy,
 // also when that copy fails, so stale attempts cannot keep taking the space
 // later copies need.
+// An offsite path can resolve to a directory that another offsite label also
+// uses. A file that a complete run of that label references is kept.
+func TestOffsiteCopyKeepsAFileAnotherOffsiteLabelReferences(t *testing.T) {
+	f := newRestoreBarcodeFixture(t)
+	ctx := f.ctx
+	offsite := config.BackupTarget{Kind: "offsite", Repository: t.TempDir()}
+	directory := backupplan.ArchiveDirectory(offsite.Repository)
+	if err := os.Mkdir(directory, 0700); err != nil {
+		t.Fatal(err)
+	}
+	snapshot := backupplan.ArchiveID(time.Now())
+	shared := filepath.Join(directory, backupplan.ArchiveName(snapshot))
+	if err := os.WriteFile(shared, []byte("synthetic copy of another offsite label"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.owner.Exec(ctx, `INSERT INTO core.backup_runs(state,application_version,repository_reference,snapshot_reference,repository_kind)
+ VALUES('complete','test','offsite:/another/path/to/the/same/mount',$1,'offsite')`, snapshot); err != nil {
+		t.Fatal(err)
+	}
+	local := config.BackupTarget{Kind: "local", Repository: t.TempDir()}
+	if _, err := copyPortableLocked(ctx, f.owner, local, offsite, backupplan.Defaults(), snapshot, []byte(`{}`), ""); err == nil {
+		t.Fatal("copy without a local archive succeeded")
+	}
+	if _, err := os.Stat(shared); err != nil {
+		t.Fatalf("file of another offsite label removed: %v", err)
+	}
+}
+
+// A worker that stopped during a write leaves its partial file on the mount.
+// The next copy removes it once the grace period passed, and keeps a partial
+// file that may still be written.
+func TestOffsiteCopyRemovesInterruptedPartialFiles(t *testing.T) {
+	f := newRestoreBarcodeFixture(t)
+	ctx := f.ctx
+	offsite := config.BackupTarget{Kind: "offsite", Repository: t.TempDir()}
+	directory := backupplan.ArchiveDirectory(offsite.Repository)
+	if err := os.Mkdir(directory, 0700); err != nil {
+		t.Fatal(err)
+	}
+	interrupted, recent := filepath.Join(directory, ".partial-interrupted"), filepath.Join(directory, ".partial-recent")
+	for _, path := range []string{interrupted, recent} {
+		if err := os.WriteFile(path, []byte("synthetic partial copy"), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	old := time.Now().Add(-2 * archiveReclaimGrace)
+	if err := os.Chtimes(interrupted, old, old); err != nil {
+		t.Fatal(err)
+	}
+	local := config.BackupTarget{Kind: "local", Repository: t.TempDir()}
+	if _, err := copyPortableLocked(ctx, f.owner, local, offsite, backupplan.Defaults(), backupplan.ArchiveID(time.Now()), []byte(`{}`), ""); err == nil {
+		t.Fatal("copy without a local archive succeeded")
+	}
+	if _, err := os.Stat(interrupted); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("interrupted partial file kept: %v", err)
+	}
+	if _, err := os.Stat(recent); err != nil {
+		t.Fatalf("recent partial file removed: %v", err)
+	}
+}
+
 func TestOffsiteCopyRemovesEarlierAttemptsWhenItFails(t *testing.T) {
 	f := newRestoreBarcodeFixture(t)
 	ctx := f.ctx

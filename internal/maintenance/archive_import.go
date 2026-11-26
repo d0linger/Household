@@ -59,11 +59,9 @@ func (s *Service) importArchive(ctx context.Context, local config.BackupTarget, 
 	passphrase := local.ArchivePassword()
 	plain, err := decryptArchive(ctx, staged, passphrase)
 	if err != nil {
-		// An offsite file uses the offsite password. Read it without the
-		// transport settings, which a replacement installation may lack.
-		fallback, configErr := config.OffsiteArchivePassword()
-		if configErr != nil || fallback == "" || fallback == passphrase || contextFailure(err) {
-			return err
+		fallback, retryErr := offsiteRetryPassword(err, passphrase)
+		if retryErr != nil {
+			return retryErr
 		}
 		passphrase = fallback
 		if _, err = staged.Seek(0, io.SeekStart); err != nil {
@@ -224,6 +222,27 @@ func storageFailure(err error) bool {
 	var linkErr *os.LinkError
 	var syscallErr *os.SyscallError
 	return errors.As(err, &pathErr) || errors.As(err, &linkErr) || errors.As(err, &syscallErr)
+}
+
+// offsiteRetryPassword returns the password for a second attempt after the
+// local password failed with err. An offsite file uses the offsite password,
+// read without the transport settings, which a replacement installation may
+// lack. Without a usable second password it returns the reason to stop: a
+// canceled run first, then an unreadable password setting, else err itself.
+func offsiteRetryPassword(err error, passphrase string) (string, error) {
+	if contextFailure(err) {
+		return "", err
+	}
+	fallback, configErr := config.OffsiteArchivePassword()
+	if configErr != nil {
+		// The retry cannot run. The cause can name a file path, so it stays
+		// in the private diagnostic.
+		return "", errors.Join(&ToolError{Program: "archive", Code: "password_unavailable", err: configErr}, err)
+	}
+	if fallback == "" || fallback == passphrase {
+		return "", err
+	}
+	return fallback, nil
 }
 
 // attachmentsMatchManifest requires that the restored attachment rows are

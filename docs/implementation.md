@@ -2523,3 +2523,24 @@ CodeRabbit raised three findings for `947ec8e`. All three are fixed without a sc
   - `scripts/test-backup-operations.sh` passed with 0 failures and cleaned up. Its restore checks exercise the new manifest comparison on matching archives.
   - No test makes the manifest comparison fail: no fixture restores an archive whose attachment rows differ from its manifest at the same count. The cross-volume path of `moveFile` has no pipe test, because a rename within one directory succeeds first.
   - Not run locally: the Garage S3 fixture and the full integration suite.
+
+## Portable backup files: CodeRabbit round 13 (PR #34)
+
+CodeRabbit raised eight findings for `ada12c5`. All eight are fixed without a schema change.
+
+- [x] An archive import whose local password fails and whose offsite password setting cannot be read returns the new code `password_unavailable` instead of `archive_unreadable`. A canceled run keeps its own result, a missing offsite password keeps `archive_unreadable`, and the setting's file path stays in the private diagnostic. The backup page shows a localized message for the new code.
+- [x] Before an offsite copy, partial files of an interrupted write on a mounted target are removed once the one-hour grace period has passed. Completed archive files are untouched.
+- [x] When a mounted copy is confirmed corrupt and its replacement does not fit beside it (`ENOSPC` or `EDQUOT`), the worker authenticates the local file, removes the corrupt copy and sends it again. A missing copy, a password or read error, and S3 targets keep the previous behavior, and a replacement that fits stays atomic.
+- [x] The stale file of a snapshot is no longer removed before an offsite copy while a `complete` or `retention_pending` run of another offsite label references it. Another offsite path can resolve to the same directory; the publication then replaces the file. On a full mount this keeps the stale file, which is the accepted trade-off.
+- [x] A version without portable files expires every run of its repository label that restic does not list. After a rollback and a new upgrade, local reclaim no longer deletes such a present file as unreferenced: the newest of its runs becomes `complete` again and portable retention decides. Reclaim now finishes pending deletions before it reads the directory, so a file it has just deleted is not registered again. `docs/operations.md` describes the rollback behavior.
+- [x] The tool-error test asserts the exact `disk_full` code and that a distinctive private diagnostic stays out of the public error.
+- [x] The offsite retention test asserts that exactly one run stays complete and that it is the newest.
+- [x] The repository-lock test waits until a second session runs the lock attempt before it checks the pool, instead of sleeping.
+- [x] Validation of round 13:
+  - Unit tests, `npm test` (536/536), `scripts/localization.test.cjs` (11/11), `scripts/build-localization.cjs --check` (8893 translations) and golangci-lint passed. The first lint run reported one unchecked channel receive in the new lock test. After that fix both lint passes reported 0 issues, and the lock test passed again.
+  - `go vet` and the `internal/maintenance` and `internal/backupplan` unit tests passed in a Linux `golang:1.27.4-alpine3.24` container, including the Unix-only named-pipe test.
+  - The integration tests matching `Backup|Archive|Offsite|Retention|Probe|Portable|Health|Schedul|Purge|JobCleanup|Mounted|RepositoryLock|Reclaim` in `internal/web`, `internal/maintenance`, `internal/backupplan` and `internal/store` passed.
+  - With the fixes removed, `TestOffsiteCopyKeepsAFileAnotherOffsiteLabelReferences`, `TestOffsiteCopyRemovesInterruptedPartialFiles` and `TestReclaimRegistersArchivesAnOlderWorkerExpired` failed. With the lock waiter moved back to a pool connection, `TestRepositoryLockWaitersLeaveThePoolFree` failed because the waiter never contended.
+  - `scripts/test-backup-operations.sh` passed with 0 failures and cleaned up.
+  - No test covers `replaceCorruptCopy`: the integration fixture cannot fill a filesystem without a test-only hook.
+  - Not run locally: the Garage S3 fixture and the full integration suite.

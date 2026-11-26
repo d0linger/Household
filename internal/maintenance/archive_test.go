@@ -214,9 +214,34 @@ func TestDatabaseToolFailuresKeepTheirCause(t *testing.T) {
 			t.Errorf("%q classified as %q, want %q", stderr, got, want)
 		}
 	}
-	err := &ToolError{Program: "pg_restore", Code: "disk_full", err: errors.New("pg_restore failed")}
-	if ResultCode(err) == "failed" || strings.Contains(err.Error(), "No space") {
+	const private = "private-diagnostic-7f3a /var/lib/postgresql: No space left on device"
+	err := &ToolError{Program: "pg_restore", Code: "disk_full", err: errors.New(private)}
+	if ResultCode(err) != "disk_full" || strings.Contains(err.Error(), "private-diagnostic-7f3a") || strings.Contains(err.Error(), "No space") {
 		t.Fatalf("classified tool error = %q, %q", ResultCode(err), err.Error())
+	}
+}
+
+// An unreadable offsite password setting stops the import retry with its own
+// code and keeps the path private. A canceled run and a missing offsite
+// password keep their own result.
+func TestImportRetryReportsAnUnreadableOffsitePassword(t *testing.T) {
+	unreadable := &ToolError{Program: "archive", Code: "archive_unreadable", err: errors.New("no identity matched")}
+	t.Setenv("HOUSEHOLD_BACKUP_OFFSITE_PASSWORD", "")
+	missing := filepath.Join(t.TempDir(), "private-offsite-password-path")
+	t.Setenv("HOUSEHOLD_BACKUP_OFFSITE_PASSWORD_FILE", missing)
+	if _, err := offsiteRetryPassword(unreadable, "local-password-123"); ResultCode(err) != "password_unavailable" || strings.Contains(err.Error(), "private-offsite-password-path") {
+		t.Fatalf("unreadable setting = %v (%s)", err, ResultCode(err))
+	}
+	if _, err := offsiteRetryPassword(context.Canceled, "local-password-123"); !errors.Is(err, context.Canceled) {
+		t.Fatalf("canceled run = %v", err)
+	}
+	t.Setenv("HOUSEHOLD_BACKUP_OFFSITE_PASSWORD_FILE", "")
+	t.Setenv("HOUSEHOLD_BACKUP_OFFSITE_PASSWORD", "offsite-password-123")
+	if fallback, err := offsiteRetryPassword(unreadable, "local-password-123"); err != nil || fallback != "offsite-password-123" {
+		t.Fatalf("configured fallback = %q, %v", fallback, err)
+	}
+	if _, err := offsiteRetryPassword(unreadable, "offsite-password-123"); ResultCode(err) != "archive_unreadable" {
+		t.Fatalf("same password retried: %v", err)
 	}
 }
 

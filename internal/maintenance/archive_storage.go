@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"maps"
 	"net/url"
 	"os"
 	"path"
@@ -13,6 +14,7 @@ import (
 	"runtime"
 	"slices"
 	"strings"
+	"syscall"
 	"time"
 
 	"household/internal/audit"
@@ -192,8 +194,14 @@ func copyPortableLocked(ctx context.Context, pool *pgxpool.Pool, local, offsite 
 		if err := distinctArchiveStorage(local, offsite); err != nil {
 			return "", err
 		}
-		if _, err := mountedArchiveDirectory(ctx, pool, offsite); err != nil {
+		directory, err := mountedArchiveDirectory(ctx, pool, offsite)
+		if err != nil {
 			return "", err
+		}
+		// A worker that stopped during a write can leave its partial file on
+		// the mount. This is best effort, like the cleanups below.
+		if err = removeStalePartials(directory, time.Now()); err != nil {
+			slog.Default().Warn("could not remove interrupted offsite writes before the copy", "code", ResultCode(err))
 		}
 	}
 	// A pending deletion of this snapshot finishes before its name is reused.
@@ -226,7 +234,12 @@ func copyPortableLocked(ctx context.Context, pool *pgxpool.Pool, local, offsite 
 			// authenticates the whole local file before anything is published,
 			// so a defective source never replaces the copy. Access, password
 			// and connection failures are returned as such.
-			if _, err = sendArchive(ctx, local, offsite, snapshot); err == nil {
+			corrupt := errors.Is(err, errArchiveCorrupt)
+			_, err = sendArchive(ctx, local, offsite, snapshot)
+			if corrupt && outOfSpace(err) && filepath.IsAbs(offsite.Repository) {
+				err = replaceCorruptCopy(ctx, local, offsite, snapshot)
+			}
+			if err == nil {
 				err = checkPortable(ctx, offsite, snapshot)
 			}
 		}
@@ -260,6 +273,25 @@ func copyPortableLocked(ctx context.Context, pool *pgxpool.Pool, local, offsite 
 
 var errCopyNotRetained = errors.New("offsite retention removed the copied snapshot in the same run")
 
+func outOfSpace(err error) bool {
+	return errors.Is(err, syscall.ENOSPC) || errors.Is(err, syscall.EDQUOT)
+}
+
+// replaceCorruptCopy repairs a mounted copy whose replacement does not fit
+// beside it. The copy is confirmed corrupt, so it holds no restorable data.
+// The local file is authenticated first, and the corrupt copy is removed only
+// then, so a defective source never costs the offsite copy.
+func replaceCorruptCopy(ctx context.Context, local, offsite config.BackupTarget, snapshot string) error {
+	if err := checkPortable(ctx, local, snapshot); err != nil {
+		return err
+	}
+	if err := removePortable(ctx, offsite, backupplan.ArchiveName(snapshot)); err != nil {
+		return err
+	}
+	_, err := sendArchive(ctx, local, offsite, snapshot)
+	return err
+}
+
 // sendPortableCopy records the copy as running before anything is uploaded, so
 // an upload whose check or registration fails stays referenced by a run and
 // reconcileOffsiteAttempts can remove it later.
@@ -284,7 +316,7 @@ func sendPortableCopy(ctx context.Context, pool *pgxpool.Pool, local, offsite co
 			_, _ = audit.Exec(failureCtx, pool, "UPDATE core.backup_runs SET state='failed',finished_at=now(),failure_reason='offsite copy failed' WHERE id=$1 AND state='running'", run)
 		}
 	}()
-	removeStaleCopy(ctx, offsite, snapshot)
+	removeStaleCopy(ctx, pool, offsite, snapshot)
 	size, err := sendArchive(ctx, local, offsite, snapshot)
 	if err != nil {
 		return err
@@ -303,10 +335,18 @@ func sendPortableCopy(ctx context.Context, pool *pgxpool.Pool, local, offsite co
 // left under its final name, when it failed after the rename. Its run was
 // just recorded as running, so no complete or pending row references that
 // file. Removing it first keeps a mount from needing room for both the stale
-// file and the new partial file. This is best effort: publishing replaces the
-// file anyway, and that write reports a destination that refuses changes.
-func removeStaleCopy(ctx context.Context, offsite config.BackupTarget, snapshot string) {
+// file and the new partial file. Another offsite path can resolve to the same
+// directory, so a file that a run of another offsite label references is kept;
+// publishing replaces it. This is best effort: publishing replaces the file
+// anyway, and that write reports a destination that refuses changes.
+func removeStaleCopy(ctx context.Context, pool *pgxpool.Pool, offsite config.BackupTarget, snapshot string) {
 	if !filepath.IsAbs(offsite.Repository) {
+		return
+	}
+	var shared bool
+	if err := pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM core.backup_runs WHERE repository_kind='offsite'
+ AND repository_reference<>$1 AND snapshot_reference=$2 AND state IN('complete','retention_pending'))`,
+		offsite.Label(), snapshot).Scan(&shared); err != nil || shared {
 		return
 	}
 	name := backupplan.ArchiveName(snapshot)
@@ -620,20 +660,21 @@ func reclaimArchives(ctx context.Context, pool *pgxpool.Pool, local config.Backu
 	if !filepath.IsAbs(local.Repository) && local.Repository != "" {
 		return nil
 	}
+	// Pending deletions finish before the directory is read, so a file removed
+	// here is not seen below with its now expired row. A failed delete keeps
+	// its row pending and its file protected below.
+	failures := []error{finishArchiveRetention(ctx, pool, local, "")}
 	directory := backupplan.ArchiveDirectory(local.Repository)
 	entries, err := os.ReadDir(directory)
 	if errors.Is(err, os.ErrNotExist) {
-		return nil
+		return errors.Join(failures...)
 	}
 	if err != nil {
-		return err
+		return errors.Join(append(failures, err)...)
 	}
-	// A failed delete keeps its row pending and its file protected below.
-	failures := []error{finishArchiveRetention(ctx, pool, local, "")}
 	candidates := map[string]string{}
 	for _, entry := range entries {
-		info, infoErr := entry.Info()
-		if entry.IsDir() || infoErr != nil || !info.Mode().IsRegular() || now.Sub(info.ModTime()) < archiveReclaimGrace {
+		if !reclaimable(entry, now) {
 			continue
 		}
 		name := entry.Name()
@@ -661,11 +702,76 @@ func reclaimArchives(ctx context.Context, pool *pgxpool.Pool, local config.Backu
 		for _, id := range referenced {
 			delete(candidates, id)
 		}
+		revived, reviveErr := reviveExpiredArchives(ctx, pool, local, slices.Collect(maps.Keys(candidates)))
+		if reviveErr != nil {
+			return errors.Join(append(failures, reviveErr)...)
+		}
+		for _, id := range revived {
+			delete(candidates, id)
+		}
 		for _, name := range candidates {
 			failures = append(failures, removeArchiveEntry(directory, name))
 		}
 	}
 	return errors.Join(failures...)
+}
+
+// reclaimable reports a regular file old enough to be reclaimed.
+func reclaimable(entry os.DirEntry, now time.Time) bool {
+	info, err := entry.Info()
+	return err == nil && !entry.IsDir() && info.Mode().IsRegular() && now.Sub(info.ModTime()) >= archiveReclaimGrace
+}
+
+// removeStalePartials removes partial files of interrupted writes. A write in
+// progress keeps changing its file, and callers hold the repository lock.
+func removeStalePartials(directory string, now time.Time) error {
+	entries, err := os.ReadDir(directory)
+	if err != nil {
+		return err
+	}
+	var failures []error
+	for _, entry := range entries {
+		if strings.HasPrefix(entry.Name(), ".partial-") && reclaimable(entry, now) {
+			failures = append(failures, removeArchiveEntry(directory, entry.Name()))
+		}
+	}
+	return errors.Join(failures...)
+}
+
+// reviveExpiredArchives registers again the portable archives that an older
+// backup worker marked expired. Its retention handled only its own snapshots
+// and expired every other run of the repository label, so after a rollback and
+// a new upgrade a present file can have only an expired row. This version
+// marks a run expired only after its file is gone, so portable retention never
+// selected such a file. The newest of its runs becomes complete again, and the
+// next retention decides whether it stays.
+func reviveExpiredArchives(ctx context.Context, pool *pgxpool.Pool, local config.BackupTarget, ids []string) ([]string, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	tx, err := audit.Begin(ctx, pool)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback(context.WithoutCancel(ctx)) }()
+	rows, err := tx.Query(ctx, `UPDATE core.backup_runs SET state='complete' WHERE id IN(
+ SELECT DISTINCT ON (snapshot_reference) id FROM core.backup_runs
+ WHERE repository_reference=$1 AND snapshot_reference=ANY($2::text[]) AND state='expired'
+ ORDER BY snapshot_reference, started_at DESC) RETURNING snapshot_reference`, local.Label(), ids)
+	if err != nil {
+		return nil, err
+	}
+	revived, err := pgx.CollectRows(rows, pgx.RowTo[string])
+	if err != nil {
+		return nil, err
+	}
+	if err = tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+	if len(revived) > 0 {
+		slog.Default().Warn("registered portable archives again that an older backup worker marked expired", "count", len(revived))
+	}
+	return revived, nil
 }
 
 func removeArchiveEntry(directory, name string) error {

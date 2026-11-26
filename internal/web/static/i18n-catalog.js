@@ -2170,6 +2170,7 @@ globalThis.HouseholdEnglish = Object.freeze({
   "Das Kochbuch ist in diesem Haushalt nicht aktiviert.": "The cookbook is not enabled in this household.",
   "Das Laden dauert zu lange. Verbindung prüfen und erneut laden.": "Loading is taking too long. Check the connection and reload.",
   "Das Modul Dokumente ist ausgeschaltet.": "The Documents module is switched off.",
+  "Das Offsite-Archivpasswort ließ sich nicht lesen. Prüfe die Passwortdatei des Sicherungsdienstes.": "The offsite archive password could not be read. Check the backup service's password file.",
   "Das Produkt einer Packung ist fest. Für ein anderes Produkt eine neue Packung anlegen.": "A package's product is fixed. Create a new package for another product.",
   "Das Produkt ist archiviert. Es wird kein neuer Nachkauf vorgeschlagen.": "The product is archived. No new repurchase is suggested.",
   "Das Repository ist von einem anderen Vorgang gesperrt.": "The repository is locked by another operation.",
