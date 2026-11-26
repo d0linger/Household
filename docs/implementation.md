@@ -2453,3 +2453,23 @@ CodeRabbit raised three findings for `94510b1`, all addressed without a schema c
   - The integration tests matching `Backup|Archive|Offsite|Retention|Probe|Portable|Health|Schedul|Purge|JobCleanup|Mounted` in `internal/web`, `internal/maintenance`, `internal/backupplan` and `internal/store` passed.
   - `scripts/test-backup-operations.sh` passed with 0 failures and cleaned up.
   - Not run locally: the Garage S3 fixture and the full integration suite.
+
+## Portable backup files: CodeRabbit round 9 (PR #34)
+
+CodeRabbit raised five findings for `4715cd5`. Four are fixed without a schema change. One is answered without a code change.
+
+- [x] `pg_dump` and `pg_restore` failures keep their cause. The tool's stderr is still never returned, but it selects a stable code:
+  - a full disk becomes `disk_full`;
+  - a server that refuses, drops or cannot serve the connection becomes the new `database_unavailable`, with a localized message on the backup page.
+  - A canceled or expired run returns its context error.
+  - An upload whose trial restore fails for these reasons keeps that code instead of `archive_invalid`. An unrecognized failure, such as a corrupt dump, still reports `archive_invalid`.
+- [x] Before an offsite archive copy, files of earlier failed copies are removed best effort, so they cannot take the space the copy needs. A refused delete is logged and does not block the copy. The cleanup after the copy still reports it.
+- [x] `TestOffsite` reads the writer format once.
+- [x] `TestOffsiteUsesResticRESTReadsOnlyTheRepository` clears inherited offsite, REST and named-S3 settings, including their `_FILE` inputs.
+- [ ] Not changed: confining the trial restore to a role limited to the trial database. An upload must authenticate with this installation's backup password, which only the backup service holds, before any SQL runs. Restic snapshots rely on the same trust model. A per-restore role would need new cluster roles and grants.
+- [x] Validation of round 9:
+  - `go vet`, unit tests (including the new classification test), `npm test` (536/536), `scripts/localization.test.cjs` (11/11), `scripts/build-localization.cjs --check` and golangci-lint (0 issues, including the integration build tags for `internal/maintenance`) passed.
+  - New integration test `TestOffsiteCopyRemovesEarlierAttemptsWhenItFails` passed. With the cleanup before the copy removed, it failed.
+  - The integration tests matching `Backup|Archive|Offsite|Retention|Probe|Portable|Health|Schedul|Purge|JobCleanup|Mounted` in `internal/web`, `internal/maintenance`, `internal/backupplan` and `internal/store` passed.
+  - `scripts/test-backup-operations.sh` passed with 0 failures and cleaned up.
+  - Not run locally: the Garage S3 fixture and the full integration suite.

@@ -2506,6 +2506,7 @@ globalThis.HouseholdEnglish = Object.freeze({
   "Die CSV muss zu einem konkreten Gerät und dessen Gültigkeitszeitraum passen.": "The CSV must match a specific device and its validity period.",
   "Die Datei ist keine gültige UTF-8-CSV. Die Kodierung zuerst ausdrücklich korrigieren.": "The file is not a valid UTF-8 CSV. Explicitly correct the encoding first.",
   "Die Datei wird begrenzt eingelesen und als Vorschau abgelegt. Erst deine ausdrücklichen Zeilenentscheidungen übernehmen Daten. Für Exporte ohne dokumentiertes festes Spaltenschema ist eine sichtbare Zuordnung erforderlich; ein Profilname verspricht keine pauschale Kompatibilität.": "The file is read within size limits and stored as a preview. Data is applied only after your explicit decisions for each row. Exports without a documented fixed column schema require visible mapping; a profile name does not promise general compatibility.",
+  "Die Datenbank war nicht verfügbar oder ausgelastet. Prüfe den Datenbankdienst und versuche es erneut.": "The database was unavailable or overloaded. Check the database service and try again.",
   "Die Datenbankeinstellungen weichen ab. Siehe Betriebsanleitung.": "The database settings differ. See the operations guide.",
   "Die dokumentierte Strecke überschreitet die persönliche Tagesgrenze": "The recorded distance exceeds the personal daily limit",
   "Die eigene Bearbeitungsfreigabe ausdrücklich bestätigen.": "Explicitly confirm your own edit permission.",

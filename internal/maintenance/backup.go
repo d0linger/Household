@@ -15,6 +15,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -158,9 +159,39 @@ func command(ctx context.Context, program string, args []string, dsn string) ([]
 	cmd.Stdout = &out
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
-		return nil, fmt.Errorf("%s failed (%v); inspect the operator tool configuration", program, err)
+		// A canceled or expired run keeps its own result; the killed tool
+		// reports nothing about the dump.
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, ctxErr
+		}
+		failure := fmt.Errorf("%s failed (%v); inspect the operator tool configuration", program, err)
+		// The diagnostics only select a stable code; they are never returned.
+		if code := classifyDatabaseToolOutput(stderr.Bytes()); code != "" {
+			return nil, &ToolError{Program: program, Code: code, err: failure}
+		}
+		return nil, failure
 	}
 	return out.Bytes(), nil
+}
+
+// classifyDatabaseToolOutput recognizes pg_dump and pg_restore failures of the
+// database server or its storage, which no dump content causes: a full disk,
+// and a server that refuses, drops or cannot serve the connection. Every other
+// failure, including a corrupt or incompatible dump, returns "".
+func classifyDatabaseToolOutput(stderr []byte) string {
+	text := strings.ToLower(string(stderr))
+	contains := func(markers ...string) bool {
+		return slices.ContainsFunc(markers, func(marker string) bool { return strings.Contains(text, marker) })
+	}
+	switch {
+	case contains("no space left on device", "could not extend file", "disk quota exceeded"):
+		return "disk_full"
+	case contains("could not connect to server", "connection to server", "server closed the connection unexpectedly",
+		"terminating connection", "the database system is", "too many clients", "remaining connection slots",
+		"out of memory", "out of shared memory"):
+		return "database_unavailable"
+	}
+	return ""
 }
 
 // security: all callers pass files inside an operator-created private temporary directory.

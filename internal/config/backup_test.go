@@ -91,6 +91,12 @@ func TestBackupTargetsReadCredentialsIntoTheirOwnEnvironment(t *testing.T) {
 // REST credentials must not switch a restic REST setup to portable files.
 func TestOffsiteUsesResticRESTReadsOnlyTheRepository(t *testing.T) {
 	t.Setenv(SecretsDirVariable, "")
+	// Inherited offsite settings would decide the assertions instead of the fixture.
+	for _, name := range []string{"HOUSEHOLD_BACKUP_OFFSITE_REPOSITORY", "HOUSEHOLD_BACKUP_OFFSITE_PASSWORD",
+		"HOUSEHOLD_BACKUP_REST_USERNAME", "HOUSEHOLD_BACKUP_REST_PASSWORD", "HOUSEHOLD_S3_ENDPOINT"} {
+		t.Setenv(name, "")
+		t.Setenv(name+"_FILE", "")
+	}
 	t.Setenv("RESTIC_REPOSITORY", "/data/backups")
 	t.Setenv("RESTIC_PASSWORD", "local-password")
 	local, err := LocalBackupTarget()

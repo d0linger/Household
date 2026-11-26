@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/url"
 	"os"
 	"path"
@@ -191,10 +192,16 @@ func copyPortableLocked(ctx context.Context, pool *pgxpool.Pool, local, offsite 
 		}
 	}
 	// A pending deletion of this snapshot finishes before its name is reused.
-	// Other pending deletions and earlier failed copies are handled after the
-	// copy, so a destination that refuses deletes cannot block a new copy.
+	// Other pending deletions are handled after the copy, so a destination
+	// that refuses deletes cannot block a new copy.
 	if err := finishArchiveRetention(ctx, pool, offsite, snapshot); err != nil {
 		return "", err
+	}
+	// Files of earlier failed copies are removed first, so they cannot take
+	// the space this copy needs. This is best effort: a refused delete does not
+	// block the copy, and the cleanup after the copy reports it.
+	if err := reconcileOffsiteAttempts(ctx, pool, offsite, snapshot); err != nil {
+		slog.Default().Warn("could not remove earlier offsite copy attempts before the copy", "code", ResultCode(err))
 	}
 	var exists bool
 	err := pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM core.backup_runs

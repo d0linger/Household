@@ -191,6 +191,28 @@ func TestArchiveRetentionKeepsTheArchiveThisRunWrote(t *testing.T) {
 	}
 }
 
+// Server and storage failures of pg_dump and pg_restore keep their own code,
+// so a valid upload is never reported as an invalid archive; any other tool
+// failure, such as a corrupt dump, stays unclassified.
+func TestDatabaseToolFailuresKeepTheirCause(t *testing.T) {
+	for stderr, want := range map[string]string{
+		"pg_restore: error: could not execute query: ERROR:  could not extend file \"base/1/2\": No space left on device":              "disk_full",
+		"pg_restore: error: connection to server at \"db\" (10.0.0.2), port 5432 failed: FATAL:  the database system is shutting down": "database_unavailable",
+		"pg_restore: error: could not execute query: server closed the connection unexpectedly":                                        "database_unavailable",
+		"pg_restore: error: could not execute query: ERROR:  out of memory":                                                            "database_unavailable",
+		"pg_restore: error: could not read input file: end of file":                                                                    "",
+		"pg_restore: error: could not execute query: ERROR:  syntax error at or near \"x\"":                                            "",
+	} {
+		if got := classifyDatabaseToolOutput([]byte(stderr)); got != want {
+			t.Errorf("%q classified as %q, want %q", stderr, got, want)
+		}
+	}
+	err := &ToolError{Program: "pg_restore", Code: "disk_full", err: errors.New("pg_restore failed")}
+	if ResultCode(err) == "failed" || strings.Contains(err.Error(), "No space") {
+		t.Fatalf("classified tool error = %q, %q", ResultCode(err), err.Error())
+	}
+}
+
 func TestArchiveExtractRequiresEachMemberOnce(t *testing.T) {
 	const listed, unlisted = "uploads/6b1f4c2e-8a3d-4e5f-9b70-1c2d3e4f5a6b", "uploads/0f9e8d7c-6b5a-4c3d-8e2f-1a0b9c8d7e6f"
 	manifest, err := json.Marshal(Manifest{ArchiveFormat: 1, Version: "test", Created: time.Now(), UploadPath: "/uploads", Crypto: &CryptoReport{},

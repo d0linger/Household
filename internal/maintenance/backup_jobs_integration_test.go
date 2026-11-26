@@ -143,6 +143,41 @@ func TestArchiveRetentionUsesTheCommittedQuotas(t *testing.T) {
 	}
 }
 
+// The file of an earlier failed offsite copy is removed before a new copy,
+// also when that copy fails, so stale attempts cannot keep taking the space
+// later copies need.
+func TestOffsiteCopyRemovesEarlierAttemptsWhenItFails(t *testing.T) {
+	f := newRestoreBarcodeFixture(t)
+	ctx := f.ctx
+	offsite := config.BackupTarget{Kind: "offsite", Repository: t.TempDir()}
+	directory := backupplan.ArchiveDirectory(offsite.Repository)
+	if err := os.Mkdir(directory, 0700); err != nil {
+		t.Fatal(err)
+	}
+	earlier := backupplan.ArchiveID(time.Now().Add(-48 * time.Hour))
+	stale := filepath.Join(directory, backupplan.ArchiveName(earlier))
+	if err := os.WriteFile(stale, []byte("synthetic partial upload"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	var attempt string
+	if err := f.owner.QueryRow(ctx, `INSERT INTO core.backup_runs(state,application_version,repository_reference,snapshot_reference,repository_kind,failure_reason)
+ VALUES('failed','test',$1,$2,'offsite','offsite copy failed') RETURNING id`, offsite.Label(), earlier).Scan(&attempt); err != nil {
+		t.Fatal(err)
+	}
+	// The local file of the new snapshot is missing, so this copy fails.
+	local := config.BackupTarget{Kind: "local", Repository: t.TempDir()}
+	if _, err := copyPortableLocked(ctx, f.owner, local, offsite, backupplan.Defaults(), backupplan.ArchiveID(time.Now()), nil, ""); err == nil {
+		t.Fatal("copy without a local archive succeeded")
+	}
+	if _, err := os.Stat(stale); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("earlier attempt's file kept after a failed copy: %v", err)
+	}
+	var cleared bool
+	if err := f.owner.QueryRow(ctx, "SELECT snapshot_reference IS NULL FROM core.backup_runs WHERE id=$1", attempt).Scan(&cleared); err != nil || !cleared {
+		t.Fatalf("earlier attempt still references its file: %v, %v", cleared, err)
+	}
+}
+
 // A mounted offsite target must show the mounted filesystem: Household never
 // creates the repository path, and once an archive copy was recorded there a
 // missing archive directory means the mount is absent.
