@@ -252,8 +252,11 @@ func databaseDiagnostic(line string) string {
 // `COPY failed for table "<tag>": <message>`. The tag comes from the dump, so
 // the message is split off only at the single quote-colon before a server
 // severity, or, for a client message without severity, at the only
-// quote-colon of the line. Any other line reports false and stays
-// unclassified, so a crafted tag cannot select a code.
+// quote-colon of the line. A server message may quote one argument, such as
+// a file name, only when an operating-system error text follows it; otherwise
+// the quote-colon may end a crafted tag before a client message. Any other
+// line reports false and stays unclassified, so a crafted tag cannot select a
+// code.
 func copyFailureMessage(rest string) (string, bool) {
 	separators, message := 0, ""
 	for _, severity := range []string{"error:", "fatal:", "panic:"} {
@@ -265,12 +268,30 @@ func copyFailureMessage(rest string) (string, bool) {
 	}
 	switch {
 	case separators == 1:
-		return message, true
+		switch strings.Count(message, `": `) {
+		case 0:
+			return message, true
+		case 1:
+			_, tail, _ := strings.Cut(message, `": `)
+			if systemErrorText(tail) {
+				return message, true
+			}
+		}
+		return "", false
 	case separators == 0 && strings.Count(rest, `": `) == 1:
 		_, message, _ = strings.Cut(rest, `": `)
 		return message, true
 	}
 	return "", false
+}
+
+// systemErrorText reports the lowercased text of an operating-system error, or
+// of the short write PostgreSQL reports when it extends a file.
+func systemErrorText(text string) bool {
+	return strings.HasPrefix(text, "wrote only ") || slices.Contains([]string{
+		"no space left on device", "disk quota exceeded", "input/output error", "read-only file system",
+		"file too large", "permission denied", "no such file or directory", "too many open files", "cannot allocate memory",
+	}, text)
 }
 
 // security: all callers pass files inside an operator-created private temporary directory.

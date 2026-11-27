@@ -79,8 +79,11 @@ If two configured offsite paths name the same directory, for example two
 mount points of one share, a deletion or cleanup for one path keeps a file
 that a complete run of the other path still needs. The worker compares the
 files themselves, so a path that is no longer mounted does not keep anything.
-The kept deletion stays pending and finishes once the other run no longer
-needs the file.
+A pending deletion of the other path is decided again with that path's own
+quotas first, so an archive those quotas keep becomes complete again and keeps
+the file. The kept deletion stays pending and finishes once the other run no
+longer needs the file. When both paths expire the archive, the file is removed
+and both runs are recorded expired.
 
 On a versioned S3 bucket, retention deletes an expired file by adding a delete
 marker. The previous version stays stored and billed until the bucket removes

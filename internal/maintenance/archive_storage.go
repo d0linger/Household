@@ -362,43 +362,54 @@ func removeStaleCopy(ctx context.Context, pool *pgxpool.Pool, offsite config.Bac
 // path does not resolve here cannot name this file; any other failure to
 // compare is returned, and callers then keep the file.
 func sharedArchiveFile(ctx context.Context, pool *pgxpool.Pool, target config.BackupTarget, snapshot string, states ...string) (bool, error) {
+	targets, err := sharingTargets(ctx, pool, target, snapshot, states...)
+	return len(targets) > 0, err
+}
+
+// sharingTargets returns the repositories of other labels with a run of
+// snapshot in one of states whose mounted archive file is the file of target.
+func sharingTargets(ctx context.Context, pool *pgxpool.Pool, target config.BackupTarget, snapshot string, states ...string) ([]config.BackupTarget, error) {
 	name := backupplan.ArchiveName(snapshot)
 	if !filepath.IsAbs(target.Repository) || name == "" {
-		return false, nil
+		return nil, nil
 	}
 	own, err := os.Lstat(filepath.Join(backupplan.ArchiveDirectory(target.Repository), name)) // #nosec G703 -- name derived from a validated snapshot ID
 	if absentPath(err) {
-		return false, nil
+		return nil, nil
 	}
 	if err != nil {
-		return false, err
+		return nil, err
 	}
-	rows, err := pool.Query(ctx, `SELECT DISTINCT repository_reference FROM core.backup_runs
- WHERE repository_reference<>$1 AND snapshot_reference=$2 AND state=ANY($3::text[])`, target.Label(), snapshot, states)
+	rows, err := pool.Query(ctx, `SELECT DISTINCT repository_kind,repository_reference FROM core.backup_runs
+ WHERE repository_reference<>$1 AND snapshot_reference=$2 AND state=ANY($3::text[]) ORDER BY 1,2`, target.Label(), snapshot, states)
 	if err != nil {
-		return false, err
+		return nil, err
 	}
-	labels, err := pgx.CollectRows(rows, pgx.RowTo[string])
+	others, err := pgx.CollectRows(rows, func(row pgx.CollectableRow) (config.BackupTarget, error) {
+		var other config.BackupTarget
+		return other, row.Scan(&other.Kind, &other.Repository)
+	})
 	if err != nil {
-		return false, err
+		return nil, err
 	}
-	for _, label := range labels {
-		if !filepath.IsAbs(label) {
+	var sharing []config.BackupTarget
+	for _, other := range others {
+		if !filepath.IsAbs(other.Repository) {
 			continue
 		}
 		// The label is a repository path this service recorded.
-		other, err := os.Lstat(filepath.Join(backupplan.ArchiveDirectory(label), name)) // #nosec G703 -- recorded repository path and validated name
+		info, err := os.Lstat(filepath.Join(backupplan.ArchiveDirectory(other.Repository), name)) // #nosec G703 -- recorded repository path and validated name
 		if absentPath(err) {
 			continue
 		}
 		if err != nil {
-			return false, err
+			return nil, err
 		}
-		if os.SameFile(own, other) {
-			return true, nil
+		if os.SameFile(own, info) {
+			sharing = append(sharing, other)
 		}
 	}
-	return false, nil
+	return sharing, nil
 }
 
 // absentPath reports a path that names no file, including one below a
@@ -539,6 +550,16 @@ func applyArchiveRetention(ctx context.Context, pool *pgxpool.Pool, target confi
 // complete again. A pending row whose file is gone, because its deletion ran
 // but was not recorded, stays pending and is recorded expired.
 func retainArchives(ctx context.Context, pool *pgxpool.Pool, target config.BackupTarget, keep string, prune bool) error {
+	if err := decideArchives(ctx, pool, target, keep, prune); err != nil {
+		return err
+	}
+	return finishArchiveRetention(ctx, pool, target, "")
+}
+
+// decideArchives is the transaction of retainArchives: it restores the
+// pending archives that the quotas keep and, with prune, marks the expired
+// ones. It removes no file.
+func decideArchives(ctx context.Context, pool *pgxpool.Pool, target config.BackupTarget, keep string, prune bool) error {
 	tx, err := audit.Begin(ctx, pool)
 	if err != nil {
 		return err
@@ -618,7 +639,7 @@ func retainArchives(ctx context.Context, pool *pgxpool.Pool, target config.Backu
 	if len(restored) > 0 {
 		slog.Default().Warn("kept pending backup files that the retention quotas keep", "kind", target.Kind, "count", len(restored))
 	}
-	return finishArchiveRetention(ctx, pool, target, "")
+	return nil
 }
 
 // keptPendingArchives returns the pending archives that the quotas keep when
@@ -662,8 +683,10 @@ func archivePresent(ctx context.Context, target config.BackupTarget, id string) 
 // retention on this repository, or only of one snapshot, and then marks its
 // rows expired. It also completes a retention an earlier run left unfinished.
 // A file that a complete run of another label needs is kept, and its row stays
-// pending until that run no longer needs it. Pending runs of other labels do
-// not count, so two labels that share a file never wait for each other.
+// pending until that run no longer needs it. A pending run of another label
+// that shares the file is decided again first, so one that its quotas keep is
+// complete again and keeps the file. A pending run that stays selected does
+// not keep it, so two labels that both expire a file never wait for each other.
 func finishArchiveRetention(ctx context.Context, pool *pgxpool.Pool, target config.BackupTarget, only string) error {
 	rows, err := pool.Query(ctx, `SELECT DISTINCT snapshot_reference FROM core.backup_runs
  WHERE repository_reference=$1 AND snapshot_reference ~ $2 AND state='retention_pending' AND ($3='' OR snapshot_reference=$3) ORDER BY 1`,
@@ -683,6 +706,10 @@ func finishArchiveRetention(ctx context.Context, pool *pgxpool.Pool, target conf
 		if name == "" {
 			continue
 		}
+		if err = decideSharingLabels(ctx, pool, target, id); err != nil {
+			failures = append(failures, err)
+			continue
+		}
 		shared, sharedErr := sharedArchiveFile(ctx, pool, target, id, "complete")
 		if sharedErr != nil || shared {
 			failures = append(failures, sharedErr)
@@ -697,6 +724,22 @@ func finishArchiveRetention(ctx context.Context, pool *pgxpool.Pool, target conf
 		failures = append(failures, err)
 	}
 	return errors.Join(failures...)
+}
+
+// decideSharingLabels decides the pending deletions of every other label
+// whose pending run of snapshot shares the file of target, without removing
+// any of their files.
+func decideSharingLabels(ctx context.Context, pool *pgxpool.Pool, target config.BackupTarget, snapshot string) error {
+	others, err := sharingTargets(ctx, pool, target, snapshot, "retention_pending")
+	if err != nil {
+		return err
+	}
+	for _, other := range others {
+		if err = decideArchives(ctx, pool, other, "", false); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func removePortable(ctx context.Context, target config.BackupTarget, name string) error {

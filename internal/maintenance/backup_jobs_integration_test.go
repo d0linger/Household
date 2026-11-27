@@ -503,11 +503,12 @@ func TestOffsiteAttemptCleanupKeepsAFileAnotherLabelNeeds(t *testing.T) {
 }
 
 // A pending deletion keeps a file that a complete run of another label needs,
-// and stays pending. A pending run of the other label does not keep it, so two
-// labels never wait for each other.
+// and stays pending. A pending run of the other label that its quotas expire
+// does not keep it, so two labels never wait for each other.
 func TestPendingDeletionKeepsAFileAnotherLabelCompleted(t *testing.T) {
 	f := newRestoreBarcodeFixture(t)
 	ctx := f.ctx
+	retentionQuotas(t, f, 1, 1, 1)
 	offsite := config.BackupTarget{Kind: "offsite", Repository: t.TempDir()}
 	directory := backupplan.ArchiveDirectory(offsite.Repository)
 	if err := os.Mkdir(directory, 0700); err != nil {
@@ -541,14 +542,79 @@ func TestPendingDeletionKeepsAFileAnotherLabelCompleted(t *testing.T) {
 	if _, err := os.Stat(file); err != nil || state() != "retention_pending" {
 		t.Fatalf("pending deletion removed a file another label completed: %v, state %s", err, state())
 	}
+	// The other label expires the archive as well: a newer archive fills its
+	// quotas. Its pending run then does not keep the file.
 	if _, err := f.owner.Exec(ctx, "UPDATE core.backup_runs SET state='retention_pending' WHERE id=$1", other); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.owner.Exec(ctx, `INSERT INTO core.backup_runs(state,application_version,repository_reference,snapshot_reference,repository_kind)
+ VALUES('complete','test',$1,$2,'offsite')`, aliasPath(offsite.Repository), backupplan.ArchiveID(time.Now().Add(-time.Hour))); err != nil {
 		t.Fatal(err)
 	}
 	if err := finishArchiveRetention(ctx, f.owner, offsite, ""); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(file); !errors.Is(err, os.ErrNotExist) || state() != "expired" {
-		t.Fatalf("pending deletion waited for a pending run of another label: %v, state %s", err, state())
+		t.Fatalf("pending deletion waited for a pending run of another label that its quotas expire: %v, state %s", err, state())
+	}
+}
+
+// Two labels can share one mounted file. When one label expires it, a pending
+// run of the other label that its own quotas keep is decided again first, so
+// the file stays. When both labels expire it, the file is removed and both
+// runs are recorded expired, whichever label finishes first.
+func TestPendingDeletionKeepsAFileAnotherLabelsQuotasKeep(t *testing.T) {
+	f := newRestoreBarcodeFixture(t)
+	ctx := f.ctx
+	retentionQuotas(t, f, 1, 1, 1)
+	first := config.BackupTarget{Kind: "offsite", Repository: t.TempDir()}
+	second := config.BackupTarget{Kind: "offsite", Repository: aliasPath(first.Repository)}
+	directory := backupplan.ArchiveDirectory(first.Repository)
+	if err := os.Mkdir(directory, 0700); err != nil {
+		t.Fatal(err)
+	}
+	shared := backupplan.ArchiveID(time.Now().Add(-60 * 24 * time.Hour))
+	file := filepath.Join(directory, backupplan.ArchiveName(shared))
+	if err := os.WriteFile(file, []byte("synthetic archive two labels share"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	run := func(target config.BackupTarget, state, snapshot string, age time.Duration) {
+		t.Helper()
+		if _, err := f.owner.Exec(ctx, `INSERT INTO core.backup_runs(state,application_version,repository_reference,snapshot_reference,repository_kind,started_at)
+ VALUES($1,'test',$2,$3,'offsite',now()-interval '1 second'*$4)`, state, target.Label(), snapshot, int64(age.Seconds())); err != nil {
+			t.Fatal(err)
+		}
+	}
+	state := func(target config.BackupTarget) string {
+		t.Helper()
+		var state string
+		if err := f.owner.QueryRow(ctx, "SELECT state FROM core.backup_runs WHERE repository_reference=$1 AND snapshot_reference=$2", target.Label(), shared).Scan(&state); err != nil {
+			t.Fatal(err)
+		}
+		return state
+	}
+	// The first label has a newer archive, so its quotas expire the shared one.
+	// The second label holds the shared archive alone, as a pending run that a
+	// version without portable files left, and its quotas keep it.
+	run(first, "complete", shared, 60*24*time.Hour)
+	run(first, "complete", backupplan.ArchiveID(time.Now().Add(-time.Hour)), time.Hour)
+	run(second, "retention_pending", shared, 60*24*time.Hour)
+	if err := applyArchiveRetention(ctx, f.owner, first, ""); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(file); err != nil || state(first) != "retention_pending" || state(second) != "complete" {
+		t.Fatalf("expiry removed a file another label keeps: %v, states %s and %s", err, state(first), state(second))
+	}
+	// Once the second label expires the archive as well, the file goes.
+	run(second, "complete", backupplan.ArchiveID(time.Now().Add(-2*time.Hour)), 2*time.Hour)
+	if err := applyArchiveRetention(ctx, f.owner, second, ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := finishArchiveRetention(ctx, f.owner, first, ""); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(file); !errors.Is(err, os.ErrNotExist) || state(first) != "expired" || state(second) != "expired" {
+		t.Fatalf("labels that both expire a file kept it: %v, states %s and %s", err, state(first), state(second))
 	}
 }
 

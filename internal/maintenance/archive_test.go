@@ -210,14 +210,18 @@ func TestDatabaseToolFailuresKeepTheirCause(t *testing.T) {
 		"pg_restore: error: could not read input file: end of file":                                                                   "",
 		"pg_restore: error: could not execute query: ERROR:  syntax error at or near \"x\"":                                           "",
 		// pg_restore's COPY wrapper names a dump-controlled table tag.
-		"pg_restore: error: COPY failed for table \"items\": ERROR:  out of memory":                                                     "database_unavailable",
-		"pg_restore: error: COPY failed for table \"items\": ERROR:  could not extend file \"base/1/2\": Input/output error":            "database_storage_failed",
-		"pg_restore: error: COPY failed for table \"items\": ERROR:  could not extend file \"base/1/2\": No space left on device":       "disk_full",
-		"pg_restore: error: COPY failed for table \"items\": server closed the connection unexpectedly":                                 "database_unavailable",
-		"pg_restore: error: COPY failed for table \"items\": ERROR:  invalid input syntax for type integer: \"out of memory\"":          "",
-		"pg_restore: error: COPY failed for table \"x\": ERROR:  out of memory\": ERROR:  invalid input syntax for type integer: \"1\"": "",
-		"pg_restore: error: COPY failed for table \"x\": out of memory\": server closed the connection unexpectedly":                    "",
-		"pg_restore: error: COPY failed for table \"x\": out of memory\": ERROR:  invalid input syntax for type integer: \"1\"":         "",
+		"pg_restore: error: COPY failed for table \"items\": ERROR:  out of memory":                                                                "database_unavailable",
+		"pg_restore: error: COPY failed for table \"items\": ERROR:  could not extend file \"base/1/2\": Input/output error":                       "database_storage_failed",
+		"pg_restore: error: COPY failed for table \"items\": ERROR:  could not extend file \"base/1/2\": No space left on device":                  "disk_full",
+		"pg_restore: error: COPY failed for table \"items\": server closed the connection unexpectedly":                                            "database_unavailable",
+		"pg_restore: error: COPY failed for table \"items\": ERROR:  invalid input syntax for type integer: \"out of memory\"":                     "",
+		"pg_restore: error: COPY failed for table \"x\": ERROR:  out of memory\": ERROR:  invalid input syntax for type integer: \"1\"":            "",
+		"pg_restore: error: COPY failed for table \"x\": out of memory\": server closed the connection unexpectedly":                               "",
+		"pg_restore: error: COPY failed for table \"x\": out of memory\": ERROR:  invalid input syntax for type integer: \"1\"":                    "",
+		"pg_restore: error: COPY failed for table \"x\": ERROR:  disk quota exceeded\": server closed the connection unexpectedly":                 "",
+		"pg_restore: error: COPY failed for table \"x\": ERROR:  disk quota exceeded\": could not send data to server":                             "",
+		"pg_restore: error: COPY failed for table \"items\": ERROR:  could not extend file \"base/1/2\": wrote only 4096 of 8192 bytes at block 3": "database_storage_failed",
+		"pg_restore: error: COPY failed for table \"items\": ERROR:  could not write to file \"base/1/2\": Disk quota exceeded":                    "disk_full",
 	} {
 		if got := classifyDatabaseToolOutput([]byte(stderr)); got != want {
 			t.Errorf("%q classified as %q, want %q", stderr, got, want)

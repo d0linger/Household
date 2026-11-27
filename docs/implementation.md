@@ -2563,3 +2563,17 @@ CodeRabbit raised five findings for `f42cb87`. All five are fixed without a sche
   - With the shared-file check removed, `TestOffsiteCopyKeepsAFileAnotherLabelShares`, `TestOffsiteAttemptCleanupKeepsAFileAnotherLabelNeeds` and `TestPendingDeletionKeepsAFileAnotherLabelCompleted` failed. With the re-decision of pending rows removed, `TestRetentionKeepsPendingArchivesTheQuotasKeep` failed for local and offsite. With the COPY wrapper parsing or the error-code order removed, `TestDatabaseToolFailuresKeepTheirCause` or `TestBackupJobErrorKeepsAFailedLocalRetentionVisible` failed.
   - `scripts/test-backup-operations.sh` passed with 0 failures and cleaned up.
   - Not run locally: the S3 presence check of pending archives, which needs the Garage S3 fixture, and the full integration suite. No test covers `replaceCorruptCopy`.
+
+## Portable backup files: CodeRabbit round 15 (PR #34)
+
+CodeRabbit raised two findings for `c604a5e`, the first incremental review. Both are fixed without a schema change.
+
+- [x] Before a pending deletion removes a mounted file, the pending runs of other labels that share the file are decided again with their own quotas. A run that those quotas keep becomes complete again, so the file and the deletion's row stay. A pending run that stays selected does not keep the file, so when both labels expire an archive it is removed and both runs are recorded expired, in either order.
+- [x] A COPY failure whose server severity could come from the table tag is no longer classified. After the severity, the message may quote one argument only when an operating-system error text, or PostgreSQL's short-write text, follows it. A crafted tag ending in `": ERROR:  disk quota exceeded` before a client message now stays unclassified; `could not extend file` with an I/O error, no space or a short write keeps its code.
+- [x] Validation of round 15:
+  - Unit tests, `npm test` (536/536), `scripts/localization.test.cjs` (11/11), `scripts/build-localization.cjs --check` (8893 translations) and both golangci-lint passes (0 issues) passed.
+  - `go vet` and the `internal/maintenance` and `internal/backupplan` unit tests passed in a Linux `golang:1.27.4-alpine3.24` container.
+  - The integration tests matching `Backup|Archive|Offsite|Retention|Probe|Portable|Health|Schedul|Purge|JobCleanup|Mounted|RepositoryLock|Reclaim` in `internal/web`, `internal/maintenance`, `internal/backupplan` and `internal/store` passed.
+  - With the decision of sharing labels removed, `TestPendingDeletionKeepsAFileAnotherLabelsQuotasKeep` failed: the file was removed while the other label's run stayed pending. With the system-error check removed, `TestDatabaseToolFailuresKeepTheirCause` classified both crafted tag lines as `disk_full`.
+  - `scripts/test-backup-operations.sh` passed with 0 failures and cleaned up.
+  - Not run locally: the Garage S3 fixture and the full integration suite. No test covers `replaceCorruptCopy`.
