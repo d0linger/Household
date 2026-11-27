@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -59,7 +60,14 @@ func portableBackups() bool {
 	if os.Getenv("HOUSEHOLD_BACKUP_FORMAT") == "restic" {
 		return false
 	}
-	return !config.OffsiteUsesResticREST()
+	rest, err := config.OffsiteUsesResticREST()
+	if err != nil {
+		// A restic snapshot can be copied to every destination once the
+		// setting can be read again; a portable file cannot go to REST.
+		slog.Default().Warn("could not read the offsite repository setting; writing a restic snapshot")
+		return false
+	}
+	return !rest
 }
 
 func encryptArchive(dst io.Writer, password string) (io.WriteCloser, error) {
@@ -180,12 +188,38 @@ func makeDurableDirectory(directory string) error {
 	if err := os.MkdirAll(directory, 0700); err != nil { // #nosec G703 -- fixed or operator-approved storage location
 		return err
 	}
+	if len(created) == 0 {
+		// An earlier call may have created the directory and then failed to
+		// sync its parent, so the parent is synced on every call.
+		return syncDirectory(filepath.Dir(filepath.Clean(directory)))
+	}
 	for i := len(created) - 1; i >= 0; i-- {
 		if err := syncDirectory(filepath.Dir(created[i])); err != nil {
+			// The new directories are removed again, deepest first, so the
+			// next call creates them and syncs every parent once more.
+			for _, path := range created {
+				_ = os.Remove(path) // #nosec G703 -- a directory this call created
+			}
 			return err
 		}
 	}
 	return nil
+}
+
+// archiveFits reports whether the attachments fit one encrypted backup file,
+// by count and by their total size. The database and the keys add to the
+// size, so a write can still exceed the limit.
+func archiveFits(files []File) bool {
+	if len(files) > archiveAttachmentLimit {
+		return false
+	}
+	var total int64
+	for _, f := range files {
+		if total += f.Size; total > backupplan.ArchiveLimit {
+			return false
+		}
+	}
+	return true
 }
 
 func writePortable(ctx context.Context, target config.BackupTarget, id, stage, sourceUploads string, files []File) (int64, error) {

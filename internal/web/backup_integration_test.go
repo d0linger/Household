@@ -347,3 +347,80 @@ func TestBackupNoticesReachAdministratorsOnce(t *testing.T) {
 		t.Fatalf("notices page: %v %v", response, err)
 	}
 }
+
+// An offsite file of another version can still be checked and staged for
+// download; only its live restore needs this version.
+func TestOffsiteArchiveOfAnotherVersionCanBeStagedForDownload(t *testing.T) {
+	f := newIntegrationFixture(t)
+	f.app.Log = slog.New(slog.NewTextHandler(testLogWriter{t}, &slog.HandlerOptions{Level: slog.LevelError}))
+	tag, err := f.owner.Exec(f.ctx, "UPDATE core.backup_settings SET offsite_label='/mnt/offsite'")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tag.RowsAffected() == 0 {
+		if _, err = f.owner.Exec(f.ctx, "INSERT INTO core.backup_settings(household_id,offsite_label) VALUES($1,'/mnt/offsite')", f.identity.HouseholdID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	snapshot := backupplan.ArchiveID(time.Now().Add(-48 * time.Hour))
+	if _, err = f.owner.Exec(f.ctx, `INSERT INTO core.backup_runs(state,application_version,repository_reference,repository_kind,snapshot_reference,schema_manifest,finished_at,total_bytes)
+ VALUES('complete','0.0.1','/mnt/offsite','offsite',$1,'{"core":1}',now(),12345)`, snapshot); err != nil {
+		t.Fatal(err)
+	}
+	if status, body := backupForm(f, "/settings/backup/jobs", url.Values{"kind": {"verify"}, "target": {"offsite"}, "snapshot": {snapshot}}); status != 200 {
+		t.Fatalf("staging an offsite file of another version: %d %v", status, body)
+	}
+	restore := url.Values{"kind": {"restore"}, "target": {"offsite"}, "snapshot": {snapshot}, "confirmation": {backupplan.RestoreConfirmation(snapshot)}}
+	if status, _ := backupForm(f, "/settings/backup/jobs", restore); status != 422 {
+		t.Fatalf("live restore of another version: %d", status)
+	}
+}
+
+// An upload records its validation as the verification of its new run. That
+// is no check of an existing restore point, so the scheduled probe stays
+// due; a later trial restore of the imported point counts.
+func TestArchiveUploadDoesNotRefreshTheProbe(t *testing.T) {
+	f := newIntegrationFixture(t)
+	tag, err := f.owner.Exec(f.ctx, "UPDATE core.backup_settings SET probe_target='local',probe_interval_days=7")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tag.RowsAffected() == 0 {
+		if _, err = f.owner.Exec(f.ctx, "INSERT INTO core.backup_settings(household_id,probe_target,probe_interval_days) VALUES($1,'local',7)", f.identity.HouseholdID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	snapshot := backupplan.ArchiveID(time.Now().Add(-48 * time.Hour))
+	var job string
+	if err = f.owner.QueryRow(f.ctx, `INSERT INTO core.backup_jobs(household_id,kind,target,snapshot_reference,requested_by,state,started_at,finished_at,result_code)
+ VALUES($1,'verify','local',$3,$2,'complete',now(),now(),'ok') RETURNING id`, f.identity.HouseholdID, f.identity.UserID, snapshot).Scan(&job); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = f.owner.Exec(f.ctx, `INSERT INTO core.backup_runs(state,application_version,repository_reference,repository_kind,job_id,snapshot_reference,schema_manifest,started_at,finished_at,verified_at,total_bytes)
+ VALUES('complete','0.1.0','/data/backups','local',$1,$2,'{}',now()-interval '2 days',now(),now(),12345)`, job, snapshot); err != nil {
+		t.Fatal(err)
+	}
+	stale := func() bool {
+		t.Helper()
+		response, body, err := f.request("GET", "/api/v1/core/backup", f.token, "", "", nil, nil)
+		if err != nil || response.StatusCode != 200 {
+			t.Fatalf("overview: %v %v", response, err)
+		}
+		var overview struct {
+			ProbeStale bool `json:"probe_stale"`
+		}
+		if err = json.Unmarshal(body, &overview); err != nil {
+			t.Fatal(err)
+		}
+		return overview.ProbeStale
+	}
+	if !stale() {
+		t.Fatal("an upload's validation refreshed the scheduled probe")
+	}
+	if _, err = f.owner.Exec(f.ctx, "UPDATE core.backup_runs SET verified_at=now()+interval '1 minute' WHERE snapshot_reference=$1", snapshot); err != nil {
+		t.Fatal(err)
+	}
+	if stale() {
+		t.Fatal("a trial restore of the imported point did not refresh the probe")
+	}
+}

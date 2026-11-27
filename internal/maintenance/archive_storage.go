@@ -207,12 +207,24 @@ func copyPortableLocked(ctx context.Context, pool *pgxpool.Pool, local, offsite 
 	// Pending deletions and files of earlier failed copies are removed first,
 	// so they cannot take the space this copy needs. This is best effort: a
 	// refused delete does not block the copy, and the cleanup after the copy
-	// reports it.
-	if err := retainArchives(ctx, pool, offsite, "", false); err != nil {
+	// reports it. The pending runs are decided again first; without that
+	// decision nothing is deleted, because a pending row may be one the
+	// quotas keep.
+	decideErr := decideArchives(ctx, pool, offsite, "", false)
+	if decideErr != nil {
+		slog.Default().Warn("could not decide pending offsite deletions before the copy", "code", ResultCode(decideErr))
+	} else if err := finishArchiveRetention(ctx, pool, offsite, ""); err != nil {
 		slog.Default().Warn("could not finish pending offsite deletions before the copy", "code", ResultCode(err))
 	}
 	// A pending deletion of this snapshot finishes before its name is reused.
-	if err := finishArchiveRetention(ctx, pool, offsite, snapshot); err != nil {
+	// If the decision failed, a pending row of this snapshot stops the copy.
+	if decideErr != nil {
+		var pending bool
+		if err := pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM core.backup_runs
+ WHERE repository_reference=$1 AND snapshot_reference=$2 AND state='retention_pending')`, offsite.Label(), snapshot).Scan(&pending); err != nil || pending {
+			return "", errors.Join(decideErr, err)
+		}
+	} else if err := finishArchiveRetention(ctx, pool, offsite, snapshot); err != nil {
 		return "", err
 	}
 	if err := reconcileOffsiteAttempts(ctx, pool, offsite, snapshot); err != nil {
@@ -316,12 +328,21 @@ func sendPortableCopy(ctx context.Context, pool *pgxpool.Pool, local, offsite co
 			_, _ = audit.Exec(failureCtx, pool, "UPDATE core.backup_runs SET state='failed',finished_at=now(),failure_reason='offsite copy failed' WHERE id=$1 AND state='running'", run)
 		}
 	}()
-	removeStaleCopy(ctx, pool, offsite, snapshot)
-	size, err := sendArchive(ctx, local, offsite, snapshot)
+	// A file that a run of another label needs is never replaced.
+	shared, err := sharedArchiveFile(ctx, pool, offsite, snapshot, "complete", "retention_pending")
 	if err != nil {
 		return err
 	}
-	if err = checkPortable(ctx, offsite, snapshot); err != nil {
+	var size int64
+	if shared {
+		size, err = reuseSharedCopy(ctx, offsite, snapshot)
+	} else {
+		removeStaleCopy(ctx, pool, offsite, snapshot)
+		if size, err = sendArchive(ctx, local, offsite, snapshot); err == nil {
+			err = checkPortable(ctx, offsite, snapshot)
+		}
+	}
+	if err != nil {
 		return err
 	}
 	if _, err = audit.Exec(ctx, pool, "UPDATE core.backup_runs SET state='complete',finished_at=now(),data_added=$2,total_bytes=$2 WHERE id=$1", run, size); err != nil {
@@ -331,14 +352,34 @@ func sendPortableCopy(ctx context.Context, pool *pgxpool.Pool, local, offsite co
 	return nil
 }
 
+var errArchiveShared = errors.New("another offsite path needs the existing backup file, and this target's password does not open it")
+
+// reuseSharedCopy keeps the mounted file that a run of another repository
+// label still needs, such as one written through another mount point of the
+// same share. It counts as this target's copy when this target's password
+// opens it. Otherwise the copy fails and the file stays as it is.
+func reuseSharedCopy(ctx context.Context, offsite config.BackupTarget, snapshot string) (int64, error) {
+	if err := checkPortable(ctx, offsite, snapshot); err != nil {
+		if ResultCode(err) == "archive_unreadable" && !contextFailure(err) {
+			return 0, errors.Join(&ToolError{Program: "archive", Code: "archive_shared", err: errArchiveShared}, err)
+		}
+		return 0, err
+	}
+	info, err := os.Stat(filepath.Join(backupplan.ArchiveDirectory(offsite.Repository), backupplan.ArchiveName(snapshot))) // #nosec G703 -- name derived from a validated snapshot ID
+	if err != nil {
+		return 0, err
+	}
+	return info.Size(), nil
+}
+
 // removeStaleCopy removes the file an earlier failed copy of this snapshot
 // left under its final name, when it failed after the rename. Its run was
 // just recorded as running, so no complete or pending row references that
 // file. Removing it first keeps a mount from needing room for both the stale
-// file and the new partial file. A file that another repository label still
-// needs is kept; publishing replaces it. This is best effort: publishing
-// replaces the file anyway, and that write reports a destination that refuses
-// changes.
+// file and the new partial file. The caller reuses a file that another
+// repository label still needs instead, and this check keeps it as well. This
+// is best effort: publishing replaces the file anyway, and that write reports
+// a destination that refuses changes.
 func removeStaleCopy(ctx context.Context, pool *pgxpool.Pool, offsite config.BackupTarget, snapshot string) {
 	if !filepath.IsAbs(offsite.Repository) {
 		return
@@ -645,21 +686,26 @@ func decideArchives(ctx context.Context, pool *pgxpool.Pool, target config.Backu
 // keptPendingArchives returns the pending archives that the quotas keep when
 // pending rows are not taken as selected, and whose file is present.
 func keptPendingArchives(ctx context.Context, target config.BackupTarget, points []archiveRetentionPoint, keep string, zone *time.Location, daily, weekly, monthly int) ([]string, error) {
+	present := map[string]bool{}
 	decided := make([]archiveRetentionPoint, len(points))
 	for i, point := range points {
 		decided[i] = archiveRetentionPoint{id: point.id, at: point.at}
+		if !point.pending {
+			continue
+		}
+		found, err := archivePresent(ctx, target, point.id)
+		if err != nil {
+			return nil, err
+		}
+		present[point.id] = found
+		// A pending row whose file is gone holds no restore point, so it
+		// stays selected and claims no calendar bucket.
+		decided[i].pending = !found
 	}
 	expired := expiredArchives(keepFirst(decided, keep), zone, daily, weekly, monthly)
 	var kept []string
 	for _, point := range points {
-		if !point.pending || slices.Contains(expired, point.id) {
-			continue
-		}
-		present, err := archivePresent(ctx, target, point.id)
-		if err != nil {
-			return nil, err
-		}
-		if present {
+		if point.pending && present[point.id] && !slices.Contains(expired, point.id) {
 			kept = append(kept, point.id)
 		}
 	}
@@ -830,7 +876,9 @@ const archiveReclaimGrace = time.Hour
 // registration or check failed, an import that was never recorded, and
 // partial files of an interrupted write. A run of any kind protects its file
 // by the repository label it records, so the rows of an offsite repository
-// that became the local one keep their archives. The local archive directory
+// that became the local one keep their archives. A run of another label whose
+// path names the same file, such as an offsite mount that is now the local
+// one under another path, protects it as well. The local archive directory
 // is always a filesystem path. Callers hold the repository lock.
 func reclaimArchives(ctx context.Context, pool *pgxpool.Pool, local config.BackupTarget, now time.Time) error {
 	if !filepath.IsAbs(local.Repository) && local.Repository != "" {
@@ -885,7 +933,12 @@ func reclaimArchives(ctx context.Context, pool *pgxpool.Pool, local config.Backu
 		for _, id := range revived {
 			delete(candidates, id)
 		}
-		for _, name := range candidates {
+		for id, name := range candidates {
+			shared, sharedErr := sharedArchiveFile(ctx, pool, local, id, "complete", "retention_pending")
+			if sharedErr != nil || shared {
+				failures = append(failures, sharedErr)
+				continue
+			}
 			failures = append(failures, removeArchiveEntry(directory, name))
 		}
 	}

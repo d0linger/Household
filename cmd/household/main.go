@@ -160,6 +160,9 @@ func run(log *slog.Logger) error {
 		defer cancel()
 		result, err := maintenance.RunOperatorBackup(backupCtx, pool, cfg, maintenance.BackupOptions{Offsite: len(os.Args) == 3})
 		if result.OffsiteErr != nil {
+			if result.Snapshot != "" {
+				log.Warn("local backup completed; the offsite copy failed", "snapshot", result.Snapshot)
+			}
 			err = errors.Join(fmt.Errorf("offsite copy failed: %w", result.OffsiteErr), err)
 		}
 		if err != nil {

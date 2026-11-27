@@ -96,10 +96,14 @@ func resticPassword(name string) (string, error) {
 // a restic REST server. It reads only the repository setting, so incomplete
 // or invalid offsite credentials do not change the local backup format: the
 // copy reports the credential error, and the local snapshot stays copyable
-// once the credentials are fixed.
-func OffsiteUsesResticREST() bool {
+// once the credentials are fixed. A setting that cannot be read returns its
+// error; callers then write a restic snapshot, which every destination stores.
+func OffsiteUsesResticREST() (bool, error) {
 	repository, err := secret("HOUSEHOLD_BACKUP_OFFSITE_REPOSITORY")
-	return err == nil && strings.HasPrefix(strings.TrimSpace(repository), "rest:")
+	if err != nil {
+		return false, err
+	}
+	return strings.HasPrefix(strings.TrimSpace(repository), "rest:"), nil
 }
 
 // OffsiteArchivePassword reads HOUSEHOLD_BACKUP_OFFSITE_PASSWORD on its own,

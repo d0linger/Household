@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -108,6 +109,11 @@ func (s *Server) uploadBackupArchive(w http.ResponseWriter, r *http.Request) {
 			_ = os.Remove(staged) // #nosec G703 -- generated path for this request
 		}
 	}()
+	// The new name must survive a crash before a job can reference it.
+	if err = syncExchangeDirectory(directory); err != nil {
+		s.fail(w, r, err)
+		return
+	}
 	tx, err := audit.Begin(r.Context(), s.Pool)
 	if err != nil {
 		s.fail(w, r, err)
@@ -182,7 +188,26 @@ func archiveDownloadReady(target, snapshot, label string) bool {
 	}
 	defer func() { _ = f.Close() }()
 	st, err := f.Stat()
-	return err == nil && st.Mode().IsRegular() && st.Size() > 0
+	return err == nil && downloadable(st)
+}
+
+// downloadable is the one rule for a file the download endpoint serves.
+func downloadable(info os.FileInfo) bool {
+	return info.Mode().IsRegular() && info.Size() > 0 && info.Size() <= backupplan.ArchiveLimit
+}
+
+// syncExchangeDirectory makes the entries of the exchange directory durable.
+func syncExchangeDirectory(directory string) error {
+	dir, err := os.Open(directory) // #nosec G304 -- the fixed exchange directory
+	if err != nil {
+		return err
+	}
+	defer func() { _ = dir.Close() }()
+	if err = dir.Sync(); err != nil && runtime.GOOS != "windows" {
+		// Windows cannot sync directories (developer tests only).
+		return err
+	}
+	return nil
 }
 
 func (s *Server) downloadBackupArchive(w http.ResponseWriter, r *http.Request) {
@@ -215,7 +240,7 @@ func (s *Server) downloadBackupArchive(w http.ResponseWriter, r *http.Request) {
 	}
 	defer func() { _ = f.Close() }()
 	info, err := f.Stat()
-	if err != nil || !info.Mode().IsRegular() || info.Size() <= 0 || info.Size() > backupplan.ArchiveLimit {
+	if err != nil || !downloadable(info) {
 		s.fail(w, r, store.ErrNotFound)
 		return
 	}

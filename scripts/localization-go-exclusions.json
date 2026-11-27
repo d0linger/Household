@@ -625,5 +625,6 @@
   "error pattern\ninternal/maintenance/archive.go\nencrypted backup lacks an attachment its manifest lists": "Internal backup-worker diagnostic. The UI uses the localized stable result code.",
   "error pattern\ninternal/maintenance/archive_storage.go\nthe mounted offsite path is the local backup directory": "Internal backup-worker diagnostic. The UI uses the localized stable result code.",
   "error pattern\ninternal/maintenance/backup.go\n%s could not start (%v); inspect the backup service image": "Internal backup-worker diagnostic. The UI uses the localized stable result code.",
-  "error pattern\ninternal/maintenance/archive.go\nnot a regular file": "Internal backup-worker diagnostic. The UI uses the localized stable result code."
+  "error pattern\ninternal/maintenance/archive.go\nnot a regular file": "Internal backup-worker diagnostic. The UI uses the localized stable result code.",
+  "error pattern\ninternal/maintenance/archive_storage.go\nanother offsite path needs the existing backup file, and this target's password does not open it": "Internal backup-worker diagnostic. The UI uses the localized stable result code archive_shared."
 }

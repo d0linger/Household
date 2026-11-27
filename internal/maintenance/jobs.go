@@ -286,6 +286,8 @@ type Job struct {
 	RequestedSession *string
 	Confirmation     *string
 	CreatedAt        time.Time
+	// Scheduled marks a job the service started on its own schedule.
+	Scheduled bool
 }
 
 // claim takes the oldest request, validates it with owner privileges and
@@ -524,8 +526,13 @@ func (s *Service) verifyRequested(ctx context.Context, job Job) error {
 	if err != nil {
 		return err
 	}
-	if job.Target == "offsite" {
+	// A requested offsite check stages the file for download. A scheduled
+	// probe only restores it, so it needs no room in the exchange volume.
+	if job.Target == "offsite" && !job.Scheduled {
 		return s.prepareArchiveDownload(ctx, target, job.Snapshot)
+	}
+	if job.Target == "offsite" {
+		return s.verify(ctx, job.Target, job.Snapshot)
 	}
 	if err = knownSnapshot(ctx, s.Pool(), target, job.Snapshot); err == nil {
 		return s.verify(ctx, job.Target, job.Snapshot)
@@ -691,7 +698,7 @@ func (s *Service) scheduledProbe(ctx context.Context, settings backupplan.Settin
 	if err != nil {
 		return err
 	}
-	s.perform(ctx, Job{ID: id, Kind: "verify", Target: settings.ProbeTarget, Snapshot: snapshot})
+	s.perform(ctx, Job{ID: id, Kind: "verify", Target: settings.ProbeTarget, Snapshot: snapshot, Scheduled: true})
 	return nil
 }
 

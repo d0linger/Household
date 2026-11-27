@@ -56,8 +56,11 @@ After a local backup restic fully checks the local repository. Failed runs are r
 #### Portable backup files
 
 The default for new backups is one dated `household-*.tar.age` file of at
-most 32 GiB. A backup that would be larger fails; installations with more data
-set `HOUSEHOLD_BACKUP_FORMAT=restic`, which has no such limit. The
+most 32 GiB and 100,000 attachments. A backup that would be larger fails;
+installations with more data set `HOUSEHOLD_BACKUP_FORMAT=restic`, which has no
+such limit. The safety backup before a live restore is the exception: when the
+attachments alone exceed these limits, it is written to the local Restic
+repository instead, so the restore can still proceed. The
 worker captures a consistent PostgreSQL dump, ready attachments and previews,
 the file-checksum and schema manifest, and the recovery key bundle. The local
 file lives under `/data/backups/portable`. For S3, the file is an object directly
@@ -67,8 +70,12 @@ Files share the same dated name at both locations. Household authenticates the
 whole file with age, using `RESTIC_PASSWORD` locally and
 `HOUSEHOLD_BACKUP_OFFSITE_PASSWORD` externally.
 
-For a mounted destination, create the configured path on the mounted share
-before the first copy; Household creates only `portable` inside it. After a
+For a mounted destination, configure a directory created on the mounted share
+itself, never the mount point, and create it before the first copy; Household
+creates only `portable` inside it. Without the share, that directory does not
+exist and the first copy reports the destination as unreachable. Household
+cannot tell an unmounted mount point from an empty directory, so a configured
+mount point would let the first copy write to the filesystem underneath. After a
 copy has been recorded, a missing `portable` directory counts as an absent
 mount: copies, tests and deletions report the destination as unreachable
 instead of writing to the filesystem underneath. Mount the share before the
@@ -83,7 +90,11 @@ A pending deletion of the other path is decided again with that path's own
 quotas first, so an archive those quotas keep becomes complete again and keeps
 the file. The kept deletion stays pending and finishes once the other run no
 longer needs the file. When both paths expire the archive, the file is removed
-and both runs are recorded expired.
+and both runs are recorded expired. A copy never replaces a file that a run of
+the other path still needs: it reuses the file when its own password opens it,
+and otherwise fails with `archive_shared` and leaves the file as it is. Local
+reclaim keeps a file that a run of another path names the same way, such as an
+offsite mount that later becomes the local repository under another path.
 
 On a versioned S3 bucket, retention deletes an expired file by adding a delete
 marker. The previous version stays stored and billed until the bucket removes
@@ -100,7 +111,9 @@ upload limit is 32 GiB and 30 minutes.
 1. Under **Settings → Backup**, download a local file directly. For an
    external file, choose **Verify and prepare download**, wait for the
    trial restore, then choose **Download**. Prepared copies expire after
-   six hours.
+   six hours. This also works for an external file of another version,
+   whose live restore needs that version. The scheduled restore test of
+   the external target only restores the file and prepares no download.
 2. Upload only backup files from installations you trust: restoring a dump
    runs its SQL, and a confirmed live restoration keeps the objects it creates.
    Choose **Upload backup file**, select the encrypted archive, and submit.
@@ -117,7 +130,10 @@ Keep the passwords used by any retained files. Portable files carry their own
 password encryption and a Restic repository key change affects only Restic
 snapshots. Existing Restic data stays readable by its original passwords and
 is exempt from the portable-file retention job. The two formats can coexist
-at the same S3 prefix. A restic REST target uses Restic for new writes. An
+at the same S3 prefix. A restic REST target uses Restic for new writes. If
+the offsite repository setting cannot be read, for example because its file is
+temporarily unavailable, the local backup is written to Restic as well, so it
+can be copied to any destination once the setting is readable again. An
 operator can also select the older writer with `HOUSEHOLD_BACKUP_FORMAT=restic`.
 
 #### S3 settings and legacy Restic repositories

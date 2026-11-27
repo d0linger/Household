@@ -503,6 +503,17 @@ func backupLocked(ctx context.Context, pool *pgxpool.Pool, cfg config.Config, lo
 	if err != nil {
 		return "", nil, err
 	}
+	if portable && !retain && !archiveFits(manifest.Files) {
+		// A live restore needs its safety backup, so one that does not fit an
+		// encrypted backup file is written to restic, which has no such limit.
+		slog.Default().Warn("the safety backup exceeds the encrypted backup file limits; writing a restic snapshot", "attachments", len(manifest.Files))
+		portable = false
+		manifest.ArchiveFormat = 0
+		manifest.UploadPath = sourceUploads
+		if err = ensureRepository(ctx, local, nil); err != nil {
+			return "", nil, err
+		}
+	}
 	ring, err := cfg.Keyring()
 	if err != nil {
 		return "", nil, err

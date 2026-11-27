@@ -2980,6 +2980,7 @@ globalThis.HouseholdEnglish = Object.freeze({
   "Ein aktives Gerät": "One active device",
   "Ein aktives Produkt mit Basiseinheit Portion auswählen.": "Select an active product with portion as its base unit.",
   "Ein aktives Produkt wählen.": "Select an active product.",
+  "Ein anderer Offsite-Pfad braucht die vorhandene Backup-Datei, und dieses Passwort öffnet sie nicht. Household überschreibt sie nicht.": "Another offsite path needs the existing backup file, and this password does not open it. Household does not overwrite it.",
   "Ein anderer Wiederherstellungsvorgang läuft gerade.": "Another restore operation is running.",
   "Ein Artikel wurde mehrfach geliefert.": "An item was supplied more than once.",
   "Ein bearbeiteter Datensatz wurde entfernt. Entwurf bewusst verwerfen und eine neue Zuordnung getrennt anlegen.": "An edited record was removed. Deliberately discard the draft and create a new assignment separately.",

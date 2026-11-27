@@ -161,5 +161,6 @@
   "Das externe Ziel ist dasselbe Verzeichnis wie die lokale Sicherung. Wähle einen anderen Pfad.": "The offsite destination is the same directory as the local backup. Choose a different path.",
   "Der Datenbankspeicher meldete einen Schreibfehler. Prüfe Datenträger und Datenbankprotokoll.": "The database storage reported a write error. Check the disk and the database log.",
   "Ein Werkzeug des Sicherungsdienstes fehlt oder ließ sich nicht starten. Prüfe das Image des Sicherungsdienstes.": "A backup service tool is missing or could not start. Check the backup service image.",
-  "Das Offsite-Archivpasswort ließ sich nicht lesen. Prüfe die Passwortdatei des Sicherungsdienstes.": "The offsite archive password could not be read. Check the backup service's password file."
+  "Das Offsite-Archivpasswort ließ sich nicht lesen. Prüfe die Passwortdatei des Sicherungsdienstes.": "The offsite archive password could not be read. Check the backup service's password file.",
+  "Ein anderer Offsite-Pfad braucht die vorhandene Backup-Datei, und dieses Passwort öffnet sie nicht. Household überschreibt sie nicht.": "Another offsite path needs the existing backup file, and this password does not open it. Household does not overwrite it."
 }

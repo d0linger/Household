@@ -2577,3 +2577,32 @@ CodeRabbit raised two findings for `c604a5e`, the first incremental review. Both
   - With the decision of sharing labels removed, `TestPendingDeletionKeepsAFileAnotherLabelsQuotasKeep` failed: the file was removed while the other label's run stayed pending. With the system-error check removed, `TestDatabaseToolFailuresKeepTheirCause` classified both crafted tag lines as `disk_full`.
   - `scripts/test-backup-operations.sh` passed with 0 failures and cleaned up.
   - Not run locally: the Garage S3 fixture and the full integration suite. No test covers `replaceCorruptCopy`.
+
+## Portable backup files: release PR #35 review
+
+CodeRabbit reviewed the whole `dev` → `main` diff at `ad6047b` and raised fourteen findings, twelve inline and two outside the diff range. Thirteen are fixed without a schema change. One is documented instead of changed.
+
+- [x] The operator CLI logs the completed local snapshot when only the offsite copy fails, and still exits nonzero.
+- [x] An offsite repository setting that cannot be read is an error, not a non-REST destination. The local backup then writes a Restic snapshot, which every destination stores.
+- [x] Before an offsite copy, pending deletions are decided first and finished only after a successful decision. If the decision fails, a pending row of the snapshot being copied stops the copy and keeps its file.
+- [x] An offsite copy never replaces a mounted file that a complete or pending run of another label needs. It reuses the file when its own password opens it, and otherwise fails with the new code `archive_shared`, which the backup page explains.
+- [x] When pending rows are decided again, a pending row whose file is gone claims no calendar bucket, so it cannot push out a present archive of the same period.
+- [x] Local reclaim keeps an unreferenced file that a run of another label names through another path, such as an offsite mount that became the local repository.
+- [x] `makeDurableDirectory` syncs the parent of an existing directory on every call. When a parent sync of new directories fails, it removes them again, so a retry creates and syncs them once more.
+- [x] The safety backup before a live restore switches to Restic when its attachments exceed the portable limits by count or size. Scheduled and requested backups keep the limits.
+- [x] A scheduled offsite probe restores the archive without staging a download in the exchange volume. A requested check still stages one.
+- [x] After an upload, the exchange directory is synced before the queue transaction, and a failed sync creates no job.
+- [x] Download readiness and the download endpoint share one eligibility rule: a regular, nonempty file of at most `ArchiveLimit` bytes.
+- [x] An offsite archive of another version can be checked and staged for download. The backup page offers the action, while its live restore still needs that version.
+- [x] An upload's own validation no longer refreshes the restore probe. A later trial restore of the imported point does.
+- [ ] Not changed: copies to an unmounted offsite share. Inside the container the configured path is itself a mount, so Household cannot tell an unmounted share from the directory underneath. `docs/operations.md` now requires a directory created on the share itself, never the mount point, and names the risk.
+- [x] `config.BackupTargetForTests`, built only with the `testtools` tag, lets the new integration test build targets with archive passwords on every platform.
+
+### Validation of the release review fixes
+
+- [x] Each new or changed test failed with its fix removed and passed with it: `TestOffsiteUsesResticRESTReadsOnlyTheRepository`, the two web tests and the four maintenance tests for shared files, undecided pending deletions, missing pending archives and reclaim under an alias.
+- [x] Localization check (8894 translations), localization tests and `npm test` (536 tests) pass after the `archive_shared` diagnostic was added to the Go exclusions.
+- [x] `go test ./internal/...`, golangci-lint without tags and with `integration,testtools` for maintenance, web and config (0 issues), and Linux container vet and tests of maintenance, backupplan and config pass.
+- [x] Backup, archive, offsite, retention, probe, health, schedule, purge, reclaim and pending integration tests of web, config, maintenance, backupplan and store pass against isolated PostgreSQL 18.
+- [x] The Docker backup-operations rehearsal passed with 0 failures, and its containers, volumes and test image were removed.
+- [ ] Not executed locally: the Garage S3 fixture, the full integration suite, a failing directory sync, the end-to-end safety-backup Restic fallback for oversized attachments, and an end-to-end scheduled offsite probe. CI runs the full suite.

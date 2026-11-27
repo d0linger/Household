@@ -192,7 +192,10 @@ func (s *Server) loadBackupOverview(ctx context.Context) (backupOverview, error)
 	// Verification freshness is read independently of the listed snapshots,
 	// and only a check of the configured probe target keeps the probe fresh.
 	var probeVerified *time.Time
-	if err = s.Pool.QueryRow(ctx, `SELECT max(verified_at),max(verified_at) FILTER (WHERE repository_kind=$1) FROM core.backup_runs WHERE verified_at IS NOT NULL`,
+	// An upload records its own validation as verified_at=finished_at; that is
+	// no check of an existing restore point, but a later trial restore is.
+	if err = s.Pool.QueryRow(ctx, `SELECT max(r.verified_at),max(r.verified_at) FILTER (WHERE r.repository_kind=$1
+ AND NOT (r.verified_at=r.finished_at AND `+backupplan.ImportedRun+`)) FROM core.backup_runs r WHERE r.verified_at IS NOT NULL`,
 		o.Settings.ProbeTarget).Scan(&o.LastVerified, &probeVerified); err != nil {
 		return o, err
 	}
@@ -380,7 +383,9 @@ func (s *Server) requestBackupJob(w http.ResponseWriter, r *http.Request) {
 			s.fail(w, r, store.Invalid{Message: "Wiederherstellungspunkt nicht gefunden"})
 			return
 		}
-		if !found.Compatible {
+		// An offsite file of another version can still be checked and staged
+		// for download; only its live restore needs this version.
+		if !found.Compatible && (kind != "verify" || target != "offsite" || found.Archive == "") {
 			s.fail(w, r, store.Invalid{Message: "Dieser Wiederherstellungspunkt stammt von einer anderen Version und kann nur mit dieser Version per Wartungsbefehl wiederhergestellt werden"})
 			return
 		}

@@ -455,3 +455,17 @@ func TestDatabaseServerFailureLeavesContentErrors(t *testing.T) {
 		}
 	}
 }
+
+// A safety backup that does not fit an encrypted backup file by count or by
+// size is written to restic instead.
+func TestArchiveFitsCountsAttachmentsAndSize(t *testing.T) {
+	if !archiveFits(nil) || !archiveFits([]File{{Size: backupplan.ArchiveLimit}}) {
+		t.Fatal("a backup within the limits does not fit")
+	}
+	if archiveFits(make([]File, archiveAttachmentLimit+1)) {
+		t.Fatal("too many attachments fit")
+	}
+	if archiveFits([]File{{Size: backupplan.ArchiveLimit}, {Size: 1}}) {
+		t.Fatal("attachments beyond the size limit fit")
+	}
+}

@@ -626,7 +626,7 @@ func TestPendingDeletionKeepsAFileAnotherLabelsQuotasKeep(t *testing.T) {
 func TestRetentionKeepsPendingArchivesTheQuotasKeep(t *testing.T) {
 	f := newRestoreBarcodeFixture(t)
 	ctx := f.ctx
-	retentionQuotas(t, f, 2, 1, 1)
+	retentionQuotas(t, f, 1, 1, 1)
 	for _, kind := range []string{"local", "offsite"} {
 		target := config.BackupTarget{Kind: kind, Repository: t.TempDir()}
 		directory := backupplan.ArchiveDirectory(target.Repository)
@@ -675,6 +675,122 @@ func TestRetentionKeepsPendingArchivesTheQuotasKeep(t *testing.T) {
 				t.Errorf("%s: run of %s is %q, %v; want %s", kind, id, state, err, want)
 			}
 		}
+	}
+}
+
+// A failed decision of pending deletions stops the cleanup before an offsite
+// copy: a pending row of the snapshot being copied may be one the quotas
+// keep, so its file is not deleted on the strength of the pending row alone.
+func TestOffsiteCopyKeepsAPendingFileWhenTheDecisionFails(t *testing.T) {
+	f := newRestoreBarcodeFixture(t)
+	ctx := f.ctx
+	offsite := config.BackupTarget{Kind: "offsite", Repository: t.TempDir()}
+	directory := backupplan.ArchiveDirectory(offsite.Repository)
+	if err := os.Mkdir(directory, 0700); err != nil {
+		t.Fatal(err)
+	}
+	snapshot := backupplan.ArchiveID(time.Now().Add(-48 * time.Hour))
+	// A directory under the archive name cannot be opened as an archive, so
+	// the presence check of the pending row fails.
+	entry := filepath.Join(directory, backupplan.ArchiveName(snapshot))
+	if err := os.Mkdir(entry, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.owner.Exec(ctx, `INSERT INTO core.backup_runs(state,application_version,repository_reference,snapshot_reference,repository_kind)
+ VALUES('retention_pending','test',$1,$2,'offsite')`, offsite.Label(), snapshot); err != nil {
+		t.Fatal(err)
+	}
+	local := config.BackupTarget{Kind: "local", Repository: t.TempDir()}
+	if _, err := copyPortableLocked(ctx, f.owner, local, offsite, backupplan.Defaults(), snapshot, []byte(`{}`), ""); err == nil {
+		t.Fatal("copy succeeded although its pending deletion was not decided")
+	}
+	var state string
+	if err := f.owner.QueryRow(ctx, "SELECT state FROM core.backup_runs WHERE repository_reference=$1 AND snapshot_reference=$2", offsite.Label(), snapshot).Scan(&state); err != nil || state != "retention_pending" {
+		t.Fatalf("pending row is %q, %v; want retention_pending", state, err)
+	}
+	if _, err := os.Stat(entry); err != nil {
+		t.Fatalf("undecided pending deletion removed its entry: %v", err)
+	}
+}
+
+// A pending row whose file is gone claims no calendar bucket when pending
+// rows are decided again, so it cannot push out a present archive of the
+// same period.
+func TestRetentionKeepsAPresentPendingArchiveBesideAMissingOne(t *testing.T) {
+	f := newRestoreBarcodeFixture(t)
+	ctx := f.ctx
+	retentionQuotas(t, f, 1, 1, 1)
+	target := config.BackupTarget{Kind: "offsite", Repository: t.TempDir()}
+	directory := backupplan.ArchiveDirectory(target.Repository)
+	if err := os.Mkdir(directory, 0700); err != nil {
+		t.Fatal(err)
+	}
+	// Both points lie in one fixed past day, week and month.
+	day := time.Now().UTC().Truncate(24 * time.Hour).Add(-72 * time.Hour)
+	present, missing := backupplan.ArchiveID(day.Add(10*time.Hour)), backupplan.ArchiveID(day.Add(11*time.Hour))
+	presentFile := filepath.Join(directory, backupplan.ArchiveName(present))
+	if err := os.WriteFile(presentFile, []byte("synthetic archive"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	for id, at := range map[string]time.Time{present: day.Add(10 * time.Hour), missing: day.Add(11 * time.Hour)} {
+		if _, err := f.owner.Exec(ctx, `INSERT INTO core.backup_runs(state,application_version,repository_reference,snapshot_reference,repository_kind,started_at)
+ VALUES('retention_pending','test',$1,$2,'offsite',$3)`, target.Label(), id, at); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := applyArchiveRetention(ctx, f.owner, target, ""); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(presentFile); err != nil {
+		t.Fatalf("a missing pending archive pushed out the present one: %v", err)
+	}
+	for id, want := range map[string]string{present: "complete", missing: "expired"} {
+		var state string
+		if err := f.owner.QueryRow(ctx, "SELECT state FROM core.backup_runs WHERE repository_reference=$1 AND snapshot_reference=$2", target.Label(), id).Scan(&state); err != nil || state != want {
+			t.Errorf("run of %s is %q, %v; want %s", id, state, err, want)
+		}
+	}
+}
+
+// An offsite mount can become the local repository under another path. A
+// complete offsite run of that path still needs its file, so reclaim keeps
+// it, and removes it once no run needs it.
+func TestReclaimKeepsAFileAnOffsiteAliasNeeds(t *testing.T) {
+	f := newRestoreBarcodeFixture(t)
+	ctx := f.ctx
+	local := config.BackupTarget{Kind: "local", Repository: t.TempDir()}
+	directory := backupplan.ArchiveDirectory(local.Repository)
+	if err := os.Mkdir(directory, 0700); err != nil {
+		t.Fatal(err)
+	}
+	snapshot := backupplan.ArchiveID(time.Now().Add(-48 * time.Hour))
+	file := filepath.Join(directory, backupplan.ArchiveName(snapshot))
+	if err := os.WriteFile(file, []byte("synthetic offsite copy"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	old := time.Now().Add(-3 * time.Hour)
+	if err := os.Chtimes(file, old, old); err != nil {
+		t.Fatal(err)
+	}
+	var run string
+	if err := f.owner.QueryRow(ctx, `INSERT INTO core.backup_runs(state,application_version,repository_reference,snapshot_reference,repository_kind)
+ VALUES('complete','test',$1,$2,'offsite') RETURNING id`, aliasPath(local.Repository), snapshot).Scan(&run); err != nil {
+		t.Fatal(err)
+	}
+	if err := reclaimArchives(ctx, f.owner, local, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(file); err != nil {
+		t.Fatalf("reclaim removed a file an offsite alias needs: %v", err)
+	}
+	if _, err := f.owner.Exec(ctx, "UPDATE core.backup_runs SET state='expired' WHERE id=$1", run); err != nil {
+		t.Fatal(err)
+	}
+	if err := reclaimArchives(ctx, f.owner, local, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(file); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("reclaim kept a file no run needs: %v", err)
 	}
 }
 
