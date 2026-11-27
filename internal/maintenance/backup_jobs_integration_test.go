@@ -75,6 +75,20 @@ func TestJobCleanupKeepsImportProvenance(t *testing.T) {
 	}
 }
 
+// retentionQuotas creates the household with the same quotas for the local
+// and the offsite repository.
+func retentionQuotas(t *testing.T, f restoreBarcodeFixture, daily, weekly, monthly int) {
+	t.Helper()
+	var household string
+	if err := f.owner.QueryRow(f.ctx, "INSERT INTO core.households(name,timezone) VALUES('Synthetic retention','UTC') RETURNING id").Scan(&household); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.owner.Exec(f.ctx, `INSERT INTO core.backup_settings(household_id,keep_daily,keep_weekly,keep_monthly,offsite_keep_daily,offsite_keep_weekly,offsite_keep_monthly)
+ VALUES($1,$2,$3,$4,$2,$3,$4)`, household, daily, weekly, monthly); err != nil {
+		t.Fatal(err)
+	}
+}
+
 // Archive retention reads the quotas committed when it prunes, for the local
 // and the offsite repository, not values a caller read before the backup.
 func TestArchiveRetentionUsesTheCommittedQuotas(t *testing.T) {
@@ -147,13 +161,14 @@ func TestArchiveRetentionUsesTheCommittedQuotas(t *testing.T) {
 	}
 }
 
-// Before a new archive is written, reclaim retries pending local deletions.
-// It keeps files that any run of this repository label references, also an
-// offsite run of a repository that became the local one, and removes files
-// that no run references.
+// Before a new archive is written, reclaim retries pending local deletions
+// that the quotas still select. It keeps files that any run of this repository
+// label references, also an offsite run of a repository that became the local
+// one, and removes files that no run references.
 func TestReclaimFinishesPendingDeletionsAndKeepsReferencedFiles(t *testing.T) {
 	f := newRestoreBarcodeFixture(t)
 	ctx := f.ctx
+	retentionQuotas(t, f, 1, 1, 1)
 	local := config.BackupTarget{Kind: "local", Repository: t.TempDir()}
 	directory := backupplan.ArchiveDirectory(local.Repository)
 	if err := os.Mkdir(directory, 0700); err != nil {
@@ -184,6 +199,10 @@ func TestReclaimFinishesPendingDeletionsAndKeepsReferencedFiles(t *testing.T) {
 	pendingFile, formerOffsiteFile, unreferencedFile := file(pending), file(formerOffsite), file(unreferenced)
 	run("retention_pending", "local", pending)
 	run("complete", "offsite", formerOffsite)
+	// The newer archive claims every bucket, so the quotas expire this one.
+	if _, err := f.owner.Exec(ctx, "UPDATE core.backup_runs SET started_at=now()-interval '60 days' WHERE snapshot_reference=$1", pending); err != nil {
+		t.Fatal(err)
+	}
 	if err := reclaimArchives(ctx, f.owner, local, time.Now()); err != nil {
 		t.Fatal(err)
 	}
@@ -247,6 +266,7 @@ func TestReclaimRegistersArchivesAnOlderWorkerExpired(t *testing.T) {
 func TestOffsiteCopyFinishesOtherPendingDeletionsFirst(t *testing.T) {
 	f := newRestoreBarcodeFixture(t)
 	ctx := f.ctx
+	retentionQuotas(t, f, 1, 1, 1)
 	offsite := config.BackupTarget{Kind: "offsite", Repository: t.TempDir()}
 	directory := backupplan.ArchiveDirectory(offsite.Repository)
 	if err := os.Mkdir(directory, 0700); err != nil {
@@ -257,8 +277,10 @@ func TestOffsiteCopyFinishesOtherPendingDeletionsFirst(t *testing.T) {
 	if err := os.WriteFile(expiredFile, []byte("synthetic expired copy"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := f.owner.Exec(ctx, `INSERT INTO core.backup_runs(state,application_version,repository_reference,snapshot_reference,repository_kind)
- VALUES('retention_pending','test',$1,$2,'offsite')`, offsite.Label(), expired); err != nil {
+	// A newer copy claims every bucket, so the quotas expire the pending one.
+	if _, err := f.owner.Exec(ctx, `INSERT INTO core.backup_runs(state,application_version,repository_reference,snapshot_reference,repository_kind,started_at)
+ VALUES('retention_pending','test',$1,$2,'offsite',now()-interval '60 days'),('complete','test',$1,$3,'offsite',now()-interval '1 hour')`,
+		offsite.Label(), expired, backupplan.ArchiveID(time.Now().Add(-time.Hour))); err != nil {
 		t.Fatal(err)
 	}
 	// The local file of the new snapshot is missing, so this copy fails.
@@ -379,7 +401,7 @@ func TestRepositoryLockWaitersLeaveThePoolFree(t *testing.T) {
 // later copies need.
 // An offsite path can resolve to a directory that another offsite label also
 // uses. A file that a complete run of that label references is kept.
-func TestOffsiteCopyKeepsAFileAnotherOffsiteLabelReferences(t *testing.T) {
+func TestOffsiteCopyKeepsAFileAnotherLabelShares(t *testing.T) {
 	f := newRestoreBarcodeFixture(t)
 	ctx := f.ctx
 	offsite := config.BackupTarget{Kind: "offsite", Repository: t.TempDir()}
@@ -392,8 +414,10 @@ func TestOffsiteCopyKeepsAFileAnotherOffsiteLabelReferences(t *testing.T) {
 	if err := os.WriteFile(shared, []byte("synthetic copy of another offsite label"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := f.owner.Exec(ctx, `INSERT INTO core.backup_runs(state,application_version,repository_reference,snapshot_reference,repository_kind)
- VALUES('complete','test','offsite:/another/path/to/the/same/mount',$1,'offsite')`, snapshot); err != nil {
+	// Another configured path names the same directory.
+	var other string
+	if err := f.owner.QueryRow(ctx, `INSERT INTO core.backup_runs(state,application_version,repository_reference,snapshot_reference,repository_kind)
+ VALUES('complete','test',$1,$2,'offsite') RETURNING id`, aliasPath(offsite.Repository), snapshot).Scan(&other); err != nil {
 		t.Fatal(err)
 	}
 	local := config.BackupTarget{Kind: "local", Repository: t.TempDir()}
@@ -402,6 +426,189 @@ func TestOffsiteCopyKeepsAFileAnotherOffsiteLabelReferences(t *testing.T) {
 	}
 	if _, err := os.Stat(shared); err != nil {
 		t.Fatalf("file of another offsite label removed: %v", err)
+	}
+	// A label whose directory is a different one does not keep this file.
+	distinct := t.TempDir()
+	distinctFile := filepath.Join(backupplan.ArchiveDirectory(distinct), backupplan.ArchiveName(snapshot))
+	if err := os.Mkdir(backupplan.ArchiveDirectory(distinct), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(distinctFile, []byte("synthetic copy in another directory"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.owner.Exec(ctx, "UPDATE core.backup_runs SET repository_reference=$2 WHERE id=$1", other, distinct); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := copyPortableLocked(ctx, f.owner, local, offsite, backupplan.Defaults(), snapshot, []byte(`{}`), ""); err == nil {
+		t.Fatal("copy without a local archive succeeded")
+	}
+	if _, err := os.Stat(shared); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("stale file kept for a label of another directory: %v", err)
+	}
+	if _, err := os.Stat(distinctFile); err != nil {
+		t.Fatalf("file in the other directory changed: %v", err)
+	}
+}
+
+// aliasPath names directory by another path string.
+func aliasPath(directory string) string { return directory + string(filepath.Separator) + "." }
+
+// The cleanup of an earlier failed copy keeps a file that a run of another
+// label needs, and keeps the attempt, so it resumes once that run is gone.
+func TestOffsiteAttemptCleanupKeepsAFileAnotherLabelNeeds(t *testing.T) {
+	f := newRestoreBarcodeFixture(t)
+	ctx := f.ctx
+	offsite := config.BackupTarget{Kind: "offsite", Repository: t.TempDir()}
+	directory := backupplan.ArchiveDirectory(offsite.Repository)
+	if err := os.Mkdir(directory, 0700); err != nil {
+		t.Fatal(err)
+	}
+	snapshot := backupplan.ArchiveID(time.Now().Add(-48 * time.Hour))
+	file := filepath.Join(directory, backupplan.ArchiveName(snapshot))
+	if err := os.WriteFile(file, []byte("synthetic copy that another label completed"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	var attempt, other string
+	if err := f.owner.QueryRow(ctx, `INSERT INTO core.backup_runs(state,application_version,repository_reference,snapshot_reference,repository_kind,failure_reason)
+ VALUES('failed','test',$1,$2,'offsite','offsite copy failed') RETURNING id`, offsite.Label(), snapshot).Scan(&attempt); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.owner.QueryRow(ctx, `INSERT INTO core.backup_runs(state,application_version,repository_reference,snapshot_reference,repository_kind)
+ VALUES('complete','test',$1,$2,'offsite') RETURNING id`, aliasPath(offsite.Repository), snapshot).Scan(&other); err != nil {
+		t.Fatal(err)
+	}
+	cleared := func() bool {
+		t.Helper()
+		var cleared bool
+		if err := f.owner.QueryRow(ctx, "SELECT snapshot_reference IS NULL FROM core.backup_runs WHERE id=$1", attempt).Scan(&cleared); err != nil {
+			t.Fatal(err)
+		}
+		return cleared
+	}
+	if err := reconcileOffsiteAttempts(ctx, f.owner, offsite, ""); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(file); err != nil || cleared() {
+		t.Fatalf("cleanup removed a file another label completed: %v, attempt cleared %v", err, cleared())
+	}
+	if _, err := f.owner.Exec(ctx, "UPDATE core.backup_runs SET state='expired' WHERE id=$1", other); err != nil {
+		t.Fatal(err)
+	}
+	if err := reconcileOffsiteAttempts(ctx, f.owner, offsite, ""); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(file); !errors.Is(err, os.ErrNotExist) || !cleared() {
+		t.Fatalf("cleanup did not resume: %v, attempt cleared %v", err, cleared())
+	}
+}
+
+// A pending deletion keeps a file that a complete run of another label needs,
+// and stays pending. A pending run of the other label does not keep it, so two
+// labels never wait for each other.
+func TestPendingDeletionKeepsAFileAnotherLabelCompleted(t *testing.T) {
+	f := newRestoreBarcodeFixture(t)
+	ctx := f.ctx
+	offsite := config.BackupTarget{Kind: "offsite", Repository: t.TempDir()}
+	directory := backupplan.ArchiveDirectory(offsite.Repository)
+	if err := os.Mkdir(directory, 0700); err != nil {
+		t.Fatal(err)
+	}
+	snapshot := backupplan.ArchiveID(time.Now().Add(-48 * time.Hour))
+	file := filepath.Join(directory, backupplan.ArchiveName(snapshot))
+	if err := os.WriteFile(file, []byte("synthetic copy that another label completed"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	var pending, other string
+	if err := f.owner.QueryRow(ctx, `INSERT INTO core.backup_runs(state,application_version,repository_reference,snapshot_reference,repository_kind)
+ VALUES('retention_pending','test',$1,$2,'offsite') RETURNING id`, offsite.Label(), snapshot).Scan(&pending); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.owner.QueryRow(ctx, `INSERT INTO core.backup_runs(state,application_version,repository_reference,snapshot_reference,repository_kind)
+ VALUES('complete','test',$1,$2,'offsite') RETURNING id`, aliasPath(offsite.Repository), snapshot).Scan(&other); err != nil {
+		t.Fatal(err)
+	}
+	state := func() string {
+		t.Helper()
+		var state string
+		if err := f.owner.QueryRow(ctx, "SELECT state FROM core.backup_runs WHERE id=$1", pending).Scan(&state); err != nil {
+			t.Fatal(err)
+		}
+		return state
+	}
+	if err := finishArchiveRetention(ctx, f.owner, offsite, ""); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(file); err != nil || state() != "retention_pending" {
+		t.Fatalf("pending deletion removed a file another label completed: %v, state %s", err, state())
+	}
+	if _, err := f.owner.Exec(ctx, "UPDATE core.backup_runs SET state='retention_pending' WHERE id=$1", other); err != nil {
+		t.Fatal(err)
+	}
+	if err := finishArchiveRetention(ctx, f.owner, offsite, ""); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(file); !errors.Is(err, os.ErrNotExist) || state() != "expired" {
+		t.Fatalf("pending deletion waited for a pending run of another label: %v, state %s", err, state())
+	}
+}
+
+// A version without portable files marks every complete run of its label
+// pending before restic decides; a run stopped then leaves portable archives
+// pending that no retention selected. Retention and reclaim decide them again:
+// an archive the quotas keep stays, one they expire is removed, and a pending
+// row whose file is already gone is recorded expired.
+func TestRetentionKeepsPendingArchivesTheQuotasKeep(t *testing.T) {
+	f := newRestoreBarcodeFixture(t)
+	ctx := f.ctx
+	retentionQuotas(t, f, 2, 1, 1)
+	for _, kind := range []string{"local", "offsite"} {
+		target := config.BackupTarget{Kind: kind, Repository: t.TempDir()}
+		directory := backupplan.ArchiveDirectory(target.Repository)
+		if err := os.Mkdir(directory, 0700); err != nil {
+			t.Fatal(err)
+		}
+		old := time.Now().Add(-3 * time.Hour)
+		pending := func(age time.Duration, withFile bool) (string, string) {
+			t.Helper()
+			id := backupplan.ArchiveID(time.Now().Add(-age))
+			path := filepath.Join(directory, backupplan.ArchiveName(id))
+			if withFile {
+				if err := os.WriteFile(path, []byte("synthetic archive"), 0600); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.Chtimes(path, old, old); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if _, err := f.owner.Exec(ctx, `INSERT INTO core.backup_runs(state,application_version,repository_reference,snapshot_reference,repository_kind,started_at)
+ VALUES('retention_pending','test',$1,$2,$3,now()-interval '1 second'*$4)`, target.Label(), id, kind, int64(age.Seconds())); err != nil {
+				t.Fatal(err)
+			}
+			return id, path
+		}
+		kept, keptFile := pending(time.Hour, true)
+		gone, _ := pending(25*time.Hour, false)
+		expired, expiredFile := pending(60*24*time.Hour, true)
+		var err error
+		if kind == "local" {
+			err = reclaimArchives(ctx, f.owner, target, time.Now())
+		} else {
+			err = applyArchiveRetention(ctx, f.owner, target, "")
+		}
+		if err != nil {
+			t.Fatalf("%s: %v", kind, err)
+		}
+		for path, want := range map[string]bool{keptFile: true, expiredFile: false} {
+			if _, err := os.Stat(path); (err == nil) != want {
+				t.Errorf("%s: %s present=%v, want %v", kind, filepath.Base(path), err == nil, want)
+			}
+		}
+		for id, want := range map[string]string{kept: "complete", gone: "expired", expired: "expired"} {
+			var state string
+			if err := f.owner.QueryRow(ctx, "SELECT state FROM core.backup_runs WHERE repository_reference=$1 AND snapshot_reference=$2", target.Label(), id).Scan(&state); err != nil || state != want {
+				t.Errorf("%s: run of %s is %q, %v; want %s", kind, id, state, err, want)
+			}
+		}
 	}
 }
 

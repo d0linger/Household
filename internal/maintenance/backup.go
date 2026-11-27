@@ -215,6 +215,13 @@ func databaseDiagnostic(line string) string {
 		}
 	}
 	line = strings.TrimPrefix(line, "could not execute query: ")
+	if rest, found := strings.CutPrefix(line, `copy failed for table "`); found {
+		message, ok := copyFailureMessage(rest)
+		if !ok {
+			return ""
+		}
+		line = message
+	}
 	if strings.HasPrefix(line, "could not connect to server") || strings.HasPrefix(line, "connection to server ") {
 		return "database_unavailable"
 	}
@@ -239,6 +246,31 @@ func databaseDiagnostic(line string) string {
 		return "database_unavailable"
 	}
 	return ""
+}
+
+// copyFailureMessage returns the server message of pg_restore's wrapper
+// `COPY failed for table "<tag>": <message>`. The tag comes from the dump, so
+// the message is split off only at the single quote-colon before a server
+// severity, or, for a client message without severity, at the only
+// quote-colon of the line. Any other line reports false and stays
+// unclassified, so a crafted tag cannot select a code.
+func copyFailureMessage(rest string) (string, bool) {
+	separators, message := 0, ""
+	for _, severity := range []string{"error:", "fatal:", "panic:"} {
+		marker := `": ` + severity
+		separators += strings.Count(rest, marker)
+		if i := strings.Index(rest, marker); i >= 0 {
+			message = rest[i+len(`": `):]
+		}
+	}
+	switch {
+	case separators == 1:
+		return message, true
+	case separators == 0 && strings.Count(rest, `": `) == 1:
+		_, message, _ = strings.Cut(rest, `": `)
+		return message, true
+	}
+	return "", false
 }
 
 // security: all callers pass files inside an operator-created private temporary directory.

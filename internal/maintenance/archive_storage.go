@@ -204,16 +204,16 @@ func copyPortableLocked(ctx context.Context, pool *pgxpool.Pool, local, offsite 
 			slog.Default().Warn("could not remove interrupted offsite writes before the copy", "code", ResultCode(err))
 		}
 	}
+	// Pending deletions and files of earlier failed copies are removed first,
+	// so they cannot take the space this copy needs. This is best effort: a
+	// refused delete does not block the copy, and the cleanup after the copy
+	// reports it.
+	if err := retainArchives(ctx, pool, offsite, "", false); err != nil {
+		slog.Default().Warn("could not finish pending offsite deletions before the copy", "code", ResultCode(err))
+	}
 	// A pending deletion of this snapshot finishes before its name is reused.
 	if err := finishArchiveRetention(ctx, pool, offsite, snapshot); err != nil {
 		return "", err
-	}
-	// Other pending deletions and files of earlier failed copies are removed
-	// first, so they cannot take the space this copy needs. This is best
-	// effort: a refused delete does not block the copy, and the cleanup after
-	// the copy reports it.
-	if err := finishArchiveRetention(ctx, pool, offsite, ""); err != nil {
-		slog.Default().Warn("could not finish pending offsite deletions before the copy", "code", ResultCode(err))
 	}
 	if err := reconcileOffsiteAttempts(ctx, pool, offsite, snapshot); err != nil {
 		slog.Default().Warn("could not remove earlier offsite copy attempts before the copy", "code", ResultCode(err))
@@ -335,18 +335,15 @@ func sendPortableCopy(ctx context.Context, pool *pgxpool.Pool, local, offsite co
 // left under its final name, when it failed after the rename. Its run was
 // just recorded as running, so no complete or pending row references that
 // file. Removing it first keeps a mount from needing room for both the stale
-// file and the new partial file. Another offsite path can resolve to the same
-// directory, so a file that a run of another offsite label references is kept;
-// publishing replaces it. This is best effort: publishing replaces the file
-// anyway, and that write reports a destination that refuses changes.
+// file and the new partial file. A file that another repository label still
+// needs is kept; publishing replaces it. This is best effort: publishing
+// replaces the file anyway, and that write reports a destination that refuses
+// changes.
 func removeStaleCopy(ctx context.Context, pool *pgxpool.Pool, offsite config.BackupTarget, snapshot string) {
 	if !filepath.IsAbs(offsite.Repository) {
 		return
 	}
-	var shared bool
-	if err := pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM core.backup_runs WHERE repository_kind='offsite'
- AND repository_reference<>$1 AND snapshot_reference=$2 AND state IN('complete','retention_pending'))`,
-		offsite.Label(), snapshot).Scan(&shared); err != nil || shared {
+	if shared, err := sharedArchiveFile(ctx, pool, offsite, snapshot, "complete", "retention_pending"); err != nil || shared {
 		return
 	}
 	name := backupplan.ArchiveName(snapshot)
@@ -356,6 +353,58 @@ func removeStaleCopy(ctx context.Context, pool *pgxpool.Pool, offsite config.Bac
 	if err := removePortable(ctx, offsite, name); err != nil {
 		slog.Default().Warn("could not remove the earlier failed copy of this snapshot", "code", ResultCode(err))
 	}
+}
+
+// sharedArchiveFile reports whether a run of another repository label in one
+// of states needs the mounted archive file of snapshot under target. Another
+// configured path can name the same directory, such as a second mount point of
+// one filesystem, so the files are compared, not the labels. A label whose
+// path does not resolve here cannot name this file; any other failure to
+// compare is returned, and callers then keep the file.
+func sharedArchiveFile(ctx context.Context, pool *pgxpool.Pool, target config.BackupTarget, snapshot string, states ...string) (bool, error) {
+	name := backupplan.ArchiveName(snapshot)
+	if !filepath.IsAbs(target.Repository) || name == "" {
+		return false, nil
+	}
+	own, err := os.Lstat(filepath.Join(backupplan.ArchiveDirectory(target.Repository), name)) // #nosec G703 -- name derived from a validated snapshot ID
+	if absentPath(err) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	rows, err := pool.Query(ctx, `SELECT DISTINCT repository_reference FROM core.backup_runs
+ WHERE repository_reference<>$1 AND snapshot_reference=$2 AND state=ANY($3::text[])`, target.Label(), snapshot, states)
+	if err != nil {
+		return false, err
+	}
+	labels, err := pgx.CollectRows(rows, pgx.RowTo[string])
+	if err != nil {
+		return false, err
+	}
+	for _, label := range labels {
+		if !filepath.IsAbs(label) {
+			continue
+		}
+		// The label is a repository path this service recorded.
+		other, err := os.Lstat(filepath.Join(backupplan.ArchiveDirectory(label), name)) // #nosec G703 -- recorded repository path and validated name
+		if absentPath(err) {
+			continue
+		}
+		if err != nil {
+			return false, err
+		}
+		if os.SameFile(own, other) {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+// absentPath reports a path that names no file, including one below a
+// component that is not a directory.
+func absentPath(err error) bool {
+	return errors.Is(err, os.ErrNotExist) || errors.Is(err, syscall.ENOTDIR)
 }
 
 var errArchiveStorageAliased = errors.New("the mounted offsite path is the local backup directory")
@@ -386,7 +435,9 @@ func distinctArchiveStorage(local, offsite config.BackupTarget) error {
 // reconcileOffsiteAttempts removes archives left by earlier copies that never
 // completed, then clears their reference. Under the repository lock no other
 // copy runs, so a running row is stale. A snapshot with a complete or pending
-// row keeps its file, also when its completion committed despite an error.
+// row keeps its file, also when its completion committed despite an error. A
+// file that a run of another label needs keeps the attempt and its reference,
+// so the cleanup resumes once that run no longer needs it.
 func reconcileOffsiteAttempts(ctx context.Context, pool *pgxpool.Pool, offsite config.BackupTarget, current string) error {
 	rows, err := pool.Query(ctx, `SELECT r.id,r.snapshot_reference FROM core.backup_runs r
  WHERE r.repository_kind='offsite' AND r.repository_reference=$1 AND r.state IN('running','failed')
@@ -409,6 +460,11 @@ func reconcileOffsiteAttempts(ctx context.Context, pool *pgxpool.Pool, offsite c
 	// not stop the cleanup of later attempts.
 	var failures []error
 	for _, a := range attempts {
+		shared, sharedErr := sharedArchiveFile(ctx, pool, offsite, a.snapshot, "complete", "retention_pending")
+		if sharedErr != nil || shared {
+			failures = append(failures, sharedErr)
+			continue
+		}
 		if err = removePortable(ctx, offsite, backupplan.ArchiveName(a.snapshot)); err != nil {
 			failures = append(failures, err)
 			continue
@@ -469,6 +525,20 @@ func keepFirst(points []archiveRetentionPoint, keep string) []archiveRetentionPo
 // The quotas are read in the pruning transaction, so a retention change saved
 // during a backup governs the prune that follows it.
 func applyArchiveRetention(ctx context.Context, pool *pgxpool.Pool, target config.BackupTarget, keep string) error {
+	return retainArchives(ctx, pool, target, keep, true)
+}
+
+// retainArchives decides the pending deletions of target again and finishes
+// the ones that stay selected. With prune, it first marks the archives that
+// the quotas no longer keep.
+//
+// A pending row does not prove that portable retention selected its archive:
+// a version without portable files marks every complete run of its label
+// pending before restic decides, and a run stopped then leaves them pending.
+// So a pending archive that the quotas keep and whose file is present becomes
+// complete again. A pending row whose file is gone, because its deletion ran
+// but was not recorded, stays pending and is recorded expired.
+func retainArchives(ctx context.Context, pool *pgxpool.Pool, target config.BackupTarget, keep string, prune bool) error {
 	tx, err := audit.Begin(ctx, pool)
 	if err != nil {
 		return err
@@ -519,23 +589,81 @@ func applyArchiveRetention(ctx context.Context, pool *pgxpool.Pool, target confi
 	if err = rows.Err(); err != nil {
 		return err
 	}
-	expired := expiredArchives(keepFirst(points, keep), zone, daily, weekly, monthly)
-	if len(expired) == 0 {
-		return nil
-	}
-	if _, err = tx.Exec(ctx, `UPDATE core.backup_runs SET state='retention_pending'
- WHERE repository_reference=$1 AND snapshot_reference=ANY($2::text[]) AND state='complete'`, target.Label(), expired); err != nil {
+	restored, err := keptPendingArchives(ctx, target, points, keep, zone, daily, weekly, monthly)
+	if err != nil {
 		return err
+	}
+	if len(restored) > 0 {
+		if _, err = tx.Exec(ctx, `UPDATE core.backup_runs SET state='complete'
+ WHERE repository_reference=$1 AND snapshot_reference=ANY($2::text[]) AND state='retention_pending'`, target.Label(), restored); err != nil {
+			return err
+		}
+		for i := range points {
+			if slices.Contains(restored, points[i].id) {
+				points[i].pending = false
+			}
+		}
+	}
+	if prune {
+		if expired := expiredArchives(keepFirst(points, keep), zone, daily, weekly, monthly); len(expired) > 0 {
+			if _, err = tx.Exec(ctx, `UPDATE core.backup_runs SET state='retention_pending'
+ WHERE repository_reference=$1 AND snapshot_reference=ANY($2::text[]) AND state='complete'`, target.Label(), expired); err != nil {
+				return err
+			}
+		}
 	}
 	if err = tx.Commit(ctx); err != nil {
 		return err
 	}
+	if len(restored) > 0 {
+		slog.Default().Warn("kept pending backup files that the retention quotas keep", "kind", target.Kind, "count", len(restored))
+	}
 	return finishArchiveRetention(ctx, pool, target, "")
+}
+
+// keptPendingArchives returns the pending archives that the quotas keep when
+// pending rows are not taken as selected, and whose file is present.
+func keptPendingArchives(ctx context.Context, target config.BackupTarget, points []archiveRetentionPoint, keep string, zone *time.Location, daily, weekly, monthly int) ([]string, error) {
+	decided := make([]archiveRetentionPoint, len(points))
+	for i, point := range points {
+		decided[i] = archiveRetentionPoint{id: point.id, at: point.at}
+	}
+	expired := expiredArchives(keepFirst(decided, keep), zone, daily, weekly, monthly)
+	var kept []string
+	for _, point := range points {
+		if !point.pending || slices.Contains(expired, point.id) {
+			continue
+		}
+		present, err := archivePresent(ctx, target, point.id)
+		if err != nil {
+			return nil, err
+		}
+		if present {
+			kept = append(kept, point.id)
+		}
+	}
+	return kept, nil
+}
+
+// archivePresent reports whether the archive file of id exists at target. A
+// destination that cannot be read returns its error, so nothing is decided.
+func archivePresent(ctx context.Context, target config.BackupTarget, id string) (bool, error) {
+	file, err := openPortable(ctx, target, id)
+	if err == nil {
+		return true, file.Close()
+	}
+	if ResultCode(err) == "archive_missing" {
+		return false, nil
+	}
+	return false, err
 }
 
 // finishArchiveRetention removes the file of every archive marked for
 // retention on this repository, or only of one snapshot, and then marks its
 // rows expired. It also completes a retention an earlier run left unfinished.
+// A file that a complete run of another label needs is kept, and its row stays
+// pending until that run no longer needs it. Pending runs of other labels do
+// not count, so two labels that share a file never wait for each other.
 func finishArchiveRetention(ctx context.Context, pool *pgxpool.Pool, target config.BackupTarget, only string) error {
 	rows, err := pool.Query(ctx, `SELECT DISTINCT snapshot_reference FROM core.backup_runs
  WHERE repository_reference=$1 AND snapshot_reference ~ $2 AND state='retention_pending' AND ($3='' OR snapshot_reference=$3) ORDER BY 1`,
@@ -553,6 +681,11 @@ func finishArchiveRetention(ctx context.Context, pool *pgxpool.Pool, target conf
 	for _, id := range pending {
 		name := backupplan.ArchiveName(id)
 		if name == "" {
+			continue
+		}
+		shared, sharedErr := sharedArchiveFile(ctx, pool, target, id, "complete")
+		if sharedErr != nil || shared {
+			failures = append(failures, sharedErr)
 			continue
 		}
 		if err = removePortable(ctx, target, name); err != nil {
@@ -663,7 +796,7 @@ func reclaimArchives(ctx context.Context, pool *pgxpool.Pool, local config.Backu
 	// Pending deletions finish before the directory is read, so a file removed
 	// here is not seen below with its now expired row. A failed delete keeps
 	// its row pending and its file protected below.
-	failures := []error{finishArchiveRetention(ctx, pool, local, "")}
+	failures := []error{retainArchives(ctx, pool, local, "", false)}
 	directory := backupplan.ArchiveDirectory(local.Repository)
 	entries, err := os.ReadDir(directory)
 	if errors.Is(err, os.ErrNotExist) {

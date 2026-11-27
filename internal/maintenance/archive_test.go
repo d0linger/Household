@@ -209,6 +209,15 @@ func TestDatabaseToolFailuresKeepTheirCause(t *testing.T) {
 		"pg_restore: error: could not execute query: ERROR:  could not extend file \"base/1/2\": Input/output error":                  "database_storage_failed",
 		"pg_restore: error: could not read input file: end of file":                                                                   "",
 		"pg_restore: error: could not execute query: ERROR:  syntax error at or near \"x\"":                                           "",
+		// pg_restore's COPY wrapper names a dump-controlled table tag.
+		"pg_restore: error: COPY failed for table \"items\": ERROR:  out of memory":                                                     "database_unavailable",
+		"pg_restore: error: COPY failed for table \"items\": ERROR:  could not extend file \"base/1/2\": Input/output error":            "database_storage_failed",
+		"pg_restore: error: COPY failed for table \"items\": ERROR:  could not extend file \"base/1/2\": No space left on device":       "disk_full",
+		"pg_restore: error: COPY failed for table \"items\": server closed the connection unexpectedly":                                 "database_unavailable",
+		"pg_restore: error: COPY failed for table \"items\": ERROR:  invalid input syntax for type integer: \"out of memory\"":          "",
+		"pg_restore: error: COPY failed for table \"x\": ERROR:  out of memory\": ERROR:  invalid input syntax for type integer: \"1\"": "",
+		"pg_restore: error: COPY failed for table \"x\": out of memory\": server closed the connection unexpectedly":                    "",
+		"pg_restore: error: COPY failed for table \"x\": out of memory\": ERROR:  invalid input syntax for type integer: \"1\"":         "",
 	} {
 		if got := classifyDatabaseToolOutput([]byte(stderr)); got != want {
 			t.Errorf("%q classified as %q, want %q", stderr, got, want)
@@ -290,6 +299,41 @@ func TestOffsiteCopyFollowsOnlyAfterLocalRetentionFails(t *testing.T) {
 	}
 	if ResultCode(retention) != "repository_unreachable" {
 		t.Fatalf("retention failure lost its code: %q", ResultCode(retention))
+	}
+}
+
+// A failed local retention keeps its code when the offsite copy fails too:
+// the local run is complete, so only the job's code shows the failure to local
+// health. The offsite failure stays in the chain.
+func TestBackupJobErrorKeepsAFailedLocalRetentionVisible(t *testing.T) {
+	retention := &localRetentionError{err: &ToolError{Program: "archive", Code: "repository_unreachable", err: errors.New("delete refused")}}
+	offsite := &ToolError{Program: "restic", Code: "access_denied", err: errors.New("denied")}
+	for _, c := range []struct {
+		name           string
+		local, offsite error
+		want           string
+		offsiteInChain bool
+	}{
+		{"neither", nil, nil, "ok", false},
+		{"offsite only", nil, offsite, "offsite_access_denied", true},
+		{"retention only", retention, nil, "repository_unreachable", false},
+		{"both", retention, offsite, "repository_unreachable", true},
+	} {
+		err := backupJobError(c.local, c.offsite)
+		if got := ResultCode(err); got != c.want {
+			t.Errorf("%s: code %q, want %q", c.name, got, c.want)
+		}
+		inChain := false
+		if joined, ok := err.(interface{ Unwrap() []error }); ok {
+			inChain = slices.ContainsFunc(joined.Unwrap(), func(e error) bool { return ResultCode(e) == "offsite_access_denied" })
+		}
+		if inChain != c.offsiteInChain {
+			t.Errorf("%s: offsite code in chain = %v, want %v", c.name, inChain, c.offsiteInChain)
+		}
+		var kept *localRetentionError
+		if errors.As(err, &kept) != (c.local != nil) {
+			t.Errorf("%s: local retention failure lost from the chain", c.name)
+		}
 	}
 }
 

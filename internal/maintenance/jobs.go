@@ -427,6 +427,23 @@ func reportBackupPhase(ctx context.Context, pool *pgxpool.Pool, jobID, phase str
 	}
 }
 
+// backupJobError combines a backup's local result with its offsite result.
+// The missing offsite copy decides the code, so local health keeps counting
+// the complete local backup. A failed local retention comes first instead:
+// the local run is already complete, so only this code shows the failure to
+// local health. Offsite health counts every failed job that included the copy.
+func backupJobError(local, offsite error) error {
+	if offsite == nil {
+		return local
+	}
+	copyErr := &ToolError{Program: "restic", Code: "offsite_" + ResultCode(offsite), err: offsite}
+	var retention *localRetentionError
+	if errors.As(local, &retention) {
+		return errors.Join(local, copyErr)
+	}
+	return errors.Join(copyErr, local)
+}
+
 // perform runs one claimed job and records its outcome.
 func (s *Service) perform(ctx context.Context, job Job) {
 	stop := s.keepAlive(ctx, job.ID)
@@ -439,10 +456,9 @@ func (s *Service) perform(ctx context.Context, job Job) {
 		result, err = RunBackup(ctx, s.Pool(), s.Config, BackupOptions{Offsite: job.Target == "both", JobID: job.ID})
 		snapshot = result.Snapshot
 		if result.OffsiteErr != nil {
-			// The missing offsite copy decides the code; a local retention
-			// failure stays in the chain.
-			err = errors.Join(&ToolError{Program: "restic", Code: "offsite_" + ResultCode(result.OffsiteErr), err: result.OffsiteErr}, err)
+			s.Log.Error("offsite copy failed", "job", job.ID, "code", "offsite_"+ResultCode(result.OffsiteErr))
 		}
+		err = backupJobError(err, result.OffsiteErr)
 	case "verify":
 		reportBackupPhase(ctx, s.Pool(), job.ID, "restoring")
 		err = s.verifyRequested(ctx, job)

@@ -2544,3 +2544,22 @@ CodeRabbit raised eight findings for `ada12c5`. All eight are fixed without a sc
   - `scripts/test-backup-operations.sh` passed with 0 failures and cleaned up.
   - No test covers `replaceCorruptCopy`: the integration fixture cannot fill a filesystem without a test-only hook.
   - Not run locally: the Garage S3 fixture and the full integration suite.
+
+## Portable backup files: CodeRabbit round 14 (PR #34)
+
+CodeRabbit raised five findings for `f42cb87`. All five are fixed without a schema change.
+
+- [x] One check, `sharedArchiveFile`, now decides whether another repository label still needs a mounted archive file. It compares the files with `os.SameFile` instead of the labels. A label whose path does not resolve here keeps nothing, and any other failure to compare keeps the file. The check replaces the label-only check of round 13 before an offsite copy. A stale file is now removed when the other label names a different directory.
+- [x] The cleanup of earlier failed offsite copies keeps a file that a complete or pending run of another label needs. The attempt keeps its reference, so the cleanup resumes once that run no longer needs the file.
+- [x] A pending deletion keeps a file that a complete run of another label needs, and its row stays pending. Pending runs of other labels do not keep the file, so two labels never wait for each other.
+- [x] Retention, reclaim and the cleanup before an offsite copy decide pending portable runs again before they delete anything. A pending archive that the quotas keep and whose file is present becomes complete again, with a warning that counts them. A pending run whose file is gone is recorded expired. This covers a version without portable files that marked every complete run pending and stopped before restic decided. A pending row this version recorded was selected by the same quotas, so it stays selected unless the quotas were raised since.
+- [x] The database diagnostic parser recognizes pg_restore's `COPY failed for table "<tag>": <message>` wrapper. The text was confirmed in the `pg_restore` 18.7 binary of `postgres:18-alpine`. The tag comes from the dump, so the message is split off only at the single quote-colon before a server severity, or at the only quote-colon of a client message. A crafted tag leaves the line unclassified.
+- [x] When a backup's local retention fails and its offsite copy fails as well, the job records the local code instead of the `offsite_` code. The local run is already complete, so only that code shows the failure to local health. Offsite health counts every failed job that included the copy, and the service log names the offsite code separately. When only the copy fails, the job keeps its `offsite_` code. In the case where both fail, the history on the backup page shows the local message.
+- [x] Tests that set up a lone pending row now use low quotas and an older capture time, so the quotas still select that row.
+- [x] Validation of round 14:
+  - Unit tests, `npm test` (536/536), `scripts/localization.test.cjs` (11/11), `scripts/build-localization.cjs --check` (8893 translations) and both golangci-lint passes (0 issues) passed.
+  - `go vet` and the `internal/maintenance` and `internal/backupplan` unit tests passed in a Linux `golang:1.27.4-alpine3.24` container.
+  - The integration tests matching `Backup|Archive|Offsite|Retention|Probe|Portable|Health|Schedul|Purge|JobCleanup|Mounted|RepositoryLock|Reclaim` in `internal/web`, `internal/maintenance`, `internal/backupplan` and `internal/store` passed.
+  - With the shared-file check removed, `TestOffsiteCopyKeepsAFileAnotherLabelShares`, `TestOffsiteAttemptCleanupKeepsAFileAnotherLabelNeeds` and `TestPendingDeletionKeepsAFileAnotherLabelCompleted` failed. With the re-decision of pending rows removed, `TestRetentionKeepsPendingArchivesTheQuotasKeep` failed for local and offsite. With the COPY wrapper parsing or the error-code order removed, `TestDatabaseToolFailuresKeepTheirCause` or `TestBackupJobErrorKeepsAFailedLocalRetentionVisible` failed.
+  - `scripts/test-backup-operations.sh` passed with 0 failures and cleaned up.
+  - Not run locally: the S3 presence check of pending archives, which needs the Garage S3 fixture, and the full integration suite. No test covers `replaceCorruptCopy`.

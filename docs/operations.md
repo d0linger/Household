@@ -49,7 +49,7 @@ Buttons on the page record work in `core.backup_jobs`: back up now (local, or lo
 
 The service writes its heartbeat, release and the nonsecret repository labels into `core.backup_settings`. The page warns when the service has not reported for three minutes. The worker notifies administrators in the app (inbox, not Web Push) when the last local backup or offsite copy failed, the backup is overdue, no backup was restore-tested within the configured interval (or 30 days when the test is off), the service stopped reporting, or a live restore completed or failed. Each incident has its own deduplication key, so dismissing an old warning never hides a new one. The service's container healthcheck runs `household backup-health`, which fails when a target's last attempt failed or its schedule is overdue. The last attempt is the newest finished backup run or backup job of the target, so a job that failed before it created a run (for example an unreachable repository) or after it (a failed retention prune) counts as failed, and a failed offsite-only copy does not fail the local target. Only history of the configured repository counts: started jobs record the labels of the repositories they used, so after replacing a repository its target starts fresh from its activation instead of inheriting the old repository's successes or attempts. A target that never succeeded is shown as "never" until the first scheduled slot after the household's creation (offsite: after its settings were last saved) plus grace has passed, and then as overdue. A failed scheduled attempt waits for the next slot instead of retrying every tick. The heartbeat is refreshed every minute, also while a long backup or restore check runs.
 
-After a local backup restic fully checks the local repository. Failed runs are recorded with a public reason code (for example `wrong_password`, `repository_unreachable`, `access_denied`, `disk_full`, `database_storage_failed`, `database_unavailable`, `tool_unavailable`, `same_as_local`, `password_unavailable`); tool output is never stored or shown because it can name locations or provider details.
+After a local backup restic fully checks the local repository. Failed runs are recorded with a public reason code (for example `wrong_password`, `repository_unreachable`, `access_denied`, `disk_full`, `database_storage_failed`, `database_unavailable`, `tool_unavailable`, `same_as_local`, `password_unavailable`); tool output is never stored or shown because it can name locations or provider details. A job whose offsite copy failed records an `offsite_` code, and the local target stays healthy. If the local retention of the same job failed as well, the job records the local code instead, so the local target reports the failure; the offsite target counts the failed job either way, and the service log names both codes.
 
 ### Offsite repository
 
@@ -74,6 +74,13 @@ mount: copies, tests and deletions report the destination as unreachable
 instead of writing to the filesystem underneath. Mount the share before the
 container starts, for example with a Docker volume that fails when the share
 is unavailable.
+
+If two configured offsite paths name the same directory, for example two
+mount points of one share, a deletion or cleanup for one path keeps a file
+that a complete run of the other path still needs. The worker compares the
+files themselves, so a path that is no longer mounted does not keep anything.
+The kept deletion stays pending and finishes once the other run no longer
+needs the file.
 
 On a versioned S3 bucket, retention deletes an expired file by adding a delete
 marker. The previous version stays stored and billed until the bucket removes
@@ -222,6 +229,8 @@ Migrations are embedded, serialized by a global advisory lock, and versioned ind
 Automatic destructive down migrations are intentionally unavailable. When an older binary is incompatible with the new schema, rollback means restoring the verified pre-upgrade database/uploads/security keys into a replacement deployment, or using a compatible forward repair. Reusing an old binary against a newer schema fails readiness rather than guessing compatibility.
 
 A version without portable backup files runs only restic retention. It marks the runs of portable archive files as expired although their files stay. After a later upgrade, the next backup registers each such file again (the newest of its runs becomes complete) before it reclaims unreferenced files, and the normal portable retention then decides whether it stays. The worker logs a warning with the number of files it registered again.
+
+That older retention also marks every complete run of its repository pending before restic decides. If it stops in between, portable runs stay pending although no retention selected them. The current worker therefore decides pending portable runs again before it deletes anything: a pending archive that the quotas keep and whose file is present becomes complete again, with a warning that counts them. A pending run whose file is already gone is recorded as expired.
 
 ## Encryption keys and rotation
 
