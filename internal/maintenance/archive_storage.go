@@ -46,6 +46,30 @@ func archiveObject(target config.BackupTarget, name string) (*minio.Client, stri
 	return client, s3.Bucket, path.Join(prefix, name), err
 }
 
+// s3ArchiveIdentity names the object that archiveObject addresses for name
+// under an s3: repository, independent of its spelling: the host is compared
+// without case and with its default port, and a trailing slash or a repeated
+// separator in the prefix names the same key.
+func s3ArchiveIdentity(repository, name string) (string, bool) {
+	raw, found := strings.CutPrefix(repository, "s3:")
+	if !found || name == "" {
+		return "", false
+	}
+	u, err := url.Parse(raw)
+	if err != nil || u.Host == "" {
+		return "", false
+	}
+	port := u.Port()
+	if port == "" {
+		port = map[string]string{"https": "443", "http": "80"}[u.Scheme]
+	}
+	bucket, prefix, _ := strings.Cut(strings.TrimPrefix(u.Path, "/"), "/")
+	if bucket == "" || port == "" {
+		return "", false
+	}
+	return strings.ToLower(u.Hostname()) + ":" + port + "/" + bucket + "/" + path.Join(prefix, name), true
+}
+
 func archiveStorageError(err error) error {
 	if err == nil || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 		return err
@@ -354,9 +378,9 @@ func sendPortableCopy(ctx context.Context, pool *pgxpool.Pool, local, offsite co
 
 var errArchiveShared = errors.New("another offsite path needs the existing backup file, and this target's password does not open it")
 
-// reuseSharedCopy keeps the mounted file that a run of another repository
+// reuseSharedCopy keeps the file or object that a run of another repository
 // label still needs, such as one written through another mount point of the
-// same share. It counts as this target's copy when this target's password
+// same share or another spelling of the same S3 prefix. It counts as this target's copy when this target's password
 // opens it. Otherwise the copy fails and the file stays as it is.
 func reuseSharedCopy(ctx context.Context, offsite config.BackupTarget, snapshot string) (int64, error) {
 	if err := checkPortable(ctx, offsite, snapshot); err != nil {
@@ -365,7 +389,16 @@ func reuseSharedCopy(ctx context.Context, offsite config.BackupTarget, snapshot 
 		}
 		return 0, err
 	}
-	info, err := os.Stat(filepath.Join(backupplan.ArchiveDirectory(offsite.Repository), backupplan.ArchiveName(snapshot))) // #nosec G703 -- name derived from a validated snapshot ID
+	name := backupplan.ArchiveName(snapshot)
+	if !filepath.IsAbs(offsite.Repository) {
+		client, bucket, key, err := archiveObject(offsite, name)
+		if err != nil {
+			return 0, archiveStorageError(err)
+		}
+		info, err := client.StatObject(ctx, bucket, key, minio.StatObjectOptions{})
+		return info.Size, archiveStorageError(err)
+	}
+	info, err := os.Stat(filepath.Join(backupplan.ArchiveDirectory(offsite.Repository), name)) // #nosec G703 -- name derived from a validated snapshot ID
 	if err != nil {
 		return 0, err
 	}
@@ -397,9 +430,11 @@ func removeStaleCopy(ctx context.Context, pool *pgxpool.Pool, offsite config.Bac
 }
 
 // sharedArchiveFile reports whether a run of another repository label in one
-// of states needs the mounted archive file of snapshot under target. Another
+// of states needs the archive file or object of snapshot under target. Another
 // configured path can name the same directory, such as a second mount point of
-// one filesystem, so the files are compared, not the labels. A label whose
+// one filesystem, so the files are compared, not the labels. Another spelling
+// of an S3 repository can name the same object, so S3 labels are compared by
+// the object they address. A label whose
 // path does not resolve here cannot name this file; any other failure to
 // compare is returned, and callers then keep the file.
 func sharedArchiveFile(ctx context.Context, pool *pgxpool.Pool, target config.BackupTarget, snapshot string, states ...string) (bool, error) {
@@ -408,9 +443,12 @@ func sharedArchiveFile(ctx context.Context, pool *pgxpool.Pool, target config.Ba
 }
 
 // sharingTargets returns the repositories of other labels with a run of
-// snapshot in one of states whose mounted archive file is the file of target.
+// snapshot in one of states whose archive file or object is the one of target.
 func sharingTargets(ctx context.Context, pool *pgxpool.Pool, target config.BackupTarget, snapshot string, states ...string) ([]config.BackupTarget, error) {
 	name := backupplan.ArchiveName(snapshot)
+	if _, ok := target.S3Connection(); ok {
+		return s3SharingTargets(ctx, pool, target, snapshot, states)
+	}
 	if !filepath.IsAbs(target.Repository) || name == "" {
 		return nil, nil
 	}
@@ -449,6 +487,41 @@ func sharingTargets(ctx context.Context, pool *pgxpool.Pool, target config.Backu
 		if os.SameFile(own, info) {
 			sharing = append(sharing, other)
 		}
+	}
+	return sharing, nil
+}
+
+// s3SharingTargets returns the other S3 labels with a run of snapshot in one of
+// states that address the object of target. They are returned with the
+// credentials of target, which reach the same bucket, so their pending runs
+// can be decided. An object that is gone is needed by no label.
+func s3SharingTargets(ctx context.Context, pool *pgxpool.Pool, target config.BackupTarget, snapshot string, states []string) ([]config.BackupTarget, error) {
+	own, ok := s3ArchiveIdentity(target.Repository, backupplan.ArchiveName(snapshot))
+	if !ok {
+		return nil, nil
+	}
+	rows, err := pool.Query(ctx, `SELECT DISTINCT repository_reference FROM core.backup_runs
+ WHERE repository_kind='offsite' AND repository_reference<>$1 AND repository_reference LIKE 's3:%' AND snapshot_reference=$2
+ AND state=ANY($3::text[]) ORDER BY 1`, target.Label(), snapshot, states)
+	if err != nil {
+		return nil, err
+	}
+	labels, err := pgx.CollectRows(rows, pgx.RowTo[string])
+	if err != nil {
+		return nil, err
+	}
+	var sharing []config.BackupTarget
+	for _, label := range labels {
+		if identity, ok := s3ArchiveIdentity(label, backupplan.ArchiveName(snapshot)); ok && identity == own {
+			sharing = append(sharing, target.WithRepository(label))
+		}
+	}
+	if len(sharing) == 0 {
+		return nil, nil
+	}
+	present, err := archivePresent(ctx, target, snapshot)
+	if err != nil || !present {
+		return nil, err
 	}
 	return sharing, nil
 }

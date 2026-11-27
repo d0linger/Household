@@ -95,6 +95,10 @@ the other path still needs: it reuses the file when its own password opens it,
 and otherwise fails with `archive_shared` and leaves the file as it is. Local
 reclaim keeps a file that a run of another path names the same way, such as an
 offsite mount that later becomes the local repository under another path.
+S3 repositories follow the same rules when two spellings, such as one with a
+trailing slash, a host in other case or an explicit default port, address the
+same bucket and key. Distinct buckets, prefixes, ports and schemes stay
+independent.
 
 On a versioned S3 bucket, retention deletes an expired file by adding a delete
 marker. The previous version stays stored and billed until the bucket removes

@@ -2597,6 +2597,7 @@ CodeRabbit reviewed the whole `dev` → `main` diff at `ad6047b` and raised four
 - [x] An upload's own validation no longer refreshes the restore probe. A later trial restore of the imported point does.
 - [ ] Not changed: copies to an unmounted offsite share. Inside the container the configured path is itself a mount, so Household cannot tell an unmounted share from the directory underneath. `docs/operations.md` now requires a directory created on the share itself, never the mount point, and names the risk.
 - [x] `config.BackupTargetForTests`, built only with the `testtools` tag, lets the new integration test build targets with archive passwords on every platform.
+- [x] Round 2: an S3 copy or retention compares the bucket and key that each recorded S3 label addresses, with the host compared without case and with its default port. Another spelling of the same prefix, such as one with a trailing slash, therefore shares the object exactly like a second mount point shares a file. Its pending runs are decided with this target's credentials, which reach the same bucket.
 
 ### Validation of the release review fixes
 
@@ -2606,3 +2607,4 @@ CodeRabbit reviewed the whole `dev` → `main` diff at `ad6047b` and raised four
 - [x] Backup, archive, offsite, retention, probe, health, schedule, purge, reclaim and pending integration tests of web, config, maintenance, backupplan and store pass against isolated PostgreSQL 18.
 - [x] The Docker backup-operations rehearsal passed with 0 failures, and its containers, volumes and test image were removed.
 - [ ] Not executed locally: the Garage S3 fixture, the full integration suite, a failing directory sync, the end-to-end safety-backup Restic fallback for oversized attachments, and an end-to-end scheduled offsite probe. CI runs the full suite.
+- [x] Round 2 fix: `TestOffsiteCopyNeverReplacesAnObjectAnotherSpellingNeeds` uses an in-process S3 stub. With the S3 branch removed, the copy uploaded over the other spelling's object; with the fix it passes. `TestS3ArchiveIdentityIgnoresOnlySpelling` passes. Afterwards the localization checks, `npm test`, `go test ./internal/...`, both lint passes, the Linux container checks and the backup integration tests of config, maintenance and backupplan passed again. The web and store integration tests and the backup rehearsal were not repeated for this S3-only change, and a real S3 service was not contacted.

@@ -26,6 +26,15 @@ type BackupTarget struct {
 // Label is the nonsecret repository reference stored and shown to administrators.
 func (t BackupTarget) Label() string { return t.Repository }
 
+// WithRepository returns t under another recorded spelling of its repository,
+// with the same credentials and archive password. Callers use it only for a
+// spelling that names the same storage as t.
+func (t BackupTarget) WithRepository(repository string) BackupTarget {
+	t.Repository = repository
+	t.extra = append([]string(nil), t.extra...)
+	return t
+}
+
 // ArchivePassword is used by the isolated backup worker for portable archives.
 func (t BackupTarget) ArchivePassword() string { return t.password }
 

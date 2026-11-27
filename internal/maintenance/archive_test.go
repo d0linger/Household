@@ -469,3 +469,33 @@ func TestArchiveFitsCountsAttachmentsAndSize(t *testing.T) {
 		t.Fatal("attachments beyond the size limit fit")
 	}
 }
+
+func TestS3ArchiveIdentityIgnoresOnlySpelling(t *testing.T) {
+	const name = "household-2026-11-27T10-00-00Z-x.tar.age"
+	base, ok := s3ArchiveIdentity("s3:https://storage.example/bucket/prefix", name)
+	if !ok {
+		t.Fatal("no identity for a valid S3 repository")
+	}
+	for _, same := range []string{
+		"s3:https://storage.example/bucket/prefix/",
+		"s3:https://STORAGE.example:443/bucket/prefix",
+	} {
+		if got, _ := s3ArchiveIdentity(same, name); got != base {
+			t.Errorf("%s addresses %q, want %q", same, got, base)
+		}
+	}
+	for _, distinct := range []string{
+		"s3:https://storage.example/bucket/other",
+		"s3:https://storage.example/other/prefix",
+		"s3:https://storage.example/bucket",
+		"s3:https://storage.example:9000/bucket/prefix",
+		"s3:http://storage.example/bucket/prefix",
+	} {
+		if got, _ := s3ArchiveIdentity(distinct, name); got == base {
+			t.Errorf("%s addresses the same object as the base repository", distinct)
+		}
+	}
+	if _, ok = s3ArchiveIdentity("/srv/offsite", name); ok {
+		t.Error("a mounted path has an S3 identity")
+	}
+}
