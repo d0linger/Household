@@ -41,7 +41,7 @@ The database and ready attachment/preview metadata are captured behind the house
 
 Administrators manage backups under **Settings → Backup** (`/settings/backup`). The page shows the health of the local and offsite targets (derived from each target's own schedule plus a grace of a tenth of the interval, 15 minutes to 2 hours), the last restore test, every restore point and the history of requested and scheduled work. It stores the schedule in `core.backup_settings`: start time and interval (default daily at 03:00 in the household zone), local retention (default 7 daily / 4 weekly / 12 monthly, `household` tag), offsite interval and retention, and the automatic restore test (default weekly, local).
 
-The history puts running and queued jobs first. Their state, current stage and start time refresh while the page remains open. The signed S3 bucket probe has a 10-second budget once claimed. Opening the offsite repository for a copy has a separate 90-second budget. Full backup integrity checks and trial restores can take longer, especially on slow storage or with large uploads.
+The history puts running and queued jobs first. Their state, current stage and start time refresh while the page remains open. The signed S3 bucket probe has a 10-second budget once claimed. The older Restic repository opens with a separate 90-second budget. Full backup integrity checks and trial restores can take longer, especially on slow storage or with large uploads.
 
 For Garage and compatible S3 services, opening the repository URL directly in a browser sends an unsigned request. An anonymous `AccessDenied` response is expected. Use **Test offsite connection** for the signed bucket check. If the signed check returns access denied, verify the backup service's configured access key and secret, the selected bucket's read and write grants, the S3 region and that the proxy preserves the signed host and path. The repository encryption password is separate from the S3 credentials. [Garage's restic setup](https://github.com/deuxfleurs-org/garage/blob/main-v2/doc/book/connect/backup.md)
 
@@ -49,11 +49,80 @@ Buttons on the page record work in `core.backup_jobs`: back up now (local, or lo
 
 The service writes its heartbeat, release and the nonsecret repository labels into `core.backup_settings`. The page warns when the service has not reported for three minutes. The worker notifies administrators in the app (inbox, not Web Push) when the last local backup or offsite copy failed, the backup is overdue, no backup was restore-tested within the configured interval (or 30 days when the test is off), the service stopped reporting, or a live restore completed or failed. Each incident has its own deduplication key, so dismissing an old warning never hides a new one. The service's container healthcheck runs `household backup-health`, which fails when a target's last attempt failed or its schedule is overdue. The last attempt is the newest finished backup run or backup job of the target, so a job that failed before it created a run (for example an unreachable repository) or after it (a failed retention prune) counts as failed, and a failed offsite-only copy does not fail the local target. Only history of the configured repository counts: started jobs record the labels of the repositories they used, so after replacing a repository its target starts fresh from its activation instead of inheriting the old repository's successes or attempts. A target that never succeeded is shown as "never" until the first scheduled slot after the household's creation (offsite: after its settings were last saved) plus grace has passed, and then as overdue. A failed scheduled attempt waits for the next slot instead of retrying every tick. The heartbeat is refreshed every minute, also while a long backup or restore check runs.
 
-After a local backup restic fully checks the local repository. Failed runs are recorded with a public reason code (for example `wrong_password`, `repository_unreachable`, `access_denied`, `disk_full`); tool output is never stored or shown because it can name locations or provider details.
+After a local backup restic fully checks the local repository. Failed runs are recorded with a public reason code (for example `wrong_password`, `repository_unreachable`, `access_denied`, `disk_full`, `database_storage_failed`, `database_unavailable`, `tool_unavailable`, `same_as_local`, `password_unavailable`); tool output is never stored or shown because it can name locations or provider details. A job whose offsite copy failed records an `offsite_` code, and the local target stays healthy. If the local retention of the same job failed as well, the job records the local code instead, so the local target reports the failure; the offsite target counts the failed job either way, and the service log names both codes.
 
 ### Offsite repository
 
-Local snapshots do not protect against loss of the entire host. Configure an offsite restic repository in `.env` and recreate the services:
+#### Portable backup files
+
+The default for new backups is one dated `household-*.tar.age` file of at
+most 32 GiB. A backup that would be larger fails; installations with more data
+set `HOUSEHOLD_BACKUP_FORMAT=restic`, which has no such limit. The
+worker captures a consistent PostgreSQL dump, ready attachments and previews,
+the file-checksum and schema manifest, and the recovery key bundle. The local
+file lives under `/data/backups/portable`. For S3, the file is an object directly
+under the configured prefix, such as `s3-dp/household/household-…tar.age`.
+A mounted offsite destination stores its files in its `portable` directory.
+Files share the same dated name at both locations. Household authenticates the
+whole file with age, using `RESTIC_PASSWORD` locally and
+`HOUSEHOLD_BACKUP_OFFSITE_PASSWORD` externally.
+
+For a mounted destination, create the configured path on the mounted share
+before the first copy; Household creates only `portable` inside it. After a
+copy has been recorded, a missing `portable` directory counts as an absent
+mount: copies, tests and deletions report the destination as unreachable
+instead of writing to the filesystem underneath. Mount the share before the
+container starts, for example with a Docker volume that fails when the share
+is unavailable.
+
+If two configured offsite paths name the same directory, for example two
+mount points of one share, a deletion or cleanup for one path keeps a file
+that a complete run of the other path still needs. The worker compares the
+files themselves, so a path that is no longer mounted does not keep anything.
+A pending deletion of the other path is decided again with that path's own
+quotas first, so an archive those quotas keep becomes complete again and keeps
+the file. The kept deletion stays pending and finishes once the other run no
+longer needs the file. When both paths expire the archive, the file is removed
+and both runs are recorded expired.
+
+On a versioned S3 bucket, retention deletes an expired file by adding a delete
+marker. The previous version stays stored and billed until the bucket removes
+it. If you do not retain those versions deliberately, add a lifecycle rule
+that expires noncurrent versions, scoped to the backup prefix.
+
+Use the updated Compose or Portainer template. The app mounts `backups`
+read-only and shares the `backup_exchange` volume with the backup service.
+Exchange holds encrypted uploads and prepared downloads. Keep the existing
+stack name and named data volumes. A proxy that caps request bodies or
+timeouts must allow the upload on `/api/v1/core/backup/upload`. The Household
+upload limit is 32 GiB and 30 minutes.
+
+1. Under **Settings → Backup**, download a local file directly. For an
+   external file, choose **Verify and prepare download**, wait for the
+   trial restore, then choose **Download**. Prepared copies expire after
+   six hours.
+2. Upload only backup files from installations you trust: restoring a dump
+   runs its SQL, and a confirmed live restoration keeps the objects it creates.
+   Choose **Upload backup file**, select the encrypted archive, and submit.
+   The worker authenticates it with the configured local or external backup
+   password and checks it in a disposable database. `HOUSEHOLD_BACKUP_OFFSITE_PASSWORD`
+   alone is enough for an external file; the offsite repository and its
+   credentials need not be configured. The live keyring must be
+   able to read the data before the worker registers a verified local point.
+3. At that verified point, choose **Restore**. Review the date, confirm
+   your sign-in and enter the displayed confirmation phrase. The usual
+   safety backup and live restore procedure apply.
+
+Keep the passwords used by any retained files. Portable files carry their own
+password encryption and a Restic repository key change affects only Restic
+snapshots. Existing Restic data stays readable by its original passwords and
+is exempt from the portable-file retention job. The two formats can coexist
+at the same S3 prefix. A restic REST target uses Restic for new writes. An
+operator can also select the older writer with `HOUSEHOLD_BACKUP_FORMAT=restic`.
+
+#### S3 settings and legacy Restic repositories
+
+Set the offsite destination in `.env` and recreate the services:
 
 ```sh
 HOUSEHOLD_S3_ENDPOINT=s3.example.org
@@ -69,7 +138,7 @@ HOUSEHOLD_BACKUP_OFFSITE_PASSWORD=<own long password, kept separately>
 
 Supported are `s3:http(s)://host/bucket[/prefix]` (AWS, Backblaze B2, Wasabi, Hetzner, MinIO and other S3-compatible storage), `rest:http(s)://host/path` with optional `HOUSEHOLD_BACKUP_REST_USERNAME`/`_PASSWORD`, and an absolute mounted path such as a NAS share added under `backup.volumes`. The repository URL rejects credentials, queries and fragments. Household uses it as the public label in the app and `core.backup_runs`. The credentials and repository password also accept `_FILE` or a file in `/run/secrets`. Use a separate repository password of at least 16 characters and keep a copy of it and `.env` off the server.
 
-The first copy creates the offsite repository with the local chunker parameters (`restic init --copy-chunker-params`), so later copies deduplicate. Each run copies the new local snapshot (`restic copy`), checks the repository structure plus one rotating sixth of its data (`restic check --read-data-subset=n/6`) instead of downloading everything daily, records an offsite run with the source snapshot's size and applies the offsite retention. When the offsite schedule is due between local runs, the newest local snapshot is copied; if it is already offsite, no new run is recorded (the target does not look freshly backed up) and only the rotating data check runs. A copy whose earlier run failed after `restic copy` (in its check) is recorded with its own snapshot time once the check passes, and runs left `retention_pending` by an interrupted prune are reconciled. A repository is initialized only when restic confirms it does not exist (exit code 10 or its "does not exist" diagnostic); access, credential and connection errors are reported as such and never lead to an `init`. The S3 connection test checks the bucket with a signed read-only request. The copy opens or initializes the repository and verifies its contents. You may keep the existing composite repository setting and its associated credentials. Choose a single configuration style per deployment. The restic cache lives on the work volume (`/work/restic-cache`, or below `HOUSEHOLD_BACKUP_WORK`).
+In Restic mode, the first copy creates the offsite repository with the local chunker parameters (`restic init --copy-chunker-params`), so later copies deduplicate. Each run copies the new local snapshot (`restic copy`), checks the repository structure plus one rotating sixth of its data (`restic check --read-data-subset=n/6`) instead of downloading everything daily, records an offsite run with the source snapshot's size and applies the offsite retention. When the offsite schedule is due between local runs, the newest local snapshot is copied; if it is already offsite, no new run is recorded (the target does not look freshly backed up) and only the rotating data check runs. A copy whose earlier run failed after `restic copy` (in its check) is recorded with its own snapshot time once the check passes, and runs left `retention_pending` by an interrupted prune are reconciled. A repository is initialized only when restic confirms it does not exist (exit code 10 or its "does not exist" diagnostic); access, credential and connection errors are reported as such and never lead to an `init`. The S3 connection test checks the bucket with a signed read-only request. The copy opens or initializes the repository and verifies its contents. You may keep the existing composite repository setting and its associated credentials. Choose a single configuration style per deployment. The restic cache lives on the work volume (`/work/restic-cache`, or below `HOUSEHOLD_BACKUP_WORK`).
 
 Offsite storage can have separate terms and costs. Egress for restore tests from offsite counts against them; the default restore test reads the local repository.
 
@@ -161,6 +230,10 @@ Installations from before the single `compose.yaml` (several Compose files with 
 Migrations are embedded, serialized by a global advisory lock, and versioned independently per schema. After the final stage the owner revokes every runtime write privilege on all `schema_migrations` ledgers (SELECT remains for readiness). A dirty or unexpected migration state, or a writable ledger, stops readiness. Owner purge requires the exact current Pantry ledger version and the owner-owned scrub function. Never blindly force a dirty version clean. Diagnose the failed transaction and restore a verified copy or deliver a forward fix. Published migration files must remain unchanged; add a new migration.
 
 Automatic destructive down migrations are intentionally unavailable. When an older binary is incompatible with the new schema, rollback means restoring the verified pre-upgrade database/uploads/security keys into a replacement deployment, or using a compatible forward repair. Reusing an old binary against a newer schema fails readiness rather than guessing compatibility.
+
+A version without portable backup files runs only restic retention. It marks the runs of portable archive files as expired although their files stay. After a later upgrade, the next backup registers each such file again (the newest of its runs becomes complete) before it reclaims unreferenced files, and the normal portable retention then decides whether it stays. The worker logs a warning with the number of files it registered again.
+
+That older retention also marks every complete run of its repository pending before restic decides. If it stops in between, portable runs stay pending although no retention selected them. The current worker therefore decides pending portable runs again before it deletes anything: a pending archive that the quotas keep and whose file is present becomes complete again, with a warning that counts them. A pending run whose file is already gone is recorded as expired.
 
 ## Encryption keys and rotation
 

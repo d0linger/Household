@@ -87,6 +87,44 @@ func TestBackupTargetsReadCredentialsIntoTheirOwnEnvironment(t *testing.T) {
 	}
 }
 
+// The local backup format follows the repository scheme alone: incomplete
+// REST credentials must not switch a restic REST setup to portable files.
+func TestOffsiteUsesResticRESTReadsOnlyTheRepository(t *testing.T) {
+	t.Setenv(SecretsDirVariable, "")
+	// Inherited offsite settings would decide the assertions instead of the fixture.
+	for _, name := range []string{"HOUSEHOLD_BACKUP_OFFSITE_REPOSITORY", "HOUSEHOLD_BACKUP_OFFSITE_PASSWORD",
+		"HOUSEHOLD_BACKUP_REST_USERNAME", "HOUSEHOLD_BACKUP_REST_PASSWORD", "HOUSEHOLD_S3_ENDPOINT"} {
+		t.Setenv(name, "")
+		t.Setenv(name+"_FILE", "")
+	}
+	t.Setenv("RESTIC_REPOSITORY_FILE", "")
+	t.Setenv("RESTIC_PASSWORD_FILE", "")
+	t.Setenv("RESTIC_REPOSITORY", "/data/backups")
+	t.Setenv("RESTIC_PASSWORD", "local-password")
+	local, err := LocalBackupTarget()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if OffsiteUsesResticREST() {
+		t.Fatal("unset offsite repository reported as REST")
+	}
+	t.Setenv("HOUSEHOLD_BACKUP_OFFSITE_REPOSITORY", "rest:https://backup.example.test/household/")
+	t.Setenv("HOUSEHOLD_BACKUP_OFFSITE_PASSWORD", "offsite-password-123")
+	t.Setenv("HOUSEHOLD_BACKUP_REST_USERNAME", "household")
+	if _, err = OffsiteBackupTarget(local); err == nil {
+		t.Fatal("REST user without its password accepted")
+	}
+	if !OffsiteUsesResticREST() {
+		t.Fatal("REST repository with incomplete credentials not reported as REST")
+	}
+	for _, repository := range []string{"s3:https://s3.example.test/bucket/household", "/mnt/offsite"} {
+		t.Setenv("HOUSEHOLD_BACKUP_OFFSITE_REPOSITORY", repository)
+		if OffsiteUsesResticREST() {
+			t.Fatalf("%s reported as REST", repository)
+		}
+	}
+}
+
 func TestLocalBackupTargetRequiresPasswordAndAbsolutePath(t *testing.T) {
 	t.Setenv(SecretsDirVariable, "")
 	t.Setenv("RESTIC_REPOSITORY", "/data/backups")

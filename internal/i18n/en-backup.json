@@ -156,5 +156,10 @@
   "Kopiert": "Copied",
   "Beispiel für die .env": "Example for the .env file",
   "Ein anderer Wiederherstellungsvorgang läuft gerade.": "Another restore operation is running.",
-  "Per Wartungsbefehl auf den früheren Stand zurückgesetzt.": "Switched back to the previous state with the maintenance command."
+  "Per Wartungsbefehl auf den früheren Stand zurückgesetzt.": "Switched back to the previous state with the maintenance command.",
+  "Die Datenbank war nicht verfügbar oder ausgelastet. Prüfe den Datenbankdienst und versuche es erneut.": "The database was unavailable or overloaded. Check the database service and try again.",
+  "Das externe Ziel ist dasselbe Verzeichnis wie die lokale Sicherung. Wähle einen anderen Pfad.": "The offsite destination is the same directory as the local backup. Choose a different path.",
+  "Der Datenbankspeicher meldete einen Schreibfehler. Prüfe Datenträger und Datenbankprotokoll.": "The database storage reported a write error. Check the disk and the database log.",
+  "Ein Werkzeug des Sicherungsdienstes fehlt oder ließ sich nicht starten. Prüfe das Image des Sicherungsdienstes.": "A backup service tool is missing or could not start. Check the backup service image.",
+  "Das Offsite-Archivpasswort ließ sich nicht lesen. Prüfe die Passwortdatei des Sicherungsdienstes.": "The offsite archive password could not be read. Check the backup service's password file."
 }

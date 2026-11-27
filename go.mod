@@ -3,6 +3,7 @@ module household
 go 1.27.4
 
 require (
+	filippo.io/age v1.3.2
 	github.com/SherClockHolmes/webpush-go v1.4.0
 	github.com/fxamacker/cbor/v2 v2.10.0
 	github.com/go-webauthn/webauthn v0.18.2
@@ -16,6 +17,7 @@ require (
 )
 
 require (
+	filippo.io/hpke v0.4.0 // indirect
 	github.com/boombuler/barcode v1.1.0 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect

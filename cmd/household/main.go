@@ -159,13 +159,13 @@ func run(log *slog.Logger) error {
 		backupCtx, cancel := context.WithTimeout(ctx, 30*time.Minute)
 		defer cancel()
 		result, err := maintenance.RunOperatorBackup(backupCtx, pool, cfg, maintenance.BackupOptions{Offsite: len(os.Args) == 3})
+		if result.OffsiteErr != nil {
+			err = errors.Join(fmt.Errorf("offsite copy failed: %w", result.OffsiteErr), err)
+		}
 		if err != nil {
 			return err
 		}
 		log.Info("encrypted backup completed", "snapshot", result.Snapshot, "offsite_snapshot", result.OffsiteSnapshot)
-		if result.OffsiteErr != nil {
-			return fmt.Errorf("offsite copy failed: %w", result.OffsiteErr)
-		}
 		return nil
 	case "restore-check":
 		return runRestoreCheck(ctx, pool, cfg, os.Args[2:])

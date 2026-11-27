@@ -26,6 +26,9 @@ type BackupTarget struct {
 // Label is the nonsecret repository reference stored and shown to administrators.
 func (t BackupTarget) Label() string { return t.Repository }
 
+// ArchivePassword is used by the isolated backup worker for portable archives.
+func (t BackupTarget) ArchivePassword() string { return t.password }
+
 // Environment returns the restic variables for this repository only.
 func (t BackupTarget) Environment() []string {
 	env := []string{"RESTIC_REPOSITORY=" + t.Repository, "RESTIC_PASSWORD=" + t.password}
@@ -45,6 +48,7 @@ func (t BackupTarget) SourceEnvironment() []string {
 // strips them (and their _FILE forms) so the web process never inherits them.
 var BackupServiceVariables = []string{
 	"RESTIC_PASSWORD", "RESTIC_PASSWORD_FILE", "RESTIC_PASSWORD_COMMAND",
+	"HOUSEHOLD_BACKUP_FORMAT",
 	"HOUSEHOLD_BACKUP_OFFSITE_REPOSITORY", "HOUSEHOLD_BACKUP_OFFSITE_PASSWORD",
 	"HOUSEHOLD_BACKUP_S3_ACCESS_KEY_ID", "HOUSEHOLD_BACKUP_S3_SECRET_ACCESS_KEY", "HOUSEHOLD_BACKUP_S3_REGION",
 	"HOUSEHOLD_BACKUP_REST_USERNAME", "HOUSEHOLD_BACKUP_REST_PASSWORD",
@@ -86,6 +90,24 @@ func resticPassword(name string) (string, error) {
 		return "", fmt.Errorf("%s must be one line", name)
 	}
 	return value, nil
+}
+
+// OffsiteUsesResticREST reports whether the configured offsite repository is
+// a restic REST server. It reads only the repository setting, so incomplete
+// or invalid offsite credentials do not change the local backup format: the
+// copy reports the credential error, and the local snapshot stays copyable
+// once the credentials are fixed.
+func OffsiteUsesResticREST() bool {
+	repository, err := secret("HOUSEHOLD_BACKUP_OFFSITE_REPOSITORY")
+	return err == nil && strings.HasPrefix(strings.TrimSpace(repository), "rest:")
+}
+
+// OffsiteArchivePassword reads HOUSEHOLD_BACKUP_OFFSITE_PASSWORD on its own,
+// without the transport settings, so a downloaded offsite file can be
+// imported where no offsite repository or credentials are configured. It
+// returns "" when no password is set.
+func OffsiteArchivePassword() (string, error) {
+	return resticPassword("HOUSEHOLD_BACKUP_OFFSITE_PASSWORD")
 }
 
 // OffsiteBackupTarget reads the optional offsite repository. It returns

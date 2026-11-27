@@ -10,10 +10,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -35,12 +37,13 @@ type File struct {
 	Size   int64  `json:"size"`
 }
 type Manifest struct {
-	Version    string         `json:"version"`
-	Created    time.Time      `json:"created"`
-	UploadPath string         `json:"upload_path"`
-	Schemas    map[string]int `json:"schemas"`
-	Files      []File         `json:"files"`
-	Crypto     *CryptoReport  `json:"crypto,omitempty"`
+	ArchiveFormat int            `json:"archive_format,omitempty"`
+	Version       string         `json:"version"`
+	Created       time.Time      `json:"created"`
+	UploadPath    string         `json:"upload_path"`
+	Schemas       map[string]int `json:"schemas"`
+	Files         []File         `json:"files"`
+	Crypto        *CryptoReport  `json:"crypto,omitempty"`
 }
 type limitedBuffer struct{ buffer bytes.Buffer }
 
@@ -155,10 +158,140 @@ func command(ctx context.Context, program string, args []string, dsn string) ([]
 	var out, stderr limitedBuffer
 	cmd.Stdout = &out
 	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
-		return nil, fmt.Errorf("%s failed (%v); inspect the operator tool configuration", program, err)
+	if err := cmd.Start(); err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, ctxErr
+		}
+		// A missing or unstartable tool says nothing about the dump.
+		return nil, &ToolError{Program: program, Code: "tool_unavailable",
+			err: fmt.Errorf("%s could not start (%v); inspect the backup service image", program, err)}
+	}
+	if err := cmd.Wait(); err != nil {
+		// A canceled or expired run keeps its own result; the killed tool
+		// reports nothing about the dump.
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, ctxErr
+		}
+		failure := fmt.Errorf("%s failed (%v); inspect the operator tool configuration", program, err)
+		// The diagnostics only select a stable code; they are never returned.
+		if code := classifyDatabaseToolOutput(stderr.Bytes()); code != "" {
+			return nil, &ToolError{Program: program, Code: code, err: failure}
+		}
+		return nil, failure
 	}
 	return out.Bytes(), nil
+}
+
+// classifyDatabaseToolOutput recognizes pg_dump and pg_restore failures of the
+// database server or its storage, which no dump content causes: a full disk,
+// another failure to extend a database file, and a server that refuses,
+// drops or cannot serve the connection. Every other failure, including a
+// corrupt or incompatible dump, returns "". A full disk needs an explicit
+// space or quota error.
+//
+// Only the start of each diagnostic message is matched, plus the system error
+// that ends a failed file operation. Server messages can quote dump data, as
+// in invalid input syntax for type integer: "out of memory", and that data
+// must not select a code.
+func classifyDatabaseToolOutput(stderr []byte) string {
+	found := map[string]bool{}
+	for line := range strings.Lines(strings.ToLower(string(stderr))) {
+		found[databaseDiagnostic(strings.TrimSpace(line))] = true
+	}
+	for _, code := range []string{"disk_full", "database_storage_failed", "database_unavailable"} {
+		if found[code] {
+			return code
+		}
+	}
+	return ""
+}
+
+// databaseDiagnostic classifies one lowercased stderr line.
+func databaseDiagnostic(line string) string {
+	// The tool's own prefix, such as "pg_restore: error: ".
+	if program, rest, found := strings.Cut(line, ": "); found && !strings.Contains(program, " ") {
+		if level, message, found := strings.Cut(rest, ": "); found && (level == "error" || level == "fatal") {
+			line = message
+		}
+	}
+	line = strings.TrimPrefix(line, "could not execute query: ")
+	if rest, found := strings.CutPrefix(line, `copy failed for table "`); found {
+		message, ok := copyFailureMessage(rest)
+		if !ok {
+			return ""
+		}
+		line = message
+	}
+	if strings.HasPrefix(line, "could not connect to server") || strings.HasPrefix(line, "connection to server ") {
+		return "database_unavailable"
+	}
+	for _, severity := range []string{"error:", "fatal:", "panic:"} {
+		if rest, found := strings.CutPrefix(line, severity); found {
+			line = strings.TrimSpace(rest)
+			break
+		}
+	}
+	starts := func(markers ...string) bool {
+		return slices.ContainsFunc(markers, func(marker string) bool { return strings.HasPrefix(line, marker) })
+	}
+	switch {
+	case starts("no space left on device", "disk quota exceeded"),
+		strings.HasSuffix(line, ": no space left on device"), strings.HasSuffix(line, ": disk quota exceeded"):
+		return "disk_full"
+	case starts("could not extend file"):
+		// Without a space error this is a storage failure, such as an I/O error.
+		return "database_storage_failed"
+	case starts("server closed the connection unexpectedly", "terminating connection", "the database system is",
+		"sorry, too many clients", "too many clients", "remaining connection slots", "out of memory", "out of shared memory"):
+		return "database_unavailable"
+	}
+	return ""
+}
+
+// copyFailureMessage returns the server message of pg_restore's wrapper
+// `COPY failed for table "<tag>": <message>`. The tag comes from the dump, so
+// the message is split off only at the single quote-colon before a server
+// severity, or, for a client message without severity, at the only
+// quote-colon of the line. A server message may quote one argument, such as
+// a file name, only when an operating-system error text follows it; otherwise
+// the quote-colon may end a crafted tag before a client message. Any other
+// line reports false and stays unclassified, so a crafted tag cannot select a
+// code.
+func copyFailureMessage(rest string) (string, bool) {
+	separators, message := 0, ""
+	for _, severity := range []string{"error:", "fatal:", "panic:"} {
+		marker := `": ` + severity
+		separators += strings.Count(rest, marker)
+		if i := strings.Index(rest, marker); i >= 0 {
+			message = rest[i+len(`": `):]
+		}
+	}
+	switch {
+	case separators == 1:
+		switch strings.Count(message, `": `) {
+		case 0:
+			return message, true
+		case 1:
+			_, tail, _ := strings.Cut(message, `": `)
+			if systemErrorText(tail) {
+				return message, true
+			}
+		}
+		return "", false
+	case separators == 0 && strings.Count(rest, `": `) == 1:
+		_, message, _ = strings.Cut(rest, `": `)
+		return message, true
+	}
+	return "", false
+}
+
+// systemErrorText reports the lowercased text of an operating-system error, or
+// of the short write PostgreSQL reports when it extends a file.
+func systemErrorText(text string) bool {
+	return strings.HasPrefix(text, "wrote only ") || slices.Contains([]string{
+		"no space left on device", "disk quota exceeded", "input/output error", "read-only file system",
+		"file too large", "permission denied", "no such file or directory", "too many open files", "cannot allocate memory",
+	}, text)
 }
 
 // security: all callers pass files inside an operator-created private temporary directory.
@@ -228,6 +361,11 @@ func RunOperatorBackup(ctx context.Context, pool *pgxpool.Pool, cfg config.Confi
 	}
 }
 
+// attachmentInventoryQuery selects the files a backup carries. Every restore
+// check, including an archive import, compares the restored rows with the
+// manifest using the same query.
+const attachmentInventoryQuery = `SELECT storage_key,encode(sha256,'hex'),size_bytes FROM core.attachments WHERE state='ready' UNION ALL SELECT d.storage_key,encode(d.sha256,'hex'),d.size_bytes FROM core.attachment_derivatives d JOIN core.attachments a ON a.id=d.attachment_id WHERE a.state='ready' ORDER BY storage_key`
+
 // RunBackup creates a local snapshot and optionally copies it offsite.
 func RunBackup(ctx context.Context, pool *pgxpool.Pool, cfg config.Config, options BackupOptions) (BackupResult, error) {
 	ctx = audit.WithRequest(audit.WithSystem(ctx, "operator"), value.UUID())
@@ -247,22 +385,47 @@ func RunBackup(ctx context.Context, pool *pgxpool.Pool, cfg config.Config, optio
 	if err != nil {
 		return BackupResult{}, err
 	}
+	// Every archive is either referenced by a run or removed here, including
+	// one whose earlier registration or check failed. A file that cannot be
+	// removed must not stop new backups: the failure is logged and the backup
+	// still runs. If the destination refuses new files as well, writing the
+	// new archive reports that.
+	if err = reclaimArchives(ctx, pool, local, time.Now()); err != nil {
+		slog.Default().Warn("could not reclaim unreferenced backup files", "code", ResultCode(err))
+	}
 	reportBackupPhase(ctx, pool, options.JobID, "saving_local")
 	snapshot, schemas, err := backupLocked(ctx, pool, cfg, local, settings, options.JobID, true)
 	result := BackupResult{Snapshot: snapshot}
-	if err != nil || !options.Offsite {
+	if !copyAfterLocalBackup(err) || !options.Offsite {
 		return result, err
 	}
-	offsite, err := config.OffsiteBackupTarget(local)
-	if err == nil && offsite == nil {
-		err = ErrOffsiteUnconfigured
+	// A failed local retention leaves the new snapshot complete and checked,
+	// and retention keeps its file, so the copy still runs. The retention
+	// failure is returned beside the offsite outcome.
+	offsite, offsiteErr := config.OffsiteBackupTarget(local)
+	if offsiteErr == nil && offsite == nil {
+		offsiteErr = ErrOffsiteUnconfigured
 	}
-	if err == nil {
+	if offsiteErr == nil {
 		reportBackupPhase(ctx, pool, options.JobID, "copying_offsite")
-		result.OffsiteSnapshot, err = copyOffsiteLocked(ctx, pool, local, *offsite, settings, snapshot, schemas, options.JobID)
+		result.OffsiteSnapshot, offsiteErr = copyOffsiteLocked(ctx, pool, local, *offsite, settings, snapshot, schemas, options.JobID)
 	}
-	result.OffsiteErr = err
-	return result, nil
+	result.OffsiteErr = offsiteErr
+	return result, err
+}
+
+// localRetentionError marks a failed retention after the new local snapshot
+// was written, checked and recorded complete.
+type localRetentionError struct{ err error }
+
+func (e *localRetentionError) Error() string { return e.err.Error() }
+func (e *localRetentionError) Unwrap() error { return e.err }
+
+// copyAfterLocalBackup reports whether the offsite copy can follow a local
+// backup that returned err: only after success or a failed local retention.
+func copyAfterLocalBackup(err error) bool {
+	var retention *localRetentionError
+	return err == nil || errors.As(err, &retention)
 }
 
 // ErrOffsiteUnconfigured reports offsite work without an offsite repository.
@@ -277,8 +440,15 @@ func backupLocked(ctx context.Context, pool *pgxpool.Pool, cfg config.Config, lo
 	if err != nil {
 		return "", nil, err
 	}
-	if err = ensureRepository(ctx, local, nil); err != nil {
-		return "", nil, err
+	portable := portableBackups()
+	sourceUploads := manifest.UploadPath
+	if portable {
+		manifest.ArchiveFormat = 1
+		manifest.UploadPath = "/uploads"
+	} else {
+		if err = ensureRepository(ctx, local, nil); err != nil {
+			return "", nil, err
+		}
 	}
 	base := workDirectory()
 	if err = os.MkdirAll(base, 0700); err != nil { // #nosec G703 -- trusted operator backup-work directory
@@ -316,7 +486,7 @@ func backupLocked(ctx context.Context, pool *pgxpool.Pool, cfg config.Config, lo
 	if _, err = tx.Exec(ctx, "SELECT id FROM core.households FOR UPDATE"); err != nil {
 		return "", nil, err
 	}
-	rows, err := tx.Query(ctx, "SELECT storage_key,encode(sha256,'hex'),size_bytes FROM core.attachments WHERE state='ready' UNION ALL SELECT d.storage_key,encode(d.sha256,'hex'),d.size_bytes FROM core.attachment_derivatives d JOIN core.attachments a ON a.id=d.attachment_id WHERE a.state='ready' ORDER BY storage_key")
+	rows, err := tx.Query(ctx, attachmentInventoryQuery)
 	if err != nil {
 		return "", nil, err
 	}
@@ -356,7 +526,7 @@ func backupLocked(ctx context.Context, pool *pgxpool.Pool, cfg config.Config, lo
 	if err = writePrivate(filepath.Join(dir, "manifest.json"), raw); err != nil {
 		return "", nil, err
 	}
-	// Escrow is private and covered by restic encryption. Its keys verified the
+	// Escrow is private and covered by backup encryption. Its keys verified the
 	// same repeatable-read snapshot imported by pg_dump, including retained keys.
 	keyring, err := encodeSecurityBundle(cfg, ring)
 	if err != nil {
@@ -368,11 +538,19 @@ func backupLocked(ctx context.Context, pool *pgxpool.Pool, cfg config.Config, lo
 	for i := range keyring {
 		keyring[i] = 0
 	}
-	output, err := restic(ctx, local, nil, "backup", "--json", "--host", "household", "--tag", "household", "--tag", "v"+buildinfo.Release(), dir, manifest.UploadPath)
+	var summary backupSummary
+	if portable {
+		summary.SnapshotID = backupplan.ArchiveID(manifest.Created)
+		summary.TotalBytes, err = writePortable(ctx, local, summary.SnapshotID, dir, sourceUploads, manifest.Files)
+		summary.DataAdded = summary.TotalBytes
+	} else {
+		var output []byte
+		output, err = restic(ctx, local, nil, "backup", "--json", "--host", "household", "--tag", "household", "--tag", "v"+buildinfo.Release(), dir, manifest.UploadPath)
+		summary = parseBackupSummary(output)
+	}
 	if err != nil {
 		return "", nil, err
 	}
-	summary := parseBackupSummary(output)
 	snapshot := summary.SnapshotID
 	if snapshot == "" {
 		return "", nil, errors.New("backup tool returned no snapshot reference")
@@ -381,7 +559,12 @@ func backupLocked(ctx context.Context, pool *pgxpool.Pool, cfg config.Config, lo
 		return "", nil, err
 	}
 	reportBackupPhase(ctx, pool, jobID, "checking_local")
-	if _, err = restic(ctx, local, nil, "check", "--read-data"); err != nil {
+	if portable {
+		err = checkPortable(ctx, local, snapshot)
+	} else {
+		_, err = restic(ctx, local, nil, "check", "--read-data")
+	}
+	if err != nil {
 		return "", nil, err
 	}
 	schemas, _ := json.Marshal(manifest.Schemas)
@@ -393,8 +576,13 @@ func backupLocked(ctx context.Context, pool *pgxpool.Pool, cfg config.Config, lo
 	if !retain {
 		return snapshot, schemas, nil
 	}
-	if err = applyRetention(ctx, pool, local, settings.KeepDaily, settings.KeepWeekly, settings.KeepMonthly); err != nil {
-		return snapshot, schemas, err
+	if portable {
+		err = applyArchiveRetention(ctx, pool, local, snapshot)
+	} else {
+		err = applyRetention(ctx, pool, local, settings.KeepDaily, settings.KeepWeekly, settings.KeepMonthly)
+	}
+	if err != nil {
+		return snapshot, schemas, &localRetentionError{err: err}
 	}
 	return snapshot, schemas, nil
 }
@@ -411,7 +599,7 @@ func applyRetention(ctx context.Context, pool *pgxpool.Pool, target config.Backu
 	if _, err = retention.Exec(ctx, "SELECT id FROM core.households FOR UPDATE"); err != nil {
 		return err
 	}
-	if _, err = retention.Exec(ctx, "UPDATE core.backup_runs SET state='retention_pending' WHERE repository_reference=$1 AND state='complete'", target.Label()); err != nil {
+	if _, err = retention.Exec(ctx, "UPDATE core.backup_runs SET state='retention_pending' WHERE repository_reference=$1 AND state='complete' AND snapshot_reference !~ $2", target.Label(), backupplan.ArchiveReferencePattern); err != nil {
 		return err
 	}
 	if err = retention.Commit(ctx); err != nil {
@@ -435,7 +623,7 @@ func reconcileRuns(ctx context.Context, pool *pgxpool.Pool, target config.Backup
 	for _, item := range snapshots {
 		ids = append(ids, item.ID)
 	}
-	_, err = audit.Exec(ctx, pool, "UPDATE core.backup_runs SET state=CASE WHEN snapshot_reference=ANY($2::text[]) THEN 'complete' ELSE 'expired' END WHERE repository_reference=$1 AND state='retention_pending'", target.Label(), ids)
+	_, err = audit.Exec(ctx, pool, "UPDATE core.backup_runs SET state=CASE WHEN snapshot_reference=ANY($2::text[]) THEN 'complete' ELSE 'expired' END WHERE repository_reference=$1 AND state='retention_pending' AND snapshot_reference !~ $3", target.Label(), ids, backupplan.ArchiveReferencePattern)
 	return err
 }
 
@@ -446,24 +634,43 @@ func nullableUUID(id string) any {
 	return id
 }
 
+// lockRepository takes the repository lock on its own connection, outside
+// the pool: waiters must not hold pool connections that the lock holder needs
+// for its work. Closing that connection ends the session and releases the
+// lock, also when a cancelled query acquired it on the server.
 func lockRepository(ctx context.Context, pool *pgxpool.Pool) (func(), error) {
-	conn, err := pool.Acquire(ctx)
+	wait, stopWaiting := context.WithTimeout(ctx, 5*time.Minute)
+	defer stopWaiting()
+	conn, err := pgx.ConnectConfig(wait, pool.Config().ConnConfig)
 	if err != nil {
 		return nil, err
 	}
-	if _, err = conn.Exec(ctx, "SELECT pg_advisory_lock(721607137)"); err != nil {
-		conn.Release()
-		return nil, err
-	}
-	return func() {
-		unlockCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	closeConn := func() {
+		closeCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 		defer cancel()
-		if _, unlockErr := conn.Exec(unlockCtx, "SELECT pg_advisory_unlock(721607137)"); unlockErr != nil {
-			_ = conn.Hijack().Close(unlockCtx)
-			return
+		_ = conn.Close(closeCtx)
+	}
+	// Wait independently of PostgreSQL's shorter statement_timeout. A trial
+	// restore may legitimately overlap the scheduled check of another target.
+	retry := time.NewTicker(time.Second)
+	defer retry.Stop()
+	for {
+		var acquired bool
+		if err = conn.QueryRow(wait, "SELECT pg_try_advisory_lock(721607137)").Scan(&acquired); err != nil {
+			closeConn()
+			return nil, err
 		}
-		conn.Release()
-	}, nil
+		if acquired {
+			break
+		}
+		select {
+		case <-wait.Done():
+			closeConn()
+			return nil, wait.Err()
+		case <-retry.C:
+		}
+	}
+	return closeConn, nil
 }
 
 // VerifyRestore restores one completed snapshot of target into a disposable
@@ -516,10 +723,12 @@ func knownSnapshot(ctx context.Context, pool *pgxpool.Pool, target config.Backup
 		return err
 	}
 	if !known {
-		return errors.New("snapshot is not a completed Household backup")
+		return errUnknownSnapshot
 	}
 	return nil
 }
+
+var errUnknownSnapshot = errors.New("snapshot is not a completed Household backup")
 
 // ErrRestoreIncompatible refuses a snapshot whose schema differs from this
 // release: it must be verified and restored with its own release.
@@ -545,12 +754,27 @@ func (r *restoredSnapshot) Remove() error {
 // snapshot of another schema release is refused before anything is restored.
 // The caller removes the returned directory.
 func restoreVerified(ctx context.Context, cfg config.Config, target config.BackupTarget, snapshot, targetURL string, requireCompatible bool) (*restoredSnapshot, error) {
+	return restoreWithPayload(ctx, targetURL, requireCompatible, func(dir string) error {
+		if backupplan.ArchiveName(snapshot) != "" {
+			source, err := openPortable(ctx, target, snapshot)
+			if err != nil {
+				return err
+			}
+			defer func() { _ = source.Close() }()
+			return extractArchive(ctx, source, target.ArchivePassword(), dir)
+		}
+		_, err := restic(ctx, target, nil, "restore", snapshot, "--target", dir)
+		return err
+	})
+}
+
+func restoreWithPayload(ctx context.Context, targetURL string, requireCompatible bool, extract func(string) error) (*restoredSnapshot, error) {
 	dir, err := os.MkdirTemp(workDirectory(), "restore-check-")
 	if err != nil {
 		return nil, err
 	}
 	result := &restoredSnapshot{Directory: dir}
-	if _, err = restic(ctx, target, nil, "restore", snapshot, "--target", dir); err != nil {
+	if err = extract(dir); err != nil {
 		return result, err
 	}
 	manifestPath, dumpPath := "", ""
@@ -669,7 +893,7 @@ func restoreVerified(ctx context.Context, cfg config.Config, target config.Backu
 		if !value.ValidUUID(f.Key) {
 			return result, errors.New("invalid backup storage key")
 		}
-		file, err := root.Open(f.Key)
+		file, _, err := openRegular(root, f.Key)
 		if err != nil {
 			return result, err
 		}
@@ -686,12 +910,10 @@ func restoreVerified(ctx context.Context, cfg config.Config, target config.Backu
 			return result, errors.New("restored attachment integrity mismatch")
 		}
 	}
-	var count int
-	if err = restored.QueryRow(ctx, "SELECT (SELECT count(*) FROM core.attachments WHERE state='ready')+(SELECT count(*) FROM core.attachment_derivatives d JOIN core.attachments a ON a.id=d.attachment_id WHERE a.state='ready')").Scan(&count); err != nil {
+	// The restored rows must name exactly the files the manifest lists, with
+	// their sizes and hashes, before a restore point counts as verified.
+	if err = attachmentsMatchManifest(ctx, restored, manifest.Files); err != nil {
 		return result, err
-	}
-	if count != len(manifest.Files) {
-		return result, errors.New("restored attachment metadata count mismatch")
 	}
 	return result, nil
 }

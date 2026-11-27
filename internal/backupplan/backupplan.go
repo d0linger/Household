@@ -205,6 +205,23 @@ func Evaluate(now time.Time, zone *time.Location, localTime string, intervalHour
 	return h
 }
 
+// importedSnapshotPrefix is completed with a snapshot_reference expression.
+const importedSnapshotPrefix = `EXISTS(SELECT 1 FROM core.backup_runs ir JOIN core.backup_jobs ij ON ij.id=ir.job_id
+ WHERE ij.kind='verify' AND ir.repository_kind='local' AND ir.snapshot_reference=`
+
+// ImportedRun matches a backup run r whose snapshot an archive upload
+// registered: a local run of that snapshot belongs to a verify job. Offsite
+// copies share the reference and inherit this provenance. The job cleanup
+// keeps every job that owns a restorable run, so the link lasts as long as the
+// point can be restored. An imported point is not a backup of this
+// installation: it is neither an attempt nor evidence of a recent backup.
+const ImportedRun = importedSnapshotPrefix + `r.snapshot_reference)`
+
+// ImportedSnapshot is ImportedRun for another snapshot_reference expression.
+func ImportedSnapshot(reference string) string {
+	return importedSnapshotPrefix + reference + `)`
+}
+
 // HealthQuery reads one target's health inputs. $1 is the repository kind
 // ('local' or 'offsite'). It returns the activation time, the newest
 // successful run, whether the newest finished attempt failed and when that
@@ -221,12 +238,12 @@ const HealthQuery = `WITH configured AS (SELECT (SELECT CASE WHEN $1='local' THE
 SELECT CASE WHEN $1='local' THEN (SELECT created_at FROM core.households WHERE singleton=1)
   ELSE (SELECT updated_at FROM core.backup_settings LIMIT 1) END,
  (SELECT max(r.started_at) FROM core.backup_runs r,configured c WHERE r.repository_kind=$1 AND r.state IN('complete','retention_pending')
-   AND (c.label IS NULL OR r.repository_reference=c.label)),
+   AND (c.label IS NULL OR r.repository_reference=c.label) AND NOT ` + ImportedRun + `),
  coalesce(latest.failed,false),latest.ended
 FROM configured c LEFT JOIN LATERAL (SELECT ended,failed FROM (
    SELECT coalesce(r.finished_at,r.started_at) AS ended,r.state='failed' AS failed FROM core.backup_runs r
     WHERE r.repository_kind=$1 AND r.state IN('complete','retention_pending','failed','expired')
-     AND (c.label IS NULL OR r.repository_reference=c.label)
+     AND (c.label IS NULL OR r.repository_reference=c.label) AND NOT ` + ImportedRun + `
    UNION ALL
    SELECT j.finished_at,j.state='failed' FROM core.backup_jobs j
     WHERE j.kind='backup' AND j.state IN('complete','failed') AND j.finished_at IS NOT NULL

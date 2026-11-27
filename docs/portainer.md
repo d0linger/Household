@@ -66,7 +66,10 @@ host mount and app variable using the examples in [the installation guide](insta
    applies migrations. Check `/health/ready` through your HTTPS hostname
    for HTTP 200. Sign in at that hostname and change the bootstrap password
    if this is a new household.
-5. In **Settings → Backup**, create a backup and run its restore check. For
+5. In **Settings → Backup**, create a backup and run its restore check. The
+   supplied Compose mounts `backups` read-only in the app and shares a new
+   `backup_exchange` volume with the worker for encrypted file transfers. Keep
+   existing volume names when applying this update. For
    host-loss recovery, configure an offsite destination in the stack variables,
    test the connection and enable automatic offsite copies in the app. The
    [installation guide](installation.md#externes-backup-s3-backblaze-nas)

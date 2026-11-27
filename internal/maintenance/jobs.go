@@ -182,6 +182,7 @@ func (s *Service) Tick(ctx context.Context) {
 		s.Log.Error("backup service heartbeat failed", "error", err)
 		return
 	}
+	cleanArchiveExchange(s.clock())
 	job, err := s.claim(ctx)
 	if err != nil {
 		s.Log.Error("backup request claim failed", "error", err)
@@ -265,7 +266,13 @@ func (s *Service) failStale(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	_, err = s.Pool().Exec(ctx, "DELETE FROM core.backup_jobs WHERE finished_at<now()-interval '180 days'")
+	// A job that owns a restorable run stays: it records the run's provenance.
+	// An import job stays for as long as any of its local runs exists, even
+	// an expired one, because scheduling and health read every run and must
+	// keep telling an imported capture date apart from a backup attempt.
+	_, err = s.Pool().Exec(ctx, `DELETE FROM core.backup_jobs j WHERE j.finished_at<now()-interval '180 days'
+ AND NOT EXISTS(SELECT 1 FROM core.backup_runs r WHERE r.job_id=j.id
+  AND (r.state IN('complete','retention_pending') OR (j.kind='verify' AND r.repository_kind='local')))`)
 	return err
 }
 
@@ -420,6 +427,23 @@ func reportBackupPhase(ctx context.Context, pool *pgxpool.Pool, jobID, phase str
 	}
 }
 
+// backupJobError combines a backup's local result with its offsite result.
+// The missing offsite copy decides the code, so local health keeps counting
+// the complete local backup. A failed local retention comes first instead:
+// the local run is already complete, so only this code shows the failure to
+// local health. Offsite health counts every failed job that included the copy.
+func backupJobError(local, offsite error) error {
+	if offsite == nil {
+		return local
+	}
+	copyErr := &ToolError{Program: "restic", Code: "offsite_" + ResultCode(offsite), err: offsite}
+	var retention *localRetentionError
+	if errors.As(local, &retention) {
+		return errors.Join(local, copyErr)
+	}
+	return errors.Join(copyErr, local)
+}
+
 // perform runs one claimed job and records its outcome.
 func (s *Service) perform(ctx context.Context, job Job) {
 	stop := s.keepAlive(ctx, job.ID)
@@ -431,12 +455,13 @@ func (s *Service) perform(ctx context.Context, job Job) {
 		var result BackupResult
 		result, err = RunBackup(ctx, s.Pool(), s.Config, BackupOptions{Offsite: job.Target == "both", JobID: job.ID})
 		snapshot = result.Snapshot
-		if err == nil && result.OffsiteErr != nil {
-			err = &ToolError{Program: "restic", Code: "offsite_" + ResultCode(result.OffsiteErr), err: result.OffsiteErr}
+		if result.OffsiteErr != nil {
+			s.Log.Error("offsite copy failed", "job", job.ID, "code", "offsite_"+ResultCode(result.OffsiteErr))
 		}
+		err = backupJobError(err, result.OffsiteErr)
 	case "verify":
 		reportBackupPhase(ctx, s.Pool(), job.ID, "restoring")
-		err = s.verify(ctx, job.Target, job.Snapshot)
+		err = s.verifyRequested(ctx, job)
 	case "offsite_test":
 		reportBackupPhase(ctx, s.Pool(), job.ID, "connecting_offsite")
 		err = TestOffsite(ctx, s.Pool())
@@ -487,6 +512,28 @@ func (s *Service) verify(ctx context.Context, kind, snapshot string) error {
 	return CheckRestore(verifyCtx, s.Config.DatabaseURL, s.Superuser, func(targetURL string) error {
 		return VerifyRestore(verifyCtx, s.Pool(), s.Config, target, snapshot, targetURL)
 	})
+}
+
+func (s *Service) verifyRequested(ctx context.Context, job Job) error {
+	if backupplan.ArchiveName(job.Snapshot) == "" {
+		return s.verify(ctx, job.Target, job.Snapshot)
+	}
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Minute)
+	defer cancel()
+	target, err := s.target(job.Target)
+	if err != nil {
+		return err
+	}
+	if job.Target == "offsite" {
+		return s.prepareArchiveDownload(ctx, target, job.Snapshot)
+	}
+	if err = knownSnapshot(ctx, s.Pool(), target, job.Snapshot); err == nil {
+		return s.verify(ctx, job.Target, job.Snapshot)
+	}
+	if !errors.Is(err, errUnknownSnapshot) {
+		return err
+	}
+	return s.importArchive(ctx, target, job)
 }
 
 // RestoreNow performs an operator's live restore from the command line. The
@@ -604,7 +651,10 @@ func (s *Service) scheduledProbe(ctx context.Context, settings backupplan.Settin
 	}
 	var lastProbe *time.Time
 	// Only checks that actually started count; a cancelled request never ran.
-	if err = pool.QueryRow(ctx, "SELECT max(started_at) FROM core.backup_jobs WHERE kind='verify' AND target=$1 AND started_at IS NOT NULL", settings.ProbeTarget).Scan(&lastProbe); err != nil {
+	// An archive upload is also a verify job; it does not test an existing
+	// restore point, so it does not delay the scheduled test.
+	if err = pool.QueryRow(ctx, `SELECT max(j.started_at) FROM core.backup_jobs j WHERE j.kind='verify' AND j.target=$1 AND j.started_at IS NOT NULL
+ AND EXISTS(SELECT 1 FROM core.backup_runs r WHERE r.snapshot_reference=j.snapshot_reference AND r.job_id IS DISTINCT FROM j.id)`, settings.ProbeTarget).Scan(&lastProbe); err != nil {
 		return err
 	}
 	if lastProbe != nil && now.Sub(*lastProbe) < time.Duration(settings.ProbeIntervalDays)*24*time.Hour {
@@ -652,7 +702,7 @@ func (s *Service) scheduledProbe(ctx context.Context, settings backupplan.Settin
 func lastAttempt(ctx context.Context, pool *pgxpool.Pool, kind, label string) (*time.Time, error) {
 	var last *time.Time
 	err := pool.QueryRow(ctx, `SELECT greatest(
- (SELECT max(started_at) FROM core.backup_runs WHERE repository_kind=$1 AND repository_reference=$2),
+ (SELECT max(r.started_at) FROM core.backup_runs r WHERE r.repository_kind=$1 AND r.repository_reference=$2 AND NOT `+backupplan.ImportedRun+`),
  (SELECT max(started_at) FROM core.backup_jobs WHERE kind='backup' AND started_at IS NOT NULL AND (target='both' OR $1='local')
   AND CASE WHEN $1='local' THEN local_label ELSE offsite_label END=$2))`, kind, label).Scan(&last)
 	return last, err

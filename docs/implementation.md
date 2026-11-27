@@ -2294,3 +2294,286 @@ At `cb8d372` the PR Fuel job passed 185 checks and all 32 scans, while the push 
 - [x] Integrated dependency PRs #28 through #31 into `dev` after all 34 checks on each passed. CodeRabbit reviewed the combined exact `dev` revision `9851af7` in [PR #32](https://github.com/d0linger/Household/pull/32), with no actionable comments or open review threads. All 70 checks passed before merging.
 - [x] Merged PR #32 with merge commit `cec1f18`. Both GitHub branches point to that commit. Its tree matches the reviewed `dev` revision. The local Core45 login and backup work is outside this release.
 - [x] All 35 jobs passed in the [main production run](https://github.com/d0linger/Household/actions/runs/45223555021). The five post-merge `dev` workflows passed. GHCR returned digest `sha256:34167ab9c2f3d3a85c5ba411c62d0a8e8a6245fd069f23e3c988f645e7e28834` for `production`, `latest` and the tag for the exact merge commit. The GitHub open-PR list was empty after promotion.
+
+## Portable backup files and browser recovery
+
+- [x] Added one dated, authenticated encrypted archive per new local and S3 backup. The worker retains calendar-bucket representatives, and existing Restic snapshots remain recoverable.
+- [x] Added browser download and upload with trial restore. The signed Garage 2.5 fixture passed local and offsite download, import of an offsite file, and live restore of the original synthetic PostgreSQL value after confirmation. An old-format Restic snapshot was checked in the same fixture.
+- [x] Go and Node suites, scoped lint and security checks, the 13 MiB PostgreSQL upload-admission case, and the existing backup admission and settings checks passed. Edge checked the desktop page and mobile dialog with no Axe violations in the selected WCAG tag set. Evidence is in the ignored outputs/portable-backup directory.
+- [x] Replaced the blocking advisory-lock query after a scheduled probe encountered PostgreSQL's statement timeout. The exact image waited through a deliberate 25-second competing lock. The local probe and the external Garage probe both passed.
+- [x] Recreated the local app and backup containers. All three services became healthy, readiness returned HTTP 200, and two embedded asset hashes matched. PostgreSQL and all pre-existing mounts stayed in place. The app sees the backup volume read-only and shares only the encrypted file exchange.
+
+## Compact settings
+
+- [x] Compared the public Treckrr profile and the Parkrr settings, menu and backup views. Applied their short action rows and clear grouping to the existing Household settings tray and administrative screens.
+- [x] Consolidated module cards into rows. Tightened security, user administration, notification settings, audit and system status. Grouped the backup overview and its schedule, and condensed the settings dialogs while keeping their existing forms and explanations.
+- [x] Compared isolated Edge captures before and after the change. Verified eight settings screens at 320, 390, 1024 and 1440 pixels, keyboard focus and Escape in the navigation tray and dialogs, and 27 Axe scans without violations in the selected WCAG tag set. Saved a backup schedule, created a test user after reauthentication and verified the English dialog. Captures and height measurements are in the ignored `outputs/compact-settings` directory.
+- [x] Passed 103 targeted JavaScript tests covering localization, themes, security, notifications and shopping settings. The web, configuration, maintenance and backup-plan Go package tests passed.
+- [x] Recreated the local web container on port 8100. Readiness returned HTTP 200 for the new image, all three services reported healthy, and the five served stylesheet hashes matched. Verified the database container ID and mounted volumes, then removed the isolated browser fixture.
+
+## Portable backup files: CodeRabbit round 1 (PR #34)
+
+CodeRabbit reviewed `d76dfc6` with 13 findings. Each was checked against the code and fixed:
+
+- [x] Archive headers leave the tar format to `archive/tar`, so a database dump of 8 GiB or more is written with PAX instead of failing on USTAR. A unit test writes a 9 GiB header.
+- [x] The writer applies the reader's entry rules before publication. These are the shared 100,000-attachment limit (`archiveEntryLimit` = attachments plus the three fixed files) and the 16 MiB metadata limit. Unit tests cover an oversized manifest and one attachment over the limit, and check that no file is published.
+- [x] Every backup first reclaims local archive files that no `complete` or `retention_pending` run references, and partial files older than one hour. This covers a publication whose commit, check or import registration failed. The worker holds the repository lock. S3 objects are not enumerated: offsite files are only written after the local file exists and are removed by retention.
+- [x] An offsite copy first finishes any interrupted retention for its target: files removed, rows expired. The insert is guarded against a second `complete` or `retention_pending` row for the same snapshot. A recorded copy whose file is confirmed missing (`archive_missing`) is sent and checked again without a new run. A missing or unmounted directory is now reported as `repository_unreachable` rather than as a missing archive.
+- [x] Archive retention keys each point by the snapshot's local capture time: the local run start, or for an import the archive's capture date. The time an offsite copy finished is no longer used.
+- [x] A prepared offsite download is named after the snapshot and a hash of the repository label (`backupplan.DownloadName`). The download handler and the overview look it up for the current label only, and the exchange cleanup recognizes the new name.
+- [x] The offsite connection test for a mounted path writes and removes a probe file in the archive directory, so a read-only mount fails the test.
+- [x] The unapproved-entry test asserts the exact rejection. Its symlink has a valid upload name, so only the type check can reject it.
+- [x] The README states that `.tar.age` files are the default and that `HOUSEHOLD_BACKUP_FORMAT=restic` and restic REST targets write Restic snapshots.
+- [x] `scripts/test-backup-operations.sh` holds the repository lock for 75 seconds while it enables the scheduled restore test. It requires that the test started during the hold and completed after the release.
+- [x] Validation of round 1:
+  - `go vet` and the unit tests of `maintenance`, `backupplan`, `web` and `config` passed. golangci-lint v2.15.0 (offline) reported 0 issues.
+  - The integration tests matching `Backup|Archive|Offsite|Retention|Probe|Portable` in `internal/web` and `internal/maintenance` all passed (16 web tests). In a first run, `TestBackupLockCancellationContract` failed once under load. It passed alone and in the full repeat; it ends before any archive code runs.
+  - `scripts/test-backup-operations.sh` passed with 0 failures, including the new scheduled-probe contention step. Under Git Bash it needs `MSYS_NO_PATHCONV=1` and a Windows-readable `TMPDIR`.
+  - Not run locally: the Garage S3 fixture and the full integration suite, which CI runs.
+
+## Portable backup files: CodeRabbit round 2 (PR #34)
+
+At `9388e61` the `WorkflowAndSecrets` job failed: two new worker diagnostics had no localization review. Both, and two more added in this round, are now documented as internal backup-worker diagnostics. CodeRabbit raised nine findings, all fixed:
+
+- [x] An archive import requires that the restored attachment and derivative rows equal the manifest by key, hash and size. It uses the writer's query (`attachmentInventoryQuery`).
+- [x] Filesystem errors of the worker's volumes keep their own result code instead of `archive_invalid`.
+- [x] An offsite copy is recorded as `running` before the upload and completed after the check. Failed or stale attempts are removed after the next verified copy. Before the copy, only the pending deletion of the snapshot being copied is finished, so a destination that refuses deletes no longer blocks new copies.
+- [x] In Restic mode, a failure to reclaim archive files is logged and no longer blocks the backup (since round 6 in portable mode too).
+- [x] An offsite-only copy to a restic REST target selects the newest local Restic snapshot. The connection test for a mounted target also checks the Restic repository when the next copy will use it.
+- [x] The web process trims `RESTIC_REPOSITORY` like the worker.
+- [x] The README and the upload step in the operations guide require trusted backup sources.
+- [x] Validation of round 2:
+  - `go vet`, the unit tests of `maintenance`, `backupplan`, `web` and `config`, and `scripts/localization.test.cjs` (11/11) passed. golangci-lint v2.15.0 reported 0 issues.
+  - The backup integration tests (`Backup|Archive|Offsite|Retention|Probe|Portable` in `internal/web` and `internal/maintenance`) passed.
+  - `scripts/test-backup-operations.sh` passed with 0 failures and removed its containers, volumes and image.
+  - Not run locally: the Garage S3 fixture and the full integration suite.
+
+## Portable backup files: CodeRabbit round 3 (PR #34)
+
+At `99a804f` all 34 checks passed. The first review request was refused by CodeRabbit's hourly chat limit, so it was posted again. CodeRabbit raised five findings, all fixed:
+
+- [x] Runs registered by an archive import (`backupplan.ImportedRun`: the run's job is a `verify` job) no longer count as backup attempts in `lastAttempt` or as successes in `HealthQuery`. An imported archive therefore cannot skip the next scheduled backup.
+- [x] An offsite copy that retention removes in the same run is reported as `copy_not_retained` instead of a success.
+- [x] A mounted archive directory that cannot be opened keeps retention and failed-copy cleanup pending (`repository_unreachable`). Only a file missing inside the opened directory counts as removed.
+- [x] The connection test for a mounted target probes every format a coming copy can use: the newest copyable local snapshot's format and the configured writer.
+- [x] The README and the operations guide state the 32 GiB limit for creating backup files, and that larger installations should use `HOUSEHOLD_BACKUP_FORMAT=restic`.
+- [x] Validation of round 3:
+  - `go vet`, unit tests, `scripts/localization.test.cjs` (11/11) and golangci-lint (0 issues) passed.
+  - The integration tests matching `Backup|Archive|Offsite|Retention|Probe|Portable|Health|Schedul` in `internal/web`, `internal/maintenance` and `internal/backupplan` passed.
+  - `scripts/test-backup-operations.sh` passed with 0 failures and cleaned up after itself.
+  - Not run locally: the Garage S3 fixture and the full integration suite.
+
+## Portable backup files: CodeRabbit round 4 (PR #34)
+
+The first request for `54b0d72` was refused by CodeRabbit's review quota and was posted again. CodeRabbit raised six findings, all fixed without a schema change:
+
+- [x] Import provenance is per snapshot: `backupplan.ImportedSnapshot` and `ImportedRun` match a snapshot whose local run belongs to a `verify` job, and offsite copies inherit it.
+  - The module purge gate and the newest-point selection of scheduled offsite copies exclude imported points.
+  - The 180-day job cleanup keeps jobs that own a restorable run, so the provenance lasts as long as the point. `backup_runs.job_id` is `ON DELETE SET NULL`.
+- [x] Offsite attempt cleanup and archive retention continue past a delete that fails, keep that item pending and return the errors together.
+- [x] New archive directories are made durable: the parent of each directory created for publication is synced.
+- [x] Local archive retention protects the archive the current run wrote, so a successful backup never returns an expired point.
+- [x] The scheduled restore-test cooldown counts only verify jobs that tested an existing point, not archive uploads.
+- [x] Validation of round 4:
+  - `go vet`, unit tests (including the new retention-protection test), `scripts/localization.test.cjs` (11/11) and golangci-lint (0 issues) passed.
+  - The integration tests matching `Backup|Archive|Offsite|Retention|Probe|Portable|Health|Schedul|Purge` in `internal/web`, `internal/maintenance`, `internal/backupplan` and `internal/store` passed.
+  - `scripts/test-backup-operations.sh` passed with 0 failures and cleaned up.
+  - Not run locally: the Garage S3 fixture and the full integration suite.
+
+## Portable backup files: CodeRabbit round 5 (PR #34)
+
+CodeRabbit raised four findings for `956d0e5`, all fixed without a schema change:
+
+- [x] Removing an archive from a mounted target syncs its directory before retention records the run as `expired`. After a crash, an unlink that was not persisted therefore stays pending instead of being forgotten.
+- [x] The 180-day job cleanup keeps an import job as long as any of its local runs exists, including an expired one. Scheduling and health read every run, so an imported capture date in the future can no longer pass for a backup attempt after cleanup.
+  - A new integration test (`TestJobCleanupKeepsImportProvenance`) failed against the previous cleanup query and passes with the fix. Old backup and restore-test jobs without such runs are still deleted.
+- [x] The archive unit tests clear an inherited `RESTIC_PASSWORD_FILE`. The traversal test sets `GODEBUG=tarinsecurepath=1`, so it exercises Household's own entry check even when a developer runs with `tarinsecurepath=0`.
+- [x] Validation of round 5:
+  - `go vet`, unit tests, `scripts/localization.test.cjs` (11/11) and golangci-lint (0 issues, including the integration build tags for `internal/maintenance`) passed.
+  - The archive tests also passed with `GODEBUG=tarinsecurepath=0` and `RESTIC_PASSWORD_FILE` set.
+  - The integration tests matching `Backup|Archive|Offsite|Retention|Probe|Portable|Health|Schedul|Purge|JobCleanup` in `internal/web`, `internal/maintenance`, `internal/backupplan` and `internal/store` passed. `TestEnergyNativeAdapterLeaseDedupePersistentBudgetAndArchive` (selected by the `Archive` pattern and unchanged here) failed once in the combined run. It passed alone and in a full rerun of the `internal/store` selection.
+  - `scripts/test-backup-operations.sh` passed with 0 failures and cleaned up.
+  - Not run locally: the Garage S3 fixture and the full integration suite.
+
+## Portable backup files: CodeRabbit round 6 (PR #34)
+
+CodeRabbit raised six findings for `f89e8ed`, all fixed without a schema change:
+
+- [x] A confirmed corrupt offsite copy is repaired from the local file.
+  - `checkPortable` marks a file as corrupt (`errArchiveCorrupt`, result code still `archive_unreadable`) only when its password opens it, the storage returns every byte without an error, and the content then fails authentication.
+  - The offsite copy sends such a snapshot again, exactly like a missing one. Re-encryption authenticates the whole local file before anything is published.
+  - Read, password and access failures stay ambiguous and never replace a copy.
+- [x] Cancellation and deadline errors keep the `canceled`/`timeout` result codes when they arise while reading or decrypting an archive.
+- [x] Extraction requires `manifest.json`, `database.dump` and `security-keys.json` exactly once each. A missing or repeated member is now a file defect (`archive_invalid` for an upload), not a staging storage failure.
+- [x] When retention removes the copy a run just made, `copy_not_retained` is reported first; a cleanup failure stays a secondary cause.
+- [x] A local file that cannot be reclaimed is logged and no longer stops portable backups. Writing the new archive still reports a destination that refuses new files.
+- [x] The attachment-limit test fails if it cannot read the archive directory.
+- [x] Validation of round 6:
+  - `go vet`, unit tests and `scripts/localization.test.cjs` (11/11) passed. golangci-lint reported 0 issues, including the integration build tags for `internal/maintenance`.
+  - New unit tests cover missing and repeated members and the corrupt/wrong-password/canceled classification.
+  - Integration tests matching `Backup|Archive|Offsite|Retention|Probe|Portable|Health|Schedul|Purge|JobCleanup` in `internal/web`, `internal/maintenance`, `internal/backupplan` and `internal/store` passed.
+  - `scripts/test-backup-operations.sh` passed with 0 failures and cleaned up.
+  - Not run locally: the Garage S3 fixture, the full integration suite and an end-to-end repair of a corrupt offsite copy (the repair takes the same path as a missing copy).
+
+## Portable backup files: CodeRabbit round 7 (PR #34)
+
+CodeRabbit raised five findings for `3aecb29`, all addressed without a schema change. In the same CI run, `fuel-ocr-recovery` failed once: a Fuel review request got 409 "inzwischen geändert". This PR does not change that code, and the job passed on every earlier head of the PR. The push of this round runs it again.
+
+- [x] An upload is decrypted with the local password first and then with `HOUSEHOLD_BACKUP_OFFSITE_PASSWORD`. The offsite password is read on its own (`config.OffsiteArchivePassword`), so a replacement installation without offsite transport settings can import an offsite file.
+- [x] Only a failure while the archive's own content is checked becomes `archive_invalid`. Failures that keep their own result:
+  - preparing, connecting to and removing the trial database;
+  - PostgreSQL server errors of classes 08, 53, 57 and 58;
+  - storage and context errors.
+- [x] Mounted offsite destinations:
+  - Household no longer creates the configured repository path.
+  - Once an archive copy was recorded there, a missing `portable` directory makes copies and the connection test report `repository_unreachable` instead of writing to the filesystem underneath. Deletions already required the directory.
+  - `scripts/test-backup-operations.sh` now creates its mounted path the way an operator does.
+  - Operator impact: a configured path that does not exist must be created on the share before the next copy.
+- [x] `docs/operations.md` explains delete markers on versioned S3 buckets and the optional noncurrent-version lifecycle rule. Household itself deletes no object versions.
+- [x] The member test gives the duplicate fixture a valid manifest and asserts the exact missing-member and duplicate-entry errors.
+- [x] Validation of round 7:
+  - `go vet`, unit tests (including the new server-failure classification test), `scripts/localization.test.cjs` (11/11) and golangci-lint (0 issues, including the integration build tags for `internal/maintenance`) passed.
+  - New integration test `TestMountedArchiveDirectoryRequiresTheMountedFilesystem` passed.
+  - The integration tests matching `Backup|Archive|Offsite|Retention|Probe|Portable|Health|Schedul|Purge|JobCleanup|Mounted` in `internal/web`, `internal/maintenance`, `internal/backupplan` and `internal/store` passed.
+  - `scripts/test-backup-operations.sh` passed with 0 failures and cleaned up.
+  - Not run locally: the Garage S3 fixture and the full integration suite.
+
+## Portable backup files: CodeRabbit round 8 (PR #34)
+
+CodeRabbit raised three findings for `94510b1`, all addressed without a schema change.
+
+- [x] An uploaded archive whose attachment members differ from `manifest.Files` is rejected during extraction, before `pg_restore`: a listed attachment without its member, a key listed twice and an unlisted member. These are defects of the file and report `archive_invalid`. Staging-volume errors keep their storage result.
+- [x] Archive retention reads its quotas in the pruning transaction, for the local or the offsite repository, instead of using the values read when the backup started. The transaction locks `core.backup_settings` `FOR SHARE` before the household row. A settings save committed earlier governs the prune. A later save waits for the prune to commit and applies to the next run. The restic retention path is unchanged.
+- [x] The local backup format now follows the offsite repository scheme alone (`config.OffsiteUsesResticREST`). A `rest:` repository with incomplete credentials keeps the local backup in restic format, and the offsite copy still reports the credential error.
+- [x] Validation of round 8:
+  - `go vet` and unit tests passed, including the new attachment-member cases and `TestOffsiteUsesResticRESTReadsOnlyTheRepository`.
+  - `scripts/localization.test.cjs` passed (11/11).
+  - golangci-lint reported 0 issues, including with the integration build tags for `internal/maintenance`.
+  - New integration test `TestArchiveRetentionUsesTheCommittedQuotas` passed.
+  - The integration tests matching `Backup|Archive|Offsite|Retention|Probe|Portable|Health|Schedul|Purge|JobCleanup|Mounted` in `internal/web`, `internal/maintenance`, `internal/backupplan` and `internal/store` passed.
+  - `scripts/test-backup-operations.sh` passed with 0 failures and cleaned up.
+  - Not run locally: the Garage S3 fixture and the full integration suite.
+
+## Portable backup files: CodeRabbit round 9 (PR #34)
+
+CodeRabbit raised five findings for `4715cd5`. Four are fixed without a schema change. One is answered without a code change.
+
+- [x] `pg_dump` and `pg_restore` failures keep their cause. The tool's stderr is still never returned, but it selects a stable code:
+  - a full disk becomes `disk_full`;
+  - a server that refuses, drops or cannot serve the connection becomes the new `database_unavailable`, with a localized message on the backup page.
+  - A canceled or expired run returns its context error.
+  - An upload whose trial restore fails for these reasons keeps that code instead of `archive_invalid`. An unrecognized failure, such as a corrupt dump, still reports `archive_invalid`.
+- [x] Before an offsite archive copy, files of earlier failed copies are removed best effort, so they cannot take the space the copy needs. A refused delete is logged and does not block the copy. The cleanup after the copy still reports it.
+- [x] `TestOffsite` reads the writer format once.
+- [x] `TestOffsiteUsesResticRESTReadsOnlyTheRepository` clears inherited offsite, REST and named-S3 settings, including their `_FILE` inputs.
+- [ ] Not changed: confining the trial restore to a role limited to the trial database. An upload must authenticate with this installation's backup password, which only the backup service holds, before any SQL runs. Restic snapshots rely on the same trust model. A per-restore role would need new cluster roles and grants.
+- [x] Validation of round 9:
+  - `go vet`, unit tests (including the new classification test), `npm test` (536/536), `scripts/localization.test.cjs` (11/11), `scripts/build-localization.cjs --check` and golangci-lint (0 issues, including the integration build tags for `internal/maintenance`) passed.
+  - New integration test `TestOffsiteCopyRemovesEarlierAttemptsWhenItFails` passed. With the cleanup before the copy removed, it failed.
+  - The integration tests matching `Backup|Archive|Offsite|Retention|Probe|Portable|Health|Schedul|Purge|JobCleanup|Mounted` in `internal/web`, `internal/maintenance`, `internal/backupplan` and `internal/store` passed.
+  - `scripts/test-backup-operations.sh` passed with 0 failures and cleaned up.
+  - Not run locally: the Garage S3 fixture and the full integration suite.
+
+## Portable backup files: CodeRabbit round 10 (PR #34)
+
+CodeRabbit raised eight findings for `f6ad35d`. All eight are fixed without a schema change.
+
+- [x] A mounted offsite path that resolves to the local repository, or whose archive directory is the local one, is rejected with the new code `same_as_local` before any copy or connection probe. The configured strings can differ, for example through a symlink or a second mount of the same share. Distinct directories on the same filesystem stay valid. The backup page shows a localized message for the code.
+- [x] A combined backup copies the new snapshot offsite also when only local retention fails. The new snapshot is then already written, checked and recorded complete, and retention keeps its file. The retention failure is returned beside the offsite outcome. A failure to write or check the new snapshot still stops before the copy. When both fail, the job reports the offsite code and keeps the retention failure in its error chain. `household backup --offsite` returns both.
+- [x] The repository lock is taken on its own connection outside the pool. Callers waiting for it no longer hold pool connections that the lock holder needs. Closing that connection releases the lock, also after a cancelled query.
+- [x] `pg_dump` and `pg_restore` diagnostics select a code only by the start of each message, or by the system error that ends a failed file operation. Quoted dump data and `CONTEXT` lines can no longer turn a corrupt archive into `database_unavailable` or `disk_full`.
+- [x] An offsite copy kept from an earlier run is synced in its directory after its check, so an earlier publication whose directory sync failed is made durable before the run reports success.
+- [x] Before a new copy of a snapshot is staged, a file that an earlier failed copy of the same snapshot left under its final name is removed, best effort. No complete or pending run references it at that point.
+- [x] The connection probe syncs the mounted repository directory after it creates or finds the archive directory, so that entry is durable before later writes skip the sync.
+- [x] `TestOffsiteUsesResticRESTReadsOnlyTheRepository` also clears inherited `RESTIC_REPOSITORY_FILE` and `RESTIC_PASSWORD_FILE`.
+- [x] Validation of round 10:
+  - `go vet`, unit tests (including the new tests for message-start classification, for alias detection and for the copy after a failed local retention), `npm test` (536/536), `scripts/localization.test.cjs` (11/11), `scripts/build-localization.cjs --check` and golangci-lint (0 issues, including the integration build tags for `internal/maintenance`) passed.
+  - New integration tests `TestOffsiteCopyRemovesTheStaleFileOfTheSameSnapshot` and `TestRepositoryLockWaitersLeaveThePoolFree` passed. Each failed with its fix removed.
+  - The integration tests matching `Backup|Archive|Offsite|Retention|Probe|Portable|Health|Schedul|Purge|JobCleanup|Mounted|RepositoryLock` in `internal/web`, `internal/maintenance`, `internal/backupplan` and `internal/store` passed.
+  - `scripts/test-backup-operations.sh` passed with 0 failures and cleaned up.
+  - Not run locally: the Garage S3 fixture and the full integration suite. The two directory syncs have no automated test.
+
+## Portable backup files: CodeRabbit round 11 (PR #34)
+
+CodeRabbit raised six findings for `05c7f58`. All six are fixed without a schema change.
+
+- [x] Before a new local archive is written, `reclaimArchives` retries deletions that an earlier retention left pending. A file whose deletion failed once can no longer keep every later write from finding space. A failed delete is logged, keeps its row pending and does not stop the backup.
+- [x] Before an offsite copy is staged, pending deletions of other snapshots are retried, best effort. The pending deletion of the copied snapshot itself is still required before its name is reused.
+- [x] `reclaimArchives` protects a file that any `complete` or `retention_pending` run of the local repository label references, not only local runs. The archives of an offsite repository that became the local one are no longer removed after the grace period.
+- [x] A `pg_dump` or `pg_restore` that cannot start returns the new code `tool_unavailable` instead of an unclassified failure, so a valid upload is not reported as `archive_invalid`.
+- [x] `could not extend file` becomes `disk_full` only with an explicit space or quota error. Other extension failures, such as an I/O error, return the new code `database_storage_failed`. The backup page shows localized messages for both new codes.
+- [x] The download-name test requires both repository labels to produce a recognized name.
+- [x] Validation of round 11:
+  - `go vet`, unit tests (including the new `TestDatabaseToolThatCannotStartKeepsItsCode` and the I/O-error case of the classification table), `npm test` (536/536), `scripts/localization.test.cjs` (11/11), `scripts/build-localization.cjs --check` and golangci-lint (0 issues, including the integration build tags for `internal/maintenance`) passed.
+  - New integration tests `TestReclaimFinishesPendingDeletionsAndKeepsReferencedFiles` and `TestOffsiteCopyFinishesOtherPendingDeletionsFirst` passed. Each failed with its fix removed.
+  - The integration tests matching `Backup|Archive|Offsite|Retention|Probe|Portable|Health|Schedul|Purge|JobCleanup|Mounted|RepositoryLock|Reclaim` in `internal/web`, `internal/maintenance`, `internal/backupplan` and `internal/store` passed.
+  - `scripts/test-backup-operations.sh` passed with 0 failures and cleaned up.
+  - Not run locally: the Garage S3 fixture and the full integration suite.
+
+## Portable backup files: CodeRabbit round 12 (PR #34)
+
+CodeRabbit raised three findings for `947ec8e`. All three are fixed without a schema change.
+
+- [x] Recorded archives, attachments being backed up, and restored or live attachment files are opened through one helper, `openRegular`. On Unix it opens without blocking, requires a regular file on the opened descriptor and then switches that descriptor back to blocking reads. The cross-volume copy of a live restore uses the same check. A named pipe without a writer is rejected at once instead of holding the repository lock past the deadline. A missing archive still reports `archive_missing`, and a missing storage directory is still a storage failure.
+- [x] Every restore check now compares the restored attachment and derivative rows with the manifest by key, SHA-256 and size (`attachmentsMatchManifest`), not only by count. Local and offsite verification therefore apply the same check as an archive import, which now gets it from the shared restore check.
+- [x] Validation of round 12:
+  - `go vet`, unit tests, `npm test` (536/536), `scripts/localization.test.cjs` (11/11), `scripts/build-localization.cjs --check` and golangci-lint (0 issues, including the integration build tags for `internal/maintenance`) passed.
+  - The new Unix test `TestNamedPipesAreRejectedWithoutBlocking` runs only on Unix. It passed with `go vet` and the `internal/maintenance` and `internal/backupplan` unit tests in a Linux `golang:1.27.4-alpine3.24` container, and it blocked with the non-blocking open removed. It does not run on the Windows host.
+  - The integration tests matching `Backup|Archive|Offsite|Retention|Probe|Portable|Health|Schedul|Purge|JobCleanup|Mounted|RepositoryLock|Reclaim` in `internal/web`, `internal/maintenance`, `internal/backupplan` and `internal/store` passed.
+  - `scripts/test-backup-operations.sh` passed with 0 failures and cleaned up. Its restore checks exercise the new manifest comparison on matching archives.
+  - No test makes the manifest comparison fail: no fixture restores an archive whose attachment rows differ from its manifest at the same count. The cross-volume path of `moveFile` has no pipe test, because a rename within one directory succeeds first.
+  - Not run locally: the Garage S3 fixture and the full integration suite.
+
+## Portable backup files: CodeRabbit round 13 (PR #34)
+
+CodeRabbit raised eight findings for `ada12c5`. All eight are fixed without a schema change.
+
+- [x] An archive import whose local password fails and whose offsite password setting cannot be read returns the new code `password_unavailable` instead of `archive_unreadable`. A canceled run keeps its own result, a missing offsite password keeps `archive_unreadable`, and the setting's file path stays in the private diagnostic. The backup page shows a localized message for the new code.
+- [x] Before an offsite copy, partial files of an interrupted write on a mounted target are removed once the one-hour grace period has passed. Completed archive files are untouched.
+- [x] When a mounted copy is confirmed corrupt and its replacement does not fit beside it (`ENOSPC` or `EDQUOT`), the worker authenticates the local file, removes the corrupt copy and sends it again. A missing copy, a password or read error, and S3 targets keep the previous behavior, and a replacement that fits stays atomic.
+- [x] The stale file of a snapshot is no longer removed before an offsite copy while a `complete` or `retention_pending` run of another offsite label references it. Another offsite path can resolve to the same directory; the publication then replaces the file. On a full mount this keeps the stale file, which is the accepted trade-off.
+- [x] A version without portable files expires every run of its repository label that restic does not list. After a rollback and a new upgrade, local reclaim no longer deletes such a present file as unreferenced: the newest of its runs becomes `complete` again and portable retention decides. Reclaim now finishes pending deletions before it reads the directory, so a file it has just deleted is not registered again. `docs/operations.md` describes the rollback behavior.
+- [x] The tool-error test asserts the exact `disk_full` code and that a distinctive private diagnostic stays out of the public error.
+- [x] The offsite retention test asserts that exactly one run stays complete and that it is the newest.
+- [x] The repository-lock test waits until a second session runs the lock attempt before it checks the pool, instead of sleeping.
+- [x] Validation of round 13:
+  - Unit tests, `npm test` (536/536), `scripts/localization.test.cjs` (11/11), `scripts/build-localization.cjs --check` (8893 translations) and golangci-lint passed. The first lint run reported one unchecked channel receive in the new lock test. After that fix both lint passes reported 0 issues, and the lock test passed again.
+  - `go vet` and the `internal/maintenance` and `internal/backupplan` unit tests passed in a Linux `golang:1.27.4-alpine3.24` container, including the Unix-only named-pipe test.
+  - The integration tests matching `Backup|Archive|Offsite|Retention|Probe|Portable|Health|Schedul|Purge|JobCleanup|Mounted|RepositoryLock|Reclaim` in `internal/web`, `internal/maintenance`, `internal/backupplan` and `internal/store` passed.
+  - With the fixes removed, `TestOffsiteCopyKeepsAFileAnotherOffsiteLabelReferences`, `TestOffsiteCopyRemovesInterruptedPartialFiles` and `TestReclaimRegistersArchivesAnOlderWorkerExpired` failed. With the lock waiter moved back to a pool connection, `TestRepositoryLockWaitersLeaveThePoolFree` failed because the waiter never contended.
+  - `scripts/test-backup-operations.sh` passed with 0 failures and cleaned up.
+  - No test covers `replaceCorruptCopy`: the integration fixture cannot fill a filesystem without a test-only hook.
+  - Not run locally: the Garage S3 fixture and the full integration suite.
+
+## Portable backup files: CodeRabbit round 14 (PR #34)
+
+CodeRabbit raised five findings for `f42cb87`. All five are fixed without a schema change.
+
+- [x] One check, `sharedArchiveFile`, now decides whether another repository label still needs a mounted archive file. It compares the files with `os.SameFile` instead of the labels. A label whose path does not resolve here keeps nothing, and any other failure to compare keeps the file. The check replaces the label-only check of round 13 before an offsite copy. A stale file is now removed when the other label names a different directory.
+- [x] The cleanup of earlier failed offsite copies keeps a file that a complete or pending run of another label needs. The attempt keeps its reference, so the cleanup resumes once that run no longer needs the file.
+- [x] A pending deletion keeps a file that a complete run of another label needs, and its row stays pending. Pending runs of other labels do not keep the file, so two labels never wait for each other.
+- [x] Retention, reclaim and the cleanup before an offsite copy decide pending portable runs again before they delete anything. A pending archive that the quotas keep and whose file is present becomes complete again, with a warning that counts them. A pending run whose file is gone is recorded expired. This covers a version without portable files that marked every complete run pending and stopped before restic decided. A pending row this version recorded was selected by the same quotas, so it stays selected unless the quotas were raised since.
+- [x] The database diagnostic parser recognizes pg_restore's `COPY failed for table "<tag>": <message>` wrapper. The text was confirmed in the `pg_restore` 18.7 binary of `postgres:18-alpine`. The tag comes from the dump, so the message is split off only at the single quote-colon before a server severity, or at the only quote-colon of a client message. A crafted tag leaves the line unclassified.
+- [x] When a backup's local retention fails and its offsite copy fails as well, the job records the local code instead of the `offsite_` code. The local run is already complete, so only that code shows the failure to local health. Offsite health counts every failed job that included the copy, and the service log names the offsite code separately. When only the copy fails, the job keeps its `offsite_` code. In the case where both fail, the history on the backup page shows the local message.
+- [x] Tests that set up a lone pending row now use low quotas and an older capture time, so the quotas still select that row.
+- [x] Validation of round 14:
+  - Unit tests, `npm test` (536/536), `scripts/localization.test.cjs` (11/11), `scripts/build-localization.cjs --check` (8893 translations) and both golangci-lint passes (0 issues) passed.
+  - `go vet` and the `internal/maintenance` and `internal/backupplan` unit tests passed in a Linux `golang:1.27.4-alpine3.24` container.
+  - The integration tests matching `Backup|Archive|Offsite|Retention|Probe|Portable|Health|Schedul|Purge|JobCleanup|Mounted|RepositoryLock|Reclaim` in `internal/web`, `internal/maintenance`, `internal/backupplan` and `internal/store` passed.
+  - With the shared-file check removed, `TestOffsiteCopyKeepsAFileAnotherLabelShares`, `TestOffsiteAttemptCleanupKeepsAFileAnotherLabelNeeds` and `TestPendingDeletionKeepsAFileAnotherLabelCompleted` failed. With the re-decision of pending rows removed, `TestRetentionKeepsPendingArchivesTheQuotasKeep` failed for local and offsite. With the COPY wrapper parsing or the error-code order removed, `TestDatabaseToolFailuresKeepTheirCause` or `TestBackupJobErrorKeepsAFailedLocalRetentionVisible` failed.
+  - `scripts/test-backup-operations.sh` passed with 0 failures and cleaned up.
+  - Not run locally: the S3 presence check of pending archives, which needs the Garage S3 fixture, and the full integration suite. No test covers `replaceCorruptCopy`.
+
+## Portable backup files: CodeRabbit round 15 (PR #34)
+
+CodeRabbit raised two findings for `c604a5e`, the first incremental review. Both are fixed without a schema change.
+
+- [x] Before a pending deletion removes a mounted file, the pending runs of other labels that share the file are decided again with their own quotas. A run that those quotas keep becomes complete again, so the file and the deletion's row stay. A pending run that stays selected does not keep the file, so when both labels expire an archive it is removed and both runs are recorded expired, in either order.
+- [x] A COPY failure whose server severity could come from the table tag is no longer classified. After the severity, the message may quote one argument only when an operating-system error text, or PostgreSQL's short-write text, follows it. A crafted tag ending in `": ERROR:  disk quota exceeded` before a client message now stays unclassified; `could not extend file` with an I/O error, no space or a short write keeps its code.
+- [x] Validation of round 15:
+  - Unit tests, `npm test` (536/536), `scripts/localization.test.cjs` (11/11), `scripts/build-localization.cjs --check` (8893 translations) and both golangci-lint passes (0 issues) passed.
+  - `go vet` and the `internal/maintenance` and `internal/backupplan` unit tests passed in a Linux `golang:1.27.4-alpine3.24` container.
+  - The integration tests matching `Backup|Archive|Offsite|Retention|Probe|Portable|Health|Schedul|Purge|JobCleanup|Mounted|RepositoryLock|Reclaim` in `internal/web`, `internal/maintenance`, `internal/backupplan` and `internal/store` passed.
+  - With the decision of sharing labels removed, `TestPendingDeletionKeepsAFileAnotherLabelsQuotasKeep` failed: the file was removed while the other label's run stayed pending. With the system-error check removed, `TestDatabaseToolFailuresKeepTheirCause` classified both crafted tag lines as `disk_full`.
+  - `scripts/test-backup-operations.sh` passed with 0 failures and cleaned up.
+  - Not run locally: the Garage S3 fixture and the full integration suite. No test covers `replaceCorruptCopy`.
