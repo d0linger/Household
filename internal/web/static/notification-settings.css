@@ -65,3 +65,24 @@
 .notice-connection-layout{display:grid;grid-template-columns:minmax(0,1.8fr) minmax(190px,1fr);align-items:start;gap:18px}
 .notice-privacy{background:var(--ground);border:1px solid var(--line);border-radius:12px;padding:15px;min-width:0}.notice-privacy h3{font-size:18px;margin:0 0 8px}.notice-privacy .notification-help{margin:0}.notice-connection-layout .notification-connection{display:flex;align-items:start;flex-wrap:wrap}
 @media(max-width:940px){.notice-connection-layout{grid-template-columns:minmax(0,1fr)}}
+
+.notification-settings .notification-section {
+  padding: var(--settings-inset);
+  margin-block: var(--settings-gap);
+}
+.notification-settings .page-heading { align-items: center; gap: var(--settings-gap); }
+.notification-settings .page-heading p { margin-block: 4px 0; }
+.notification-section-heading {
+  gap: var(--settings-gap);
+  margin-block-end: 10px;
+  padding-block-end: 10px;
+}
+.notification-section h2 { font-size: 20px; margin-block-end: 4px; }
+.notification-section .notification-preference > summary { min-height: 44px; }
+.notification-preference-content { padding-block: 8px 12px; }
+.notification-device { padding-block: 12px; }
+.notification-connections .se-row { padding-block: 8px; }
+.notification-settings :is(.notification-empty, .notification-limits) { padding-block: 8px; }
+.notice-connection-layout { gap: var(--settings-gap); }
+.notice-privacy { padding: 10px 12px; }
+.notification-settings [role=status]:empty { margin: 0; min-height: 0; }

@@ -68,3 +68,124 @@ body[data-admin=true] .purge-form{padding-top:24px;margin-top:24px}
 #more-dialog .settings-nav a,#more-dialog .tray-session button{font-size:17px;min-height:51px}
 #more-dialog .tray-close{background:transparent;color:var(--ink);border:1px solid var(--nav-line)}
 @media(max-width:365px){.topbar .mobile-brand{font-size:15px;gap:2px}.topbar .mobile-brand .logo{width:20px}.topbar{padding-inline:5px;gap:1px}}
+
+/* Settings share a tighter rhythm while retaining full-size controls. */
+body[data-admin=true] {
+  --settings-inset: clamp(14px, 1.55vw, 20px);
+  --settings-gap: 12px;
+}
+body:is([data-view=settings], [data-view=modules], [data-view=notification-settings], [data-view=security], [data-view=users], [data-view=audit], [data-view=backup], [data-view=system]) .page-heading {
+  align-items: center;
+  gap: var(--settings-gap);
+  margin-block-end: 12px;
+  padding-block-end: 10px;
+}
+body[data-admin=true] .page-heading h1 { font-size: clamp(30px, 2.5vw, 34px); }
+body[data-admin=true] .page-heading p { margin-block: 4px 0; }
+body[data-admin=true] .settings-sections {
+  gap: 0 16px;
+  padding-block-end: 0;
+  margin-block-end: var(--settings-gap);
+}
+body[data-admin=true] .general-groups {
+  gap: var(--settings-gap);
+  margin-block: var(--settings-gap);
+}
+body[data-admin=true] .general-groups > .panel,
+body[data-admin=true] .module-order-panel {
+  padding: var(--settings-inset);
+  background: var(--surface);
+  box-shadow: none;
+}
+body[data-admin=true] .general-groups > .panel > :is(h2, h3),
+body[data-admin=true] .module-order-panel > h2 { margin-block: 0 8px; font-size: 20px; }
+body[data-view=settings] #preferences label { margin-block-end: 10px; }
+body[data-view=settings] #preferences > button { margin-block-end: 4px; }
+body[data-view=settings] #module-order-list { margin-block: 12px; }
+body[data-view=settings] #module-order-list li { padding-block: 4px; }
+
+body[data-view=modules] .module-count { margin-block: 0 10px; }
+body[data-view=modules] .module-grid {
+  display: block;
+  margin-block: 0 16px;
+  padding-inline: var(--settings-inset);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+}
+body[data-view=modules] .module-card {
+  grid-template-columns: 24px minmax(0, 1fr) max-content minmax(180px, max-content);
+  align-items: center;
+  gap: 2px 12px;
+  padding: 8px 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+body[data-view=modules] .module-card + .module-card { border-block-start: 1px solid var(--line); }
+body[data-view=modules] .module-icon { display: block; width: 22px; height: 22px; color: var(--accent); }
+body[data-view=modules] .module-card h2 { font-size: 16px; line-height: 1.3; }
+body[data-view=modules] .module-card .badge { grid-area: 1 / 3; align-self: center; }
+body[data-view=modules] .module-actions {
+  grid-area: 1 / 4;
+  justify-content: flex-end;
+  gap: 8px 12px;
+  margin: 0;
+}
+body[data-view=modules] .module-actions a { min-width: 44px; padding-inline: 4px; }
+
+#more-dialog.navigation-tray { width: min(344px, calc(100% - 24px)); }
+#more-dialog .tray-heading { padding: 12px 14px 12px 20px; }
+#more-dialog .tray-account { font-size: 20px; }
+#more-dialog .tray-content { padding: 4px 10px 12px; }
+#more-dialog .tray-group h3,
+#more-dialog .tray-session h3 { margin: 8px 10px 4px; }
+#more-dialog .settings-nav a,
+#more-dialog .tray-session button {
+  gap: 10px;
+  min-height: 44px;
+  padding: 6px 10px;
+  font-size: 15px;
+}
+#more-dialog .tray-session { padding-inline: 10px; }
+
+dialog:is(#appearance-dialog, #new-household-user, #security-reauth, #backup-upload, #backup-restore) {
+  padding: clamp(14px, 2.1vw, 22px);
+  border-radius: 14px;
+  max-height: calc(100dvh - 24px);
+}
+dialog:is(#appearance-dialog, #new-household-user, #security-reauth, #backup-upload, #backup-restore) .dialog-heading {
+  margin-block-end: 12px;
+  padding-block-end: 8px;
+}
+dialog:is(#appearance-dialog, #new-household-user, #security-reauth, #backup-upload, #backup-restore) .dialog-heading h2 {
+  font-size: 20px;
+  line-height: 1.25;
+}
+dialog:is(#appearance-dialog, #new-household-user, #security-reauth, #backup-upload, #backup-restore) .dialog-heading > button {
+  min-width: 44px;
+  min-height: 44px;
+}
+#security-reauth, #backup-upload { width: min(480px, calc(100% - 24px)); }
+#backup-restore { width: min(540px, calc(100% - 24px)); }
+dialog:is(#new-household-user, #security-reauth, #backup-upload, #backup-restore) :is(p, ul, label) {
+  margin-block: 0 10px;
+}
+dialog:is(#appearance-dialog, #new-household-user, #security-reauth, #backup-upload, #backup-restore) .actions {
+  gap: 8px;
+  margin-block-start: 12px;
+}
+#appearance-dialog #appearance-form fieldset { margin-block: 12px; }
+
+@media (max-width: 900px) {
+  body[data-view=modules] .module-card { grid-template-columns: 24px minmax(0, 1fr) max-content; }
+  body[data-view=modules] .module-actions {
+    grid-area: 2 / 2 / auto / -1;
+    justify-content: flex-start;
+  }
+}
+@media (max-width: 760px) {
+  body[data-admin=true] .settings-sections { column-gap: 12px; }
+  dialog:is(#new-household-user, #backup-upload, #backup-restore) .actions > button { flex: 0 1 auto; }
+}

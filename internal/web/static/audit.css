@@ -81,3 +81,11 @@
 @media (max-width: 1050px) { .audit-workspace .audit-row { padding:var(--space-4) 0; } }
 
 .audit-action-chip{display:inline-block;background:var(--data-soft);color:var(--data-accent);border:1px solid var(--line);border-radius:20px;padding:2px 9px;font-size:13px;font-weight:600}
+
+.audit-workspace .audit-filters { padding: var(--settings-inset); margin-block-end: 10px; }
+.audit-list-note { margin-block-end: 10px; }
+.audit-columns { padding-block: 8px; }
+.audit-workspace .audit-row { min-height: 56px; padding-block: 8px; }
+.audit-entry-body { padding-block: 10px 12px; }
+.audit-workspace :is(.audit-diff-head, .audit-field) { padding-block: 8px; }
+.audit-pagination { margin-block-start: 12px; }

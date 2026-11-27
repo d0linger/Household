@@ -135,7 +135,7 @@ encrypted data and backups cannot be read.
 | --- | --- |
 | `db` | PostgreSQL, without a published port. |
 | `app` | Its `start` command creates the database roles as the PostgreSQL superuser, migrates as the owner and serves as the restricted app role on `127.0.0.1:8100`. |
-| `backup` | Encrypted restic snapshots on the schedule administrators set under **Settings → Backup** (daily at 03:00 by default), optional offsite copies, restore tests, and the backups, checks and live restores administrators request in the app. It alone holds repository and owner credentials; the app only records requests. It is also the owner-credential maintenance service, e.g. `docker compose run --rm --no-deps backup recover admin`. |
+| `backup` | Dated encrypted backup files on the schedule set under **Settings → Backup** (daily at 03:00 by default), optional offsite copies, trial restores and confirmed live recoveries. It alone holds repository and owner credentials. The app can exchange encrypted files through the dedicated volume. |
 
 Open the configured origin and sign in as `admin` with `HOUSEHOLD_ADMIN_PASSWORD`;
 you change it at first sign-in.
@@ -246,16 +246,25 @@ history of requested and scheduled work. Buttons there *request* work (back up n
 test the offsite connection, verify or restore a restore point); the `backup`
 service claims each request and checks it again with its own privileges.
 
-- **What a snapshot holds:** a PostgreSQL dump, a schema/file-hash manifest and the
-  security-key bundle together with the uploaded files, encrypted with restic.
+- **What a backup file holds:** by default, a PostgreSQL dump, uploaded files, a
+  schema and file-hash manifest, and a security-key bundle in one encrypted dated
+  `.tar.age` file of at most 32 GiB; a larger backup fails, so installations with
+  more data set `HOUSEHOLD_BACKUP_FORMAT=restic`. With that setting, and for a restic REST
+  offsite target, new backups are Restic snapshots instead; they are restored in
+  the app or with `restore-check`, not downloaded as files.
+- **Download and recover:** download a local file, or verify an external file to
+  prepare its download. Upload only backup files from installations you trust.
+  Use **Upload backup file** to run a trial restore and register the verified file
+  before confirming a live restoration. Restoring a dump runs its SQL, and a
+  confirmed live restoration keeps the objects it creates.
 - **Schedule and retention:** daily at 03:00 in the household zone by default, with
   7 daily / 4 weekly / 12 monthly local snapshots and a weekly automatic restore
   test.
-- **Offsite:** local snapshots do not protect against loss of the whole host. Set
-  `HOUSEHOLD_BACKUP_OFFSITE_REPOSITORY` to S3-compatible storage (AWS, Backblaze B2,
-  Wasabi, Hetzner, MinIO …), a restic REST server or a mounted path. Each run copies
-  the new snapshot and checks a rotating sixth of the offsite data instead of
-  downloading everything daily. Credentials inside the repository URL are refused.
+- **Offsite:** by default, S3-compatible storage (including Garage) and mounted
+  paths store a dated encrypted file per copy. The backup service verifies the new file.
+  Existing Restic snapshots remain restorable, and restic REST uses the Restic
+  format. See [backup operations](docs/operations.md#portable-backup-files) for
+  the Portainer volume change, passphrases and recovery procedure.
 - **Warnings:** administrators get an in-app notice when a backup or offsite copy
   fails, is overdue or has not been restore-tested. The service's container
   healthcheck runs `household backup-health`, and the optional ntfy, webhook or

@@ -753,7 +753,7 @@ func reconcileUploads(uploadDir, staged, moved string, files []File) error {
 }
 
 func fileMatches(root *os.Root, name string, f File) bool {
-	file, err := root.Open(name)
+	file, _, err := openRegular(root, name)
 	if err != nil {
 		return false
 	}
@@ -764,7 +764,7 @@ func fileMatches(root *os.Root, name string, f File) bool {
 }
 
 func copyInto(source, target *os.Root, name string) error {
-	in, err := source.Open(name)
+	in, _, err := openRegular(source, name)
 	if err != nil {
 		return err
 	}
@@ -793,7 +793,11 @@ func moveFile(from, to string) error {
 	if err := os.Rename(from, to); err == nil { // #nosec G703 -- validated UUID names below operator folders
 		return nil
 	}
-	in, err := os.Open(from) // #nosec G304 -- validated UUID name below the upload folder
+	opened, err := os.OpenFile(from, os.O_RDONLY|nonblockingRead, 0) // #nosec G304 -- validated UUID name below the upload folder
+	if err != nil {
+		return err
+	}
+	in, _, err := regularFile(opened)
 	if err != nil {
 		return err
 	}

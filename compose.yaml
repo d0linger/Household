@@ -28,6 +28,8 @@ services:
     command: start
     volumes:
       - uploads:/data/uploads
+      - backups:/data/backups:ro
+      - backup_exchange:/data/backup-exchange
       # - ./scanner:/inbox:ro                # optional, dazu HOUSEHOLD_DOCUMENT_WATCH_DIR=/inbox
     ports: ['127.0.0.1:${HOUSEHOLD_PORT:-8100}:8080']
     depends_on: {db: {condition: service_healthy}}
@@ -37,8 +39,8 @@ services:
     command: backup-loop
     environment: {HOUSEHOLD_DATABASE_USER: household_owner, HOUSEHOLD_DATABASE_PASSWORD: '${HOUSEHOLD_OWNER_PASSWORD}'}
     # Schreibzugriff auf uploads nur für die Wiederherstellung aus einer Sicherung.
-    volumes: [uploads:/data/uploads, backups:/data/backups, backup_work:/work]
+    volumes: [uploads:/data/uploads, backups:/data/backups, backup_work:/work, backup_exchange:/data/backup-exchange]
     healthcheck: {test: [CMD, household, backup-health], interval: 5m, timeout: 30s, start_period: 2m, retries: 1}
     depends_on: {app: {condition: service_healthy}}
 
-volumes: {postgres: {}, uploads: {}, backups: {}, backup_work: {}}
+volumes: {postgres: {}, uploads: {}, backups: {}, backup_work: {}, backup_exchange: {}}

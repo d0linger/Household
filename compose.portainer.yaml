@@ -79,6 +79,8 @@ services:
       HOUSEHOLD_METERS_MQTT_PASSWORD: ${HOUSEHOLD_METERS_MQTT_PASSWORD:-}
     volumes:
       - uploads:/data/uploads
+      - backups:/data/backups:ro
+      - backup_exchange:/data/backup-exchange
     networks:
       default: {}
       proxy:
@@ -95,6 +97,7 @@ services:
       HOUSEHOLD_DATABASE_USER: household_owner
       HOUSEHOLD_DATABASE_PASSWORD: ${HOUSEHOLD_OWNER_PASSWORD:?Use the value from household init or your existing stack}
       HOUSEHOLD_BACKUP_WORK: /work
+      HOUSEHOLD_BACKUP_FORMAT: ${HOUSEHOLD_BACKUP_FORMAT:-}
       RESTIC_PASSWORD: ${RESTIC_PASSWORD:?Use the value from household init or your existing stack}
       HOUSEHOLD_BACKUP_OFFSITE_REPOSITORY: ${HOUSEHOLD_BACKUP_OFFSITE_REPOSITORY:-}
       HOUSEHOLD_BACKUP_OFFSITE_PASSWORD: ${HOUSEHOLD_BACKUP_OFFSITE_PASSWORD:-}
@@ -125,6 +128,7 @@ services:
       - uploads:/data/uploads
       - backups:/data/backups
       - backup_work:/work
+      - backup_exchange:/data/backup-exchange
     healthcheck:
       test: [CMD, household, backup-health]
       interval: 1m
@@ -146,3 +150,4 @@ volumes:
   uploads: {}
   backups: {}
   backup_work: {}
+  backup_exchange: {}

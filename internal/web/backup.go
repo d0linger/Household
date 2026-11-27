@@ -27,19 +27,32 @@ func (s *Server) registerBackupRoutes(mux *http.ServeMux) {
 	mux.Handle("POST /settings/backup/jobs", s.require(s.requestBackupJob))
 	mux.Handle("POST /settings/backup/jobs/{id}/cancel", s.require(s.cancelBackupJob))
 	mux.Handle("POST /settings/backup/settings", s.require(s.saveBackupSettings))
+	mux.Handle("GET /settings/backup/files/{target}/{snapshot}", s.require(s.downloadBackupArchive))
+	upload := s.require(s.uploadBackupArchive)
+	mux.HandleFunc("POST /api/v1/core/backup/upload", func(w http.ResponseWriter, r *http.Request) {
+		// Require the CSRF header so session middleware never parses the entire
+		// file as an ordinary multipart form before authorization.
+		if r.Header.Get("X-CSRF-Token") == "" || r.Header.Get("Content-Type") != "application/octet-stream" {
+			s.fail(w, r, store.ErrForbidden)
+			return
+		}
+		upload.ServeHTTP(w, r)
+	})
 }
 
 // backupSnapshot is one restore point shown to administrators.
 type backupSnapshot struct {
-	Snapshot     string     `json:"snapshot"`
-	Short        string     `json:"short"`
-	Kind         string     `json:"kind"`
-	Started      time.Time  `json:"started"`
-	Version      string     `json:"version"`
-	Verified     *time.Time `json:"verified,omitempty"`
-	TotalBytes   *int64     `json:"total_bytes,omitempty"`
-	Compatible   bool       `json:"compatible"`
-	Confirmation string     `json:"confirmation"`
+	Snapshot      string     `json:"snapshot"`
+	Short         string     `json:"short"`
+	Kind          string     `json:"kind"`
+	Started       time.Time  `json:"started"`
+	Version       string     `json:"version"`
+	Verified      *time.Time `json:"verified,omitempty"`
+	TotalBytes    *int64     `json:"total_bytes,omitempty"`
+	Compatible    bool       `json:"compatible"`
+	Confirmation  string     `json:"confirmation"`
+	Archive       string     `json:"archive,omitempty"`
+	DownloadReady bool       `json:"download_ready,omitempty"`
 }
 
 // backupJob is one requested or scheduled unit of backup work.
@@ -125,7 +138,7 @@ func (s *Server) loadBackupOverview(ctx context.Context) (backupOverview, error)
 	for _, schema := range database.Schemas {
 		current[schema] = database.ExpectedVersion(schema)
 	}
-	rows, err := s.Pool.Query(ctx, `SELECT repository_kind,snapshot_reference,started_at,application_version,verified_at,total_bytes,schema_manifest FROM core.backup_runs
+	rows, err := s.Pool.Query(ctx, `SELECT repository_kind,repository_reference,snapshot_reference,started_at,application_version,verified_at,total_bytes,schema_manifest FROM core.backup_runs
  WHERE state='complete' AND snapshot_reference IS NOT NULL ORDER BY started_at DESC LIMIT 120`)
 	if err != nil {
 		return o, err
@@ -133,7 +146,8 @@ func (s *Server) loadBackupOverview(ctx context.Context) (backupOverview, error)
 	for rows.Next() {
 		var item backupSnapshot
 		var schemas map[string]int
-		if err = rows.Scan(&item.Kind, &item.Snapshot, &item.Started, &item.Version, &item.Verified, &item.TotalBytes, &schemas); err != nil {
+		var repository string
+		if err = rows.Scan(&item.Kind, &repository, &item.Snapshot, &item.Started, &item.Version, &item.Verified, &item.TotalBytes, &schemas); err != nil {
 			rows.Close()
 			return o, err
 		}
@@ -142,6 +156,15 @@ func (s *Server) loadBackupOverview(ctx context.Context) (backupOverview, error)
 		}
 		item.Compatible = backupplan.SchemaCompatible(schemas, current)
 		item.Confirmation = backupplan.RestoreConfirmation(item.Snapshot)
+		item.Archive = backupplan.ArchiveName(item.Snapshot)
+		// Offer a download only for the repository the download endpoint serves.
+		current := o.LocalLabel
+		if item.Kind == "offsite" {
+			current = o.OffsiteLabel
+		}
+		if item.Archive != "" && repository == current {
+			item.DownloadReady = archiveDownloadReady(item.Kind, item.Snapshot, repository)
+		}
 		if item.Kind == "offsite" {
 			o.OffsiteSnapshots = append(o.OffsiteSnapshots, item)
 		} else {
@@ -169,7 +192,10 @@ func (s *Server) loadBackupOverview(ctx context.Context) (backupOverview, error)
 	// Verification freshness is read independently of the listed snapshots,
 	// and only a check of the configured probe target keeps the probe fresh.
 	var probeVerified *time.Time
-	if err = s.Pool.QueryRow(ctx, `SELECT max(verified_at),max(verified_at) FILTER (WHERE repository_kind=$1) FROM core.backup_runs WHERE verified_at IS NOT NULL`,
+	// An upload records its own validation as verified_at=finished_at; that is
+	// no check of an existing restore point, but a later trial restore is.
+	if err = s.Pool.QueryRow(ctx, `SELECT max(r.verified_at),max(r.verified_at) FILTER (WHERE r.repository_kind=$1
+ AND NOT (r.verified_at=r.finished_at AND `+backupplan.ImportedRun+`)) FROM core.backup_runs r WHERE r.verified_at IS NOT NULL`,
 		o.Settings.ProbeTarget).Scan(&o.LastVerified, &probeVerified); err != nil {
 		return o, err
 	}
@@ -357,7 +383,9 @@ func (s *Server) requestBackupJob(w http.ResponseWriter, r *http.Request) {
 			s.fail(w, r, store.Invalid{Message: "Wiederherstellungspunkt nicht gefunden"})
 			return
 		}
-		if !found.Compatible {
+		// An offsite file of another version can still be checked and staged
+		// for download; only its live restore needs this version.
+		if !found.Compatible && (kind != "verify" || target != "offsite" || found.Archive == "") {
 			s.fail(w, r, store.Invalid{Message: "Dieser Wiederherstellungspunkt stammt von einer anderen Version und kann nur mit dieser Version per Wartungsbefehl wiederhergestellt werden"})
 			return
 		}

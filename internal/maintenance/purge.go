@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"household/internal/audit"
+	"household/internal/backupplan"
 	"household/internal/database"
 	"household/internal/modules"
 	"household/internal/value"
@@ -63,7 +64,7 @@ func purgeAttempt(ctx context.Context, pool *pgxpool.Pool, requestID string) err
 	}
 	var mid, hid, actor string
 	var generation int64
-	err = tx.QueryRow(ctx, `SELECT p.module_id,p.household_id,p.requested_by,p.expected_generation FROM core.module_purge_requests p JOIN core.memberships m ON m.household_id=p.household_id AND m.user_id=p.requested_by JOIN core.users u ON u.id=m.user_id JOIN core.module_states s ON s.household_id=p.household_id AND s.module_id=p.module_id WHERE p.id=$1 AND p.state='pending' AND p.expires_at>now() AND m.role='admin' AND m.inactive_at IS NULL AND u.disabled_at IS NULL AND NOT u.must_change_password AND s.state='disabled' AND s.data_generation=p.expected_generation AND EXISTS(SELECT 1 FROM core.backup_runs b WHERE b.state='complete' AND b.started_at>=s.changed_at AND b.started_at>now()-interval '7 days' AND b.verified_at>now()-interval '7 days' AND (b.id::text=p.backup_reference OR b.snapshot_reference=p.backup_reference)) FOR UPDATE OF p,s`, requestID).Scan(&mid, &hid, &actor, &generation)
+	err = tx.QueryRow(ctx, `SELECT p.module_id,p.household_id,p.requested_by,p.expected_generation FROM core.module_purge_requests p JOIN core.memberships m ON m.household_id=p.household_id AND m.user_id=p.requested_by JOIN core.users u ON u.id=m.user_id JOIN core.module_states s ON s.household_id=p.household_id AND s.module_id=p.module_id WHERE p.id=$1 AND p.state='pending' AND p.expires_at>now() AND m.role='admin' AND m.inactive_at IS NULL AND u.disabled_at IS NULL AND NOT u.must_change_password AND s.state='disabled' AND s.data_generation=p.expected_generation AND EXISTS(SELECT 1 FROM core.backup_runs b WHERE b.state='complete' AND b.started_at>=s.changed_at AND b.started_at>now()-interval '7 days' AND b.verified_at>now()-interval '7 days' AND (b.id::text=p.backup_reference OR b.snapshot_reference=p.backup_reference) AND NOT `+backupplan.ImportedSnapshot("b.snapshot_reference")+`) FOR UPDATE OF p,s`, requestID).Scan(&mid, &hid, &actor, &generation)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return errors.New("purge request is expired, invalid, unverified, or module is active")
 	}

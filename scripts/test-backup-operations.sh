@@ -58,13 +58,14 @@ HOUSEHOLD_WEB_PUSH_ENABLED=false
 RESTIC_PASSWORD=$(random)
 HOUSEHOLD_BACKUP_OFFSITE_REPOSITORY=/offsite/household
 HOUSEHOLD_BACKUP_OFFSITE_PASSWORD=$(random)
+HOUSEHOLD_BACKUP_FORMAT=${HOUSEHOLD_TEST_BACKUP_FORMAT:-archive}
 EOF
 
 docker network create "$network" >/dev/null
 for volume in uploads backups offsite work; do docker volume create "$prefix-$volume" >/dev/null; done
 # The image runs as 10001; give it its writable volumes like Compose does.
 docker run --rm -v "$prefix-uploads:/data/uploads" -v "$prefix-backups:/data/backups" -v "$prefix-offsite:/offsite" -v "$prefix-work:/work" \
-  --user 0 --entrypoint sh "$image" -c 'chown 10001:10001 /data/uploads /data/backups /offsite /work' >/dev/null
+  --user 0 --entrypoint sh "$image" -c 'mkdir -p /offsite/household && chown 10001:10001 /data/uploads /data/backups /offsite /offsite/household /work' >/dev/null
 
 docker run -d --name "$db" --network "$network" --user 70:70 -e POSTGRES_DB=household -e POSTGRES_PASSWORD="$postgres_password" \
   --tmpfs /var/lib/postgresql:rw,size=768m,uid=70,gid=70 \
@@ -108,10 +109,41 @@ offsite_snapshot="$(psql "SELECT snapshot_reference FROM core.backup_runs WHERE 
 [[ ${#offsite_snapshot} -eq 64 ]] || fail "no complete offsite run"
 
 log "restore checks"
+docker exec -d "$db" psql -U postgres -d household -v ON_ERROR_STOP=1 -c \
+  "SET statement_timeout=0; SELECT pg_advisory_lock(721607137); SELECT pg_sleep(25);" || fail "could not launch lock contender"
+for _ in $(seq 1 15); do
+  [[ "$(psql "SELECT count(*) FROM pg_locks WHERE locktype='advisory' AND objid=721607137 AND granted")" -ge 1 ]] && break
+  sleep 1
+done
+[[ "$(psql "SELECT count(*) FROM pg_locks WHERE locktype='advisory' AND objid=721607137 AND granted")" -ge 1 ]] || fail "fixture contention did not start"
 docker exec "$backup" household restore-check latest || fail "local restore-check"
 docker exec "$backup" household restore-check --offsite latest || fail "offsite restore-check"
 [[ "$(psql "SELECT count(*) FROM core.backup_runs WHERE verified_at IS NOT NULL")" -eq 2 ]] || fail "both snapshots not verified"
 docker exec "$backup" household backup-health >/dev/null || fail "backup-health reports unhealthy"
+
+# The scheduled restore test is a separate entry point: it must wait for the
+# repository lock instead of failing on PostgreSQL's statement timeout.
+log "scheduled restore test waits for the repository lock"
+lock_granted() { [[ "$(psql "SELECT count(*) FROM pg_locks WHERE locktype='advisory' AND objid=721607137 AND granted")" -ge 1 ]]; }
+for _ in $(seq 1 30); do lock_granted || break; sleep 1; done
+lock_granted && fail "the previous lock contender is still running"
+docker exec -d "$db" psql -U postgres -d household -v ON_ERROR_STOP=1 -c   "SET statement_timeout=0; SELECT pg_advisory_lock(721607137); SELECT pg_sleep(75);" || fail "could not launch lock contender"
+for _ in $(seq 1 15); do lock_granted && break; sleep 1; done
+lock_granted || fail "probe contention did not start"
+lock_start="$(psql "SELECT now()")"
+psql "UPDATE core.backup_settings SET probe_interval_days=1,probe_target='local'"
+probe_state=""
+for _ in $(seq 1 80); do
+  probe_state="$(psql "SELECT state FROM core.backup_jobs WHERE kind='verify' AND target='local' AND created_at >= '$lock_start' ORDER BY created_at DESC LIMIT 1")"
+  [[ "$probe_state" == "complete" || "$probe_state" == "failed" ]] && break
+  sleep 3
+done
+[[ "$probe_state" == "complete" ]] || fail "scheduled restore test did not complete (state: ${probe_state:-none})"
+# It started while the contender held the lock and finished after its release.
+[[ "$(psql "SELECT count(*) FROM core.backup_jobs WHERE kind='verify' AND target='local' AND created_at >= '$lock_start'
+  AND started_at < '$lock_start'::timestamptz + interval '70 seconds' AND finished_at >= '$lock_start'::timestamptz + interval '70 seconds'")" -eq 1 ]] ||
+  fail "scheduled restore test did not wait for the repository lock"
+psql "UPDATE core.backup_settings SET probe_interval_days=0"
 
 psql "UPDATE core.households SET name='After backup'"
 # The safety backup taken by the live restore must not apply retention: with
@@ -128,8 +160,15 @@ docker exec "$backup" household restore --offsite "$offsite_snapshot" --confirm 
 [[ "$(psql "SELECT count(*) FROM core.backup_runs WHERE state='complete'")" -ge 3 ]] || fail "backup history lost (safety backup missing)"
 [[ "$(psql "SELECT state FROM core.backup_runs WHERE snapshot_reference='$local_snapshot' AND repository_kind='local'")" == "complete" ]] \
   || fail "the safety backup pruned today's earlier local snapshot"
-repository_snapshots="$(docker exec "$backup" restic --no-cache snapshots --json)" || fail "could not list local snapshots"
-[[ "$repository_snapshots" == *"$local_snapshot"* ]] || fail "today's earlier local snapshot is gone from the repository"
+if [[ "${HOUSEHOLD_TEST_BACKUP_FORMAT:-archive}" == restic ]]; then
+  repository_snapshots="$(docker exec "$backup" restic --no-cache snapshots --json)" || fail "could not list local snapshots"
+  [[ "$repository_snapshots" == *"$local_snapshot"* ]] || fail "today's earlier local snapshot is gone from the repository"
+else
+  archive_files="$(docker exec "$backup" ls -1 /data/backups/portable)" || fail "could not list encrypted archives"
+  [[ "$archive_files" == *"${local_snapshot:0:36}.tar.age"* ]] || fail "today's earlier archive is gone"
+  offsite_files="$(docker exec "$backup" ls -1 /offsite/household/portable)" || fail "could not list offsite files"
+  [[ "$offsite_files" == *"${offsite_snapshot:0:36}.tar.age"* ]] || fail "offsite encrypted file is missing"
+fi
 previous="$(psql "SELECT datname FROM pg_database WHERE datname LIKE 'household_pre_restore_%'")"
 [[ -n "$previous" ]] || fail "previous database not kept"
 for _ in $(seq 1 30); do docker exec "$app" household healthcheck >/dev/null 2>&1 && break; sleep 2; done

@@ -1,6 +1,7 @@
 package config
 
 import (
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -84,6 +85,50 @@ func TestBackupTargetsReadCredentialsIntoTheirOwnEnvironment(t *testing.T) {
 	t.Setenv("HOUSEHOLD_BACKUP_OFFSITE_REPOSITORY", "/data/backups")
 	if _, err = OffsiteBackupTarget(local); err == nil {
 		t.Fatal("offsite equal to local accepted")
+	}
+}
+
+// The local backup format follows the repository scheme alone: incomplete
+// REST credentials must not switch a restic REST setup to portable files.
+func TestOffsiteUsesResticRESTReadsOnlyTheRepository(t *testing.T) {
+	t.Setenv(SecretsDirVariable, "")
+	// Inherited offsite settings would decide the assertions instead of the fixture.
+	for _, name := range []string{"HOUSEHOLD_BACKUP_OFFSITE_REPOSITORY", "HOUSEHOLD_BACKUP_OFFSITE_PASSWORD",
+		"HOUSEHOLD_BACKUP_REST_USERNAME", "HOUSEHOLD_BACKUP_REST_PASSWORD", "HOUSEHOLD_S3_ENDPOINT"} {
+		t.Setenv(name, "")
+		t.Setenv(name+"_FILE", "")
+	}
+	t.Setenv("RESTIC_REPOSITORY_FILE", "")
+	t.Setenv("RESTIC_PASSWORD_FILE", "")
+	t.Setenv("RESTIC_REPOSITORY", "/data/backups")
+	t.Setenv("RESTIC_PASSWORD", "local-password")
+	local, err := LocalBackupTarget()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rest, err := OffsiteUsesResticREST(); err != nil || rest {
+		t.Fatalf("unset offsite repository reported as REST: %v", err)
+	}
+	t.Setenv("HOUSEHOLD_BACKUP_OFFSITE_REPOSITORY", "rest:https://backup.example.test/household/")
+	t.Setenv("HOUSEHOLD_BACKUP_OFFSITE_PASSWORD", "offsite-password-123")
+	t.Setenv("HOUSEHOLD_BACKUP_REST_USERNAME", "household")
+	if _, err = OffsiteBackupTarget(local); err == nil {
+		t.Fatal("REST user without its password accepted")
+	}
+	if rest, err := OffsiteUsesResticREST(); err != nil || !rest {
+		t.Fatalf("REST repository with incomplete credentials not reported as REST: %v", err)
+	}
+	for _, repository := range []string{"s3:https://s3.example.test/bucket/household", "/mnt/offsite"} {
+		t.Setenv("HOUSEHOLD_BACKUP_OFFSITE_REPOSITORY", repository)
+		if rest, err := OffsiteUsesResticREST(); err != nil || rest {
+			t.Fatalf("%s reported as REST: %v", repository, err)
+		}
+	}
+	// A setting file that cannot be read is an error, not a non-REST target.
+	t.Setenv("HOUSEHOLD_BACKUP_OFFSITE_REPOSITORY", "")
+	t.Setenv("HOUSEHOLD_BACKUP_OFFSITE_REPOSITORY_FILE", filepath.Join(t.TempDir(), "missing"))
+	if _, err := OffsiteUsesResticREST(); err == nil {
+		t.Fatal("unreadable offsite repository setting reported as readable")
 	}
 }
 

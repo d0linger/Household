@@ -4,6 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"household/internal/audit"
@@ -53,6 +56,12 @@ func loadSettings(ctx context.Context, q querier) (backupplan.Settings, *time.Lo
 // checks a rotating sixth of its data, records the run and applies the
 // offsite retention. The repository lock is held by the caller.
 func copyOffsiteLocked(ctx context.Context, pool *pgxpool.Pool, local, offsite config.BackupTarget, settings backupplan.Settings, snapshot string, schemas []byte, jobID string) (string, error) {
+	if backupplan.ArchiveName(snapshot) != "" {
+		if strings.HasPrefix(offsite.Repository, "rest:") {
+			return "", errors.New("portable archives cannot be stored on a restic REST target")
+		}
+		return copyPortableLocked(ctx, pool, local, offsite, settings, snapshot, schemas, jobID)
+	}
 	opening, cancel := context.WithTimeout(ctx, offsiteProbeTimeout)
 	if err := ensureRepository(opening, offsite, &local); err != nil {
 		cancel()
@@ -188,6 +197,37 @@ func TestOffsite(ctx context.Context, pool *pgxpool.Pool) error {
 	if connection, ok := offsite.S3Connection(); ok {
 		return testS3Bucket(ctx, connection)
 	}
+	if filepath.IsAbs(offsite.Repository) {
+		// Test every format a coming copy can use for this target: the newest
+		// local snapshot that an offsite-only copy takes, and the configured
+		// writer that a combined backup uses.
+		portable := portableBackups()
+		archive, restic := portable, !portable
+		snapshot, _, latestErr := latestCopyableSnapshot(ctx, pool, local, *offsite)
+		switch {
+		case latestErr == nil && backupplan.ArchiveName(snapshot) != "":
+			archive = true
+		case latestErr == nil:
+			restic = true
+		case !errors.Is(latestErr, errNoLocalSnapshot):
+			return latestErr
+		}
+		if archive {
+			if err = distinctArchiveStorage(local, *offsite); err != nil {
+				return err
+			}
+			directory, dirErr := mountedArchiveDirectory(ctx, pool, *offsite)
+			if dirErr != nil {
+				return dirErr
+			}
+			if err = probeArchiveDirectory(directory); err != nil {
+				return err
+			}
+		}
+		if !restic {
+			return nil
+		}
+	}
 	unlock, err := lockRepository(ctx, pool)
 	if err != nil {
 		return err
@@ -200,16 +240,55 @@ func TestOffsite(ctx context.Context, pool *pgxpool.Pool) error {
 // copyLatestOffsite copies the newest complete local snapshot that is not
 // offsite yet. It is used when the offsite schedule is due between local runs.
 func copyLatestOffsite(ctx context.Context, pool *pgxpool.Pool, local, offsite config.BackupTarget, settings backupplan.Settings, jobID string) (string, error) {
-	var snapshot, schemas string
-	err := pool.QueryRow(ctx, `SELECT snapshot_reference,schema_manifest::text FROM core.backup_runs
- WHERE repository_kind='local' AND repository_reference=$1 AND state='complete' ORDER BY started_at DESC LIMIT 1`, local.Label()).Scan(&snapshot, &schemas)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return "", errNoLocalSnapshot
-	}
+	snapshot, schemas, err := latestCopyableSnapshot(ctx, pool, local, offsite)
 	if err != nil {
 		return "", err
 	}
-	return copyOffsiteLocked(ctx, pool, local, offsite, settings, snapshot, []byte(schemas), jobID)
+	return copyOffsiteLocked(ctx, pool, local, offsite, settings, snapshot, schemas, jobID)
+}
+
+// latestCopyableSnapshot is the newest complete local snapshot this offsite
+// target can store. A restic REST target only stores Restic snapshots.
+func latestCopyableSnapshot(ctx context.Context, pool *pgxpool.Pool, local, offsite config.BackupTarget) (string, []byte, error) {
+	var snapshot, schemas string
+	// Imported points stay restorable but are never copied as this
+	// installation's newest backup.
+	err := pool.QueryRow(ctx, `SELECT r.snapshot_reference,r.schema_manifest::text FROM core.backup_runs r
+ WHERE r.repository_kind='local' AND r.repository_reference=$1 AND r.state='complete' AND r.snapshot_reference IS NOT NULL
+ AND NOT ($2 AND r.snapshot_reference ~ $3) AND NOT `+backupplan.ImportedRun+` ORDER BY r.started_at DESC LIMIT 1`,
+		local.Label(), strings.HasPrefix(offsite.Repository, "rest:"), backupplan.ArchiveReferencePattern).Scan(&snapshot, &schemas)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", nil, errNoLocalSnapshot
+	}
+	return snapshot, []byte(schemas), err
 }
 
 var errNoLocalSnapshot = errors.New("no completed local snapshot to copy")
+
+// probeArchiveDirectory proves that the worker can create files where archives
+// are published. A read-only mount passes an open, but not this probe. The
+// probe uses the partial-file prefix and records no backup run.
+func probeArchiveDirectory(directory string) error {
+	unreachable := func(err error) error {
+		return &ToolError{Program: "archive", Code: "repository_unreachable", err: err}
+	}
+	// Only the archive directory itself is created; its parent is the
+	// mounted repository path, which mountedArchiveDirectory checked.
+	if err := os.Mkdir(directory, 0700); err != nil && !errors.Is(err, os.ErrExist) { // #nosec G703 -- operator-approved storage location
+		return unreachable(err)
+	}
+	// Later writes find the directory present and skip this sync, so its
+	// entry is made durable here, also on a retry after a failed sync.
+	if err := syncDirectory(filepath.Dir(directory)); err != nil {
+		return unreachable(err)
+	}
+	probe, err := os.CreateTemp(directory, ".partial-probe-")
+	if err != nil {
+		return unreachable(err)
+	}
+	_, err = probe.WriteString("household write probe")
+	if err = errors.Join(err, probe.Close(), os.Remove(probe.Name())); err != nil {
+		return unreachable(err)
+	}
+	return nil
+}
