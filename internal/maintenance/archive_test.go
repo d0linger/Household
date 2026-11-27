@@ -495,6 +495,12 @@ func TestS3ArchiveIdentityIgnoresOnlySpelling(t *testing.T) {
 			t.Errorf("%s addresses the same object as the base repository", distinct)
 		}
 	}
+	// One explicit port served over both schemes names two destinations.
+	plain, _ := s3ArchiveIdentity("s3:http://storage.example:9000/bucket/prefix", name)
+	secure, _ := s3ArchiveIdentity("s3:https://storage.example:9000/bucket/prefix", name)
+	if plain == secure {
+		t.Error("http and https on one port address the same object")
+	}
 	if _, ok = s3ArchiveIdentity("/srv/offsite", name); ok {
 		t.Error("a mounted path has an S3 identity")
 	}

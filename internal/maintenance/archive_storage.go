@@ -48,8 +48,9 @@ func archiveObject(target config.BackupTarget, name string) (*minio.Client, stri
 
 // s3ArchiveIdentity names the object that archiveObject addresses for name
 // under an s3: repository, independent of its spelling: the host is compared
-// without case and with its default port, and a trailing slash or a repeated
-// separator in the prefix names the same key.
+// without case and with its default port, and a trailing slash in the prefix
+// names the same key. The scheme is part of the identity, because
+// S3Connection connects with or without TLS by it.
 func s3ArchiveIdentity(repository, name string) (string, bool) {
 	raw, found := strings.CutPrefix(repository, "s3:")
 	if !found || name == "" {
@@ -67,7 +68,7 @@ func s3ArchiveIdentity(repository, name string) (string, bool) {
 	if bucket == "" || port == "" {
 		return "", false
 	}
-	return strings.ToLower(u.Hostname()) + ":" + port + "/" + bucket + "/" + path.Join(prefix, name), true
+	return u.Scheme + "://" + strings.ToLower(u.Hostname()) + ":" + port + "/" + bucket + "/" + path.Join(prefix, name), true
 }
 
 func archiveStorageError(err error) error {
